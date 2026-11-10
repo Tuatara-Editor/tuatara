@@ -1,0 +1,731 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src  'self'; img-src 'self' file:; script-src 'self'; base-uri 'none'; form-action 'none'">
+<title>Files &ndash; Tuatara Manual</title>
+<link rel="stylesheet" href="manual.css">
+<script src="manual.js" defer></script>
+</head>
+<body>
+<div class="site">
+<nav class="toc" aria-label="Contents">
+<strong>Tuatara Manual</strong>
+<small>for version 0.90.21</small>
+<input type="search" placeholder="Find a heading" aria-label="Find a heading">
+<ol class="chapters"><li id="nav-01-the-screen"><a href="01-the-screen.html">1 The screen</a><ol><li><a href="01-the-screen.html#keys-and-names">1.1 Keys and names</a></li><li><a href="01-the-screen.html#the-parts-of-the-screen">1.2 The parts of the screen</a></li><li><a href="01-the-screen.html#windows-and-buffers">1.3 Windows and buffers</a><ol><li><a href="01-the-screen.html#commands-for-windows">1.3.1 Commands for windows</a></li><li><a href="01-the-screen.html#moving-windows-and-changing-their-size">1.3.2 Moving windows and changing their size</a></li><li><a href="01-the-screen.html#scrolling-and-finding-out-where-buffers-go">1.3.3 Scrolling and finding out where buffers go</a></li><li><a href="01-the-screen.html#commands-for-buffers">1.3.4 Commands for buffers</a></li><li><a href="01-the-screen.html#settings">1.3.5 Settings</a></li></ol></li><li><a href="01-the-screen.html#frames-windows-of-their-own-and-terminals">1.4 Frames, windows of their own and terminals</a><ol><li><a href="01-the-screen.html#commands-for-frames-and-the-windows-font">1.4.1 Commands for frames and the window's font</a></li><li><a href="01-the-screen.html#settings-2">1.4.2 Settings</a></li></ol></li><li><a href="01-the-screen.html#the-mode-line">1.5 The mode line</a><ol><li><a href="01-the-screen.html#the-modal-state">1.5.1 The modal state</a></li><li><a href="01-the-screen.html#the-signs-p-u-s-and-d">1.5.2 The signs P, U, S and D</a></li><li><a href="01-the-screen.html#saved-or-not">1.5.3 Saved or not</a></li><li><a href="01-the-screen.html#words-about-the-buffer">1.5.4 Words about the buffer</a></li><li><a href="01-the-screen.html#the-name-the-line-and-the-column">1.5.5 The name, the line and the column</a></li><li><a href="01-the-screen.html#other-things-the-mode-line-says">1.5.6 Other things the mode line says</a></li><li><a href="01-the-screen.html#the-folder">1.5.7 The folder</a></li><li><a href="01-the-screen.html#commands">1.5.8 Commands</a></li><li><a href="01-the-screen.html#settings-3">1.5.9 Settings</a></li><li><a href="01-the-screen.html#faces">1.5.10 Faces</a></li></ol></li><li><a href="01-the-screen.html#the-echo-area-and-the-messages-log">1.6 The echo area and the messages log</a><ol><li><a href="01-the-screen.html#commands-2">1.6.1 Commands</a></li><li><a href="01-the-screen.html#settings-4">1.6.2 Settings</a></li></ol></li><li><a href="01-the-screen.html#the-minibuffer-and-its-prompt">1.7 The minibuffer and its prompt</a><ol><li><a href="01-the-screen.html#settings-5">1.7.1 Settings</a></li><li><a href="01-the-screen.html#faces-2">1.7.2 Faces</a></li></ol></li><li><a href="01-the-screen.html#the-choices-panel">1.8 The choices panel</a><ol><li><a href="01-the-screen.html#commands-3">1.8.1 Commands</a></li><li><a href="01-the-screen.html#settings-6">1.8.2 Settings</a></li></ol></li><li><a href="01-the-screen.html#key-hints">1.9 Key hints</a><ol><li><a href="01-the-screen.html#commands-4">1.9.1 Commands</a></li><li><a href="01-the-screen.html#settings-7">1.9.2 Settings</a></li></ol></li><li><a href="01-the-screen.html#the-cursor-the-gutter-and-header-lines">1.10 The cursor, the gutter and header lines</a><ol><li><a href="01-the-screen.html#commands-5">1.10.1 Commands</a></li><li><a href="01-the-screen.html#settings-8">1.10.2 Settings</a></li></ol></li></ol></li><li id="nav-02-moving-around"><a href="02-moving-around.html">2 Moving around</a><ol><li><a href="02-moving-around.html#two-sets-of-keys">2.1 Two sets of keys</a></li><li><a href="02-moving-around.html#by-character-and-by-line">2.2 By character and by line</a><ol><li><a href="02-moving-around.html#commands">2.2.1 Commands</a></li></ol></li><li><a href="02-moving-around.html#by-word">2.3 By word</a><ol><li><a href="02-moving-around.html#commands-2">2.3.1 Commands</a></li></ol></li><li><a href="02-moving-around.html#within-a-line">2.4 Within a line</a><ol><li><a href="02-moving-around.html#commands-3">2.4.1 Commands</a></li></ol></li><li><a href="02-moving-around.html#by-sentence-and-paragraph">2.5 By sentence and paragraph</a><ol><li><a href="02-moving-around.html#commands-4">2.5.1 Commands</a></li><li><a href="02-moving-around.html#settings">2.5.2 Settings</a></li></ol></li><li><a href="02-moving-around.html#to-the-start-or-the-end-of-the-text">2.6 To the start or the end of the text</a><ol><li><a href="02-moving-around.html#commands-5">2.6.1 Commands</a></li></ol></li><li><a href="02-moving-around.html#to-a-line">2.7 To a line</a><ol><li><a href="02-moving-around.html#commands-6">2.7.1 Commands</a></li></ol></li><li><a href="02-moving-around.html#scrolling-and-recentring">2.8 Scrolling and recentring</a></li><li><a href="02-moving-around.html#counts">2.9 Counts</a><ol><li><a href="02-moving-around.html#commands-7">2.9.1 Commands</a></li></ol></li><li><a href="02-moving-around.html#marks-and-going-back">2.10 Marks and going back</a><ol><li><a href="02-moving-around.html#commands-8">2.10.1 Commands</a></li><li><a href="02-moving-around.html#settings-2">2.10.2 Settings</a></li><li><a href="02-moving-around.html#faces">2.10.3 Faces</a></li></ol></li><li><a href="02-moving-around.html#going-to-the-next-place-in-a-list">2.11 Going to the next place in a list</a><ol><li><a href="02-moving-around.html#commands-9">2.11.1 Commands</a></li></ol></li><li><a href="02-moving-around.html#in-help-lists-and-other-read-only-buffers">2.12 In help, lists and other read-only buffers</a></li></ol></li><li id="nav-03-writing-and-changing-text"><a href="03-writing-and-changing-text.html">3 Writing and changing text</a><ol><li><a href="03-writing-and-changing-text.html#the-two-states">3.1 The two states</a><ol><li><a href="03-writing-and-changing-text.html#commands-for-starting-to-type">3.1.1 Commands for starting to type</a></li></ol></li><li><a href="03-writing-and-changing-text.html#typing">3.2 Typing</a><ol><li><a href="03-writing-and-changing-text.html#commands">3.2.1 Commands</a></li><li><a href="03-writing-and-changing-text.html#settings">3.2.2 Settings</a></li></ol></li><li><a href="03-writing-and-changing-text.html#deleting">3.3 Deleting</a><ol><li><a href="03-writing-and-changing-text.html#commands-2">3.3.1 Commands</a></li></ol></li><li><a href="03-writing-and-changing-text.html#changing-text">3.4 Changing text</a><ol><li><a href="03-writing-and-changing-text.html#commands-for-case">3.4.1 Commands for case</a></li><li><a href="03-writing-and-changing-text.html#commands-for-swapping-and-joining">3.4.2 Commands for swapping and joining</a></li></ol></li><li><a href="03-writing-and-changing-text.html#undo-redo-and-repeat">3.5 Undo, redo and repeat</a><ol><li><a href="03-writing-and-changing-text.html#commands-3">3.5.1 Commands</a></li><li><a href="03-writing-and-changing-text.html#settings-2">3.5.2 Settings</a></li></ol></li><li><a href="03-writing-and-changing-text.html#repeat-counts">3.6 Repeat counts</a></li><li><a href="03-writing-and-changing-text.html#special-characters">3.7 Special characters</a><ol><li><a href="03-writing-and-changing-text.html#commands-4">3.7.1 Commands</a></li><li><a href="03-writing-and-changing-text.html#settings-3">3.7.2 Settings</a></li></ol></li><li><a href="03-writing-and-changing-text.html#indentation-and-filling-in-plain-text">3.8 Indentation and filling in plain text</a><ol><li><a href="03-writing-and-changing-text.html#commands-5">3.8.1 Commands</a></li><li><a href="03-writing-and-changing-text.html#settings-4">3.8.2 Settings</a></li></ol></li><li><a href="03-writing-and-changing-text.html#spelling">3.9 Spelling</a><ol><li><a href="03-writing-and-changing-text.html#commands-6">3.9.1 Commands</a></li><li><a href="03-writing-and-changing-text.html#settings-5">3.9.2 Settings</a></li><li><a href="03-writing-and-changing-text.html#faces">3.9.3 Faces</a></li></ol></li><li><a href="03-writing-and-changing-text.html#sorting-and-tidying-lines">3.10 Sorting and tidying lines</a><ol><li><a href="03-writing-and-changing-text.html#commands-7">3.10.1 Commands</a></li><li><a href="03-writing-and-changing-text.html#settings-6">3.10.2 Settings</a></li></ol></li><li><a href="03-writing-and-changing-text.html#recording-keys">3.11 Recording keys</a><ol><li><a href="03-writing-and-changing-text.html#commands-8">3.11.1 Commands</a></li></ol></li></ol></li><li id="nav-04-cutting-and-pasting"><a href="04-cutting-and-pasting.html">4 Cutting and pasting</a><ol><li><a href="04-cutting-and-pasting.html#the-kill-ring">4.1 The kill ring</a></li><li><a href="04-cutting-and-pasting.html#cutting-copying-and-pasting-with-the-emacs-keys">4.2 Cutting, copying and pasting with the Emacs keys</a><ol><li><a href="04-cutting-and-pasting.html#commands">4.2.1 Commands</a></li></ol></li><li><a href="04-cutting-and-pasting.html#cutting-copying-and-pasting-in-normal-state">4.3 Cutting, copying and pasting in NORMAL state</a></li><li><a href="04-cutting-and-pasting.html#the-system-clipboard-and-the-primary-selection">4.4 The system clipboard and the primary selection</a><ol><li><a href="04-cutting-and-pasting.html#settings">4.4.1 Settings</a></li></ol></li><li><a href="04-cutting-and-pasting.html#registers">4.5 Registers</a></li><li><a href="04-cutting-and-pasting.html#banked-lines">4.6 Banked lines</a><ol><li><a href="04-cutting-and-pasting.html#faces">4.6.1 Faces</a></li></ol></li><li><a href="04-cutting-and-pasting.html#pasting-into-prompts">4.7 Pasting into prompts</a></li></ol></li><li id="nav-05-selecting-rectangles-and-many-cursors"><a href="05-selecting-rectangles-and-many-cursors.html">5 Selecting, rectangles and many cursors</a><ol><li><a href="05-selecting-rectangles-and-many-cursors.html#selections-and-the-mark">5.1 Selections and the mark</a><ol><li><a href="05-selecting-rectangles-and-many-cursors.html#keys-that-select">5.1.1 Keys that select</a></li></ol></li><li><a href="05-selecting-rectangles-and-many-cursors.html#text-objects-the-m-keys">5.2 Text objects, the m keys</a><ol><li><a href="05-selecting-rectangles-and-many-cursors.html#wrapping-a-selection">5.2.1 Wrapping a selection</a></li><li><a href="05-selecting-rectangles-and-many-cursors.html#the-emacs-keys-for-the-same">5.2.2 The Emacs keys for the same</a></li></ol></li><li><a href="05-selecting-rectangles-and-many-cursors.html#the-mark-run">5.3 The mark run</a></li><li><a href="05-selecting-rectangles-and-many-cursors.html#growing-a-selection-by-the-code">5.4 Growing a selection by the code</a></li><li><a href="05-selecting-rectangles-and-many-cursors.html#rectangles">5.5 Rectangles</a><ol><li><a href="05-selecting-rectangles-and-many-cursors.html#rectangles-in-normal-state">5.5.1 Rectangles in NORMAL state</a></li><li><a href="05-selecting-rectangles-and-many-cursors.html#rectangles-with-the-emacs-keys">5.5.2 Rectangles with the Emacs keys</a></li></ol></li><li><a href="05-selecting-rectangles-and-many-cursors.html#many-cursors">5.6 Many cursors</a><ol><li><a href="05-selecting-rectangles-and-many-cursors.html#what-each-key-does-at-the-cursors">5.6.1 What each key does at the cursors</a></li><li><a href="05-selecting-rectangles-and-many-cursors.html#limits">5.6.2 Limits</a></li><li><a href="05-selecting-rectangles-and-many-cursors.html#showing-the-cursors">5.6.3 Showing the cursors</a></li></ol></li><li><a href="05-selecting-rectangles-and-many-cursors.html#splitting-a-selection-on-what-matches">5.7 Splitting a selection on what matches</a></li><li><a href="05-selecting-rectangles-and-many-cursors.html#summary-of-the-normal-keys">5.8 Summary of the NORMAL keys</a></li></ol></li><li id="nav-06-searching-and-replacing"><a href="06-searching-and-replacing.html">6 Searching and replacing</a><ol><li><a href="06-searching-and-replacing.html#searching-a-buffer">6.1 Searching a buffer</a><ol><li><a href="06-searching-and-replacing.html#capital-letters">6.1.1 Capital letters</a></li><li><a href="06-searching-and-replacing.html#regular-expressions-and-plain-text">6.1.2 Regular expressions and plain text</a></li><li><a href="06-searching-and-replacing.html#starting-from-the-word-under-the-cursor">6.1.3 Starting from the word under the cursor</a></li><li><a href="06-searching-and-replacing.html#search-history">6.1.4 Search history</a></li><li><a href="06-searching-and-replacing.html#keeping-the-matches-lit">6.1.5 Keeping the matches lit</a></li><li><a href="06-searching-and-replacing.html#the-count-before-the-prompt">6.1.6 The count before the prompt</a></li><li><a href="06-searching-and-replacing.html#matches-that-cross-many-lines">6.1.7 Matches that cross many lines</a></li></ol></li><li><a href="06-searching-and-replacing.html#replacing">6.2 Replacing</a><ol><li><a href="06-searching-and-replacing.html#what-goes-in-the-new-text">6.2.1 What goes in the new text</a></li><li><a href="06-searching-and-replacing.html#replacing-with-questions">6.2.2 Replacing with questions</a></li></ol></li><li><a href="06-searching-and-replacing.html#narrowing-a-list-to-its-matches">6.3 Narrowing a list to its matches</a></li><li><a href="06-searching-and-replacing.html#searching-many-files">6.4 Searching many files</a><ol><li><a href="06-searching-and-replacing.html#changing-the-lines-a-search-found">6.4.1 Changing the lines a search found</a></li><li><a href="06-searching-and-replacing.html#keeping-folders-read">6.4.2 Keeping folders read</a></li></ol></li><li><a href="06-searching-and-replacing.html#the-outline-of-a-buffer">6.5 The outline of a buffer</a></li></ol></li><li id="nav-07-buffers-and-sessions"><a href="07-buffers-and-sessions.html">7 Buffers and sessions</a><ol><li><a href="07-buffers-and-sessions.html#the-buffer-list">7.1 The buffer list</a><ol><li><a href="07-buffers-and-sessions.html#sections">7.1.1 Sections</a></li><li><a href="07-buffers-and-sessions.html#folding">7.1.2 Folding</a></li><li><a href="07-buffers-and-sessions.html#marks">7.1.3 Marks</a></li><li><a href="07-buffers-and-sessions.html#opening-and-keeping-the-list-current">7.1.4 Opening, and keeping the list current</a></li><li><a href="07-buffers-and-sessions.html#commands-for-the-buffer-list">7.1.5 Commands for the buffer list</a></li><li><a href="07-buffers-and-sessions.html#settings-and-faces">7.1.6 Settings and faces</a></li></ol></li><li><a href="07-buffers-and-sessions.html#scratch-buffers">7.2 Scratch buffers</a></li><li><a href="07-buffers-and-sessions.html#saving-and-killing-buffers">7.3 Saving and killing buffers</a></li><li><a href="07-buffers-and-sessions.html#recent-files-and-places">7.4 Recent files and places</a></li><li><a href="07-buffers-and-sessions.html#bookmarks">7.5 Bookmarks</a></li><li><a href="07-buffers-and-sessions.html#registers">7.6 Registers</a></li><li><a href="07-buffers-and-sessions.html#the-session-kept">7.7 The session kept</a></li><li><a href="07-buffers-and-sessions.html#auto-save-and-getting-changes-back">7.8 Auto-save and getting changes back</a></li><li><a href="07-buffers-and-sessions.html#narrowing-to-a-part-of-a-buffer">7.9 Narrowing to a part of a buffer</a></li></ol></li><li id="nav-08-commands-keys-and-help"><a href="08-commands-keys-and-help.html">8 Commands, keys and help</a><ol><li><a href="08-commands-keys-and-help.html#running-a-command-by-name">8.1 Running a command by name</a><ol><li><a href="08-commands-keys-and-help.html#the-count-before-m-x">8.1.1 The count before M-x</a></li></ol></li><li><a href="08-commands-keys-and-help.html#counts">8.2 Counts</a></li><li><a href="08-commands-keys-and-help.html#giving-up">8.3 Giving up</a></li><li><a href="08-commands-keys-and-help.html#prefix-keys">8.4 Prefix keys</a></li><li><a href="08-commands-keys-and-help.html#key-hints">8.5 Key hints</a></li><li><a href="08-commands-keys-and-help.html#menus">8.6 Menus</a></li><li><a href="08-commands-keys-and-help.html#asking-what-a-key-does">8.7 Asking what a key does</a></li><li><a href="08-commands-keys-and-help.html#asking-what-a-command-does">8.8 Asking what a command does</a></li><li><a href="08-commands-keys-and-help.html#finding-a-command-when-you-do-not-know-its-name">8.9 Finding a command when you do not know its name</a></li><li><a href="08-commands-keys-and-help.html#what-a-face-looks-like">8.10 What a face looks like</a></li><li><a href="08-commands-keys-and-help.html#messages-notifications-and-the-log-of-what-tuatara-says">8.11 Messages, notifications and the log of what Tuatara says</a></li><li><a href="08-commands-keys-and-help.html#the-tutor-and-manual-pages">8.12 The tutor and manual pages</a></li><li><a href="08-commands-keys-and-help.html#about-tuatara-and-what-is-there">8.13 About Tuatara and what is there</a></li><li><a href="08-commands-keys-and-help.html#checking-what-your-system-has">8.14 Checking what your system has</a></li><li><a href="08-commands-keys-and-help.html#lisp-in-the-running-editor">8.15 Lisp in the running editor</a></li><li><a href="08-commands-keys-and-help.html#binding-keys-yourself">8.16 Binding keys yourself</a></li></ol></li><li id="nav-09-files" class="here"><a class="here" href="09-files.html">9 Files</a><ol><li><a href="09-files.html#opening-a-file">9.1 Opening a file</a><ol><li><a href="09-files.html#other-places-to-open-a-file">9.1.1 Other places to open a file</a></li><li><a href="09-files.html#the-files-own-settings">9.1.2 The file's own settings</a></li><li><a href="09-files.html#seeing-a-file-before-you-choose-it">9.1.3 Seeing a file before you choose it</a></li></ol></li><li><a href="09-files.html#creating-a-file">9.2 Creating a file</a></li><li><a href="09-files.html#saving">9.3 Saving</a><ol><li><a href="09-files.html#what-a-save-does-with-your-file">9.3.1 What a save does with your file</a></li><li><a href="09-files.html#when-a-save-asks-first">9.3.2 When a save asks first</a></li></ol></li><li><a href="09-files.html#save-as-and-a-new-name">9.4 Save as, and a new name</a></li><li><a href="09-files.html#read-only-files-and-buffers">9.5 Read-only files and buffers</a></li><li><a href="09-files.html#the-file-changed-on-disk">9.6 The file changed on disk</a><ol><li><a href="09-files.html#reading-it-again">9.6.1 Reading it again</a></li><li><a href="09-files.html#keeping-up-by-itself">9.6.2 Keeping up by itself</a></li></ol></li><li><a href="09-files.html#line-endings-and-letters-from-other-languages">9.7 Line endings and letters from other languages</a><ol><li><a href="09-files.html#line-endings">9.7.1 Line endings</a></li><li><a href="09-files.html#letters-from-other-languages">9.7.2 Letters from other languages</a></li></ol></li><li><a href="09-files.html#files-with-formatted-names">9.8 Files with formatted names</a><ol><li><a href="09-files.html#making-and-finding">9.8.1 Making and finding</a></li><li><a href="09-files.html#renaming">9.8.2 Renaming</a></li></ol></li><li><a href="09-files.html#files-on-another-machine">9.9 Files on another machine</a><ol><li><a href="09-files.html#saving-2">9.9.1 Saving</a></li><li><a href="09-files.html#the-first-time-you-meet-a-machine">9.9.2 The first time you meet a machine</a></li><li><a href="09-files.html#passwords">9.9.3 Passwords</a></li><li><a href="09-files.html#folders-and-previews-on-a-server">9.9.4 Folders and previews on a server</a></li></ol></li><li><a href="09-files.html#opening-a-file-with-another-program">9.10 Opening a file with another program</a></li><li><a href="09-files.html#starting-tuatara-with-files">9.11 Starting Tuatara with files</a><ol><li><a href="09-files.html#options">9.11.1 Options</a></li></ol></li></ol></li><li id="nav-10-folders"><a href="10-folders.html">10 Folders</a><ol><li><a href="10-folders.html#opening-a-folder">10.1 Opening a folder</a><ol><li><a href="10-folders.html#commands-for-opening-a-folder">10.1.1 Commands for opening a folder</a></li></ol></li><li><a href="10-folders.html#moving-about">10.2 Moving about</a><ol><li><a href="10-folders.html#commands-for-moving">10.2.1 Commands for moving</a></li></ol></li><li><a href="10-folders.html#what-a-list-shows">10.3 What a list shows</a><ol><li><a href="10-folders.html#commands-for-what-a-list-shows">10.3.1 Commands for what a list shows</a></li><li><a href="10-folders.html#settings-for-what-a-list-shows">10.3.2 Settings for what a list shows</a></li></ol></li><li><a href="10-folders.html#the-preview-beside-the-list">10.4 The preview beside the list</a><ol><li><a href="10-folders.html#quick-edit">10.4.1 Quick edit</a></li><li><a href="10-folders.html#commands-for-the-preview">10.4.2 Commands for the preview</a></li><li><a href="10-folders.html#settings-for-the-preview">10.4.3 Settings for the preview</a></li></ol></li><li><a href="10-folders.html#marks">10.5 Marks</a><ol><li><a href="10-folders.html#filtering-a-list">10.5.1 Filtering a list</a></li><li><a href="10-folders.html#commands-for-marks-and-filters">10.5.2 Commands for marks and filters</a></li></ol></li><li><a href="10-folders.html#making-things">10.6 Making things</a><ol><li><a href="10-folders.html#commands-for-making-things">10.6.1 Commands for making things</a></li></ol></li><li><a href="10-folders.html#copying-moving-and-linking">10.7 Copying, moving and linking</a><ol><li><a href="10-folders.html#commands-for-copying-moving-and-linking">10.7.1 Commands for copying, moving and linking</a></li><li><a href="10-folders.html#settings-for-copying-and-moving">10.7.2 Settings for copying and moving</a></li></ol></li><li><a href="10-folders.html#renaming">10.8 Renaming</a><ol><li><a href="10-folders.html#commands-for-renaming">10.8.1 Commands for renaming</a></li></ol></li><li><a href="10-folders.html#deleting-the-trash-and-wiping">10.9 Deleting, the trash and wiping</a><ol><li><a href="10-folders.html#commands-for-deleting-and-the-trash">10.9.1 Commands for deleting and the trash</a></li><li><a href="10-folders.html#settings-for-deleting">10.9.2 Settings for deleting</a></li></ol></li><li><a href="10-folders.html#archives">10.10 Archives</a><ol><li><a href="10-folders.html#commands-for-archives">10.10.1 Commands for archives</a></li><li><a href="10-folders.html#settings-for-archives">10.10.2 Settings for archives</a></li></ol></li><li><a href="10-folders.html#drives-and-the-folder-tree">10.11 Drives and the folder tree</a></li><li><a href="10-folders.html#finding-checking-and-encrypting">10.12 Finding, checking and encrypting</a><ol><li><a href="10-folders.html#commands-for-finding-checking-and-encrypting">10.12.1 Commands for finding, checking and encrypting</a></li></ol></li><li><a href="10-folders.html#colours-of-a-list">10.13 Colours of a list</a></li></ol></li><li id="nav-11-large-files-and-background-work"><a href="11-large-files-and-background-work.html">11 Large files and work in the background</a><ol><li><a href="11-large-files-and-background-work.html#opening-a-very-large-file">11.1 Opening a very large file</a><ol><li><a href="11-large-files-and-background-work.html#the-line-number-while-the-lines-are-counted">11.1.1 The line number while the lines are counted</a></li><li><a href="11-large-files-and-background-work.html#going-to-a-line">11.1.2 Going to a line</a></li><li><a href="11-large-files-and-background-work.html#line-numbers-in-the-gutter">11.1.3 Line numbers in the gutter</a></li></ol></li><li><a href="11-large-files-and-background-work.html#jobs-work-in-the-background">11.2 Jobs: work in the background</a><ol><li><a href="11-large-files-and-background-work.html#what-runs-as-a-job">11.2.1 What runs as a job</a></li><li><a href="11-large-files-and-background-work.html#the-sign-p">11.2.2 The sign P</a></li><li><a href="11-large-files-and-background-work.html#what-a-job-will-change-is-painted">11.2.3 What a job will change is painted</a></li><li><a href="11-large-files-and-background-work.html#jobs-take-turns">11.2.4 Jobs take turns</a></li><li><a href="11-large-files-and-background-work.html#typing-while-a-job-runs">11.2.5 Typing while a job runs</a></li><li><a href="11-large-files-and-background-work.html#undo-and-jobs">11.2.6 Undo and jobs</a></li></ol></li><li><a href="11-large-files-and-background-work.html#the-list-of-jobs">11.3 The list of jobs</a><ol><li><a href="11-large-files-and-background-work.html#stopping-a-job">11.3.1 Stopping a job</a></li></ol></li><li><a href="11-large-files-and-background-work.html#searching-a-large-file">11.4 Searching a large file</a></li><li><a href="11-large-files-and-background-work.html#saving-a-large-file">11.5 Saving a large file</a><ol><li><a href="11-large-files-and-background-work.html#saving-in-place">11.5.1 Saving in place</a></li></ol></li><li><a href="11-large-files-and-background-work.html#memory-and-pauses-you-might-notice">11.6 Memory, and pauses you might notice</a><ol><li><a href="11-large-files-and-background-work.html#a-file-larger-than-your-memory">11.6.1 A file larger than your memory</a></li><li><a href="11-large-files-and-background-work.html#auto-save-and-large-buffers">11.6.2 Auto-save and large buffers</a></li><li><a href="11-large-files-and-background-work.html#undo">11.6.3 Undo</a></li><li><a href="11-large-files-and-background-work.html#collecting-garbage">11.6.4 Collecting garbage</a></li></ol></li><li><a href="11-large-files-and-background-work.html#a-large-file-on-another-machine">11.7 A large file on another machine</a><ol><li><a href="11-large-files-and-background-work.html#what-you-see-while-it-arrives">11.7.1 What you see while it arrives</a></li><li><a href="11-large-files-and-background-work.html#stopping-the-transfer-or-losing-the-connection">11.7.2 Stopping the transfer, or losing the connection</a></li></ol></li><li><a href="11-large-files-and-background-work.html#in-short">11.8 In short</a></li></ol></li><li id="nav-12-files-you-do-not-trust"><a href="12-files-you-do-not-trust.html">12 Files you do not trust</a><ol><li><a href="12-files-you-do-not-trust.html#opening-one-file-safely">12.1 Opening one file safely</a><ol><li><a href="12-files-you-do-not-trust.html#what-is-never-run">12.1.1 What is never run</a></li><li><a href="12-files-you-do-not-trust.html#why-a-files-own-settings-are-not-taken">12.1.2 Why a file's own settings are not taken</a></li><li><a href="12-files-you-do-not-trust.html#commands-for-opening-safely">12.1.3 Commands for opening safely</a></li><li><a href="12-files-you-do-not-trust.html#settings-and-faces">12.1.4 Settings and faces</a></li></ol></li><li><a href="12-files-you-do-not-trust.html#evidence-folders">12.2 Evidence folders</a><ol><li><a href="12-files-you-do-not-trust.html#naming-the-folders">12.2.1 Naming the folders</a></li><li><a href="12-files-you-do-not-trust.html#what-happens-to-a-file-of-evidence">12.2.2 What happens to a file of evidence</a></li><li><a href="12-files-you-do-not-trust.html#asking-and-copying-out">12.2.3 Asking, and copying out</a></li><li><a href="12-files-you-do-not-trust.html#what-the-guard-does-not-cover">12.2.4 What the guard does not cover</a></li><li><a href="12-files-you-do-not-trust.html#commands-settings-and-faces">12.2.5 Commands, settings and faces</a></li></ol></li><li><a href="12-files-you-do-not-trust.html#the-sandbox-around-decoders">12.3 The sandbox around decoders</a><ol><li><a href="12-files-you-do-not-trust.html#commands-and-settings">12.3.1 Commands and settings</a></li></ol></li><li><a href="12-files-you-do-not-trust.html#repositories-you-only-look-at">12.4 Repositories you only look at</a><ol><li><a href="12-files-you-do-not-trust.html#command-setting-and-faces">12.4.1 Command, setting and faces</a></li></ol></li><li><a href="12-files-you-do-not-trust.html#encrypted-files">12.5 Encrypted files</a><ol><li><a href="12-files-you-do-not-trust.html#a-file-that-ends-in-gpg">12.5.1 A file that ends in .gpg</a></li><li><a href="12-files-you-do-not-trust.html#the-passphrase-prompt">12.5.2 The passphrase prompt</a></li><li><a href="12-files-you-do-not-trust.html#encrypting-and-decrypting">12.5.3 Encrypting and decrypting</a></li><li><a href="12-files-you-do-not-trust.html#signing-and-checking">12.5.4 Signing and checking</a></li><li><a href="12-files-you-do-not-trust.html#keys">12.5.5 Keys</a></li><li><a href="12-files-you-do-not-trust.html#commands-and-settings-2">12.5.6 Commands and settings</a></li></ol></li></ol></li><li id="nav-13-writing-code"><a href="13-writing-code.html">13 Writing code</a><ol><li><a href="13-writing-code.html#what-tuatara-knows-about-code">13.1 What Tuatara knows about code</a><ol><li><a href="13-writing-code.html#how-much-colour">13.1.1 How much colour</a></li><li><a href="13-writing-code.html#seeing-what-a-language-has">13.1.2 Seeing what a language has</a></li><li><a href="13-writing-code.html#commands-settings-and-faces">13.1.3 Commands, settings and faces</a></li></ol></li><li><a href="13-writing-code.html#indentation-and-tabs">13.2 Indentation and tabs</a><ol><li><a href="13-writing-code.html#tabs-and-spaces">13.2.1 Tabs and spaces</a></li><li><a href="13-writing-code.html#commands-and-settings">13.2.2 Commands and settings</a></li></ol></li><li><a href="13-writing-code.html#comments">13.3 Comments</a><ol><li><a href="13-writing-code.html#commands">13.3.1 Commands</a></li></ol></li><li><a href="13-writing-code.html#brackets-and-pairs">13.4 Brackets and pairs</a><ol><li><a href="13-writing-code.html#commands-and-settings-2">13.4.1 Commands and settings</a></li></ol></li><li><a href="13-writing-code.html#moving-by-definitions-and-lists">13.5 Moving by definitions and lists</a><ol><li><a href="13-writing-code.html#selecting-by-the-code">13.5.1 Selecting by the code</a></li><li><a href="13-writing-code.html#an-outline-of-the-file">13.5.2 An outline of the file</a></li><li><a href="13-writing-code.html#commands-2">13.5.3 Commands</a></li></ol></li><li><a href="13-writing-code.html#finding-definitions">13.6 Finding definitions</a><ol><li><a href="13-writing-code.html#commands-3">13.6.1 Commands</a></li></ol></li><li><a href="13-writing-code.html#language-servers">13.7 Language servers</a><ol><li><a href="13-writing-code.html#starting-one-and-trust">13.7.1 Starting one, and trust</a></li><li><a href="13-writing-code.html#what-the-server-tells-you-as-you-type">13.7.2 What the server tells you as you type</a></li><li><a href="13-writing-code.html#completion">13.7.3 Completion</a></li><li><a href="13-writing-code.html#rename-fixes-and-tidying">13.7.4 Rename, fixes and tidying</a></li><li><a href="13-writing-code.html#formatting">13.7.5 Formatting</a></li><li><a href="13-writing-code.html#settings-of-your-own">13.7.6 Settings of your own</a></li><li><a href="13-writing-code.html#commands-4">13.7.7 Commands</a></li><li><a href="13-writing-code.html#settings-and-faces">13.7.8 Settings and faces</a></li></ol></li><li><a href="13-writing-code.html#snippets">13.8 Snippets</a><ol><li><a href="13-writing-code.html#commands-and-settings-3">13.8.1 Commands and settings</a></li></ol></li><li><a href="13-writing-code.html#running-a-build-or-the-tests">13.9 Running a build or the tests</a><ol><li><a href="13-writing-code.html#commands-and-settings-4">13.9.1 Commands and settings</a></li></ol></li><li><a href="13-writing-code.html#merge-conflicts">13.10 Merge conflicts</a><ol><li><a href="13-writing-code.html#commands-and-faces">13.10.1 Commands and faces</a></li></ol></li><li><a href="13-writing-code.html#lisp-development">13.11 Lisp development</a><ol><li><a href="13-writing-code.html#commands-5">13.11.1 Commands</a></li><li><a href="13-writing-code.html#settings">13.11.2 Settings</a></li></ol></li><li><a href="13-writing-code.html#the-commands-of-each-language">13.12 The commands of each language</a></li></ol></li><li id="nav-14-org"><a href="14-org.html">14 Org</a><ol><li><a href="14-org.html#an-org-file">14.1 An Org file</a><ol><li><a href="14-org.html#how-a-note-is-shown">14.1.1 How a note is shown</a></li></ol></li><li><a href="14-org.html#headings-and-folding">14.2 Headings and folding</a><ol><li><a href="14-org.html#folding">14.2.1 Folding</a></li><li><a href="14-org.html#new-headings">14.2.2 New headings</a></li><li><a href="14-org.html#moving-and-changing-level">14.2.3 Moving and changing level</a></li></ol></li><li><a href="14-org.html#lists-and-checkboxes">14.3 Lists and checkboxes</a><ol><li><a href="14-org.html#checkboxes">14.3.1 Checkboxes</a></li></ol></li><li><a href="14-org.html#tasks">14.4 Tasks</a><ol><li><a href="14-org.html#tasks-with-parts">14.4.1 Tasks with parts</a></li><li><a href="14-org.html#notes-on-a-task">14.4.2 Notes on a task</a></li><li><a href="14-org.html#keywords-of-your-own">14.4.3 Keywords of your own</a></li><li><a href="14-org.html#priorities">14.4.4 Priorities</a></li></ol></li><li><a href="14-org.html#tags">14.5 Tags</a></li><li><a href="14-org.html#dates-and-scheduling">14.6 Dates and scheduling</a><ol><li><a href="14-org.html#answering-the-date-question">14.6.1 Answering the date question</a></li><li><a href="14-org.html#things-that-come-round-again">14.6.2 Things that come round again</a></li><li><a href="14-org.html#being-told-on-the-desktop">14.6.3 Being told on the desktop</a></li></ol></li><li><a href="14-org.html#the-agenda">14.7 The agenda</a><ol><li><a href="14-org.html#telling-tuatara-which-files-to-read">14.7.1 Telling Tuatara which files to read</a></li><li><a href="14-org.html#opening-it">14.7.2 Opening it</a></li><li><a href="14-org.html#moving-about">14.7.3 Moving about</a></li><li><a href="14-org.html#changing-tasks-from-the-agenda">14.7.4 Changing tasks from the agenda</a></li><li><a href="14-org.html#views-of-your-own">14.7.5 Views of your own</a></li></ol></li><li><a href="14-org.html#capture">14.8 Capture</a><ol><li><a href="14-org.html#templates-of-your-own">14.8.1 Templates of your own</a></li></ol></li><li><a href="14-org.html#moving-an-entry-to-another-place">14.9 Moving an entry to another place</a></li><li><a href="14-org.html#clocking">14.10 Clocking</a></li><li><a href="14-org.html#tables-and-formulas">14.11 Tables and formulas</a><ol><li><a href="14-org.html#making-a-table">14.11.1 Making a table</a></li><li><a href="14-org.html#formulas">14.11.2 Formulas</a></li></ol></li><li><a href="14-org.html#links">14.12 Links</a><ol><li><a href="14-org.html#making-and-following-links">14.12.1 Making and following links</a></li></ol></li><li><a href="14-org.html#blocks-and-code">14.13 Blocks and code</a><ol><li><a href="14-org.html#writing-the-code-out-to-files">14.13.1 Writing the code out to files</a></li><li><a href="14-org.html#a-table-of-contents">14.13.2 A table of contents</a></li><li><a href="14-org.html#blocks-that-write-themselves">14.13.3 Blocks that write themselves</a></li></ol></li><li><a href="14-org.html#exporting">14.14 Exporting</a><ol><li><a href="14-org.html#what-goes-at-the-top-of-the-note">14.14.1 What goes at the top of the note</a></li><li><a href="14-org.html#making-a-pdf">14.14.2 Making a PDF</a></li><li><a href="14-org.html#making-a-word-document">14.14.3 Making a Word document</a></li><li><a href="14-org.html#two-kinds-of-export">14.14.4 Two kinds of export</a></li><li><a href="14-org.html#layout-in-plain-words">14.14.5 Layout in plain words</a></li><li><a href="14-org.html#your-own-look">14.14.6 Your own look</a></li><li><a href="14-org.html#hiding-names">14.14.7 Hiding names</a></li><li><a href="14-org.html#notes-from-other-people">14.14.8 Notes from other people</a></li></ol></li><li><a href="14-org.html#where-to-go-from-here">14.15 Where to go from here</a></li></ol></li><li id="nav-15-git"><a href="15-git.html">15 Git</a><ol><li><a href="15-git.html#what-git-keeps">15.1 What git keeps</a></li><li><a href="15-git.html#the-status">15.2 The status</a><ol><li><a href="15-git.html#menus">15.2.1 Menus</a></li><li><a href="15-git.html#commands-settings-and-faces-of-the-status">15.2.2 Commands, settings and faces of the status</a></li></ol></li><li><a href="15-git.html#staging">15.3 Staging</a><ol><li><a href="15-git.html#hunks-and-single-lines">15.3.1 Hunks and single lines</a></li><li><a href="15-git.html#reversing-a-change">15.3.2 Reversing a change</a></li><li><a href="15-git.html#from-the-file-itself">15.3.3 From the file itself</a></li></ol></li><li><a href="15-git.html#committing">15.4 Committing</a><ol><li><a href="15-git.html#changing-the-last-commit">15.4.1 Changing the last commit</a></li><li><a href="15-git.html#signing-commits">15.4.2 Signing commits</a></li><li><a href="15-git.html#commands-and-settings-for-committing">15.4.3 Commands and settings for committing</a></li></ol></li><li><a href="15-git.html#the-log-and-diffs">15.5 The log and diffs</a><ol><li><a href="15-git.html#the-log">15.5.1 The log</a></li><li><a href="15-git.html#diffs">15.5.2 Diffs</a></li></ol></li><li><a href="15-git.html#branches-and-tags">15.6 Branches and tags</a><ol><li><a href="15-git.html#branches">15.6.1 Branches</a></li><li><a href="15-git.html#merging">15.6.2 Merging</a></li><li><a href="15-git.html#tags">15.6.3 Tags</a></li></ol></li><li><a href="15-git.html#the-stash">15.7 The stash</a></li><li><a href="15-git.html#merge-conflicts">15.8 Merge conflicts</a></li><li><a href="15-git.html#rebase-cherry-pick-revert-and-reset">15.9 Rebase, cherry-pick, revert and reset</a><ol><li><a href="15-git.html#rebase">15.9.1 Rebase</a></li><li><a href="15-git.html#cherry-pick">15.9.2 Cherry-pick</a></li><li><a href="15-git.html#revert">15.9.3 Revert</a></li><li><a href="15-git.html#reset">15.9.4 Reset</a></li></ol></li><li><a href="15-git.html#pulling-and-pushing">15.10 Pulling and pushing</a></li><li><a href="15-git.html#blame-and-the-file-menu">15.11 Blame and the file menu</a><ol><li><a href="15-git.html#who-changed-each-line">15.11.1 Who changed each line</a></li><li><a href="15-git.html#the-file-menu">15.11.2 The file menu</a></li></ol></li><li><a href="15-git.html#rewind-a-file-as-it-was">15.12 Rewind: a file as it was</a></li><li><a href="15-git.html#repositories-you-only-look-at">15.13 Repositories you only look at</a></li><li><a href="15-git.html#less-common-work">15.14 Less common work</a><ol><li><a href="15-git.html#worktrees">15.14.1 Worktrees</a></li><li><a href="15-git.html#bisect-finding-the-commit-that-broke-something">15.14.2 Bisect: finding the commit that broke something</a></li><li><a href="15-git.html#ignoring-files">15.14.3 Ignoring files</a></li><li><a href="15-git.html#notes-on-commits">15.14.4 Notes on commits</a></li><li><a href="15-git.html#patches-and-bundles">15.14.5 Patches and bundles</a></li><li><a href="15-git.html#repositories-inside-repositories">15.14.6 Repositories inside repositories</a></li><li><a href="15-git.html#any-git-command">15.14.7 Any git command</a></li></ol></li></ol></li><li id="nav-16-data-pictures-and-pdfs"><a href="16-data-pictures-and-pdfs.html">16 Data, pictures and PDFs</a><ol><li><a href="16-data-pictures-and-pdfs.html#delimited-data-csv-and-tsv">16.1 Delimited data: CSV and TSV</a><ol><li><a href="16-data-pictures-and-pdfs.html#columns-are-counted-from-0">16.1.1 Columns are counted from 0</a></li><li><a href="16-data-pictures-and-pdfs.html#moving-in-a-table">16.1.2 Moving in a table</a></li><li><a href="16-data-pictures-and-pdfs.html#the-separator">16.1.3 The separator</a></li><li><a href="16-data-pictures-and-pdfs.html#the-header">16.1.4 The header</a></li><li><a href="16-data-pictures-and-pdfs.html#commands-settings-and-faces-for-tables">16.1.5 Commands, settings and faces for tables</a></li></ol></li><li><a href="16-data-pictures-and-pdfs.html#showing-only-some-records">16.2 Showing only some records</a><ol><li><a href="16-data-pictures-and-pdfs.html#deleting-records-for-good">16.2.1 Deleting records for good</a></li></ol></li><li><a href="16-data-pictures-and-pdfs.html#sorting-a-table">16.3 Sorting a table</a></li><li><a href="16-data-pictures-and-pdfs.html#the-hex-view">16.4 The hex view</a><ol><li><a href="16-data-pictures-and-pdfs.html#searching-for-octets">16.4.1 Searching for octets</a></li><li><a href="16-data-pictures-and-pdfs.html#changing-octets">16.4.2 Changing octets</a></li><li><a href="16-data-pictures-and-pdfs.html#files-that-open-in-hex-by-themselves">16.4.3 Files that open in hex by themselves</a></li></ol></li><li><a href="16-data-pictures-and-pdfs.html#pictures">16.5 Pictures</a><ol><li><a href="16-data-pictures-and-pdfs.html#pictures-in-a-terminal">16.5.1 Pictures in a terminal</a></li><li><a href="16-data-pictures-and-pdfs.html#very-large-pictures">16.5.2 Very large pictures</a></li></ol></li><li><a href="16-data-pictures-and-pdfs.html#pdfs">16.6 PDFs</a><ol><li><a href="16-data-pictures-and-pdfs.html#turning-pages">16.6.1 Turning pages</a></li><li><a href="16-data-pictures-and-pdfs.html#zoom">16.6.2 Zoom</a></li><li><a href="16-data-pictures-and-pdfs.html#searching-and-the-text-of-a-pdf">16.6.3 Searching, and the text of a PDF</a></li><li><a href="16-data-pictures-and-pdfs.html#what-the-pdf-says-of-itself-and-files-inside-it">16.6.4 What the PDF says of itself, and files inside it</a></li><li><a href="16-data-pictures-and-pdfs.html#commands-and-settings-for-pdfs">16.6.5 Commands and settings for PDFs</a></li></ol></li><li><a href="16-data-pictures-and-pdfs.html#office-documents">16.7 Office documents</a></li><li><a href="16-data-pictures-and-pdfs.html#what-a-file-says-of-itself">16.8 What a file says of itself</a></li><li><a href="16-data-pictures-and-pdfs.html#when-a-file-cannot-be-drawn">16.9 When a file cannot be drawn</a></li></ol></li><li id="nav-17-the-terminal"><a href="17-the-terminal.html">17 The terminal</a><ol><li><a href="17-the-terminal.html#opening-a-terminal">17.1 Opening a terminal</a><ol><li><a href="17-the-terminal.html#where-it-appears">17.1.1 Where it appears</a></li><li><a href="17-the-terminal.html#showing-and-hiding">17.1.2 Showing and hiding</a></li></ol></li><li><a href="17-the-terminal.html#typing-into-a-terminal">17.2 Typing into a terminal</a><ol><li><a href="17-the-terminal.html#sending-a-key-the-editor-keeps">17.2.1 Sending a key the editor keeps</a></li></ol></li><li><a href="17-the-terminal.html#the-history-view">17.3 The history view</a><ol><li><a href="17-the-terminal.html#searching-the-history">17.3.1 Searching the history</a></li></ol></li><li><a href="17-the-terminal.html#pasting">17.4 Pasting</a></li><li><a href="17-the-terminal.html#links">17.5 Links</a></li><li><a href="17-the-terminal.html#pictures-and-colours-from-programs">17.6 Pictures and colours from programs</a></li><li><a href="17-the-terminal.html#the-title">17.7 The title</a></li><li><a href="17-the-terminal.html#escape-nvim-and-the-shell">17.8 Escape, nvim and the shell</a></li><li><a href="17-the-terminal.html#the-terminal-library">17.9 The terminal library</a></li><li><a href="17-the-terminal.html#running-tuatara-inside-a-terminal">17.10 Running Tuatara inside a terminal</a><ol><li><a href="17-the-terminal.html#keys">17.10.1 Keys</a></li><li><a href="17-the-terminal.html#colours-and-pictures">17.10.2 Colours and pictures</a></li><li><a href="17-the-terminal.html#terminal-inside-the-terminal">17.10.3 Terminal inside the terminal</a></li></ol></li></ol></li><li id="nav-18-the-daemon-and-other-machines"><a href="18-the-daemon-and-other-machines.html">18 The daemon and other machines</a><ol><li><a href="18-the-daemon-and-other-machines.html#one-editor-in-the-background">18.1 One editor in the background</a><ol><li><a href="18-the-daemon-and-other-machines.html#the-commands-you-type-in-a-terminal">18.1.1 The commands you type in a terminal</a></li><li><a href="18-the-daemon-and-other-machines.html#names-for-several-daemons">18.1.2 Names for several daemons</a></li><li><a href="18-the-daemon-and-other-machines.html#closing-a-client">18.1.3 Closing a client</a></li><li><a href="18-the-daemon-and-other-machines.html#more-than-one-window-of-a-client">18.1.4 More than one window of a client</a></li><li><a href="18-the-daemon-and-other-machines.html#the-d-in-the-mode-line">18.1.5 The D in the mode line</a></li><li><a href="18-the-daemon-and-other-machines.html#commands-settings-and-faces-for-the-daemon">18.1.6 Commands, settings and faces for the daemon</a></li></ol></li><li><a href="18-the-daemon-and-other-machines.html#clients-in-the-buffer-list">18.2 Clients in the buffer list</a><ol><li><a href="18-the-daemon-and-other-machines.html#the-client-that-stays">18.2.1 The client that stays</a></li><li><a href="18-the-daemon-and-other-machines.html#commands-and-settings-for-clients">18.2.2 Commands and settings for clients</a></li></ol></li><li><a href="18-the-daemon-and-other-machines.html#stopping-the-daemon">18.3 Stopping the daemon</a></li><li><a href="18-the-daemon-and-other-machines.html#sessions-for-each-client">18.4 Sessions for each client</a></li><li><a href="18-the-daemon-and-other-machines.html#a-daemon-on-another-machine">18.5 A daemon on another machine</a><ol><li><a href="18-the-daemon-and-other-machines.html#starting-using-and-stopping">18.5.1 Starting, using and stopping</a></li><li><a href="18-the-daemon-and-other-machines.html#what-has-to-be-in-place">18.5.2 What has to be in place</a></li><li><a href="18-the-daemon-and-other-machines.html#keys-limited-with-command">18.5.3 Keys limited with command=</a></li><li><a href="18-the-daemon-and-other-machines.html#what-a-server-is-given">18.5.4 What a server is given</a></li></ol></li><li><a href="18-the-daemon-and-other-machines.html#the-trusted-servers">18.6 The trusted servers</a><ol><li><a href="18-the-daemon-and-other-machines.html#the-columns">18.6.1 The columns</a></li><li><a href="18-the-daemon-and-other-machines.html#the-keys-of-the-list">18.6.2 The keys of the list</a></li><li><a href="18-the-daemon-and-other-machines.html#the-ssh-agent">18.6.3 The ssh agent</a></li><li><a href="18-the-daemon-and-other-machines.html#the-gpg-agent">18.6.4 The gpg agent</a></li><li><a href="18-the-daemon-and-other-machines.html#the-clipboard-and-dropped-files">18.6.5 The clipboard and dropped files</a></li><li><a href="18-the-daemon-and-other-machines.html#a-language-server-for-a-server">18.6.6 A language server for a server</a></li><li><a href="18-the-daemon-and-other-machines.html#commands-for-the-trusted-servers">18.6.7 Commands for the trusted servers</a></li></ol></li></ol></li><li id="nav-19-packages"><a href="19-packages.html">19 Packages</a><ol><li><a href="19-packages.html#what-a-package-is">19.1 What a package is</a></li><li><a href="19-packages.html#naming-a-package-in-your-init-file">19.2 Naming a package in your init file</a><ol><li><a href="19-packages.html#the-keywords">19.2.1 The keywords</a></li><li><a href="19-packages.html#the-first-load">19.2.2 The first load</a></li></ol></li><li><a href="19-packages.html#the-package-manager">19.3 The package manager</a><ol><li><a href="19-packages.html#commands-of-the-package-manager">19.3.1 Commands of the package manager</a></li></ol></li><li><a href="19-packages.html#updating">19.4 Updating</a><ol><li><a href="19-packages.html#commands-for-updating">19.4.1 Commands for updating</a></li></ol></li><li><a href="19-packages.html#signatures-and-trust">19.5 Signatures and trust</a><ol><li><a href="19-packages.html#naming-the-signers-yourself">19.5.1 Naming the signers yourself</a></li><li><a href="19-packages.html#sources-that-are-not-encrypted">19.5.2 Sources that are not encrypted</a></li><li><a href="19-packages.html#settings">19.5.3 Settings</a></li></ol></li><li><a href="19-packages.html#unloading-and-removing">19.6 Unloading and removing</a><ol><li><a href="19-packages.html#commands-for-unloading-and-removing">19.6.1 Commands for unloading and removing</a></li><li><a href="19-packages.html#clearing-out-sources-no-longer-used">19.6.2 Clearing out sources no longer used</a></li><li><a href="19-packages.html#where-packages-are-kept">19.6.3 Where packages are kept</a></li></ol></li><li><a href="19-packages.html#what-a-package-needs-check-health">19.7 What a package needs: check-health</a></li><li><a href="19-packages.html#the-packages-the-project-publishes">19.8 The packages the project publishes</a><ol><li><a href="19-packages.html#palimpsest">19.8.1 palimpsest</a></li><li><a href="19-packages.html#csvdt">19.8.2 csvdt</a></li><li><a href="19-packages.html#csv-columns">19.8.3 csv-columns</a></li><li><a href="19-packages.html#facematch">19.8.4 facematch</a></li><li><a href="19-packages.html#garamond">19.8.5 garamond</a></li><li><a href="19-packages.html#kitty">19.8.6 kitty</a></li><li><a href="19-packages.html#outlook">19.8.7 outlook</a></li><li><a href="19-packages.html#caldav">19.8.8 caldav</a></li><li><a href="19-packages.html#themes">19.8.9 themes</a></li></ol></li><li><a href="19-packages.html#writing-a-package-of-your-own">19.9 Writing a package of your own</a></li></ol></li><li id="nav-20-making-it-your-own"><a href="20-making-it-your-own.html">20 Making it your own</a><ol><li><a href="20-making-it-your-own.html#the-init-file">20.1 The init file</a></li><li><a href="20-making-it-your-own.html#where-tuatara-keeps-its-files">20.2 Where Tuatara keeps its files</a><ol><li><a href="20-making-it-your-own.html#what-to-copy-to-another-computer">20.2.1 What to copy to another computer</a></li><li><a href="20-making-it-your-own.html#settings-for-the-folders">20.2.2 Settings for the folders</a></li></ol></li><li><a href="20-making-it-your-own.html#changing-a-setting">20.3 Changing a setting</a></li><li><a href="20-making-it-your-own.html#keys-of-your-own">20.4 Keys of your own</a></li><li><a href="20-making-it-your-own.html#a-leader-key-of-your-own">20.5 A leader key of your own</a></li><li><a href="20-making-it-your-own.html#modal-editing-and-turning-it-off">20.6 Modal editing, and turning it off</a></li><li><a href="20-making-it-your-own.html#themes-and-faces">20.7 Themes and faces</a><ol><li><a href="20-making-it-your-own.html#choosing-a-theme">20.7.1 Choosing a theme</a></li><li><a href="20-making-it-your-own.html#changing-one-face">20.7.2 Changing one face</a></li><li><a href="20-making-it-your-own.html#a-theme-of-your-own">20.7.3 A theme of your own</a></li><li><a href="20-making-it-your-own.html#the-faces">20.7.4 The faces</a></li></ol></li><li><a href="20-making-it-your-own.html#fonts">20.8 Fonts</a><ol><li><a href="20-making-it-your-own.html#commands-and-faces-for-fonts-and-the-window">20.8.1 Commands and faces for fonts and the window</a></li></ol></li><li><a href="20-making-it-your-own.html#your-name">20.9 Your name</a></li><li><a href="20-making-it-your-own.html#snippets-of-your-own">20.10 Snippets of your own</a></li><li><a href="20-making-it-your-own.html#how-lines-are-shown">20.11 How lines are shown</a></li><li><a href="20-making-it-your-own.html#the-calendar">20.12 The calendar</a><ol><li><a href="20-making-it-your-own.html#commands-settings-and-faces-for-the-calendar">20.12.1 Commands, settings and faces for the calendar</a></li></ol></li><li><a href="20-making-it-your-own.html#the-journal">20.13 The journal</a></li><li><a href="20-making-it-your-own.html#odds-and-ends">20.14 Odds and ends</a><ol><li><a href="20-making-it-your-own.html#changing-case-and-what-a-character-is">20.14.1 Changing case, and what a character is</a></li><li><a href="20-making-it-your-own.html#buttons-and-the-mouse">20.14.2 Buttons and the mouse</a></li><li><a href="20-making-it-your-own.html#modes-for-other-kinds-of-text">20.14.3 Modes for other kinds of text</a></li><li><a href="20-making-it-your-own.html#lists-and-the-cursors-popups">20.14.4 Lists and the cursor's popups</a></li><li><a href="20-making-it-your-own.html#limits-and-safety">20.14.5 Limits and safety</a></li><li><a href="20-making-it-your-own.html#about-the-tutor-and-lisp">20.14.6 About, the tutor and Lisp</a></li></ol></li></ol></li><li id="nav-21-every-setting"><a href="21-every-setting.html">21 Every setting</a></li><li id="nav-22-every-command"><a href="22-every-command.html">22 Every command</a><ol><li><a href="22-every-command.html#commands-that-switch-to-a-major-mode">22.1 Commands that switch to a major mode</a></li></ol></li></ol>
+</nav>
+<main>
+<article>
+<div class="node"><span>Previous: <a href="08-commands-keys-and-help.html">Commands, keys and help</a></span><span>Next: <a href="10-folders.html">Folders</a></span><span>Up: <a href="index.html">Contents</a></span></div>
+<h1 id="files">Files</h1>
+<p class="lead">Opening, saving and keeping track of the files on your disk, and on other
+machines.</p>
+<p>Chapter 1 explained that Tuatara shows a file in a buffer: a copy of the text
+that you change freely, kept apart from the file until you save. This chapter
+is about the file end of that. It shows how to open a file, how to make a new
+one, and what happens when you save. It explains what to do when the file has
+changed on disk behind your back, and how to give a file a new name. It also
+covers the way Tuatara handles line endings and letters from other languages,
+the file names that say what a file holds, and files that live on another
+machine. It ends with the ways of opening a file from outside Tuatara: with
+another program, and from the command line.</p>
+<p>The folders that hold files are the subject of chapter 10, and very large
+files of chapter 11. Files from a source you do not trust are in chapter 12.
+The list of recent files, bookmarks and auto-save are in chapter 7.</p>
+<p>Every key in this chapter is pressed in NORMAL state unless it starts with
+<kbd>C-x</kbd>, which works in both states. <kbd>i</kbd> starts INSERT state, and <kbd>C-g</kbd> or <kbd>ESC</kbd>
+brings you back.</p>
+<h2 id="opening-a-file"><span class="num">9.1</span> Opening a file</h2>
+<p><kbd>C-x C-f</kbd> asks for a file name at the bottom of the screen. The question has a
+folder filled in, and a list of what is in it. Type to narrow the list, and
+press <kbd>RET</kbd> to open what you have chosen. If the name is a folder, you go into
+it and the list shows what it holds. The question starts in the folder of the
+last file or folder you chose, so when you work on one project you seldom type
+more than the end of a name. <kbd>S-TAB</kbd> puts your home folder, <code>~/</code>, in place of
+what is typed, and lists it. Typing <code>~/</code> after a folder does the same, starting
+the path again from home.</p>
+<p>Beside each file the list shows its permissions, its size and when it last
+changed. Where a file is one you opened safely before, the list marks it, and
+a buffer with changes you have not saved is marked as well.</p>
+<p>Opening a file you already have open does not make a second buffer. It takes
+you to the first. This holds for a file reached by two names, such as a link
+and the file it leads to.</p>
+<p>If the name you typed is not there, you get a new, empty file with that name.
+Nothing is written yet. The next section says more.</p>
+<p>Opening is quick even when the file is large, because Tuatara reads files in
+the background. A very large file is opened in a special way, described in
+chapter 11.</p>
+<h3 id="other-places-to-open-a-file"><span class="num">9.1.1</span> Other places to open a file</h3>
+<p><kbd>C-x 4 f</kbd> opens the file in another window and goes there, so you can read two
+files side by side. <kbd>C-x 5 f</kbd> opens it in another frame, a window of its own,
+which chapter 1 described. <kbd>C-x C-p</kbd> opens the file whose name is written in
+the text, such as <code>~/letters/council.txt</code> in a note. A folder written there
+opens as a list of its files.</p>
+<p>When Tuatara runs in a window of its own, you can also drag files from your
+file manager and drop them on it. Each one opens in the window it was dropped
+on. If you want these opened safely, which is the careful way described in
+chapter 12, set <code>*open-dropped-files-safely*</code>. With <kbd>C-u</kbd> before <kbd>C-x C-f</kbd> a
+file opens safely too. <kbd>M-x find-file-safely</kbd> does the same.</p>
+<p><kbd>M-x show-file-name</kbd> says in the echo area which file the buffer you are in
+shows, with its folder. You use it when two files have the same name and you
+want to be sure which one this is.</p>
+<p><kbd>C-x C-f</kbd> and the other ways above take the file name as you type it. A name
+starting with <code>/ssh:</code> is a file on another machine, described later in this
+chapter.</p>
+<h3 id="the-files-own-settings"><span class="num">9.1.2</span> The file's own settings</h3>
+<p>A file can say how it should be shown. The first line of a program, for
+instance, may hold <code>-*- mode: org -*-</code> to say that it is an Org file, or a
+block of lines near its end may set the width of a tab. Tuatara reads those
+settings when it opens the file, unless you turn off <code>*file-local-variables*</code>.
+You will meet this in files written for Emacs. It is of no use to you until
+you see it.</p>
+<div class="tablewrap"><table>
+<thead>
+<tr><th>Keys</th><th>Command</th><th>What it does</th></tr>
+</thead>
+<tbody>
+<tr><td><kbd>C-x C-f</kbd></td><td><code>find-file</code></td><td>Visit a file, completing its name against the folder being typed.</td></tr>
+<tr><td><kbd>C-x 4 f</kbd>, <kbd>C-x 4 C-f</kbd></td><td><code>find-file-other-window</code></td><td>Visit a file in another window and select it, completing its name as find-file does.</td></tr>
+<tr><td><kbd>C-x 5 f</kbd></td><td><code>find-file-other-frame</code></td><td>Visit a file in another frame and work in it, asking for its name as C-x C-f does; a folder is listed there.</td></tr>
+<tr><td>none</td><td><code>find-file-safely</code></td><td>Open a file safely, for looking at a file from a source you do not trust: read-only, with no major mode, no hooks and no version control, so that nothing in the file is acted on; its file system left exactly as it was (no copy beside it), and its access time too where the system allows.</td></tr>
+<tr><td><kbd>C-x C-p</kbd></td><td><code>open-path-at-point</code></td><td>Open the file or folder whose path is at the cursor in the text, as C-x C-f opens it: a folder (<em>etc</em>, ~/notes/) in a list of it, a file \(~/notes/todo.org, ./README.org, or a file: link's) in its buffer.</td></tr>
+<tr><td>none</td><td><code>open-dropped-files</code></td><td>Visit the files dropped on the window, in the window they were dropped on, as C-x C-f does, the last one shown; safely, as C-u C-x C-f does, when <strong>OPEN-DROPPED-FILES-SAFELY</strong> is true.</td></tr>
+<tr><td>none</td><td><code>show-file-name</code></td><td>Say the full name of the file the current buffer shows, its directory and name, in the echo area, where <strong>Messages</strong> keeps it too: in a rimu list, that of the entry on the current line; in a buffer with no file, the directory it stands in.</td></tr>
+</tbody></table></div>
+<div class="tablewrap"><table>
+<thead>
+<tr><th>Setting</th><th>Standard</th><th>What it changes</th></tr>
+</thead>
+<tbody>
+<tr><td><code>*last-used-first*</code></td><td><code>t</code></td><td>True for the questions that choose a file or a folder (M-x find-file, M-x rimu and the rest) to start in the folder of the path chosen last in any of them, and to list first, in each folder, what was chosen there last (or something in it), TAB then going the way last gone; the others follow in order of name.</td></tr>
+<tr><td><code>*open-dropped-files-safely*</code></td><td><code>nil</code></td><td>True to open files dropped on the window safely, as M-x universal-argument M-x find-file does: read-only, no mode, nothing written beside them.</td></tr>
+<tr><td><code>*file-local-variables*</code></td><td><code>t</code></td><td>True for a file's own settings (-<strong>- mode: org -</strong>- on its first line, a Local Variables block near its end) to be taken as it is opened, namely its major mode, tab width, tabs or spaces, fill column and spaces between sentences, and those a package takes; nothing else.</td></tr>
+<tr><td><code>*preview-files*</code></td><td><code>nil</code></td><td>True to show, while you choose a file with M-x find-file (and the other ways of finding a file) or M-x find-recent-file, the file selected in the window you are in, opened safely: read-only, no mode or hook run on it, its times untouched, a binary one in the hex view; what the window showed comes back when the question ends.</td></tr>
+</tbody></table></div>
+<div class="tablewrap"><table>
+<thead>
+<tr><th>Face</th><th>What it paints</th></tr>
+</thead>
+<tbody>
+<tr><td><code>:completion-modified</code></td><td>The mark beside a buffer among completion candidates that has changes not saved.</td></tr>
+<tr><td><code>:completion-safe</code></td><td>The mark beside a file among completion candidates that was opened safely, and opens so again.</td></tr>
+<tr><td><code>:completion-mode-read</code></td><td>The permission to read (r) beside a file among completion candidates.</td></tr>
+<tr><td><code>:completion-mode-write</code></td><td>The permission to write (w) beside a file among completion candidates.</td></tr>
+<tr><td><code>:completion-mode-exec</code></td><td>The permission to run or enter (x) beside a file among completion candidates.</td></tr>
+<tr><td><code>:completion-mode-none</code></td><td>A permission a file does not give (-), beside it among completion candidates.</td></tr>
+<tr><td><code>:completion-mode-other</code></td><td>Other letters of a file's permissions (s, t, and the kinds of special files) beside it among completion candidates.</td></tr>
+<tr><td><code>:list-date</code></td><td>Dates and times in a list or beside completion candidates: when a file last changed, the date in a formatted name, a rimu list's last commits (G), when a message was sent.</td></tr>
+<tr><td><code>:list-size</code></td><td>Sizes in a list or beside completion candidates: of files and buffers, and a rimu list's sizes column (S).</td></tr>
+</tbody></table></div>
+<h3 id="seeing-a-file-before-you-choose-it"><span class="num">9.1.3</span> Seeing a file before you choose it</h3>
+<p>With <code>*preview-files*</code> set to <code>t</code>, the question for a file shows the file under
+the cursor in the window beside it while you move through the list. The file
+is opened safely, so nothing in it is acted on, and the preview goes away when
+you answer. It helps when you have several files with names like
+<code>letter-2.txt</code> and <code>letter-3.txt</code>. It is off until you turn it on.</p>
+<div class="try">
+<h3>Try it, with a letter</h3>
+<ol>
+<li>Press <kbd>C-x C-f</kbd>. The question shows a folder. Type <code>~/letters/</code> and the
+   list shows what is in the folder, or nothing if it is not there yet.</li>
+<li>Type <code>council.txt</code> and press <kbd>RET</kbd>. The buffer is empty and the echo area
+   says it is a new file. If <code>~/letters/</code> does not exist yet, it says that its
+   folder is not there and that saving asks to make it.</li>
+<li>Press <kbd>i</kbd>, type <code>Dear Mr Taupo,</code> and press <kbd>C-g</kbd>. The mode line shows <code>[*]</code>,
+   which means changes not saved.</li>
+<li>Leave the buffer as it is. You will save it in the next section.</li>
+</ol>
+</div>
+<h2 id="creating-a-file"><span class="num">9.2</span> Creating a file</h2>
+<p>You do not make a file by a separate command. You open one with a name that is
+not there. The buffer is empty and nothing exists on disk until you save. That
+suits a letter or a note: open the name, type, save, or throw the buffer away.</p>
+<p>If the folder you named does not exist either, the echo area says so when you
+open the file, and saving asks <code>The folder ... is not there; make it?</code> with a
+single key. <kbd>y</kbd> makes the folder and saves. <kbd>n</kbd> stops and writes nothing. You
+can name a file three folders deep in one go this way. If Tuatara cannot make
+the folder, because you may not write where it would go, the buffer is
+read-only and the message says why.</p>
+<p>A name that says a file is encrypted but is not encrypted by GnuPG, for
+instance one ending <code>.age</code>, is refused when you save it, because the text
+would be there to read. Names that end <code>.gpg</code> are encrypted every time they
+are saved. 
+The file gets the permissions your account normally gives a new file. A
+folder listing, chapter 10, can show a file's permissions.</p>
+<h2 id="saving"><span class="num">9.3</span> Saving</h2>
+<p><kbd>C-x C-s</kbd> saves the buffer to its file. The echo area says <code>Wrote</code> and the
+file's name, and the mode line goes from <code>[*]</code> to <code>[-]</code>. If there is nothing to
+save, it says <code>(No changes need to be saved)</code> and writes nothing. A buffer with
+no file asks where to put it, in the same way as <kbd>C-x C-f</kbd> asks.</p>
+<p>Chapter 7 described <kbd>C-x s</kbd>, which saves every file with changes after one
+question, and <kbd>C-x C-c</kbd>, which asks before it leaves.</p>
+<h3 id="what-a-save-does-with-your-file"><span class="num">9.3.1</span> What a save does with your file</h3>
+<p>Tuatara never edits the file in place. A save writes the whole text to a new
+file beside the old one. It gives the new file the owner and the permissions of
+the old one, and makes sure the text is on the disk, then renames the new file
+over the old one. The file on disk is always either the old one or the new
+one, even after a power cut, and a save that fails halfway leaves nothing
+behind.</p>
+<p>There is no backup copy, so you will find no <code>letter.txt~</code> next to
+<code>letter.txt</code>. The safety net for a crash is the auto-saved copy of chapter 7,
+and the safety net for a mistake is undo. A rewritten file is easier to see
+than a backup would be, since Tuatara asks before it writes over a file that
+changed behind its back.</p>
+<p>A few files cannot be replaced by a new file without losing something. These
+are files with more than one name (hard links), files whose owner or group your
+account cannot give to a new file, and a few special files that the system
+makes up. Tuatara writes these in place, after copying the old text to a spare
+copy of its own. If the write fails, the spare copy is kept and its name is
+said.</p>
+<h3 id="when-a-save-asks-first"><span class="num">9.3.2</span> When a save asks first</h3>
+<p>A save asks a question before it does something you may not want. It asks if:</p>
+<ul>
+<li>the file was changed on disk after you opened it, as <code>council.txt changed on
+  disk since it was read; overwrite it with this buffer?</code>. Say <code>n</code> and read the
+  other version first, as described later in this chapter;</li>
+<li>the file is write-protected: <code>File ... is write-protected; try to save
+  anyway?</code>;</li>
+<li>you save as a name that is already a file: <code>... exists; overwrite it?</code>;</li>
+<li>you save as a name that another buffer has open. Tuatara offers to write over
+  it and kill that buffer.</li>
+</ul>
+<p>A question that cannot be undone, such as writing over a file that exists, is
+answered by typing <code>yes</code> or <code>no</code> and pressing <kbd>RET</kbd>. This is the same as for
+leaving with changes unsaved, described in chapter 1.</p>
+<p>A large buffer takes time to write. If the save takes longer than half a second,
+Tuatara carries on in the background and the mode line shows <code>Saving</code> and a
+percentage. You can keep typing. Leaving Tuatara waits for saves still running.
+<code>*save-in-place*</code> is for very large files, which chapter 11 explains.</p>
+<div class="tablewrap"><table>
+<thead>
+<tr><th>Keys</th><th>Command</th><th>What it does</th></tr>
+</thead>
+<tbody>
+<tr><td><kbd>C-x C-s</kbd></td><td><code>save-buffer</code></td><td>Save the current buffer to its file, asking for one if it has none, as C-x C-f asks: completing the names of the folder being typed, from the folder of the path chosen last in a question for a path (else the buffer's own folder, your home folder for the scratch buffers); a name that does not exist is the new file.</td></tr>
+</tbody></table></div>
+<div class="tablewrap"><table>
+<thead>
+<tr><th>Setting</th><th>Standard</th><th>What it changes</th></tr>
+</thead>
+<tbody>
+<tr><td><code>*save-in-place*</code></td><td><code>nil</code></td><td>True to save a large file by writing only what changed into the file itself, where that is quicker than writing it whole; NIL, as standard, to write every save as a new file put in the old one's place.</td></tr>
+</tbody></table></div>
+<h2 id="save-as-and-a-new-name"><span class="num">9.4</span> Save as, and a new name</h2>
+<p><kbd>C-x C-w</kbd> writes the buffer to another file. The question works like the one
+for <kbd>C-x C-f</kbd>, and starts in the folder of the file you are in, with the name
+to change. After the save, the buffer is the new file. The old file stays as
+it was, which makes <kbd>C-x C-w</kbd> the way to copy a file: open it, press <kbd>C-x C-w</kbd>,
+and give the copy a name.</p>
+<p><kbd>M-x rename-visited-file</kbd> gives the file itself a new name, and the buffer
+follows it. The question offers the old name to edit. A name alone keeps the
+file in its folder. A path, such as <code>~/letters/sent/council.txt</code>, moves it
+there, provided that is on the same drive. Use this when you named a file in a
+hurry. The file on another machine is the exception: this command leaves
+that file where it is.</p>
+<div class="try">
+<h3>Try it, with a letter</h3>
+<ol>
+<li>In the letter from the previous try, press <kbd>C-x C-s</kbd>. If <code>~/letters/</code> is
+   not there yet, the echo area asks whether to make it: press <kbd>y</kbd>. It then
+   says <code>Wrote ~/letters/council.txt</code>, and the mode line shows <code>[-]</code>.</li>
+<li>Press <kbd>C-x C-s</kbd> again. It says <code>(No changes need to be saved)</code>.</li>
+<li>Press <kbd>C-x C-w</kbd>. The prompt offers the folder. Type
+   <code>~/letters/thanks.txt</code>, which takes its place, and press <kbd>RET</kbd>. The buffer
+   is <code>thanks.txt</code> now, and <code>council.txt</code> is as you saved it.</li>
+<li>Run <code>M-x rename-visited-file</code>. The old name is offered. Change it to
+   <code>thanks-to-aroha.txt</code> and press <kbd>RET</kbd>. The echo area says it was renamed,
+   and <code>thanks.txt</code> is gone from the folder.</li>
+<li>Press <kbd>C-x C-b</kbd>. The buffer list shows the new name and its path.</li>
+</ol>
+</div>
+<div class="tablewrap"><table>
+<thead>
+<tr><th>Keys</th><th>Command</th><th>What it does</th></tr>
+</thead>
+<tbody>
+<tr><td><kbd>C-x C-w</kbd></td><td><code>write-file</code></td><td>Write the current buffer to another file, asked for as C-x C-f asks (C-x C-w), from the folder of the path chosen last in a question for a path, else the buffer's own folder.</td></tr>
+<tr><td>none</td><td><code>rename-visited-file</code></td><td>Give the file the current buffer visits a new name, asked for, its own offered to change: a name alone keeps it in its folder, a path (~/notes/a.org, ../a.org) moves it there on the same drive.</td></tr>
+</tbody></table></div>
+<h2 id="read-only-files-and-buffers"><span class="num">9.5</span> Read-only files and buffers</h2>
+<p>A buffer is read-only when you cannot change its text. Tuatara makes a file's
+buffer read-only when your account may not write the file, and the mode line
+shows <code>[%]</code>. You can still look at it, search it and copy from it. A key that
+would change the text is refused.</p>
+<p><kbd>C-x C-q</kbd> turns read-only on and off for the buffer you are in. Use it to guard
+a file that you are only reading, so that a stray key does no harm, or to make
+a read-only buffer editable when you know the file will let you save. A number
+before the key sets it: a positive number makes the buffer read-only and zero
+or a negative number makes it editable.</p>
+<p>If you turn read-only off in a file you may not write, the save still asks
+<code>File ... is write-protected; try to save anyway?</code> and the system may refuse.</p>
+<p>A file opened safely is read-only too, and so are files in evidence folders.
+Those are the subject of chapter 12.</p>
+<div class="tablewrap"><table>
+<thead>
+<tr><th>Keys</th><th>Command</th><th>What it does</th></tr>
+</thead>
+<tbody>
+<tr><td><kbd>C-x C-q</kbd></td><td><code>read-only-mode</code></td><td>Make the current buffer read-only, or editable again if it is; with a count, read-only when it is positive, editable when it is zero or less.</td></tr>
+<tr><td>none</td><td><code>end-safe-visit</code></td><td>Open the file of this buffer, opened safely, as usual from now on, where it is: the mode line no longer says Safe, the buffer is editable when you may write the file, and it gets what C-x C-f gives a file, its major mode (or keeps the one chosen meanwhile, its colours now shown), version control, and a place among the files visited lately that opens it as usual.</td></tr>
+</tbody></table></div>
+<h2 id="the-file-changed-on-disk"><span class="num">9.6</span> The file changed on disk</h2>
+<p>Another program may change a file you have open. A build may rewrite it, a
+program may add to a log, or a copy may arrive from another machine. Tuatara
+watches the files that you have open and tells you. The echo area and the
+mode line say <code>Changed on disk</code>, <code>Deleted on disk</code> or <code>Stale, read-only</code>. The
+last word means that the file was rewritten while it was shown from the disk, so
+the text on the screen is no longer what the file holds, and the buffer is
+read-only until you read the file again.</p>
+<p>In every case Tuatara asks before it does anything to your text. A file that
+was changed on disk and a buffer with changes of your own are two versions
+of the same file, and you choose which to keep.</p>
+<h3 id="reading-it-again"><span class="num">9.6.1</span> Reading it again</h3>
+<p><kbd>M-x revert-buffer</kbd> reads the file again and replaces the text in the
+buffer. It asks first when the buffer has changes you have not saved. The
+reading is one step in the undo history, so <kbd>C-/</kbd> takes it back if you made a
+mistake. Point and the window stay on the same text, so you do not lose your
+place. If the file only grew, only the new part is added.</p>
+<p>In a buffer that Tuatara made for you, such as a list of buffers, <kbd>r</kbd> reads it
+again from what it shows. <kbd>g r</kbd> does the same. This is how a list is brought up
+to date. The buffer list does it by itself.</p>
+<p>If you want to see how the two versions differ before you choose, use
+<kbd>M-x diff-files</kbd>, which compares the file with another one you name, or a copy
+you saved under another name with <kbd>C-x C-w</kbd>.</p>
+<h3 id="keeping-up-by-itself"><span class="num">9.6.2</span> Keeping up by itself</h3>
+<p>Some files are meant to change under you: a log that a program is writing, or a
+build's output. For those you want the buffer to follow the file. <kbd>M-x
+follow-file</kbd> turns that on for the buffer you are in. What a program adds to the
+end of the file is added to your buffer as it arrives, and if point is at the
+end, it stays at the end, as <code>tail -f</code> does in a terminal. A file that is
+rewritten is read again, if you have no changes of your own. The mode line says
+<code>Following</code> while it is on. Run the command again to stop.</p>
+<p><code>*reload-changed-files*</code> does the same for every buffer. It is off as
+standard, because most of the time you do not want the text to move under you.
+With it on, a file that changed on disk while you have unsaved changes of your
+own is not read again, since that would lose them. Tuatara says so, and you
+decide with <kbd>M-x revert-buffer</kbd>, which takes the file's version, or <kbd>C-x C-s</kbd>,
+which writes yours over it.</p>
+<div class="try">
+<h3>Try it, with a recipe</h3>
+<ol>
+<li>Open <code>~/recipe.txt</code>, type <code>Pikelets: 1 cup flour, 1 egg, milk</code> and <kbd>RET</kbd>, so
+   that the line has its end, and save with <kbd>C-x C-s</kbd>.</li>
+<li>In a terminal, run <code>echo &quot;Add a pinch of salt&quot; &gt;&gt; ~/recipe.txt</code>.</li>
+<li>Go back to Tuatara. The echo area, and the mode line, say that
+   <code>recipe.txt</code> changed on disk, and that <kbd>M-x revert-buffer</kbd> reads it again.</li>
+<li>Run <kbd>M-x revert-buffer</kbd>. The new line is there. Press <kbd>C-/</kbd> and it is gone
+   again, since a revert is one step of undo. Press <kbd>M-_</kbd> to bring it back.</li>
+<li>Run <kbd>M-x follow-file</kbd>. The mode line says <code>Following</code>. Run
+   <code>echo &quot;Serve warm&quot; &gt;&gt; ~/recipe.txt</code> in the terminal again. The line appears
+   in Tuatara at once, with no command from you.</li>
+<li>Run <kbd>M-x follow-file</kbd> again to stop.</li>
+</ol>
+</div>
+<div class="tablewrap"><table>
+<thead>
+<tr><th>Keys</th><th>Command</th><th>What it does</th></tr>
+</thead>
+<tbody>
+<tr><td><kbd>r</kbd>, <kbd>g r</kbd>, <kbd>C-c r</kbd></td><td><code>revert-buffer</code></td><td>Read the current buffer's file again, replacing its text: one step that undo takes back, unless the text could no longer be trusted (then the history goes too).</td></tr>
+<tr><td>none</td><td><code>follow-file</code></td><td>Keep the current buffer up with its file on disk, or stop: what another program appends to the file is added at once, even with changes of your own in the buffer, and with point at the end it stays at the end, as tail -f has it; a file rewritten is read again when the buffer has no changes of its own, point staying on the same text.</td></tr>
+</tbody></table></div>
+<div class="tablewrap"><table>
+<thead>
+<tr><th>Setting</th><th>Standard</th><th>What it changes</th></tr>
+</thead>
+<tbody>
+<tr><td><code>*reload-changed-files*</code></td><td><code>nil</code></td><td>True to have every buffer keep up with its file on disk by itself: what another program appends to the file is added to the buffer at once, even one with changes of its own, and with point at the end it stays at the end, as tail -f has it; a file rewritten is read again when the buffer has no changes of its own, point and the window staying on the same text, and one undo takes that back.</td></tr>
+</tbody></table></div>
+<h2 id="line-endings-and-letters-from-other-languages"><span class="num">9.7</span> Line endings and letters from other languages</h2>
+<h3 id="line-endings"><span class="num">9.7.1</span> Line endings</h3>
+<p>A line in a text file ends with a code. Unix and Linux write one character, a
+newline. Windows writes two, a carriage return and a newline. Very old
+Macintosh files used a carriage return alone. You rarely see the difference
+until you open a file from another system.</p>
+<p>Tuatara looks at the first line end in a file and keeps to it. A file of
+Windows lines shows <code>CRLF</code> in the mode line, and one of carriage return lines
+shows <code>CR</code>. A file of plain newlines shows nothing, since that is the normal
+case. When you press <kbd>RET</kbd>, or paste text, the new line ends the same way as
+the rest of the file. A save writes every line end as it was read, so opening
+and saving a Windows file does not turn it into a Unix file, and does not
+change the lines you did not touch.</p>
+<p>In a file whose lines end with a newline, a stray carriage return before the
+newline shows as <code>^M</code>. That is how a file of mixed endings shows where it is
+mixed. A carriage return that stands alone ends a line and shows no mark.</p>
+<p>Line numbers, searching, sorting and every other command count lines the same
+way, whatever the endings. A search for <code>^</code> or <code>$</code> matches at every line end.</p>
+<h3 id="letters-from-other-languages"><span class="num">9.7.2</span> Letters from other languages</h3>
+<p>Tuatara works in UTF-8, the way of writing letters that nearly all modern
+files use. It holds accented letters, letters of other alphabets and
+emoji, and it saves them back as they were. </p>
+<p>There is no setting for the encoding of a file, and no command to change it.
+If a file is not UTF-8, Tuatara does not stop. Every part that is not valid
+UTF-8 is kept as a character of its own, shown as <code>\xE9</code> for the octet <code>E9</code>, and
+is written back to the file exactly as it was. A letter with an accent in an
+old file in the Latin-1 encoding is such a case. You see <code>\xE9</code> where you would
+expect an <code>e</code> with an accent, and you can edit around it, but the file is not
+changed by opening and saving it. If you need to turn such a file into UTF-8,
+use a tool such as <code>iconv</code> outside Tuatara.</p>
+<p>A file that begins with a UTF-8 byte order mark opens normally. The mark is
+kept when you save.</p>
+<p>A setting described in chapter 12 shows characters that draw nothing as their
+codes, in files opened safely. It helps you find what a file hides.</p>
+<h2 id="files-with-formatted-names"><span class="num">9.8</span> Files with formatted names</h2>
+<p>A file name that says what the file holds is easy to find a year later. A
+formatted name has three parts: the moment it was made, a title, and some
+keywords. The scheme follows Denote, a package for Emacs, so such names read the
+same in both editors.</p>
+<figure id="fig-formatted-name">
+<pre class="ex"> 20261109T091500--letter-to-the-council__letters_house.org
+ └──────┬───────┘  └──────────┬─────────┘ └─────┬──────┘└┬┘
+   identifier              title             keywords    kind
+   (date and time)    (lower case, with     (joined by _)
+                         hyphens)
+</pre>
+<figcaption>Figure 9.1. A formatted name, in three parts and an end.</figcaption>
+</figure>
+<p>The identifier is the year, month and day, a <code>T</code>, then the hour, minute and
+second, so a folder of such names sorts by age by itself. Two dashes follow,
+then the title in small letters with hyphens between the words. Two
+underscores begin the keywords, which are joined by single underscores. The
+file's extension ends the name: <code>.org</code>, <code>.txt</code> or <code>.md</code>.</p>
+<p>You keep all such files under one folder, set by <code>*formatted-file-directory*</code>.
+It is your home folder until you set it. A good place is a folder of notes:</p>
+<pre class="ex">(setf *formatted-file-directory* &quot;~/notes/&quot;)
+</pre>
+<h3 id="making-and-finding"><span class="num">9.8.1</span> Making and finding</h3>
+<p><kbd>C-x n n</kbd> makes a new file. It asks for a title, a subfolder, some keywords and
+the kind of file, in that order. The keywords you used before are offered.
+Press <kbd>RET</kbd> with nothing typed to skip a question. The new buffer is named from
+what you answered, and begins with a header for its kind, holding the title,
+the date, the keywords and the identifier. Nothing is written until you save
+with <kbd>C-x C-s</kbd>. The date and identifier are those of the moment you asked, not
+of the moment you saved.</p>
+<p><kbd>C-x n o</kbd> opens one of your files by any part of its name. The list is grouped
+by kind, newest first, and shows each name as its date, its title and its
+keywords, with the size and when it changed on the right. You type a few
+letters of the title or a keyword, and <kbd>RET</kbd> opens the best match. The
+preview of <code>*preview-formatted-files*</code> works here as it does for <kbd>C-x C-f</kbd>.</p>
+<p><kbd>C-x n f</kbd> is <kbd>C-x C-f</kbd> for such files. It opens a file by its path, and if the
+name you type is not there, it makes a new file with a formatted name in the
+folder you typed. It asks for the title and the keywords, and for the end of
+the name, which you can have filled in by <code>*formatted-file-extension*</code>.</p>
+<h3 id="renaming"><span class="num">9.8.2</span> Renaming</h3>
+<p>You can give an old file a formatted name. <kbd>C-x n r</kbd> asks for a title and
+keywords, offering the ones the file already has, and renames the file. The
+identifier is kept if the file has one, or made from the time the file last
+changed. The extension is kept. A buffer that shows the file follows the new
+name, and the list of recent files is updated.</p>
+<p><kbd>C-x n k</kbd> changes only the keywords. It keeps the titles and asks once for new
+keywords, which it gives to the file, or to every marked file when you use it
+in a folder listing. Use it to put a whole month of letters under <code>done</code>.</p>
+<div class="try">
+<h3>Try it, with some notes</h3>
+<ol>
+<li>Add <code>(setf *formatted-file-directory* &quot;~/notes/&quot;)</code> to your init file and run
+   it, or restart Tuatara. Make the folder in a terminal with <code>mkdir ~/notes</code>.</li>
+<li>Press <kbd>C-x n n</kbd>. Answer the title with <code>Pikelets for Sunday</code>, the folder
+   with <kbd>RET</kbd>, the keywords with <code>recipe, house</code> and <kbd>RET</kbd> twice, and the kind
+   with <kbd>RET</kbd> for Org.</li>
+<li>The buffer is named like
+   <code>20261109T091500--pikelets-for-sunday__house_recipe.org</code>. The keywords are
+   in alphabetical order. Press <kbd>C-x C-s</kbd>.</li>
+<li>Press <kbd>C-x n o</kbd>, type <code>pike</code> and <kbd>RET</kbd>. You are back in the file.</li>
+<li>Press <kbd>C-x n k</kbd>, type <code>recipe, sunday</code> and press <kbd>RET</kbd> twice. The name now
+   ends <code>__recipe_sunday.org</code>, the header is changed to match, and the buffer
+   follows.</li>
+</ol>
+</div>
+<div class="tablewrap"><table>
+<thead>
+<tr><th>Keys</th><th>Command</th><th>What it does</th></tr>
+</thead>
+<tbody>
+<tr><td><kbd>C-x n f</kbd></td><td><code>find-file-formatted</code></td><td>Visit a file, or make a new one with a formatted name.</td></tr>
+<tr><td><kbd>C-x n o</kbd></td><td><code>open-file-formatted</code></td><td>Open one of your files with formatted names, those in <strong>FORMATTED-FILE-DIRECTORY</strong> and its subdirectories, choosing among them by any part of the name: listed under their subdirectory or their kind, the ones changed last first, each as its date, its title and its keywords, with its size and when it changed at the right.</td></tr>
+<tr><td><kbd>C-x n n</kbd></td><td><code>new-file-formatted</code></td><td>Make a new file with a formatted name in <strong>FORMATTED-FILE-DIRECTORY</strong>: asks what <strong>FORMATTED-FILE-PROMPTS</strong> says (as standard the title, the subdirectory, the keywords, the kind of file and the template), and names it as find-file-formatted does, with the header for its kind.</td></tr>
+<tr><td><kbd>C-x n r</kbd></td><td><code>rename-formatted</code></td><td>Give a file a formatted name: its identifier kept, or made from when it was last changed; a title and keywords asked for, the file's own offered; its extension kept.</td></tr>
+<tr><td><kbd>C-x n k</kbd></td><td><code>rename-formatted-keywords</code></td><td>Give files formatted names with other keywords, their titles kept, asked for once for them all: the current buffer's file, or in a list of a directory the marked files or the one on the line.</td></tr>
+</tbody></table></div>
+<div class="tablewrap"><table>
+<thead>
+<tr><th>Setting</th><th>Standard</th><th>What it changes</th></tr>
+</thead>
+<tbody>
+<tr><td><code>*formatted-file-directory*</code></td><td><code>&quot;~/&quot;</code></td><td>The directory of your files with formatted names: open-file-formatted lists those in it and its subdirectories, new-file-formatted makes new ones there, and the keywords in their names are offered for every new file with a formatted name.</td></tr>
+<tr><td><code>*formatted-file-extension*</code></td><td><code>&quot;&quot;</code></td><td>The end of a new file's name that find-file-formatted offers when it asks for one (New file EXTENSION): nothing typed there takes it.</td></tr>
+<tr><td><code>*formatted-file-keywords*</code></td><td><code>nil</code></td><td>Keywords offered for a new file with a formatted name, besides the keywords in the names of the files in <strong>FORMATTED-FILE-DIRECTORY</strong>: none as standard.</td></tr>
+<tr><td><code>*formatted-file-sort-keywords*</code></td><td><code>t</code></td><td>True to put the keywords of a formatted name in alphabetical order.</td></tr>
+<tr><td><code>*formatted-file-prompts*</code></td><td><code>(:title :subdirectory :keywords :file-ty...</code></td><td>What new-file-formatted asks for a new file, in this order: :title, :subdirectory (of <strong>FORMATTED-FILE-DIRECTORY</strong>), :keywords, :file-type (one of <strong>FORMATTED-FILE-TYPES</strong>; else <strong>FORMATTED-FILE-TYPE</strong> is used) and :template (blank, or one of your note templates' files, asked only when there are any).</td></tr>
+<tr><td><code>*formatted-file-type*</code></td><td><code>:org</code></td><td>The kind of a new file when <strong>FORMATTED-FILE-PROMPTS</strong> does not ask, and the one offered first when it does: a name in <strong>FORMATTED-FILE-TYPES</strong>.</td></tr>
+<tr><td><code>*formatted-file-types*</code></td><td><code>((:org &quot;.org&quot; :org &quot;#+title: {title} #+d...</code></td><td>The kinds of files with formatted names, each (NAME EXTENSION STYLE HEADER): the end of the file's name, how its header writes the date and keywords, and the header a new file begins with.</td></tr>
+<tr><td><code>*preview-formatted-files*</code></td><td><code>nil</code></td><td>True to show, while you choose one of your files with formatted names with M-x open-file-formatted, the file selected in the window you are in, opened safely, as <strong>PREVIEW-FILES</strong> shows files.</td></tr>
+</tbody></table></div>
+<div class="tablewrap"><table>
+<thead>
+<tr><th>Face</th><th>What it paints</th></tr>
+</thead>
+<tbody>
+<tr><td><code>:completion-formatted-keywords</code></td><td>The keywords of a file with a formatted name, from the name, in the list C-x n o shows.</td></tr>
+</tbody></table></div>
+<p>The other commands that work on these files, such as searching their text and
+writing links between them, are described with Org in chapter 14.</p>
+<h2 id="files-on-another-machine"><span class="num">9.9</span> Files on another machine</h2>
+<p>A file on a server can be opened as if it were here. Write the machine's name
+in front of the path, between <code>/ssh:</code> and a colon. The name is the one you give
+to ssh: a plain name, <code>me@pinetree</code>, or a name from your <code>~/.ssh/config</code>.</p>
+<pre class="ex">C-x C-f /ssh:pinetree:/etc/hosts RET
+</pre>
+<p>Nothing has to be installed on the server. Tuatara uses the file protocol that
+every ssh server offers, through the ssh program already on your computer, with
+your own keys. It sends nothing else to the machine: it runs no commands there.
+Everything is done in the background, so Tuatara never waits for a slow
+connection.</p>
+<p>This is not the daemon of chapter 18, which runs the whole editor on the other
+machine. Here Tuatara runs on your computer, and only the files are elsewhere.</p>
+<figure id="fig-remote-file">
+<pre class="ex">   Your computer                              The server, pinetree
+  ┌──────────────────────────────────┐       ┌────────────────────┐
+  │  Tuatara                         │       │                    │
+  │   buffer  ◄── a copy only you ───┼─ ssh ─┤   /etc/hosts       │
+  │               can read           │       │   stays where it   │
+  │   opening reads it  ◄────────────┼───────┤   is              │
+  │   C-x C-s writes it back ────────┼──────►│                    │
+  └──────────────────────────────────┘       └────────────────────┘
+        both go through ssh, with your own keys
+</pre>
+<figcaption>Figure 9.2. The file stays on the server; you work on a private copy.</figcaption>
+</figure>
+<p>Typing <code>/ssh:pinetree:/etc/</code> offers the names in that folder, as for a folder on
+your own computer. <code>/ssh:pinetree:</code> alone is your home folder there. A file
+from a server opens as a local file does: a picture is drawn, and a PDF shows
+its pages. Any other file that is not text opens as octets, in the hex view.</p>
+<h3 id="saving-2"><span class="num">9.9.1</span> Saving</h3>
+<p><kbd>C-x C-s</kbd> saves as usual. The text goes to a new file beside the one on the
+server, which takes the old file's owner, group and permissions, and takes its
+place only when the file there is still as you read it. If somebody changed it
+meanwhile, the echo area says the file was not written, since it was changed
+on the server since it was read. The buffer stays as it is, so nothing is
+lost. <kbd>M-x revert-buffer</kbd> reads the server's version, and then you can copy
+your changes over it. A new name is a new file on the server when you save.</p>
+<p>A file with more than one name, or one whose owner a new file cannot be given,
+is written in place, and the echo area says so. If such a write fails halfway,
+the file there is partly written. The buffer keeps your text, and the next save
+asks whether to write it over, whatever the file now holds. Answer <code>yes</code>
+to write it whole.</p>
+<p>Tuatara keeps the file you work on as a copy under <code>~/.cache/tuatara/remote/</code>,
+which only you can read. The copy is deleted when you kill the buffer. A file on
+another machine has no git marks, no language server, no auto-saved copy and no
+build, since those would read what is around the file, and what is around it is
+not here. A file's own settings are taken only from a machine you trust, listed
+by <code>M-x server-list</code>, chapter 18. Each request has <code>*remote-seconds*</code> to be
+answered, 30 as standard. Past that, the work in hand fails and says so.</p>
+<h3 id="the-first-time-you-meet-a-machine"><span class="num">9.9.2</span> The first time you meet a machine</h3>
+<p>When ssh meets a machine for the first time it asks if you trust it. Tuatara
+asks the same question. While the question is open, a buffer below the windows
+shows ssh's own words in full, with the fingerprint of the machine's key. At
+the bottom is a short prompt for your answer. Completing a file name as you
+type never asks anything. The question comes when you press <kbd>RET</kbd>. If a
+connection takes more than a second, the echo area says <code>Connecting to
+pinetree...</code> until it is made or has failed.</p>
+<figure id="fig-ssh-question">
+<pre class="ex">  ssh to pinetree
+
+  The authenticity of host 'pinetree (10.0.0.5)' can't be established.
+  ED25519 key fingerprint is:
+  SHA256:LRMTH6kEUp1dDyMPGJlAvQhgiX4cSO0JX/aPMh350Sk
+  This key is not known by any other names.
+
+  Type yes or the fingerprint to accept, anything else refuses.
+ TUATARA[N]  P  [-] *Question*  L1 C0  Help
+ Accept this key (yes/no/fingerprint): █
+</pre>
+<figcaption>Figure 9.3. The first connection: question above, prompt below.</figcaption>
+</figure>
+<p>Compare the fingerprint with one you got from whoever runs the server. Then
+type <code>yes</code> and press <kbd>RET</kbd>. You can type the fingerprint instead. Anything else
+refuses, a plain <code>y</code> as well. A key that has changed since ssh last saw it is
+never offered. ssh refuses the connection, and the echo area says the key
+differs from the one ssh knows. That is the sign of a machine that has been
+replaced, or of one pretending to be it. Ask the person who runs the server.</p>
+<h3 id="passwords"><span class="num">9.9.3</span> Passwords</h3>
+<p>If your key is in your ssh agent, nothing is asked. A key with a passphrase is
+asked for once, at a prompt saying it stays here, on your computer. If you log
+in with a password, the prompt says the server asks, and that what you type
+goes to the server. A jump host, if you use one, is named. What you type shows
+as stars, and is passed to ssh and kept nowhere else: not in a history, not in
+a recorded macro, and not in a log.</p>
+<p>To paste a password from a password manager, copy it there and press <kbd>C-y</kbd> in
+the prompt. In a terminal, the paste of the terminal works too. The password is
+not put in the kill ring. <kbd>C-g</kbd> gives the question up, and the connection fails
+with a message that the question was not answered. Nothing is left running.</p>
+<h3 id="folders-and-previews-on-a-server"><span class="num">9.9.4</span> Folders and previews on a server</h3>
+<p><kbd>C-x C-f /ssh:pinetree:/srv/notes/ RET</kbd>, or <kbd>C-x d</kbd> with that name, lists the
+folder as one is listed on your computer. Chapter 10 describes the list. What
+would read many files, or keep watching them, is left out on a server: there is
+no git column and no folder size, and the list is read again after each change
+you make, not as files change.</p>
+<p>A preview shows each file beside the list as you move. On a server each file
+must come to your computer first, so the preview starts off. <kbd>P</kbd> in the list
+turns it on, and moving to another file stops the transfer under way. A file
+larger than <code>*remote-preview-size-limit*</code> is not fetched, and the preview says
+it is too large. The standard is 20 million octets. <kbd>RET</kbd> still opens it.
+Files in evidence folders are not read for a preview, and a list opened safely
+has no preview.</p>
+<p>A server keeps no trash. A file deleted there is deleted for good, and the list
+says so in its question.</p>
+<p>Evidence folders may be on a server as well. An entry of <code>*evidence-folders*</code>
+may name a folder there, and files in it open safely and are never saved.
+Chapter 12 describes it.</p>
+<div class="try">
+<h3>Try it, with notes on a server called pinetree</h3>
+<p>These steps need a machine you can reach with ssh. Use your own name for
+<code>pinetree</code>.</p>
+<ol>
+<li>In a terminal, run <code>ssh pinetree</code> once, so you know the login works. Leave
+   it again with <code>exit</code>.</li>
+<li>In Tuatara, press <kbd>C-x C-f</kbd> and type <code>/ssh:pinetree:</code>. Your home folder there
+   is offered. Add <code>notes.txt</code> and press <kbd>RET</kbd>. The buffer is empty.</li>
+<li>Press <kbd>i</kbd>, type <code>Sheep: 41 counted on Friday</code> and press <kbd>C-g</kbd>. Press
+   <kbd>C-x C-s</kbd>. The echo area says <code>Wrote /ssh:pinetree:notes.txt</code>.</li>
+<li>In another terminal, run <code>ssh pinetree 'echo &quot;Gate fixed&quot; &gt;&gt; notes.txt'</code>.
+   Back in Tuatara, press <kbd>i</kbd>, type <code>x</code> and press <kbd>C-g</kbd>, then <kbd>C-x C-s</kbd>. The
+   echo area says the file changed on the server since it was read and was not
+   written. Your buffer is unchanged.</li>
+<li>Run <kbd>M-x revert-buffer</kbd>. The line <code>Gate fixed</code> is there.</li>
+<li>Press <kbd>C-x d</kbd> and type <code>/ssh:pinetree:</code>, then <kbd>RET</kbd>. Your home folder opens
+   as a list. Move to <code>notes.txt</code> and press <kbd>P</kbd> to see it beside the list.</li>
+<li>If you wish, press <kbd>C-x k</kbd> on the buffer. The private copy on your computer
+   is deleted, and the file on pinetree is as you saved it.</li>
+</ol>
+</div>
+<div class="tablewrap"><table>
+<thead>
+<tr><th>Keys</th><th>Command</th><th>What it does</th></tr>
+</thead>
+<tbody>
+<tr><td><kbd>P</kbd>, <kbd>C-c P</kbd></td><td><code>list-toggle-preview</code></td><td>Turn the preview beside this list on or off: the entry on the current line shown in a window beside the list, on its right when there is room, else below it, following the cursor from line to line.</td></tr>
+</tbody></table></div>
+<div class="tablewrap"><table>
+<thead>
+<tr><th>Setting</th><th>Standard</th><th>What it changes</th></tr>
+</thead>
+<tbody>
+<tr><td><code>*remote-seconds*</code></td><td><code>30</code></td><td>Seconds a server reached for its files (/ssh:HOST:/path) has to answer each request, and ssh to connect: past them the connection is closed and the work in hand fails, saying so.</td></tr>
+<tr><td><code>*remote-preview-size-limit*</code></td><td><code>20000000</code></td><td>The most octets a file on another machine may hold to be shown in the preview of its list (M-x list-toggle-preview), 20 MB by default: all of it has to come from the server first.</td></tr>
+</tbody></table></div>
+<h2 id="opening-a-file-with-another-program"><span class="num">9.10</span> Opening a file with another program</h2>
+<p>Tuatara shows text, and also pictures, PDFs and some office documents. There is
+work it does not do, such as printing, filling in a PDF form, or playing a
+video. For that you can hand the file to the program your desktop uses for that
+kind of file. <kbd>O</kbd> does it in a folder listing, in a picture and in a PDF's view,
+and <kbd>M-x open-externally</kbd> does it for the file of the buffer you are in. Tuatara
+runs <code>xdg-open</code>, the command desktops provide for this, so the file opens in
+what you would get by double-clicking it.</p>
+<p>The other program is not shut in as Tuatara's own readers are. It can read
+everything you can. So Tuatara asks first, unless you turn off
+<code>*open-externally-ask*</code>. It also looks at what the file is, not what its name
+says. A program named <code>holiday.jpg</code> is refused. Only the kinds of file in
+<code>*open-externally-kinds*</code> are handed over: pictures, PDFs, sound and video,
+and office documents.</p>
+<p>To use another program for a kind, set <code>*open-externally-programs*</code> to a list
+of a type and a program:</p>
+<pre class="ex">(setf *open-externally-programs*
+      '((&quot;application/pdf&quot; . &quot;zathura&quot;)
+        (&quot;video/*&quot; &quot;mpv&quot; &quot;--fs&quot;)))
+</pre>
+<p>The program given there is run as it is, with the file's name after it.
+<code>*open-externally-program*</code> names the command used for every other kind, which
+is <code>xdg-open</code> as standard.</p>
+<div class="tablewrap"><table>
+<thead>
+<tr><th>Keys</th><th>Command</th><th>What it does</th></tr>
+</thead>
+<tbody>
+<tr><td><kbd>O</kbd>, <kbd>C-c O</kbd></td><td><code>open-externally</code></td><td>Open the file shown, in the desktop's own program for its kind (xdg-open), or the one <strong>OPEN-EXTERNALLY-PROGRAMS</strong> gives its Multipurpose Internet Mail Extensions (MIME) type, for what Tuatara does not do: printing, forms, playing.</td></tr>
+</tbody></table></div>
+<div class="tablewrap"><table>
+<thead>
+<tr><th>Setting</th><th>Standard</th><th>What it changes</th></tr>
+</thead>
+<tbody>
+<tr><td><code>*open-externally-ask*</code></td><td><code>t</code></td><td>True for M-x open-externally to ask before opening a file in the desktop's own program, which reads it outside the sandbox; NIL to open it at once.</td></tr>
+<tr><td><code>*open-externally-kinds*</code></td><td><code>(:png :jpeg :gif :webp :bmp :tiff :raw :...</code></td><td>The kinds of file M-x open-externally opens in the desktop's own program, as their first octets tell them (pictures, PDFs, sound and video, and Office documents, as standard): keywords as TUATARA.IO:OCTETS-KIND gives them, :png, :jpeg, :pdf, :docx and the like.</td></tr>
+<tr><td><code>*open-externally-program*</code></td><td><code>&quot;xdg-open&quot;</code></td><td>The program that opens a file in the desktop's own program for its kind, given the file's name: xdg-open, looked for on the PATH.</td></tr>
+<tr><td><code>*open-externally-programs*</code></td><td><code>nil</code></td><td>Programs to open files and addresses in instead of the one the desktop would choose (xdg-open), by Multipurpose Internet Mail Extensions (MIME) type as xdg-mime names them: a list of (TYPE .</td></tr>
+</tbody></table></div>
+<h2 id="starting-tuatara-with-files"><span class="num">9.11</span> Starting Tuatara with files</h2>
+<p><kbd>tuatara letter.txt</kbd> opens the file in the terminal you typed it in. Several
+names open several buffers, the first one shown. <kbd>tuatara --gui letter.txt</kbd>
+opens a window of its own instead. Other files you had open, if you keep a
+session as chapter 7 described, are opened behind the ones you named.</p>
+<p>A number with a plus before a file name says which line to start on. <kbd>tuatara
++2 letter.txt</kbd> opens the letter with the cursor on its second line. <kbd>+2:5</kbd> adds
+a column. The numbers count from 1. A file with fewer lines opens at its last
+line, and says so. You can name a line for each file: <kbd>tuatara +120 main.lisp
++3 notes.org</kbd>.</p>
+<p><kbd>tuatara --safe letter.txt</kbd>, or <kbd>-R</kbd> for short, opens the files safely, as
+described in chapter 12: read-only, with nothing in them acted on. It holds
+for every file in that command. <kbd>--hex</kbd> opens them in the hex view instead of as
+text. A single <code>-</code> reads what another program sends: <code>ls | tuatara -</code> shows the
+output in a buffer called <code>*stdin*</code>. After <code>--</code>, every word is a file, so
+<code>tuatara -- -odd.txt</code> opens a file named <code>-odd.txt</code>.</p>
+<p>The table at the end of this section lists every option, as <kbd>tuatara --help</kbd>
+does. The ones that start the daemon, make a client, compare files or merge
+them are explained in chapters 15 and 18.</p>
+<div class="try">
+<h3>Try it, with a letter</h3>
+<ol>
+<li>In a terminal, make a letter of five lines:
+   <code>printf 'one\ntwo\nthree\nfour\nfive\n' &gt; letter.txt</code>.</li>
+<li>Run <code>tuatara +4 letter.txt</code>. The cursor is on <code>four</code>, and the mode line says
+   <code>L4</code>.</li>
+<li>Press <kbd>C-x C-c</kbd> to leave. Run <code>tuatara --safe letter.txt</code>. The mode line
+   says <code>Safe</code>. Press <kbd>i</kbd>. The buffer is read-only, so nothing can be typed.</li>
+<li>Press <kbd>M-x end-safe-visit</kbd> and <kbd>RET</kbd>. The file opens as usual.</li>
+<li>Leave with <kbd>C-x C-c</kbd>.</li>
+</ol>
+</div>
+<h3 id="options"><span class="num">9.11.1</span> Options</h3>
+<div class="tablewrap"><table>
+<thead>
+<tr><th>Option</th><th>What it does</th></tr>
+</thead>
+<tbody>
+<tr><td><code>--gui</code></td><td>Open a window of its own instead (as when started with no terminal).</td></tr>
+<tr><td><code>--frames N</code></td><td>Open N frames, from 1 to 16: with –gui each a window of its own, in the terminal screens shown one at a time (C-x 5 o goes to the next); the files named are shown one in each frame in turn, those left over open behind the first; –frames=N does as well.</td></tr>
+<tr><td><code>-c INIT-FILE, --config INIT-FILE</code></td><td>Read INIT-FILE as the init file instead of ~/.config/tuatara/init.lisp; –config=INIT-FILE does as well.</td></tr>
+<tr><td><code>+LINE[:COLUMN]</code></td><td>Before a file: open it with the cursor on that line (from 1; the last line when the file has fewer) and column (from 1; the C in the mode line counts from 0), as in tuatara +120:8 main.lisp +3 notes.org.</td></tr>
+<tr><td><code>--diff OLD NEW</code></td><td>Open the differences between the two files, or two folders, as M-x diff-files shows them, and exit when you quit; for git, as git config difftool.tuatara.cmd 'tuatara –diff &quot;$LOCAL&quot; &quot;$REMOTE&quot;'.</td></tr>
+<tr><td><code>--merge LOCAL BASE REMOTE MERGED</code></td><td>Merge the three files into MERGED, the conflicts marked there to resolve, then save it; exits 0 when MERGED is saved with no conflict left, else 1; for git, as git config mergetool.tuatara.cmd 'tuatara –merge &quot;$LOCAL&quot; &quot;$BASE&quot; &quot;$REMOTE&quot; &quot;$MERGED&quot;' and mergetool.tuatara.trustExitCode true.</td></tr>
+<tr><td><code>--safe, -R</code></td><td>Open the files safely, whatever folder they are in: read only, no mode or hook acting on them, nothing written.</td></tr>
+<tr><td><code>--hex</code></td><td>Open the files in the hex view, never first as text.</td></tr>
+<tr><td><code>-</code></td><td>As a file: read standard input into a buffer, <strong>stdin</strong>, opened safely (tuatara - &lt; data, or … | tuatara -); the terminal stays the keyboard.</td></tr>
+<tr><td><code>--tutor</code></td><td>Start in the tutor.</td></tr>
+<tr><td><code>--daemon[=NAME]</code></td><td>Run one editor in the background, with no screen, for tuatara –client to show in terminals, and return once it is ready; it reads the init file and loads the packages as Tuatara does, and runs until M-x daemon-quit or tuatara –stop, or until it is sent SIGTERM, as at logout, which keeps the changes not saved as auto-saved copies and asks nothing; NAME, default when none is given, tells several apart; its log is ~/.cache/tuatara/daemon-NAME.log, its session ~/.local/state/tuatara/session-daemon-NAME.</td></tr>
+<tr><td><code>--client[=NAME]</code></td><td>Show the daemon NAME in this terminal, or with –gui in a window of its own (C-x 5 2 opens another), a frame of its own, the files named opened in it, with +LINE, –safe, –hex, - and –frames as for Tuatara itself; –diff and –merge as well, with their exit codes; C-x C-c closes this client alone, its buffers kept in the daemon, and the daemon goes on; as git's editor (GIT_EDITOR='tuatara –client') the commit is made when the message is finished; exits 1 when no daemon of that name runs, or when it ends.</td></tr>
+<tr><td><code>--client=HOST[:NAME]</code></td><td>Show the daemon NAME running on the machine HOST, reached with the system's ssh, as –client shows one here: HOST as ssh takes it (build.example, me@build.example), a name from ~/.ssh/config written with a colon after it (build: or build:work); its host key must be known already; the files named are that machine's, a relative name from your home folder there; - is not taken, and pictures stay on each side, the clipboard, dropped files and your agents too unless HOST is trusted with them (M-x server-list); with –start, the daemon there is started first when none runs; –stop=HOST[:NAME] stops it.</td></tr>
+<tr><td><code>--daemon-socket[=NAME]</code></td><td>Say where the daemon NAME listens, which Tuatara this is and whether it runs, in lines a client on another machine reads over ssh, with where gpg here looks for its agent, and exit; with –start, start it first when none runs.</td></tr>
+<tr><td><code>--receive-file PATH</code></td><td>Write standard input, a file dropped on the window of a client on another machine, at PATH, from your home folder unless it begins with /, for you alone and under a name nothing has yet; say where, and exit.</td></tr>
+<tr><td><code>--start</code></td><td>With –client: start the daemon first when none runs.</td></tr>
+<tr><td><code>--fallback</code></td><td>With –client: when no daemon runs, start Tuatara as it starts without –client instead, the files opened in an editor of its own; the desktop's Tuatara (client) starts it so.</td></tr>
+<tr><td><code>--stop[=NAME]</code></td><td>Stop the daemon NAME, asking in this terminal about the changes not saved in it, as M-x daemon-quit does; with no terminal, nothing is asked, and the changes are kept as auto-saved copies that M-x recover-file offers.</td></tr>
+<tr><td><code>-Q, --no-init</code></td><td>Start without the init file and so without packages, with what Tuatara keeps between sessions (files visited lately, the session, bookmarks) kept apart in a folder that goes with the session, the real one neither read nor changed.</td></tr>
+<tr><td><code>--generate-config</code></td><td>Write the init file Tuatara writes when there is none, every setting in it commented out, as ~/.config/tuatara/generated-init.lisp, and exit; a file there already is left as it is.</td></tr>
+<tr><td><code>--generate-autostart</code></td><td>Write the entry that has the desktop start the daemon as you log in, ~/.config/autostart/tuatara-daemon.desktop, running tuatara –daemon, and exit; with –daemon=NAME, the daemon NAME's, tuatara-daemon-NAME.desktop; a file there already is left as it is.</td></tr>
+<tr><td><code>--help, -h</code></td><td>Show this and exit.</td></tr>
+<tr><td><code>--version, -V</code></td><td>Show the version and exit.</td></tr>
+<tr><td><code>--</code></td><td>The arguments after it are all files, even when one starts with a dash or a plus.</td></tr>
+<tr><td><code>--install-desktop</code></td><td>(the AppImage) copy it to ~/.local/bin/tuatara and put Tuatara and Tuatara (client) in the desktop's applications, the icon too.</td></tr>
+<tr><td><code>--remove-desktop</code></td><td>(the AppImage) take them away again.</td></tr>
+<tr><td><code>--dark, --light</code></td><td>(the AppImage) show the window's title bar in the dark or the light style; with –install-desktop, for the desktop's applications.</td></tr>
+<tr><td><code>--dynamic-space-size SIZE</code></td><td>The most memory Tuatara's own data may take, such as 6GB; by default half the machine's memory, from 2GB to 16GB, or $TUATARA_HEAP_MB megabytes.</td></tr>
+</tbody></table></div>
+<div class="node end"><span>Previous: <a href="08-commands-keys-and-help.html">Commands, keys and help</a></span><span>Next: <a href="10-folders.html">Folders</a></span><span>Up: <a href="index.html">Contents</a></span></div>
+</article>
+</main>
+</div>
+</body>
+</html>

@@ -1,0 +1,582 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src  'self'; img-src 'self' file:; script-src 'self'; base-uri 'none'; form-action 'none'">
+<title>Packages &ndash; Tuatara Manual</title>
+<link rel="stylesheet" href="manual.css">
+<script src="manual.js" defer></script>
+</head>
+<body>
+<div class="site">
+<nav class="toc" aria-label="Contents">
+<strong>Tuatara Manual</strong>
+<small>for version 0.90.21</small>
+<input type="search" placeholder="Find a heading" aria-label="Find a heading">
+<ol class="chapters"><li id="nav-01-the-screen"><a href="01-the-screen.html">1 The screen</a><ol><li><a href="01-the-screen.html#keys-and-names">1.1 Keys and names</a></li><li><a href="01-the-screen.html#the-parts-of-the-screen">1.2 The parts of the screen</a></li><li><a href="01-the-screen.html#windows-and-buffers">1.3 Windows and buffers</a><ol><li><a href="01-the-screen.html#commands-for-windows">1.3.1 Commands for windows</a></li><li><a href="01-the-screen.html#moving-windows-and-changing-their-size">1.3.2 Moving windows and changing their size</a></li><li><a href="01-the-screen.html#scrolling-and-finding-out-where-buffers-go">1.3.3 Scrolling and finding out where buffers go</a></li><li><a href="01-the-screen.html#commands-for-buffers">1.3.4 Commands for buffers</a></li><li><a href="01-the-screen.html#settings">1.3.5 Settings</a></li></ol></li><li><a href="01-the-screen.html#frames-windows-of-their-own-and-terminals">1.4 Frames, windows of their own and terminals</a><ol><li><a href="01-the-screen.html#commands-for-frames-and-the-windows-font">1.4.1 Commands for frames and the window's font</a></li><li><a href="01-the-screen.html#settings-2">1.4.2 Settings</a></li></ol></li><li><a href="01-the-screen.html#the-mode-line">1.5 The mode line</a><ol><li><a href="01-the-screen.html#the-modal-state">1.5.1 The modal state</a></li><li><a href="01-the-screen.html#the-signs-p-u-s-and-d">1.5.2 The signs P, U, S and D</a></li><li><a href="01-the-screen.html#saved-or-not">1.5.3 Saved or not</a></li><li><a href="01-the-screen.html#words-about-the-buffer">1.5.4 Words about the buffer</a></li><li><a href="01-the-screen.html#the-name-the-line-and-the-column">1.5.5 The name, the line and the column</a></li><li><a href="01-the-screen.html#other-things-the-mode-line-says">1.5.6 Other things the mode line says</a></li><li><a href="01-the-screen.html#the-folder">1.5.7 The folder</a></li><li><a href="01-the-screen.html#commands">1.5.8 Commands</a></li><li><a href="01-the-screen.html#settings-3">1.5.9 Settings</a></li><li><a href="01-the-screen.html#faces">1.5.10 Faces</a></li></ol></li><li><a href="01-the-screen.html#the-echo-area-and-the-messages-log">1.6 The echo area and the messages log</a><ol><li><a href="01-the-screen.html#commands-2">1.6.1 Commands</a></li><li><a href="01-the-screen.html#settings-4">1.6.2 Settings</a></li></ol></li><li><a href="01-the-screen.html#the-minibuffer-and-its-prompt">1.7 The minibuffer and its prompt</a><ol><li><a href="01-the-screen.html#settings-5">1.7.1 Settings</a></li><li><a href="01-the-screen.html#faces-2">1.7.2 Faces</a></li></ol></li><li><a href="01-the-screen.html#the-choices-panel">1.8 The choices panel</a><ol><li><a href="01-the-screen.html#commands-3">1.8.1 Commands</a></li><li><a href="01-the-screen.html#settings-6">1.8.2 Settings</a></li></ol></li><li><a href="01-the-screen.html#key-hints">1.9 Key hints</a><ol><li><a href="01-the-screen.html#commands-4">1.9.1 Commands</a></li><li><a href="01-the-screen.html#settings-7">1.9.2 Settings</a></li></ol></li><li><a href="01-the-screen.html#the-cursor-the-gutter-and-header-lines">1.10 The cursor, the gutter and header lines</a><ol><li><a href="01-the-screen.html#commands-5">1.10.1 Commands</a></li><li><a href="01-the-screen.html#settings-8">1.10.2 Settings</a></li></ol></li></ol></li><li id="nav-02-moving-around"><a href="02-moving-around.html">2 Moving around</a><ol><li><a href="02-moving-around.html#two-sets-of-keys">2.1 Two sets of keys</a></li><li><a href="02-moving-around.html#by-character-and-by-line">2.2 By character and by line</a><ol><li><a href="02-moving-around.html#commands">2.2.1 Commands</a></li></ol></li><li><a href="02-moving-around.html#by-word">2.3 By word</a><ol><li><a href="02-moving-around.html#commands-2">2.3.1 Commands</a></li></ol></li><li><a href="02-moving-around.html#within-a-line">2.4 Within a line</a><ol><li><a href="02-moving-around.html#commands-3">2.4.1 Commands</a></li></ol></li><li><a href="02-moving-around.html#by-sentence-and-paragraph">2.5 By sentence and paragraph</a><ol><li><a href="02-moving-around.html#commands-4">2.5.1 Commands</a></li><li><a href="02-moving-around.html#settings">2.5.2 Settings</a></li></ol></li><li><a href="02-moving-around.html#to-the-start-or-the-end-of-the-text">2.6 To the start or the end of the text</a><ol><li><a href="02-moving-around.html#commands-5">2.6.1 Commands</a></li></ol></li><li><a href="02-moving-around.html#to-a-line">2.7 To a line</a><ol><li><a href="02-moving-around.html#commands-6">2.7.1 Commands</a></li></ol></li><li><a href="02-moving-around.html#scrolling-and-recentring">2.8 Scrolling and recentring</a></li><li><a href="02-moving-around.html#counts">2.9 Counts</a><ol><li><a href="02-moving-around.html#commands-7">2.9.1 Commands</a></li></ol></li><li><a href="02-moving-around.html#marks-and-going-back">2.10 Marks and going back</a><ol><li><a href="02-moving-around.html#commands-8">2.10.1 Commands</a></li><li><a href="02-moving-around.html#settings-2">2.10.2 Settings</a></li><li><a href="02-moving-around.html#faces">2.10.3 Faces</a></li></ol></li><li><a href="02-moving-around.html#going-to-the-next-place-in-a-list">2.11 Going to the next place in a list</a><ol><li><a href="02-moving-around.html#commands-9">2.11.1 Commands</a></li></ol></li><li><a href="02-moving-around.html#in-help-lists-and-other-read-only-buffers">2.12 In help, lists and other read-only buffers</a></li></ol></li><li id="nav-03-writing-and-changing-text"><a href="03-writing-and-changing-text.html">3 Writing and changing text</a><ol><li><a href="03-writing-and-changing-text.html#the-two-states">3.1 The two states</a><ol><li><a href="03-writing-and-changing-text.html#commands-for-starting-to-type">3.1.1 Commands for starting to type</a></li></ol></li><li><a href="03-writing-and-changing-text.html#typing">3.2 Typing</a><ol><li><a href="03-writing-and-changing-text.html#commands">3.2.1 Commands</a></li><li><a href="03-writing-and-changing-text.html#settings">3.2.2 Settings</a></li></ol></li><li><a href="03-writing-and-changing-text.html#deleting">3.3 Deleting</a><ol><li><a href="03-writing-and-changing-text.html#commands-2">3.3.1 Commands</a></li></ol></li><li><a href="03-writing-and-changing-text.html#changing-text">3.4 Changing text</a><ol><li><a href="03-writing-and-changing-text.html#commands-for-case">3.4.1 Commands for case</a></li><li><a href="03-writing-and-changing-text.html#commands-for-swapping-and-joining">3.4.2 Commands for swapping and joining</a></li></ol></li><li><a href="03-writing-and-changing-text.html#undo-redo-and-repeat">3.5 Undo, redo and repeat</a><ol><li><a href="03-writing-and-changing-text.html#commands-3">3.5.1 Commands</a></li><li><a href="03-writing-and-changing-text.html#settings-2">3.5.2 Settings</a></li></ol></li><li><a href="03-writing-and-changing-text.html#repeat-counts">3.6 Repeat counts</a></li><li><a href="03-writing-and-changing-text.html#special-characters">3.7 Special characters</a><ol><li><a href="03-writing-and-changing-text.html#commands-4">3.7.1 Commands</a></li><li><a href="03-writing-and-changing-text.html#settings-3">3.7.2 Settings</a></li></ol></li><li><a href="03-writing-and-changing-text.html#indentation-and-filling-in-plain-text">3.8 Indentation and filling in plain text</a><ol><li><a href="03-writing-and-changing-text.html#commands-5">3.8.1 Commands</a></li><li><a href="03-writing-and-changing-text.html#settings-4">3.8.2 Settings</a></li></ol></li><li><a href="03-writing-and-changing-text.html#spelling">3.9 Spelling</a><ol><li><a href="03-writing-and-changing-text.html#commands-6">3.9.1 Commands</a></li><li><a href="03-writing-and-changing-text.html#settings-5">3.9.2 Settings</a></li><li><a href="03-writing-and-changing-text.html#faces">3.9.3 Faces</a></li></ol></li><li><a href="03-writing-and-changing-text.html#sorting-and-tidying-lines">3.10 Sorting and tidying lines</a><ol><li><a href="03-writing-and-changing-text.html#commands-7">3.10.1 Commands</a></li><li><a href="03-writing-and-changing-text.html#settings-6">3.10.2 Settings</a></li></ol></li><li><a href="03-writing-and-changing-text.html#recording-keys">3.11 Recording keys</a><ol><li><a href="03-writing-and-changing-text.html#commands-8">3.11.1 Commands</a></li></ol></li></ol></li><li id="nav-04-cutting-and-pasting"><a href="04-cutting-and-pasting.html">4 Cutting and pasting</a><ol><li><a href="04-cutting-and-pasting.html#the-kill-ring">4.1 The kill ring</a></li><li><a href="04-cutting-and-pasting.html#cutting-copying-and-pasting-with-the-emacs-keys">4.2 Cutting, copying and pasting with the Emacs keys</a><ol><li><a href="04-cutting-and-pasting.html#commands">4.2.1 Commands</a></li></ol></li><li><a href="04-cutting-and-pasting.html#cutting-copying-and-pasting-in-normal-state">4.3 Cutting, copying and pasting in NORMAL state</a></li><li><a href="04-cutting-and-pasting.html#the-system-clipboard-and-the-primary-selection">4.4 The system clipboard and the primary selection</a><ol><li><a href="04-cutting-and-pasting.html#settings">4.4.1 Settings</a></li></ol></li><li><a href="04-cutting-and-pasting.html#registers">4.5 Registers</a></li><li><a href="04-cutting-and-pasting.html#banked-lines">4.6 Banked lines</a><ol><li><a href="04-cutting-and-pasting.html#faces">4.6.1 Faces</a></li></ol></li><li><a href="04-cutting-and-pasting.html#pasting-into-prompts">4.7 Pasting into prompts</a></li></ol></li><li id="nav-05-selecting-rectangles-and-many-cursors"><a href="05-selecting-rectangles-and-many-cursors.html">5 Selecting, rectangles and many cursors</a><ol><li><a href="05-selecting-rectangles-and-many-cursors.html#selections-and-the-mark">5.1 Selections and the mark</a><ol><li><a href="05-selecting-rectangles-and-many-cursors.html#keys-that-select">5.1.1 Keys that select</a></li></ol></li><li><a href="05-selecting-rectangles-and-many-cursors.html#text-objects-the-m-keys">5.2 Text objects, the m keys</a><ol><li><a href="05-selecting-rectangles-and-many-cursors.html#wrapping-a-selection">5.2.1 Wrapping a selection</a></li><li><a href="05-selecting-rectangles-and-many-cursors.html#the-emacs-keys-for-the-same">5.2.2 The Emacs keys for the same</a></li></ol></li><li><a href="05-selecting-rectangles-and-many-cursors.html#the-mark-run">5.3 The mark run</a></li><li><a href="05-selecting-rectangles-and-many-cursors.html#growing-a-selection-by-the-code">5.4 Growing a selection by the code</a></li><li><a href="05-selecting-rectangles-and-many-cursors.html#rectangles">5.5 Rectangles</a><ol><li><a href="05-selecting-rectangles-and-many-cursors.html#rectangles-in-normal-state">5.5.1 Rectangles in NORMAL state</a></li><li><a href="05-selecting-rectangles-and-many-cursors.html#rectangles-with-the-emacs-keys">5.5.2 Rectangles with the Emacs keys</a></li></ol></li><li><a href="05-selecting-rectangles-and-many-cursors.html#many-cursors">5.6 Many cursors</a><ol><li><a href="05-selecting-rectangles-and-many-cursors.html#what-each-key-does-at-the-cursors">5.6.1 What each key does at the cursors</a></li><li><a href="05-selecting-rectangles-and-many-cursors.html#limits">5.6.2 Limits</a></li><li><a href="05-selecting-rectangles-and-many-cursors.html#showing-the-cursors">5.6.3 Showing the cursors</a></li></ol></li><li><a href="05-selecting-rectangles-and-many-cursors.html#splitting-a-selection-on-what-matches">5.7 Splitting a selection on what matches</a></li><li><a href="05-selecting-rectangles-and-many-cursors.html#summary-of-the-normal-keys">5.8 Summary of the NORMAL keys</a></li></ol></li><li id="nav-06-searching-and-replacing"><a href="06-searching-and-replacing.html">6 Searching and replacing</a><ol><li><a href="06-searching-and-replacing.html#searching-a-buffer">6.1 Searching a buffer</a><ol><li><a href="06-searching-and-replacing.html#capital-letters">6.1.1 Capital letters</a></li><li><a href="06-searching-and-replacing.html#regular-expressions-and-plain-text">6.1.2 Regular expressions and plain text</a></li><li><a href="06-searching-and-replacing.html#starting-from-the-word-under-the-cursor">6.1.3 Starting from the word under the cursor</a></li><li><a href="06-searching-and-replacing.html#search-history">6.1.4 Search history</a></li><li><a href="06-searching-and-replacing.html#keeping-the-matches-lit">6.1.5 Keeping the matches lit</a></li><li><a href="06-searching-and-replacing.html#the-count-before-the-prompt">6.1.6 The count before the prompt</a></li><li><a href="06-searching-and-replacing.html#matches-that-cross-many-lines">6.1.7 Matches that cross many lines</a></li></ol></li><li><a href="06-searching-and-replacing.html#replacing">6.2 Replacing</a><ol><li><a href="06-searching-and-replacing.html#what-goes-in-the-new-text">6.2.1 What goes in the new text</a></li><li><a href="06-searching-and-replacing.html#replacing-with-questions">6.2.2 Replacing with questions</a></li></ol></li><li><a href="06-searching-and-replacing.html#narrowing-a-list-to-its-matches">6.3 Narrowing a list to its matches</a></li><li><a href="06-searching-and-replacing.html#searching-many-files">6.4 Searching many files</a><ol><li><a href="06-searching-and-replacing.html#changing-the-lines-a-search-found">6.4.1 Changing the lines a search found</a></li><li><a href="06-searching-and-replacing.html#keeping-folders-read">6.4.2 Keeping folders read</a></li></ol></li><li><a href="06-searching-and-replacing.html#the-outline-of-a-buffer">6.5 The outline of a buffer</a></li></ol></li><li id="nav-07-buffers-and-sessions"><a href="07-buffers-and-sessions.html">7 Buffers and sessions</a><ol><li><a href="07-buffers-and-sessions.html#the-buffer-list">7.1 The buffer list</a><ol><li><a href="07-buffers-and-sessions.html#sections">7.1.1 Sections</a></li><li><a href="07-buffers-and-sessions.html#folding">7.1.2 Folding</a></li><li><a href="07-buffers-and-sessions.html#marks">7.1.3 Marks</a></li><li><a href="07-buffers-and-sessions.html#opening-and-keeping-the-list-current">7.1.4 Opening, and keeping the list current</a></li><li><a href="07-buffers-and-sessions.html#commands-for-the-buffer-list">7.1.5 Commands for the buffer list</a></li><li><a href="07-buffers-and-sessions.html#settings-and-faces">7.1.6 Settings and faces</a></li></ol></li><li><a href="07-buffers-and-sessions.html#scratch-buffers">7.2 Scratch buffers</a></li><li><a href="07-buffers-and-sessions.html#saving-and-killing-buffers">7.3 Saving and killing buffers</a></li><li><a href="07-buffers-and-sessions.html#recent-files-and-places">7.4 Recent files and places</a></li><li><a href="07-buffers-and-sessions.html#bookmarks">7.5 Bookmarks</a></li><li><a href="07-buffers-and-sessions.html#registers">7.6 Registers</a></li><li><a href="07-buffers-and-sessions.html#the-session-kept">7.7 The session kept</a></li><li><a href="07-buffers-and-sessions.html#auto-save-and-getting-changes-back">7.8 Auto-save and getting changes back</a></li><li><a href="07-buffers-and-sessions.html#narrowing-to-a-part-of-a-buffer">7.9 Narrowing to a part of a buffer</a></li></ol></li><li id="nav-08-commands-keys-and-help"><a href="08-commands-keys-and-help.html">8 Commands, keys and help</a><ol><li><a href="08-commands-keys-and-help.html#running-a-command-by-name">8.1 Running a command by name</a><ol><li><a href="08-commands-keys-and-help.html#the-count-before-m-x">8.1.1 The count before M-x</a></li></ol></li><li><a href="08-commands-keys-and-help.html#counts">8.2 Counts</a></li><li><a href="08-commands-keys-and-help.html#giving-up">8.3 Giving up</a></li><li><a href="08-commands-keys-and-help.html#prefix-keys">8.4 Prefix keys</a></li><li><a href="08-commands-keys-and-help.html#key-hints">8.5 Key hints</a></li><li><a href="08-commands-keys-and-help.html#menus">8.6 Menus</a></li><li><a href="08-commands-keys-and-help.html#asking-what-a-key-does">8.7 Asking what a key does</a></li><li><a href="08-commands-keys-and-help.html#asking-what-a-command-does">8.8 Asking what a command does</a></li><li><a href="08-commands-keys-and-help.html#finding-a-command-when-you-do-not-know-its-name">8.9 Finding a command when you do not know its name</a></li><li><a href="08-commands-keys-and-help.html#what-a-face-looks-like">8.10 What a face looks like</a></li><li><a href="08-commands-keys-and-help.html#messages-notifications-and-the-log-of-what-tuatara-says">8.11 Messages, notifications and the log of what Tuatara says</a></li><li><a href="08-commands-keys-and-help.html#the-tutor-and-manual-pages">8.12 The tutor and manual pages</a></li><li><a href="08-commands-keys-and-help.html#about-tuatara-and-what-is-there">8.13 About Tuatara and what is there</a></li><li><a href="08-commands-keys-and-help.html#checking-what-your-system-has">8.14 Checking what your system has</a></li><li><a href="08-commands-keys-and-help.html#lisp-in-the-running-editor">8.15 Lisp in the running editor</a></li><li><a href="08-commands-keys-and-help.html#binding-keys-yourself">8.16 Binding keys yourself</a></li></ol></li><li id="nav-09-files"><a href="09-files.html">9 Files</a><ol><li><a href="09-files.html#opening-a-file">9.1 Opening a file</a><ol><li><a href="09-files.html#other-places-to-open-a-file">9.1.1 Other places to open a file</a></li><li><a href="09-files.html#the-files-own-settings">9.1.2 The file's own settings</a></li><li><a href="09-files.html#seeing-a-file-before-you-choose-it">9.1.3 Seeing a file before you choose it</a></li></ol></li><li><a href="09-files.html#creating-a-file">9.2 Creating a file</a></li><li><a href="09-files.html#saving">9.3 Saving</a><ol><li><a href="09-files.html#what-a-save-does-with-your-file">9.3.1 What a save does with your file</a></li><li><a href="09-files.html#when-a-save-asks-first">9.3.2 When a save asks first</a></li></ol></li><li><a href="09-files.html#save-as-and-a-new-name">9.4 Save as, and a new name</a></li><li><a href="09-files.html#read-only-files-and-buffers">9.5 Read-only files and buffers</a></li><li><a href="09-files.html#the-file-changed-on-disk">9.6 The file changed on disk</a><ol><li><a href="09-files.html#reading-it-again">9.6.1 Reading it again</a></li><li><a href="09-files.html#keeping-up-by-itself">9.6.2 Keeping up by itself</a></li></ol></li><li><a href="09-files.html#line-endings-and-letters-from-other-languages">9.7 Line endings and letters from other languages</a><ol><li><a href="09-files.html#line-endings">9.7.1 Line endings</a></li><li><a href="09-files.html#letters-from-other-languages">9.7.2 Letters from other languages</a></li></ol></li><li><a href="09-files.html#files-with-formatted-names">9.8 Files with formatted names</a><ol><li><a href="09-files.html#making-and-finding">9.8.1 Making and finding</a></li><li><a href="09-files.html#renaming">9.8.2 Renaming</a></li></ol></li><li><a href="09-files.html#files-on-another-machine">9.9 Files on another machine</a><ol><li><a href="09-files.html#saving-2">9.9.1 Saving</a></li><li><a href="09-files.html#the-first-time-you-meet-a-machine">9.9.2 The first time you meet a machine</a></li><li><a href="09-files.html#passwords">9.9.3 Passwords</a></li><li><a href="09-files.html#folders-and-previews-on-a-server">9.9.4 Folders and previews on a server</a></li></ol></li><li><a href="09-files.html#opening-a-file-with-another-program">9.10 Opening a file with another program</a></li><li><a href="09-files.html#starting-tuatara-with-files">9.11 Starting Tuatara with files</a><ol><li><a href="09-files.html#options">9.11.1 Options</a></li></ol></li></ol></li><li id="nav-10-folders"><a href="10-folders.html">10 Folders</a><ol><li><a href="10-folders.html#opening-a-folder">10.1 Opening a folder</a><ol><li><a href="10-folders.html#commands-for-opening-a-folder">10.1.1 Commands for opening a folder</a></li></ol></li><li><a href="10-folders.html#moving-about">10.2 Moving about</a><ol><li><a href="10-folders.html#commands-for-moving">10.2.1 Commands for moving</a></li></ol></li><li><a href="10-folders.html#what-a-list-shows">10.3 What a list shows</a><ol><li><a href="10-folders.html#commands-for-what-a-list-shows">10.3.1 Commands for what a list shows</a></li><li><a href="10-folders.html#settings-for-what-a-list-shows">10.3.2 Settings for what a list shows</a></li></ol></li><li><a href="10-folders.html#the-preview-beside-the-list">10.4 The preview beside the list</a><ol><li><a href="10-folders.html#quick-edit">10.4.1 Quick edit</a></li><li><a href="10-folders.html#commands-for-the-preview">10.4.2 Commands for the preview</a></li><li><a href="10-folders.html#settings-for-the-preview">10.4.3 Settings for the preview</a></li></ol></li><li><a href="10-folders.html#marks">10.5 Marks</a><ol><li><a href="10-folders.html#filtering-a-list">10.5.1 Filtering a list</a></li><li><a href="10-folders.html#commands-for-marks-and-filters">10.5.2 Commands for marks and filters</a></li></ol></li><li><a href="10-folders.html#making-things">10.6 Making things</a><ol><li><a href="10-folders.html#commands-for-making-things">10.6.1 Commands for making things</a></li></ol></li><li><a href="10-folders.html#copying-moving-and-linking">10.7 Copying, moving and linking</a><ol><li><a href="10-folders.html#commands-for-copying-moving-and-linking">10.7.1 Commands for copying, moving and linking</a></li><li><a href="10-folders.html#settings-for-copying-and-moving">10.7.2 Settings for copying and moving</a></li></ol></li><li><a href="10-folders.html#renaming">10.8 Renaming</a><ol><li><a href="10-folders.html#commands-for-renaming">10.8.1 Commands for renaming</a></li></ol></li><li><a href="10-folders.html#deleting-the-trash-and-wiping">10.9 Deleting, the trash and wiping</a><ol><li><a href="10-folders.html#commands-for-deleting-and-the-trash">10.9.1 Commands for deleting and the trash</a></li><li><a href="10-folders.html#settings-for-deleting">10.9.2 Settings for deleting</a></li></ol></li><li><a href="10-folders.html#archives">10.10 Archives</a><ol><li><a href="10-folders.html#commands-for-archives">10.10.1 Commands for archives</a></li><li><a href="10-folders.html#settings-for-archives">10.10.2 Settings for archives</a></li></ol></li><li><a href="10-folders.html#drives-and-the-folder-tree">10.11 Drives and the folder tree</a></li><li><a href="10-folders.html#finding-checking-and-encrypting">10.12 Finding, checking and encrypting</a><ol><li><a href="10-folders.html#commands-for-finding-checking-and-encrypting">10.12.1 Commands for finding, checking and encrypting</a></li></ol></li><li><a href="10-folders.html#colours-of-a-list">10.13 Colours of a list</a></li></ol></li><li id="nav-11-large-files-and-background-work"><a href="11-large-files-and-background-work.html">11 Large files and work in the background</a><ol><li><a href="11-large-files-and-background-work.html#opening-a-very-large-file">11.1 Opening a very large file</a><ol><li><a href="11-large-files-and-background-work.html#the-line-number-while-the-lines-are-counted">11.1.1 The line number while the lines are counted</a></li><li><a href="11-large-files-and-background-work.html#going-to-a-line">11.1.2 Going to a line</a></li><li><a href="11-large-files-and-background-work.html#line-numbers-in-the-gutter">11.1.3 Line numbers in the gutter</a></li></ol></li><li><a href="11-large-files-and-background-work.html#jobs-work-in-the-background">11.2 Jobs: work in the background</a><ol><li><a href="11-large-files-and-background-work.html#what-runs-as-a-job">11.2.1 What runs as a job</a></li><li><a href="11-large-files-and-background-work.html#the-sign-p">11.2.2 The sign P</a></li><li><a href="11-large-files-and-background-work.html#what-a-job-will-change-is-painted">11.2.3 What a job will change is painted</a></li><li><a href="11-large-files-and-background-work.html#jobs-take-turns">11.2.4 Jobs take turns</a></li><li><a href="11-large-files-and-background-work.html#typing-while-a-job-runs">11.2.5 Typing while a job runs</a></li><li><a href="11-large-files-and-background-work.html#undo-and-jobs">11.2.6 Undo and jobs</a></li></ol></li><li><a href="11-large-files-and-background-work.html#the-list-of-jobs">11.3 The list of jobs</a><ol><li><a href="11-large-files-and-background-work.html#stopping-a-job">11.3.1 Stopping a job</a></li></ol></li><li><a href="11-large-files-and-background-work.html#searching-a-large-file">11.4 Searching a large file</a></li><li><a href="11-large-files-and-background-work.html#saving-a-large-file">11.5 Saving a large file</a><ol><li><a href="11-large-files-and-background-work.html#saving-in-place">11.5.1 Saving in place</a></li></ol></li><li><a href="11-large-files-and-background-work.html#memory-and-pauses-you-might-notice">11.6 Memory, and pauses you might notice</a><ol><li><a href="11-large-files-and-background-work.html#a-file-larger-than-your-memory">11.6.1 A file larger than your memory</a></li><li><a href="11-large-files-and-background-work.html#auto-save-and-large-buffers">11.6.2 Auto-save and large buffers</a></li><li><a href="11-large-files-and-background-work.html#undo">11.6.3 Undo</a></li><li><a href="11-large-files-and-background-work.html#collecting-garbage">11.6.4 Collecting garbage</a></li></ol></li><li><a href="11-large-files-and-background-work.html#a-large-file-on-another-machine">11.7 A large file on another machine</a><ol><li><a href="11-large-files-and-background-work.html#what-you-see-while-it-arrives">11.7.1 What you see while it arrives</a></li><li><a href="11-large-files-and-background-work.html#stopping-the-transfer-or-losing-the-connection">11.7.2 Stopping the transfer, or losing the connection</a></li></ol></li><li><a href="11-large-files-and-background-work.html#in-short">11.8 In short</a></li></ol></li><li id="nav-12-files-you-do-not-trust"><a href="12-files-you-do-not-trust.html">12 Files you do not trust</a><ol><li><a href="12-files-you-do-not-trust.html#opening-one-file-safely">12.1 Opening one file safely</a><ol><li><a href="12-files-you-do-not-trust.html#what-is-never-run">12.1.1 What is never run</a></li><li><a href="12-files-you-do-not-trust.html#why-a-files-own-settings-are-not-taken">12.1.2 Why a file's own settings are not taken</a></li><li><a href="12-files-you-do-not-trust.html#commands-for-opening-safely">12.1.3 Commands for opening safely</a></li><li><a href="12-files-you-do-not-trust.html#settings-and-faces">12.1.4 Settings and faces</a></li></ol></li><li><a href="12-files-you-do-not-trust.html#evidence-folders">12.2 Evidence folders</a><ol><li><a href="12-files-you-do-not-trust.html#naming-the-folders">12.2.1 Naming the folders</a></li><li><a href="12-files-you-do-not-trust.html#what-happens-to-a-file-of-evidence">12.2.2 What happens to a file of evidence</a></li><li><a href="12-files-you-do-not-trust.html#asking-and-copying-out">12.2.3 Asking, and copying out</a></li><li><a href="12-files-you-do-not-trust.html#what-the-guard-does-not-cover">12.2.4 What the guard does not cover</a></li><li><a href="12-files-you-do-not-trust.html#commands-settings-and-faces">12.2.5 Commands, settings and faces</a></li></ol></li><li><a href="12-files-you-do-not-trust.html#the-sandbox-around-decoders">12.3 The sandbox around decoders</a><ol><li><a href="12-files-you-do-not-trust.html#commands-and-settings">12.3.1 Commands and settings</a></li></ol></li><li><a href="12-files-you-do-not-trust.html#repositories-you-only-look-at">12.4 Repositories you only look at</a><ol><li><a href="12-files-you-do-not-trust.html#command-setting-and-faces">12.4.1 Command, setting and faces</a></li></ol></li><li><a href="12-files-you-do-not-trust.html#encrypted-files">12.5 Encrypted files</a><ol><li><a href="12-files-you-do-not-trust.html#a-file-that-ends-in-gpg">12.5.1 A file that ends in .gpg</a></li><li><a href="12-files-you-do-not-trust.html#the-passphrase-prompt">12.5.2 The passphrase prompt</a></li><li><a href="12-files-you-do-not-trust.html#encrypting-and-decrypting">12.5.3 Encrypting and decrypting</a></li><li><a href="12-files-you-do-not-trust.html#signing-and-checking">12.5.4 Signing and checking</a></li><li><a href="12-files-you-do-not-trust.html#keys">12.5.5 Keys</a></li><li><a href="12-files-you-do-not-trust.html#commands-and-settings-2">12.5.6 Commands and settings</a></li></ol></li></ol></li><li id="nav-13-writing-code"><a href="13-writing-code.html">13 Writing code</a><ol><li><a href="13-writing-code.html#what-tuatara-knows-about-code">13.1 What Tuatara knows about code</a><ol><li><a href="13-writing-code.html#how-much-colour">13.1.1 How much colour</a></li><li><a href="13-writing-code.html#seeing-what-a-language-has">13.1.2 Seeing what a language has</a></li><li><a href="13-writing-code.html#commands-settings-and-faces">13.1.3 Commands, settings and faces</a></li></ol></li><li><a href="13-writing-code.html#indentation-and-tabs">13.2 Indentation and tabs</a><ol><li><a href="13-writing-code.html#tabs-and-spaces">13.2.1 Tabs and spaces</a></li><li><a href="13-writing-code.html#commands-and-settings">13.2.2 Commands and settings</a></li></ol></li><li><a href="13-writing-code.html#comments">13.3 Comments</a><ol><li><a href="13-writing-code.html#commands">13.3.1 Commands</a></li></ol></li><li><a href="13-writing-code.html#brackets-and-pairs">13.4 Brackets and pairs</a><ol><li><a href="13-writing-code.html#commands-and-settings-2">13.4.1 Commands and settings</a></li></ol></li><li><a href="13-writing-code.html#moving-by-definitions-and-lists">13.5 Moving by definitions and lists</a><ol><li><a href="13-writing-code.html#selecting-by-the-code">13.5.1 Selecting by the code</a></li><li><a href="13-writing-code.html#an-outline-of-the-file">13.5.2 An outline of the file</a></li><li><a href="13-writing-code.html#commands-2">13.5.3 Commands</a></li></ol></li><li><a href="13-writing-code.html#finding-definitions">13.6 Finding definitions</a><ol><li><a href="13-writing-code.html#commands-3">13.6.1 Commands</a></li></ol></li><li><a href="13-writing-code.html#language-servers">13.7 Language servers</a><ol><li><a href="13-writing-code.html#starting-one-and-trust">13.7.1 Starting one, and trust</a></li><li><a href="13-writing-code.html#what-the-server-tells-you-as-you-type">13.7.2 What the server tells you as you type</a></li><li><a href="13-writing-code.html#completion">13.7.3 Completion</a></li><li><a href="13-writing-code.html#rename-fixes-and-tidying">13.7.4 Rename, fixes and tidying</a></li><li><a href="13-writing-code.html#formatting">13.7.5 Formatting</a></li><li><a href="13-writing-code.html#settings-of-your-own">13.7.6 Settings of your own</a></li><li><a href="13-writing-code.html#commands-4">13.7.7 Commands</a></li><li><a href="13-writing-code.html#settings-and-faces">13.7.8 Settings and faces</a></li></ol></li><li><a href="13-writing-code.html#snippets">13.8 Snippets</a><ol><li><a href="13-writing-code.html#commands-and-settings-3">13.8.1 Commands and settings</a></li></ol></li><li><a href="13-writing-code.html#running-a-build-or-the-tests">13.9 Running a build or the tests</a><ol><li><a href="13-writing-code.html#commands-and-settings-4">13.9.1 Commands and settings</a></li></ol></li><li><a href="13-writing-code.html#merge-conflicts">13.10 Merge conflicts</a><ol><li><a href="13-writing-code.html#commands-and-faces">13.10.1 Commands and faces</a></li></ol></li><li><a href="13-writing-code.html#lisp-development">13.11 Lisp development</a><ol><li><a href="13-writing-code.html#commands-5">13.11.1 Commands</a></li><li><a href="13-writing-code.html#settings">13.11.2 Settings</a></li></ol></li><li><a href="13-writing-code.html#the-commands-of-each-language">13.12 The commands of each language</a></li></ol></li><li id="nav-14-org"><a href="14-org.html">14 Org</a><ol><li><a href="14-org.html#an-org-file">14.1 An Org file</a><ol><li><a href="14-org.html#how-a-note-is-shown">14.1.1 How a note is shown</a></li></ol></li><li><a href="14-org.html#headings-and-folding">14.2 Headings and folding</a><ol><li><a href="14-org.html#folding">14.2.1 Folding</a></li><li><a href="14-org.html#new-headings">14.2.2 New headings</a></li><li><a href="14-org.html#moving-and-changing-level">14.2.3 Moving and changing level</a></li></ol></li><li><a href="14-org.html#lists-and-checkboxes">14.3 Lists and checkboxes</a><ol><li><a href="14-org.html#checkboxes">14.3.1 Checkboxes</a></li></ol></li><li><a href="14-org.html#tasks">14.4 Tasks</a><ol><li><a href="14-org.html#tasks-with-parts">14.4.1 Tasks with parts</a></li><li><a href="14-org.html#notes-on-a-task">14.4.2 Notes on a task</a></li><li><a href="14-org.html#keywords-of-your-own">14.4.3 Keywords of your own</a></li><li><a href="14-org.html#priorities">14.4.4 Priorities</a></li></ol></li><li><a href="14-org.html#tags">14.5 Tags</a></li><li><a href="14-org.html#dates-and-scheduling">14.6 Dates and scheduling</a><ol><li><a href="14-org.html#answering-the-date-question">14.6.1 Answering the date question</a></li><li><a href="14-org.html#things-that-come-round-again">14.6.2 Things that come round again</a></li><li><a href="14-org.html#being-told-on-the-desktop">14.6.3 Being told on the desktop</a></li></ol></li><li><a href="14-org.html#the-agenda">14.7 The agenda</a><ol><li><a href="14-org.html#telling-tuatara-which-files-to-read">14.7.1 Telling Tuatara which files to read</a></li><li><a href="14-org.html#opening-it">14.7.2 Opening it</a></li><li><a href="14-org.html#moving-about">14.7.3 Moving about</a></li><li><a href="14-org.html#changing-tasks-from-the-agenda">14.7.4 Changing tasks from the agenda</a></li><li><a href="14-org.html#views-of-your-own">14.7.5 Views of your own</a></li></ol></li><li><a href="14-org.html#capture">14.8 Capture</a><ol><li><a href="14-org.html#templates-of-your-own">14.8.1 Templates of your own</a></li></ol></li><li><a href="14-org.html#moving-an-entry-to-another-place">14.9 Moving an entry to another place</a></li><li><a href="14-org.html#clocking">14.10 Clocking</a></li><li><a href="14-org.html#tables-and-formulas">14.11 Tables and formulas</a><ol><li><a href="14-org.html#making-a-table">14.11.1 Making a table</a></li><li><a href="14-org.html#formulas">14.11.2 Formulas</a></li></ol></li><li><a href="14-org.html#links">14.12 Links</a><ol><li><a href="14-org.html#making-and-following-links">14.12.1 Making and following links</a></li></ol></li><li><a href="14-org.html#blocks-and-code">14.13 Blocks and code</a><ol><li><a href="14-org.html#writing-the-code-out-to-files">14.13.1 Writing the code out to files</a></li><li><a href="14-org.html#a-table-of-contents">14.13.2 A table of contents</a></li><li><a href="14-org.html#blocks-that-write-themselves">14.13.3 Blocks that write themselves</a></li></ol></li><li><a href="14-org.html#exporting">14.14 Exporting</a><ol><li><a href="14-org.html#what-goes-at-the-top-of-the-note">14.14.1 What goes at the top of the note</a></li><li><a href="14-org.html#making-a-pdf">14.14.2 Making a PDF</a></li><li><a href="14-org.html#making-a-word-document">14.14.3 Making a Word document</a></li><li><a href="14-org.html#two-kinds-of-export">14.14.4 Two kinds of export</a></li><li><a href="14-org.html#layout-in-plain-words">14.14.5 Layout in plain words</a></li><li><a href="14-org.html#your-own-look">14.14.6 Your own look</a></li><li><a href="14-org.html#hiding-names">14.14.7 Hiding names</a></li><li><a href="14-org.html#notes-from-other-people">14.14.8 Notes from other people</a></li></ol></li><li><a href="14-org.html#where-to-go-from-here">14.15 Where to go from here</a></li></ol></li><li id="nav-15-git"><a href="15-git.html">15 Git</a><ol><li><a href="15-git.html#what-git-keeps">15.1 What git keeps</a></li><li><a href="15-git.html#the-status">15.2 The status</a><ol><li><a href="15-git.html#menus">15.2.1 Menus</a></li><li><a href="15-git.html#commands-settings-and-faces-of-the-status">15.2.2 Commands, settings and faces of the status</a></li></ol></li><li><a href="15-git.html#staging">15.3 Staging</a><ol><li><a href="15-git.html#hunks-and-single-lines">15.3.1 Hunks and single lines</a></li><li><a href="15-git.html#reversing-a-change">15.3.2 Reversing a change</a></li><li><a href="15-git.html#from-the-file-itself">15.3.3 From the file itself</a></li></ol></li><li><a href="15-git.html#committing">15.4 Committing</a><ol><li><a href="15-git.html#changing-the-last-commit">15.4.1 Changing the last commit</a></li><li><a href="15-git.html#signing-commits">15.4.2 Signing commits</a></li><li><a href="15-git.html#commands-and-settings-for-committing">15.4.3 Commands and settings for committing</a></li></ol></li><li><a href="15-git.html#the-log-and-diffs">15.5 The log and diffs</a><ol><li><a href="15-git.html#the-log">15.5.1 The log</a></li><li><a href="15-git.html#diffs">15.5.2 Diffs</a></li></ol></li><li><a href="15-git.html#branches-and-tags">15.6 Branches and tags</a><ol><li><a href="15-git.html#branches">15.6.1 Branches</a></li><li><a href="15-git.html#merging">15.6.2 Merging</a></li><li><a href="15-git.html#tags">15.6.3 Tags</a></li></ol></li><li><a href="15-git.html#the-stash">15.7 The stash</a></li><li><a href="15-git.html#merge-conflicts">15.8 Merge conflicts</a></li><li><a href="15-git.html#rebase-cherry-pick-revert-and-reset">15.9 Rebase, cherry-pick, revert and reset</a><ol><li><a href="15-git.html#rebase">15.9.1 Rebase</a></li><li><a href="15-git.html#cherry-pick">15.9.2 Cherry-pick</a></li><li><a href="15-git.html#revert">15.9.3 Revert</a></li><li><a href="15-git.html#reset">15.9.4 Reset</a></li></ol></li><li><a href="15-git.html#pulling-and-pushing">15.10 Pulling and pushing</a></li><li><a href="15-git.html#blame-and-the-file-menu">15.11 Blame and the file menu</a><ol><li><a href="15-git.html#who-changed-each-line">15.11.1 Who changed each line</a></li><li><a href="15-git.html#the-file-menu">15.11.2 The file menu</a></li></ol></li><li><a href="15-git.html#rewind-a-file-as-it-was">15.12 Rewind: a file as it was</a></li><li><a href="15-git.html#repositories-you-only-look-at">15.13 Repositories you only look at</a></li><li><a href="15-git.html#less-common-work">15.14 Less common work</a><ol><li><a href="15-git.html#worktrees">15.14.1 Worktrees</a></li><li><a href="15-git.html#bisect-finding-the-commit-that-broke-something">15.14.2 Bisect: finding the commit that broke something</a></li><li><a href="15-git.html#ignoring-files">15.14.3 Ignoring files</a></li><li><a href="15-git.html#notes-on-commits">15.14.4 Notes on commits</a></li><li><a href="15-git.html#patches-and-bundles">15.14.5 Patches and bundles</a></li><li><a href="15-git.html#repositories-inside-repositories">15.14.6 Repositories inside repositories</a></li><li><a href="15-git.html#any-git-command">15.14.7 Any git command</a></li></ol></li></ol></li><li id="nav-16-data-pictures-and-pdfs"><a href="16-data-pictures-and-pdfs.html">16 Data, pictures and PDFs</a><ol><li><a href="16-data-pictures-and-pdfs.html#delimited-data-csv-and-tsv">16.1 Delimited data: CSV and TSV</a><ol><li><a href="16-data-pictures-and-pdfs.html#columns-are-counted-from-0">16.1.1 Columns are counted from 0</a></li><li><a href="16-data-pictures-and-pdfs.html#moving-in-a-table">16.1.2 Moving in a table</a></li><li><a href="16-data-pictures-and-pdfs.html#the-separator">16.1.3 The separator</a></li><li><a href="16-data-pictures-and-pdfs.html#the-header">16.1.4 The header</a></li><li><a href="16-data-pictures-and-pdfs.html#commands-settings-and-faces-for-tables">16.1.5 Commands, settings and faces for tables</a></li></ol></li><li><a href="16-data-pictures-and-pdfs.html#showing-only-some-records">16.2 Showing only some records</a><ol><li><a href="16-data-pictures-and-pdfs.html#deleting-records-for-good">16.2.1 Deleting records for good</a></li></ol></li><li><a href="16-data-pictures-and-pdfs.html#sorting-a-table">16.3 Sorting a table</a></li><li><a href="16-data-pictures-and-pdfs.html#the-hex-view">16.4 The hex view</a><ol><li><a href="16-data-pictures-and-pdfs.html#searching-for-octets">16.4.1 Searching for octets</a></li><li><a href="16-data-pictures-and-pdfs.html#changing-octets">16.4.2 Changing octets</a></li><li><a href="16-data-pictures-and-pdfs.html#files-that-open-in-hex-by-themselves">16.4.3 Files that open in hex by themselves</a></li></ol></li><li><a href="16-data-pictures-and-pdfs.html#pictures">16.5 Pictures</a><ol><li><a href="16-data-pictures-and-pdfs.html#pictures-in-a-terminal">16.5.1 Pictures in a terminal</a></li><li><a href="16-data-pictures-and-pdfs.html#very-large-pictures">16.5.2 Very large pictures</a></li></ol></li><li><a href="16-data-pictures-and-pdfs.html#pdfs">16.6 PDFs</a><ol><li><a href="16-data-pictures-and-pdfs.html#turning-pages">16.6.1 Turning pages</a></li><li><a href="16-data-pictures-and-pdfs.html#zoom">16.6.2 Zoom</a></li><li><a href="16-data-pictures-and-pdfs.html#searching-and-the-text-of-a-pdf">16.6.3 Searching, and the text of a PDF</a></li><li><a href="16-data-pictures-and-pdfs.html#what-the-pdf-says-of-itself-and-files-inside-it">16.6.4 What the PDF says of itself, and files inside it</a></li><li><a href="16-data-pictures-and-pdfs.html#commands-and-settings-for-pdfs">16.6.5 Commands and settings for PDFs</a></li></ol></li><li><a href="16-data-pictures-and-pdfs.html#office-documents">16.7 Office documents</a></li><li><a href="16-data-pictures-and-pdfs.html#what-a-file-says-of-itself">16.8 What a file says of itself</a></li><li><a href="16-data-pictures-and-pdfs.html#when-a-file-cannot-be-drawn">16.9 When a file cannot be drawn</a></li></ol></li><li id="nav-17-the-terminal"><a href="17-the-terminal.html">17 The terminal</a><ol><li><a href="17-the-terminal.html#opening-a-terminal">17.1 Opening a terminal</a><ol><li><a href="17-the-terminal.html#where-it-appears">17.1.1 Where it appears</a></li><li><a href="17-the-terminal.html#showing-and-hiding">17.1.2 Showing and hiding</a></li></ol></li><li><a href="17-the-terminal.html#typing-into-a-terminal">17.2 Typing into a terminal</a><ol><li><a href="17-the-terminal.html#sending-a-key-the-editor-keeps">17.2.1 Sending a key the editor keeps</a></li></ol></li><li><a href="17-the-terminal.html#the-history-view">17.3 The history view</a><ol><li><a href="17-the-terminal.html#searching-the-history">17.3.1 Searching the history</a></li></ol></li><li><a href="17-the-terminal.html#pasting">17.4 Pasting</a></li><li><a href="17-the-terminal.html#links">17.5 Links</a></li><li><a href="17-the-terminal.html#pictures-and-colours-from-programs">17.6 Pictures and colours from programs</a></li><li><a href="17-the-terminal.html#the-title">17.7 The title</a></li><li><a href="17-the-terminal.html#escape-nvim-and-the-shell">17.8 Escape, nvim and the shell</a></li><li><a href="17-the-terminal.html#the-terminal-library">17.9 The terminal library</a></li><li><a href="17-the-terminal.html#running-tuatara-inside-a-terminal">17.10 Running Tuatara inside a terminal</a><ol><li><a href="17-the-terminal.html#keys">17.10.1 Keys</a></li><li><a href="17-the-terminal.html#colours-and-pictures">17.10.2 Colours and pictures</a></li><li><a href="17-the-terminal.html#terminal-inside-the-terminal">17.10.3 Terminal inside the terminal</a></li></ol></li></ol></li><li id="nav-18-the-daemon-and-other-machines"><a href="18-the-daemon-and-other-machines.html">18 The daemon and other machines</a><ol><li><a href="18-the-daemon-and-other-machines.html#one-editor-in-the-background">18.1 One editor in the background</a><ol><li><a href="18-the-daemon-and-other-machines.html#the-commands-you-type-in-a-terminal">18.1.1 The commands you type in a terminal</a></li><li><a href="18-the-daemon-and-other-machines.html#names-for-several-daemons">18.1.2 Names for several daemons</a></li><li><a href="18-the-daemon-and-other-machines.html#closing-a-client">18.1.3 Closing a client</a></li><li><a href="18-the-daemon-and-other-machines.html#more-than-one-window-of-a-client">18.1.4 More than one window of a client</a></li><li><a href="18-the-daemon-and-other-machines.html#the-d-in-the-mode-line">18.1.5 The D in the mode line</a></li><li><a href="18-the-daemon-and-other-machines.html#commands-settings-and-faces-for-the-daemon">18.1.6 Commands, settings and faces for the daemon</a></li></ol></li><li><a href="18-the-daemon-and-other-machines.html#clients-in-the-buffer-list">18.2 Clients in the buffer list</a><ol><li><a href="18-the-daemon-and-other-machines.html#the-client-that-stays">18.2.1 The client that stays</a></li><li><a href="18-the-daemon-and-other-machines.html#commands-and-settings-for-clients">18.2.2 Commands and settings for clients</a></li></ol></li><li><a href="18-the-daemon-and-other-machines.html#stopping-the-daemon">18.3 Stopping the daemon</a></li><li><a href="18-the-daemon-and-other-machines.html#sessions-for-each-client">18.4 Sessions for each client</a></li><li><a href="18-the-daemon-and-other-machines.html#a-daemon-on-another-machine">18.5 A daemon on another machine</a><ol><li><a href="18-the-daemon-and-other-machines.html#starting-using-and-stopping">18.5.1 Starting, using and stopping</a></li><li><a href="18-the-daemon-and-other-machines.html#what-has-to-be-in-place">18.5.2 What has to be in place</a></li><li><a href="18-the-daemon-and-other-machines.html#keys-limited-with-command">18.5.3 Keys limited with command=</a></li><li><a href="18-the-daemon-and-other-machines.html#what-a-server-is-given">18.5.4 What a server is given</a></li></ol></li><li><a href="18-the-daemon-and-other-machines.html#the-trusted-servers">18.6 The trusted servers</a><ol><li><a href="18-the-daemon-and-other-machines.html#the-columns">18.6.1 The columns</a></li><li><a href="18-the-daemon-and-other-machines.html#the-keys-of-the-list">18.6.2 The keys of the list</a></li><li><a href="18-the-daemon-and-other-machines.html#the-ssh-agent">18.6.3 The ssh agent</a></li><li><a href="18-the-daemon-and-other-machines.html#the-gpg-agent">18.6.4 The gpg agent</a></li><li><a href="18-the-daemon-and-other-machines.html#the-clipboard-and-dropped-files">18.6.5 The clipboard and dropped files</a></li><li><a href="18-the-daemon-and-other-machines.html#a-language-server-for-a-server">18.6.6 A language server for a server</a></li><li><a href="18-the-daemon-and-other-machines.html#commands-for-the-trusted-servers">18.6.7 Commands for the trusted servers</a></li></ol></li></ol></li><li id="nav-19-packages" class="here"><a class="here" href="19-packages.html">19 Packages</a><ol><li><a href="19-packages.html#what-a-package-is">19.1 What a package is</a></li><li><a href="19-packages.html#naming-a-package-in-your-init-file">19.2 Naming a package in your init file</a><ol><li><a href="19-packages.html#the-keywords">19.2.1 The keywords</a></li><li><a href="19-packages.html#the-first-load">19.2.2 The first load</a></li></ol></li><li><a href="19-packages.html#the-package-manager">19.3 The package manager</a><ol><li><a href="19-packages.html#commands-of-the-package-manager">19.3.1 Commands of the package manager</a></li></ol></li><li><a href="19-packages.html#updating">19.4 Updating</a><ol><li><a href="19-packages.html#commands-for-updating">19.4.1 Commands for updating</a></li></ol></li><li><a href="19-packages.html#signatures-and-trust">19.5 Signatures and trust</a><ol><li><a href="19-packages.html#naming-the-signers-yourself">19.5.1 Naming the signers yourself</a></li><li><a href="19-packages.html#sources-that-are-not-encrypted">19.5.2 Sources that are not encrypted</a></li><li><a href="19-packages.html#settings">19.5.3 Settings</a></li></ol></li><li><a href="19-packages.html#unloading-and-removing">19.6 Unloading and removing</a><ol><li><a href="19-packages.html#commands-for-unloading-and-removing">19.6.1 Commands for unloading and removing</a></li><li><a href="19-packages.html#clearing-out-sources-no-longer-used">19.6.2 Clearing out sources no longer used</a></li><li><a href="19-packages.html#where-packages-are-kept">19.6.3 Where packages are kept</a></li></ol></li><li><a href="19-packages.html#what-a-package-needs-check-health">19.7 What a package needs: check-health</a></li><li><a href="19-packages.html#the-packages-the-project-publishes">19.8 The packages the project publishes</a><ol><li><a href="19-packages.html#palimpsest">19.8.1 palimpsest</a></li><li><a href="19-packages.html#csvdt">19.8.2 csvdt</a></li><li><a href="19-packages.html#csv-columns">19.8.3 csv-columns</a></li><li><a href="19-packages.html#facematch">19.8.4 facematch</a></li><li><a href="19-packages.html#garamond">19.8.5 garamond</a></li><li><a href="19-packages.html#kitty">19.8.6 kitty</a></li><li><a href="19-packages.html#outlook">19.8.7 outlook</a></li><li><a href="19-packages.html#caldav">19.8.8 caldav</a></li><li><a href="19-packages.html#themes">19.8.9 themes</a></li></ol></li><li><a href="19-packages.html#writing-a-package-of-your-own">19.9 Writing a package of your own</a></li></ol></li><li id="nav-20-making-it-your-own"><a href="20-making-it-your-own.html">20 Making it your own</a><ol><li><a href="20-making-it-your-own.html#the-init-file">20.1 The init file</a></li><li><a href="20-making-it-your-own.html#where-tuatara-keeps-its-files">20.2 Where Tuatara keeps its files</a><ol><li><a href="20-making-it-your-own.html#what-to-copy-to-another-computer">20.2.1 What to copy to another computer</a></li><li><a href="20-making-it-your-own.html#settings-for-the-folders">20.2.2 Settings for the folders</a></li></ol></li><li><a href="20-making-it-your-own.html#changing-a-setting">20.3 Changing a setting</a></li><li><a href="20-making-it-your-own.html#keys-of-your-own">20.4 Keys of your own</a></li><li><a href="20-making-it-your-own.html#a-leader-key-of-your-own">20.5 A leader key of your own</a></li><li><a href="20-making-it-your-own.html#modal-editing-and-turning-it-off">20.6 Modal editing, and turning it off</a></li><li><a href="20-making-it-your-own.html#themes-and-faces">20.7 Themes and faces</a><ol><li><a href="20-making-it-your-own.html#choosing-a-theme">20.7.1 Choosing a theme</a></li><li><a href="20-making-it-your-own.html#changing-one-face">20.7.2 Changing one face</a></li><li><a href="20-making-it-your-own.html#a-theme-of-your-own">20.7.3 A theme of your own</a></li><li><a href="20-making-it-your-own.html#the-faces">20.7.4 The faces</a></li></ol></li><li><a href="20-making-it-your-own.html#fonts">20.8 Fonts</a><ol><li><a href="20-making-it-your-own.html#commands-and-faces-for-fonts-and-the-window">20.8.1 Commands and faces for fonts and the window</a></li></ol></li><li><a href="20-making-it-your-own.html#your-name">20.9 Your name</a></li><li><a href="20-making-it-your-own.html#snippets-of-your-own">20.10 Snippets of your own</a></li><li><a href="20-making-it-your-own.html#how-lines-are-shown">20.11 How lines are shown</a></li><li><a href="20-making-it-your-own.html#the-calendar">20.12 The calendar</a><ol><li><a href="20-making-it-your-own.html#commands-settings-and-faces-for-the-calendar">20.12.1 Commands, settings and faces for the calendar</a></li></ol></li><li><a href="20-making-it-your-own.html#the-journal">20.13 The journal</a></li><li><a href="20-making-it-your-own.html#odds-and-ends">20.14 Odds and ends</a><ol><li><a href="20-making-it-your-own.html#changing-case-and-what-a-character-is">20.14.1 Changing case, and what a character is</a></li><li><a href="20-making-it-your-own.html#buttons-and-the-mouse">20.14.2 Buttons and the mouse</a></li><li><a href="20-making-it-your-own.html#modes-for-other-kinds-of-text">20.14.3 Modes for other kinds of text</a></li><li><a href="20-making-it-your-own.html#lists-and-the-cursors-popups">20.14.4 Lists and the cursor's popups</a></li><li><a href="20-making-it-your-own.html#limits-and-safety">20.14.5 Limits and safety</a></li><li><a href="20-making-it-your-own.html#about-the-tutor-and-lisp">20.14.6 About, the tutor and Lisp</a></li></ol></li></ol></li><li id="nav-21-every-setting"><a href="21-every-setting.html">21 Every setting</a></li><li id="nav-22-every-command"><a href="22-every-command.html">22 Every command</a><ol><li><a href="22-every-command.html#commands-that-switch-to-a-major-mode">22.1 Commands that switch to a major mode</a></li></ol></li></ol>
+</nav>
+<main>
+<article>
+<div class="node"><span>Previous: <a href="18-the-daemon-and-other-machines.html">The daemon and other machines</a></span><span>Next: <a href="20-making-it-your-own.html">Making it your own</a></span><span>Up: <a href="index.html">Contents</a></span></div>
+<h1 id="packages">Packages</h1>
+<p class="lead">Adding to Tuatara what not everyone needs, and keeping it up to date.</p>
+<p>Tuatara does a lot by itself, but some things are wanted by only a few
+people. One person reads Outlook mailboxes, another keeps a calendar in step
+with a phone, another wants a different set of colours. Putting all of that in
+the editor would make it larger and slower for everyone. So these things are
+kept apart, as packages, and you add the ones you want. This chapter explains
+what a package is, how you name one in your init file, how Tuatara fetches and
+checks it, and how you update it, switch it off or get rid of it. The end of
+the chapter describes the packages the project publishes.</p>
+<p>The init file is the file where you tell Tuatara how you like things. Chapter
+20 covers it. Here you only add a line or two to it, which the steps show.
+Every key in this chapter is pressed in NORMAL state unless it starts with
+<kbd>C-x</kbd> or <kbd>C-c</kbd>, which work in both states.</p>
+<h2 id="what-a-package-is"><span class="num">19.1</span> What a package is</h2>
+<p>A package is a folder of Lisp files that adds something to Tuatara: a
+command, a way of opening a kind of file, a set of colours. Lisp is the
+language Tuatara is written in. You do not need to read it to use a package,
+but you can, and Tuatara offers to show it to you before it runs anything.</p>
+<p>A package lives in one of two places. Most live in a git repository on the
+internet, which is a folder of files with a history of every change made to
+it. Tuatara fetches the version you ask for into a folder of its own. The
+other kind is a folder on your own disk, which suits something you wrote
+yourself. Tuatara calls the place a package comes from its source.</p>
+<p>A package does three things for you that a loose file of code would not.
+Tuatara compiles it, which turns the Lisp into a form the computer runs fast,
+and it does this in the background while you go on typing. It loads the
+package at every start, in a few thousandths of a second, from the compiled
+form. And it checks who signed the version it fetched, so that a changed
+package does not slip in unnoticed.</p>
+<h2 id="naming-a-package-in-your-init-file"><span class="num">19.2</span> Naming a package in your init file</h2>
+<p>You name a package with a line in your init file. The line says what the
+package is called and where it comes from:</p>
+<pre class="ex"><code class="language-lisp">(load-package &quot;themes&quot;
+              :source &quot;https://github.com/Tuatara-Editor/tuatara-themes&quot;)
+</code></pre>
+<p><code>load-package</code> is the whole interface. The name comes first, in quotes, and
+the rest are keywords, each followed by its value. Only the keywords you need
+are written. Tuatara reads the init file when it starts, fetches the package
+the first time, and asks you about it (see &quot;The first load&quot; below).</p>
+<p>If you use a source for several packages, give it a short name once with
+<code>package-source</code>, and use that name after <code>:source</code>:</p>
+<pre class="ex"><code class="language-lisp">(package-source &quot;mine&quot; &quot;~/Projects/my-packages/&quot;)
+(load-package &quot;hello&quot; :source &quot;mine&quot;)
+</code></pre>
+<p>An address that begins with <code>https://</code> or <code>ssh</code>, or a folder on your disk
+(<code>~/</code> means your home folder), is accepted. An address that begins with
+<code>http://</code> or <code>git://</code> is refused, because anyone on the way could read it and
+change what is sent. Section &quot;Sources that are not encrypted&quot; says how to
+allow one on a network you trust.</p>
+<h3 id="the-keywords"><span class="num">19.2.1</span> The keywords</h3>
+<div class="tablewrap"><table><caption>Table 19.1. What can follow the name in a <code>load-package</code> line.</caption>
+<thead>
+<tr><th>Keyword</th><th>What it says</th></tr>
+</thead>
+<tbody>
+<tr><td><code>:source</code></td><td>Where the package comes from: the name given with</td></tr>
+<tr><td></td><td><code>package-source</code>, an address, or a folder.</td></tr>
+<tr><td><code>:version</code></td><td>Which version to fetch: a tag, a branch or a commit.</td></tr>
+<tr><td></td><td>Left out, or <code>&quot;release&quot;</code>, it is the newest tag. With</td></tr>
+<tr><td></td><td><code>&quot;latest&quot;</code> it is the newest commit, and it is also the</td></tr>
+<tr><td></td><td>one taken when the repository has no tag yet. A whole</td></tr>
+<tr><td></td><td>40-character commit keeps the package at that commit.</td></tr>
+<tr><td><code>:folder</code>, <code>:file</code></td><td>The package's folder inside the source, and its first</td></tr>
+<tr><td></td><td>file, when they are not the package's name. The folder</td></tr>
+<tr><td></td><td>is <code>NAME/</code>, else the top of the source. The file is</td></tr>
+<tr><td></td><td><code>NAME.lisp</code>, else <code>load.lisp</code>.</td></tr>
+<tr><td><code>:signers</code></td><td>The fingerprints of the keys that must have signed it.</td></tr>
+<tr><td><code>:plain t</code></td><td>Allows an <code>http://</code> or <code>git://</code> address.</td></tr>
+<tr><td><code>:disabled t</code></td><td>Leaves the whole line out, as if it were not there.</td></tr>
+<tr><td><code>:if FORM</code></td><td>Leaves the line out when <code>FORM</code> gives <code>nil</code>. It is how</td></tr>
+<tr><td></td><td>one init file serves two machines.</td></tr>
+<tr><td><code>:defer t</code></td><td>Loads the package once Tuatara has started, not while</td></tr>
+<tr><td></td><td>the init file is read.</td></tr>
+<tr><td><code>:after &quot;other&quot;</code></td><td>Loads it only after the package or group <code>other</code> has.</td></tr>
+<tr><td><code>:commands</code></td><td>Loads it when one of these commands is first run.</td></tr>
+<tr><td><code>:modes</code></td><td>Loads it when a buffer first takes one of these modes.</td></tr>
+<tr><td><code>:init</code>, <code>:config</code></td><td>Forms run before the package loads, and after it. Its</td></tr>
+<tr><td></td><td>settings and keys go after <code>:config</code>.</td></tr>
+</tbody></table></div>
+<p>A form is a piece of Lisp in brackets, such as <code>(setf *garamond-mode-line*
+nil)</code>. <code>:config</code> takes any number of them, one after another. This is the
+place for a package's settings, since they exist only once the package has
+loaded:</p>
+<pre class="ex"><code class="language-lisp">(load-package &quot;garamond&quot;
+              :source &quot;https://github.com/Tuatara-Editor/tuatara-garamond&quot;
+              :config
+              (setf *garamond-mode-line* nil))
+</code></pre>
+<p><code>:defer</code>, <code>:after</code>, <code>:commands</code> and <code>:modes</code> are for starting quickly. A
+package you use once a week does not have to be ready at the first frame. With
+<code>:commands</code> or <code>:modes</code> it waits until you ask for it. Even then you do not
+have to remember to load it: running one of its commands loads it first.</p>
+<p><code>load-package</code> with no <code>:source</code> loads nothing. It groups settings and keys
+under a name, the way the starter init file does for <code>&quot;keys&quot;</code> and <code>&quot;looks&quot;</code>.
+Tuatara also corrects a misspelt name: a name a letter or two away from a
+package it knows is an error that names the one it thinks you meant.</p>
+<h3 id="the-first-load"><span class="num">19.2.2</span> The first load</h3>
+<p>The first time Tuatara meets a package it fetches it, in the background, and
+asks before it compiles and loads it:</p>
+<pre class="ex">Compile and load the package themes from https://github.com/...? (y, n, or v to view its source)
+</pre>
+<p>You answer with one key, with no <code>RET</code>. <kbd>y</kbd> goes on. <kbd>n</kbd> leaves the package
+unloaded, and Tuatara asks again at the next start. <kbd>v</kbd> lists the package's
+folder so that you can read its source first, opened safely so that nothing in
+it runs. <kbd>C-g</kbd> means &quot;not now&quot; and also asks again next time. Any other key
+puts <code>Answer y, n or v.</code> before the question and asks again. Keys you typed
+before the question appeared are thrown away, so a key meant for your text can
+never answer it.</p>
+<p>After <kbd>y</kbd> the compiling happens in a second copy of Tuatara that has no window
+and runs apart from your editor. You can keep working. <kbd>C-x j</kbd> lists the job
+and <kbd>C-x J</kbd> stops it. When it is done, the package loads in one step, between
+two of your commands, so no command ever runs with a package half loaded.</p>
+<p>If you trust your sources and want no question, set
+<code>*package-ask-before-loading*</code> to <code>nil</code>.</p>
+<h2 id="the-package-manager"><span class="num">19.3</span> The package manager</h2>
+<p><kbd>M-x package-manager</kbd> shows the packages your init file loads from a source,
+one line each, in a buffer called <code>*Packages*</code>. It works as the buffer list
+of chapter 7 does: you move over the lines, mark some, and act on the marked
+ones.</p>
+<figure id="fig-package-manager">
+<pre class="ex"> M Name        Version  Commit   State     Signed by      Source
+ - ----        -------  ------   -----     ---------      ------
+   themes      v0.3     4c1e9a0  loaded    Aroha Ngata    https://github.com/T…
+ &gt; kitty       v0.2     b07d332  loaded    Aroha Ngata    https://github.com/T…
+   hello       folder            loaded    unsigned       ~/Projects/my-pack…
+   outlook     v1.1     91ac7e5  unloaded  Aroha Ngata    https://github.com/T…
+
+   4 packages, 3 loaded
+</pre>
+<figcaption>Figure 19.1. The package manager, with its README beside it.</figcaption>
+</figure>
+<p>The columns are the mark, the name, the version (<code>folder</code> for a folder of
+your disk), the first letters of the commit, what became of the package this
+session, who signs its source's versions, and the source. The state is one of
+<code>loaded</code>, <code>fetching</code>, <code>failed</code>, <code>refused</code>, <code>declined</code>, <code>kept</code>, <code>unloaded</code>,
+<code>removed</code> and <code>not fetched</code>. A package that is not loaded is drawn in the
+faint colour, as in the figure. <code>declined</code> means you said no at the question.
+<code>refused</code> means its code uses a name this Tuatara does not have, because the
+package is newer than your Tuatara or a newer Tuatara renamed something. A
+refused package is never run, and the reason shows beside the list where the
+README would be. The README of the package under the cursor shows beside the
+list, or below it when the window is narrow. <kbd>P</kbd> turns it off and on.</p>
+<p>The keys are those of the lists you already know, with a few of its own.</p>
+<div class="tablewrap"><table><caption>Table 19.2. Keys in the package manager.</caption>
+<thead>
+<tr><th>Key</th><th>What it does</th></tr>
+</thead>
+<tbody>
+<tr><td><kbd>RET</kbd> or <kbd>l</kbd></td><td>Lists the package's folder, to read its source.</td></tr>
+<tr><td><kbd>o</kbd></td><td>The same, in another window.</td></tr>
+<tr><td><kbd>n</kbd>, <kbd>p</kbd></td><td>Go to the next package, and the one before.</td></tr>
+<tr><td><kbd>m</kbd>, <kbd>u</kbd>, <kbd>U</kbd>, <kbd>t</kbd></td><td>Mark, unmark, unmark all, swap the marks.</td></tr>
+<tr><td><kbd>f</kbd></td><td>Fetches the marked packages again (see &quot;Updating&quot;).</td></tr>
+<tr><td><kbd>L</kbd></td><td>Loads the marked ones.</td></tr>
+<tr><td><kbd>K</kbd></td><td>Unloads the marked ones from the running editor.</td></tr>
+<tr><td><kbd>R</kbd></td><td>Removes them: unloads them and keeps them from loading.</td></tr>
+<tr><td><kbd>d</kbd>, then <kbd>x</kbd></td><td>Marks for deletion, then deletes what is kept of them.</td></tr>
+<tr><td><kbd>D</kbd></td><td>Deletes what is kept of the marked ones.</td></tr>
+<tr><td><kbd>h</kbd> or <kbd>q</kbd></td><td>Closes the list.</td></tr>
+</tbody></table></div>
+<p>With nothing marked, each of these acts on the package on the cursor's line.</p>
+<p><kbd>M-x package-scan</kbd> reads your init file again for <code>load-package</code> lines that
+have a <code>:source</code>, loads each package that is not loaded, as at a start, and
+then shows the package manager. It is what you run after adding a line to the
+init file, when you do not want to restart Tuatara.</p>
+<div class="try">
+<h3>Try it, adding the themes package</h3>
+<ol>
+<li>Press <kbd>C-x C-f</kbd>, type <code>~/.config/tuatara/init.lisp</code> and press <kbd>RET</kbd>. This
+   is your init file.</li>
+<li>Press <kbd>g</kbd> then <kbd>e</kbd> to go to the end. Press <kbd>o</kbd> to open a new line and
+   type:
+   <code>(load-package &quot;themes&quot; :source &quot;https://github.com/Tuatara-Editor/tuatara-themes&quot;)</code></li>
+<li>Press <kbd>C-g</kbd> and then <kbd>C-x C-s</kbd> to save.</li>
+<li>Run <kbd>M-x package-scan</kbd>. <code>*Packages*</code> opens with a line for <code>themes</code>. In a
+   moment the question appears. Press <kbd>v</kbd> to look at the source, then <kbd>q</kbd> to
+   come back, and answer <kbd>y</kbd>. If the line says <code>failed</code> and the echo row says
+   the package is refused because of a signer, your keyring lacks the key
+   that signed it. Import it as described under &quot;Signatures and trust&quot;, run
+   <kbd>M-x package-update</kbd> and try again.</li>
+<li>The echo row says the package is compiled and loaded. The line in the list
+   now says <code>loaded</code>.</li>
+<li>Run <kbd>M-x load-theme</kbd>. The list now includes fourteen more themes. Choose
+   <code>nord</code> and press <kbd>RET</kbd>. The colours change at once.</li>
+</ol>
+</div>
+<h3 id="commands-of-the-package-manager"><span class="num">19.3.1</span> Commands of the package manager</h3>
+<div class="tablewrap"><table>
+<thead>
+<tr><th>Keys</th><th>Command</th><th>What it does</th></tr>
+</thead>
+<tbody>
+<tr><td>none</td><td><code>package-manager</code></td><td>Manage the packages the init file loads from a source (load-package with :source) in a list, as the buffer list (C-x C-b) manages buffers.</td></tr>
+<tr><td>none</td><td><code>package-scan</code></td><td>Look in the init file for the packages it loads from a source (each load-package with :source), and load each that is not loaded or on its way, as at the start: fetched in the background, asked about before it is compiled, loaded.</td></tr>
+</tbody></table></div>
+<h2 id="updating"><span class="num">19.4</span> Updating</h2>
+<p>A package fetched from a repository keeps the version you first took. When its
+author publishes a newer one, <kbd>M-x package-update</kbd> looks again. It asks each
+repository for the version the <code>load-package</code> line wants (the newest tag, the
+newest commit, or the tag, branch or commit you named), fetches what is new in
+the background and, when it is a different commit from the one you have, asks
+the question of the first load again. Packages that are already up to date
+are said to be so. Folders of your own disk are left alone, since you change
+those yourself.</p>
+<p><kbd>M-x package-update-marked</kbd>, or <kbd>f</kbd> in the package manager, does the same for
+only the packages you marked, or for the one on the line.</p>
+<p>A package can say, in a comment at the top of its first file, the oldest
+Tuatara it works with: <code>;;;; Needs: Tuatara 0.91.0</code>. Tuatara reads that line
+without running anything. If the newest version needs a newer Tuatara than
+yours, Tuatara looks back through the earlier versions for the newest that
+fits, says which one it took, and loads that. If none fits, the version you
+have stays. A package that says nothing loads in any Tuatara.</p>
+<p>Tuatara keeps the version it took and the one before it, each with its
+compiled files. When a new version fails to load, because it cannot be
+compiled or uses a name your Tuatara lacks, the one before it is loaded in its
+place, and a message tells you so once.</p>
+<div class="try">
+<h3>Try it, updating everything</h3>
+<ol>
+<li>Run <kbd>M-x package-update</kbd>. The echo row says it is fetching.</li>
+<li>Press <kbd>C-x j</kbd> to see the job. When it finishes, packages with nothing new
+   are said to be up to date.</li>
+<li>If a package has a new commit, the question of the first load appears for
+   it. Press <kbd>v</kbd> to read what changed, <kbd>q</kbd> to come back, then <kbd>y</kbd>.</li>
+<li>Open <kbd>M-x package-manager</kbd>. The Version and Commit columns show what you
+   have now.</li>
+<li>To update only some: press <kbd>m</kbd> on two packages, then <kbd>f</kbd>. Only those two
+   are fetched again.</li>
+</ol>
+</div>
+<h3 id="commands-for-updating"><span class="num">19.4.1</span> Commands for updating</h3>
+<div class="tablewrap"><table>
+<thead>
+<tr><th>Keys</th><th>Command</th><th>What it does</th></tr>
+</thead>
+<tbody>
+<tr><td>none</td><td><code>package-update</code></td><td>Fetch again each package load-package fetched (not the folders of your disk), in the background: the version it asks for looked up anew (the newest tag, the newest commit, or the tag, branch or commit named), and fetched and loaded when it is another commit than the one there, asked about first (<strong>PACKAGE-ASK-BEFORE-LOADING</strong>); the others are said to be up to date.</td></tr>
+<tr><td><kbd>f</kbd>, <kbd>C-c f</kbd></td><td><code>package-update-marked</code></td><td>Fetch again the marked packages (&gt;), or with none marked the one on the current line, as M-x package-update does them all.</td></tr>
+</tbody></table></div>
+<h2 id="signatures-and-trust"><span class="num">19.5</span> Signatures and trust</h2>
+<p>Code you load runs with all your rights. That is true of any editor's
+extensions. So Tuatara asks who signed each version, as one way of noticing
+when something has changed hands.</p>
+<p>The author signs a tag or a commit with a key, using GPG or SSH. Tuatara asks
+git who signed the one it fetched. Git does the checking, with <code>gpg</code> and your
+keyring for a GPG signature and with <code>ssh-keygen</code> for an SSH one, and nothing
+in the repository is run to do it. The question at the first load says who
+signed the version, and your <kbd>y</kbd> makes that signer the one Tuatara remembers
+for the source. The memory is kept in a file called <code>package-trust</code> beside the
+packages, which you can read. This is called trust on first use: you decide
+once, and Tuatara holds the source to that decision.</p>
+<p>From then on:</p>
+<ul>
+<li>A version signed by the same key is taken.</li>
+<li>A version signed by another key, or unsigned when the versions before it
+  were signed, or whose signature does not check out, is refused. The version
+  you have keeps running.</li>
+<li>A source whose first version was unsigned goes on having unsigned versions
+  taken, since nobody has to sign. The first signed version makes its signer
+  the one remembered.</li>
+</ul>
+<p>A refusal says what changed:</p>
+<pre class="ex">The package tally from https://example.org/tally.git is refused: unsigned,
+and the versions taken before were signed by Ann Author (key SHA256:...).
+The version loaded now is kept; M-x package-trust-again trusts its source
+anew, as the first time
+</pre>
+<p>Sometimes the change is honest: the author has a new key, or moved the
+project. Then you decide, as at the first time. <kbd>M-x package-trust-again</kbd>
+asks which package, forgets who signed its source, and fetches it again. The
+question names the new signer, and your <kbd>y</kbd> makes it the one remembered. Think
+before you press it. If you do not know why the key changed, ask the author.</p>
+<p>A version signed with a GPG key your keyring lacks is refused, and Tuatara
+remembers the key's fingerprint. Import the key with <kbd>M-x gpg-import-keys</kbd> and
+run <kbd>M-x package-update</kbd>. Versions signed by that key, or by the key it
+belongs to, are then taken.</p>
+<div class="tablewrap"><table>
+<thead>
+<tr><th>Keys</th><th>Command</th><th>What it does</th></tr>
+</thead>
+<tbody>
+<tr><td>none</td><td><code>package-trust-again</code></td><td>Trust the source of a package asked for anew, as the first time: who signed the versions taken from it is forgotten, and the package is fetched again (M-x package-update); the version found is asked about with who signed it (<strong>PACKAGE-ASK-BEFORE-LOADING</strong>), and once it is let load, that signer is the one remembered.</td></tr>
+<tr><td>none</td><td><code>gpg-import-keys</code></td><td>Import the keys in a file asked for (armoured or not) into your keyring; say what was imported.</td></tr>
+</tbody></table></div>
+<h3 id="naming-the-signers-yourself"><span class="num">19.5.1</span> Naming the signers yourself</h3>
+<p>If you know whose keys you want, say so, and only versions signed by them are
+taken, from the very first:</p>
+<pre class="ex"><code class="language-lisp">(package-source &quot;mine&quot; &quot;https://example.org/my-packages.git&quot;
+                :signers '(&quot;SHA256:hdVZ5mzqXcO1EQf8N4u9MJvZb7TfsHkLqR2wPaXyC0s&quot;))
+</code></pre>
+<p>An SSH key's fingerprint is what <code>ssh-keygen -lf KEY.pub</code> prints. A GPG key's
+is the 40 hexadecimal digits that <code>gpg --fingerprint</code> shows. A key's short ID
+is refused, and so is a signing subkey's fingerprint: give the key's own.
+<code>load-package</code> takes <code>:signers</code> as well. Names in the init file always decide
+for their source, and <code>package-trust-again</code> does not change that.</p>
+<h3 id="sources-that-are-not-encrypted"><span class="num">19.5.2</span> Sources that are not encrypted</h3>
+<p>A server inside your organisation may speak only <code>http://</code>. You can allow it
+for one package at a time:</p>
+<pre class="ex"><code class="language-lisp">(load-package &quot;tally&quot; :source &quot;http://git.example.org/tally.git&quot; :plain t)
+</code></pre>
+<p>Whoever controls the network between you and that server can hand you an older
+version of the package than the newest, one with a bug that has since been
+fixed. A signature does not stop that, because the old version is genuinely
+signed. Use <code>:plain t</code> only on a network you trust. The <code>Signed by</code> column of
+the package manager says <code>unencrypted</code> for these sources.</p>
+<h3 id="settings"><span class="num">19.5.3</span> Settings</h3>
+<div class="tablewrap"><table>
+<thead>
+<tr><th>Setting</th><th>Standard</th><th>What it changes</th></tr>
+</thead>
+<tbody>
+<tr><td><code>*package-check-signatures*</code></td><td><code>t</code></td><td>True to check who signed each version of a package, and take only those that M-x package-trust-again and the signers of a source (:signers) allow.</td></tr>
+</tbody></table></div>
+<p><code>*package-check-signatures*</code> is <code>t</code>, and you should leave it so. Setting it to
+<code>nil</code> makes every version of every source be taken, signed by anyone or by no
+one, and nothing is remembered. That is only for a machine whose sources are
+trusted some other way. <code>M-x check-health</code> says when signatures are not
+checked.</p>
+<h2 id="unloading-and-removing"><span class="num">19.6</span> Unloading and removing</h2>
+<p>A package can be taken out of Tuatara in three steps, each going further than
+the one before.</p>
+<p><kbd>M-x package-unload</kbd> (<kbd>K</kbd> in the package manager) takes the package out of
+the running editor: its commands, keys, modes, settings and hooks, and any
+work it has in the background, which is stopped. A buffer in one of its modes
+is put in the mode its file calls for, so nothing you typed is lost. The
+package's code stays on the disk and its <code>load-package</code> line stays in your
+init file, so it loads again at the next start. Use it for a package that is
+misbehaving, or to try Tuatara without it for the afternoon.</p>
+<p><kbd>M-x package-remove</kbd> (<kbd>R</kbd>) unloads it and keeps it from loading at the next
+start as well, without changing your init file. Tuatara remembers in its state
+folder that you removed the package, passes the <code>load-package</code> line over at
+each start and says so once in <code>*Messages*</code>. Its code stays on the disk, so
+bringing it back is quick.</p>
+<p><kbd>M-x package-delete</kbd> (<kbd>D</kbd>, or <kbd>d</kbd> then <kbd>x</kbd>) unloads and removes it and then
+deletes what Tuatara keeps of it: the versions fetched and their compiled
+files. For a package from a folder of your own disk only the compiled files go.
+Your folder is never touched. It asks first, with the size of what goes:</p>
+<pre class="ex">Unload, remove and delete the package hello, 1.2 MB? (y or n, then RET)
+</pre>
+<p><kbd>M-x package-load</kbd> (<kbd>L</kbd>) goes the other way. It loads a package again by its
+<code>load-package</code> line, as at the start. That works for one you unloaded, one you
+removed (it is then no longer removed), and one you deleted (it is fetched
+again). In the package manager each of these four acts on the packages you
+marked, or on the one on the line. Elsewhere the commands ask which package.</p>
+<p>To stop a package for good, also take its line out of your init file, or put
+<code>;;</code> in front of it, or add <code>:disabled t</code> to the line. Unloading alone does
+not do that. A deleted package that is still named in the init file comes back
+at the next start.</p>
+<div class="try">
+<h3>Try it, removing a package you no longer use</h3>
+<ol>
+<li>Run <kbd>M-x package-manager</kbd> and press <kbd>j</kbd> until the cursor is on <code>kitty</code>.</li>
+<li>Press <kbd>R</kbd>. The package is unloaded and its state reads <code>removed</code>.</li>
+<li>Restart Tuatara and open the package manager again. <code>kitty</code> is still there
+   but is not loaded and was not asked about.</li>
+<li>Press <kbd>L</kbd> on its line. It loads again.</li>
+<li>To free the disk space as well, press <kbd>D</kbd>. The question names the size.
+   Answer <kbd>y</kbd> and then <kbd>RET</kbd>. Remove the <code>load-package</code> line from your init
+   file when you are sure you are done with it.</li>
+</ol>
+</div>
+<h3 id="commands-for-unloading-and-removing"><span class="num">19.6.1</span> Commands for unloading and removing</h3>
+<div class="tablewrap"><table>
+<thead>
+<tr><th>Keys</th><th>Command</th><th>What it does</th></tr>
+</thead>
+<tbody>
+<tr><td><kbd>K</kbd>, <kbd>C-c K</kbd></td><td><code>package-unload</code></td><td>Take a package out of the running editor: its commands and keys, with their labels, its modes, the places it gave Tuatara's commands, its ways of showing text, its functions on Tuatara's lists of hooks and of work to do now and then, its settings and its work in the background, which is stopped.</td></tr>
+<tr><td><kbd>R</kbd>, <kbd>C-c R</kbd></td><td><code>package-remove</code></td><td>Unload a package (M-x package-unload) and take it out of the packages loaded: it is not loaded from now on, nor at the next start, though the init file names it; the init file is left as it is, and Tuatara says in <strong>Messages</strong> once a session that it passes the package over.</td></tr>
+<tr><td>none</td><td><code>package-delete</code></td><td>Unload a package (M-x package-unload), remove it from the packages loaded (M-x package-remove), and delete what Tuatara keeps of it: the versions of it fetched and their compiled files, or for a folder of your disk its compiled files alone, the folder of yours left as it is.</td></tr>
+<tr><td><kbd>L</kbd>, <kbd>C-c L</kbd></td><td><code>package-load</code></td><td>Load a package the init file loads from a source that is not loaded now, by its load-package there, as at the start: one unloaded (M-x package-unload), removed (M-x package-remove), whose loading failed, or one deleted, fetched again.</td></tr>
+</tbody></table></div>
+<h3 id="clearing-out-sources-no-longer-used"><span class="num">19.6.2</span> Clearing out sources no longer used</h3>
+<p>Tuatara keeps what it fetches until you say otherwise. When you rename a
+source or stop using one, the old copies stay in the packages folder.
+<kbd>M-x package-remove-unused</kbd> finds them: every source that no <code>package-source</code>
+names and no <code>load-package</code> fetches from, and every package of a source you
+still use that no <code>load-package</code> names. A <code>load-package</code> turned off with
+<code>:disabled t</code>, or left out by <code>:if</code>, still counts as used.</p>
+<p>It lists what would go in <code>*Help*</code>, each with its size, and asks once.
+Answer <kbd>n</kbd> and nothing is touched. Answer <kbd>y</kbd> and the folders are deleted in
+the background. Each is looked at again just before it goes, so a source you
+name in the meantime stays. Only Tuatara's own packages folder is searched. A
+folder of your own disk named as a source is never touched. If your init file
+stopped at an error when Tuatara started, the command does nothing until the
+file reads through, since everything after the error would look unused.</p>
+<div class="tablewrap"><table>
+<thead>
+<tr><th>Keys</th><th>Command</th><th>What it does</th></tr>
+</thead>
+<tbody>
+<tr><td>none</td><td><code>package-remove-unused</code></td><td>Delete the package sources Tuatara keeps that nothing in this session names any more: a source no package-source names and no load-package fetches from, or a package of a source no load-package names; one left out by :disabled or :if counts as named.</td></tr>
+</tbody></table></div>
+<h3 id="where-packages-are-kept"><span class="num">19.6.3</span> Where packages are kept</h3>
+<p>Tuatara keeps what it fetches in <code>~/.local/share/tuatara/packages/</code>, or under
+<code>$XDG_DATA_HOME</code> when you have set that. <code>*packages-directory*</code> puts them
+somewhere else. It must be a folder you made yourself, and while it is missing
+nothing is fetched or loaded from it. <code>*package-size-limit*</code> is the most a
+package may take on the disk while it is fetched, its history and files
+together. A fetch that grows past it is stopped and its files deleted. The
+standard is 512 MiB. <code>*package-sources*</code> holds the sources named with
+<code>package-source</code>. Set them with that function and not by hand.</p>
+<div class="tablewrap"><table>
+<thead>
+<tr><th>Setting</th><th>Standard</th><th>What it changes</th></tr>
+</thead>
+<tbody>
+<tr><td><code>*package-sources*</code></td><td><code>nil</code></td><td>The places packages come from, each (NAME .</td></tr>
+<tr><td><code>*packages-directory*</code></td><td><code>nil</code></td><td>The folder Tuatara keeps the packages it fetches in, in place of ~/.local/share/tuatara/packages/ ($XDG_DATA_HOME/tuatara/packages/); NIL for that standard place.</td></tr>
+<tr><td><code>*package-size-limit*</code></td><td><code>536870912</code></td><td>The most octets a package may take on disk while it is fetched, what git keeps of its history and its files together: a fetch that grows past it is ended and its files deleted.</td></tr>
+<tr><td><code>*package-ask-before-loading*</code></td><td><code>t</code></td><td>True to be asked before a package is first compiled and loaded: one fetched the first time, and again when an update brings another commit; one of a folder of yours the first time only, what you change in it later being yours.</td></tr>
+</tbody></table></div>
+<h2 id="what-a-package-needs-check-health"><span class="num">19.7</span> What a package needs: check-health</h2>
+<p>Some packages need a program that is not part of Tuatara. csvdt needs csvdt,
+outlook needs readpst, kitty needs kitty. Tuatara does not install these. It
+looks for them, and <kbd>M-x check-health</kbd> reports what it found. The report has a
+section for Tuatara and a section for each package that is loaded, in a buffer
+called <code>*Health*</code>. A check that passed is drawn in one colour, one that failed
+in another, and a value that is missing in the faint one. When a package does
+not work, this is the first place to look: it says that a program is not found
+and, for some, where to get it.</p>
+<figure id="fig-health">
+<pre class="ex">Package csvdt
+  csvdt           found     /home/aroha/.local/bin/csvdt
+Package outlook
+  readpst         not found     install libpst
+  weasyprint      found     /usr/bin/weasyprint
+</pre>
+<figcaption>Figure 19.2. Part of a health report.</figcaption>
+</figure>
+<p>The check also tells you when signatures are not checked. It runs in the
+background, so the report comes when it is ready.</p>
+<div class="tablewrap"><table>
+<thead>
+<tr><th>Keys</th><th>Command</th><th>What it does</th></tr>
+</thead>
+<tbody>
+<tr><td>none</td><td><code>check-health</code></td><td>Show what each language and major mode has here.</td></tr>
+</tbody></table></div>
+<div class="tablewrap"><table>
+<thead>
+<tr><th>Face</th><th>What it paints</th></tr>
+</thead>
+<tbody>
+<tr><td><code>:list-good</code></td><td>A state that is as it should be, in a list: a check that passed in the health report (M-x check-health).</td></tr>
+<tr><td><code>:list-bad</code></td><td>A state that is not as it should be, in a list: a check that failed in the health report (M-x check-health).</td></tr>
+<tr><td><code>:list-dim</code></td><td>What is of less interest in a list, set back: help buffers and the headings of clients that ended in the buffer list (C-x C-b), packages not loaded, bookmarks whose file is gone, files ignored in rimu and in a git status, a value missing in the health report (M-x check-health), a line saying more are not shown.</td></tr>
+</tbody></table></div>
+<h2 id="the-packages-the-project-publishes"><span class="num">19.8</span> The packages the project publishes</h2>
+<p>The project's packages are not part of the editor. Each is a repository of its
+own, <code>https://github.com/Tuatara-Editor/tuatara-NAME</code>, for the name of the
+package. You load one with its address as the source, no <code>package-source</code>
+line needed. Each package's README, in its repository, gives the steps and
+the settings, and its settings show in <code>C-h v</code> once it is loaded. Every package
+puts its commands under a prefix of its own, <kbd>C-c</kbd> and a letter.</p>
+<h3 id="palimpsest"><span class="num">19.8.1</span> palimpsest</h3>
+<p>A PDF can be saved over and over, and each save can leave the earlier text in
+the file. palimpsest takes a PDF apart into every save it holds, from the
+original to the latest edit, and looks for the signs of editing that examiners
+of documents know. It reads the file's own bytes and runs nothing in it, and it
+never changes the file. <kbd>M-x palimpsest</kbd> examines the PDF you are looking at,
+or asks for one. The report is made in the background and lists findings with
+the strongest first. In the report, <kbd>C-c p</kbd> is the prefix for its other
+commands, such as saving a revision as a PDF of its own.</p>
+<h3 id="csvdt"><span class="num">19.8.2</span> csvdt</h3>
+<p>csvdt is a separate program that converts the times and durations in CSV
+records. The csvdt package runs it on a CSV buffer, a selection or the lines
+you banked, and shows the result in <code>*csvdt output*</code>. The buffer the records
+came from is never changed. In a CSV or TSV buffer its commands are under
+<kbd>C-c v</kbd>: <kbd>C-c v r</kbd> runs what you chose, and <kbd>C-c v ?</kbd> says what a run would
+cover without running it. You install csvdt yourself.</p>
+<h3 id="csv-columns"><span class="num">19.8.3</span> csv-columns</h3>
+<p>csv-columns rearranges the columns of every record the way awk's <code>print</code>
+does. <kbd>C-c r a</kbd> asks for the columns, counted from 0, so that <code>$0,$2,$1</code> swaps
+the second and third. It needs nothing installed. A large file is done in the
+background, and each run is one step to undo.</p>
+<h3 id="facematch"><span class="num">19.8.4</span> facematch</h3>
+<p>facematch ranks candidate photos by how probable it is that they show the
+person in one or more master photos. You mark photos in the folder view, then
+<kbd>C-c f f</kbd> runs the comparison, in the background and shut in Tuatara's
+sandbox. The comparing engine is a separate program that you download from its
+release page, check against the list of sums beside it, and name in
+<code>*facematch-program*</code>. Tuatara never downloads it for you.</p>
+<h3 id="garamond"><span class="num">19.8.5</span> garamond</h3>
+<p>Some writers put two spaces after a full stop, others one. garamond keeps the
+spacing a document asks for, which the document says in its own <code>Local
+Variables:</code> block. The mode line shows <code>2S</code> or <code>1S</code>, and typing one space after
+a sentence becomes two where the document wants two. <kbd>M-x garamond-mode</kbd>
+turns it on by hand. It needs nothing installed.</p>
+<h3 id="kitty"><span class="num">19.8.6</span> kitty</h3>
+<p>kitty opens windows of the kitty terminal, which Tuatara starts itself, so
+that you get its fast drawing, its ligatures and its pictures. <kbd>M-x kitty</kbd>
+opens one in the current folder. <kbd>M-x kitty-input</kbd> types the selection or
+the current line into it, and <kbd>M-x kitty-text</kbd> brings its text, scrollback
+included, into a buffer you can search. You install kitty yourself.</p>
+<h3 id="outlook"><span class="num">19.8.7</span> outlook</h3>
+<p>outlook opens Outlook items (<code>.msg</code>), saved mail (<code>.eml</code>) and mailboxes
+(<code>.pst</code>, <code>.ost</code>) as messages, read only. It was made for looking at mail as
+evidence: nothing in a message runs, and attachments open only when you ask,
+from private copies. In a message, <kbd>P</kbd> shows it as it looks, <kbd>O</kbd> opens an
+attachment in the desktop's own program after asking, and <kbd>C-c o</kbd> is the
+prefix for the same commands. In a mailbox, <kbd>C</kbd> copies messages out. It needs
+readpst and WeasyPrint.</p>
+<h3 id="caldav"><span class="num">19.8.8</span> caldav</h3>
+<p>caldav shares Tuatara's agenda with GNOME Calendar, Thunderbird and phones,
+through a CalDAV server (Radicale, or EteSync through its local bridge). The
+calendars are kept in one Org file, and only what is under a calendar's
+heading is synced. The password is never in your init file: it is in the
+desktop's keyring. In Org files and the agenda its commands are under
+<kbd>C-c s</kbd>, with <kbd>C-c s s</kbd> syncing now. Its README sets a server up step by step.</p>
+<h3 id="themes"><span class="num">19.8.9</span> themes</h3>
+<p>themes adds fourteen colour themes, each a dark or light version of a palette
+you may know from other editors: catppuccin-mocha, catppuccin-latte, dracula,
+nord, one-dark, solarized-dark, solarized-light, tokyo-night,
+tokyo-night-light, rose-pine, rose-pine-dawn, everforest-dark,
+everforest-light and kanagawa-wave. It needs nothing installed.</p>
+<p><kbd>M-x load-theme</kbd> lists every theme, with a description beside each, and
+applies the one you choose. To have one at every start, put it after the
+package line:</p>
+<pre class="ex"><code class="language-lisp">(load-package &quot;themes&quot;
+              :source &quot;https://github.com/Tuatara-Editor/tuatara-themes&quot;)
+(load-theme 'catppuccin-mocha)
+</code></pre>
+<p><kbd>M-x toggle-light-dark-theme</kbd> switches between a light and a dark theme. The
+standard pair is Tuatara's own two, and <code>*light-theme*</code> and <code>*dark-theme*</code>
+name others. If the window follows the desktop's light or dark style, these
+two are the ones it switches between. Any <code>set-face</code> line in your init file
+stays on top of a theme.</p>
+<pre class="ex"><code class="language-lisp">(setf *dark-theme* 'tokyo-night
+      *light-theme* 'tokyo-night-light)
+</code></pre>
+<div class="tablewrap"><table>
+<thead>
+<tr><th>Keys</th><th>Command</th><th>What it does</th></tr>
+</thead>
+<tbody>
+<tr><td>none</td><td><code>load-theme</code></td><td>Choose a colour theme, with each theme's description beside it.</td></tr>
+<tr><td>none</td><td><code>toggle-light-dark-theme</code></td><td>Switch between the light and the dark theme: the two ao variants, unless the init file sets <strong>light-theme</strong> and <strong>dark-theme</strong> to others.</td></tr>
+</tbody></table></div>
+<div class="tablewrap"><table>
+<thead>
+<tr><th>Setting</th><th>Standard</th><th>What it changes</th></tr>
+</thead>
+<tbody>
+<tr><td><code>*light-theme*</code></td><td><code>tuatara.defaults::ao-light</code></td><td>The light theme toggle-light-dark-theme switches to.</td></tr>
+<tr><td><code>*dark-theme*</code></td><td><code>tuatara.defaults::ao-dark</code></td><td>The dark theme toggle-light-dark-theme switches to.</td></tr>
+</tbody></table></div>
+<h2 id="writing-a-package-of-your-own"><span class="num">19.9</span> Writing a package of your own</h2>
+<p>A package is a folder of Lisp files and can be small: one command in one file
+is enough. How to write one, which parts of Tuatara it may use, and how to
+publish it, is the subject of the developer handbook. To try a folder of your
+own on your disk, name it with <code>package-source</code> and load it as the lines near
+the start of this chapter show. Tuatara compiles it and asks about it like any
+other.</p>
+<div class="node end"><span>Previous: <a href="18-the-daemon-and-other-machines.html">The daemon and other machines</a></span><span>Next: <a href="20-making-it-your-own.html">Making it your own</a></span><span>Up: <a href="index.html">Contents</a></span></div>
+</article>
+</main>
+</div>
+</body>
+</html>

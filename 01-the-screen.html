@@ -1,0 +1,762 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src  'self'; img-src 'self' file:; script-src 'self'; base-uri 'none'; form-action 'none'">
+<title>The screen &ndash; Tuatara Manual</title>
+<link rel="stylesheet" href="manual.css">
+<script src="manual.js" defer></script>
+</head>
+<body>
+<div class="site">
+<nav class="toc" aria-label="Contents">
+<strong>Tuatara Manual</strong>
+<small>for version 0.90.21</small>
+<input type="search" placeholder="Find a heading" aria-label="Find a heading">
+<ol class="chapters"><li id="nav-01-the-screen" class="here"><a class="here" href="01-the-screen.html">1 The screen</a><ol><li><a href="01-the-screen.html#keys-and-names">1.1 Keys and names</a></li><li><a href="01-the-screen.html#the-parts-of-the-screen">1.2 The parts of the screen</a></li><li><a href="01-the-screen.html#windows-and-buffers">1.3 Windows and buffers</a><ol><li><a href="01-the-screen.html#commands-for-windows">1.3.1 Commands for windows</a></li><li><a href="01-the-screen.html#moving-windows-and-changing-their-size">1.3.2 Moving windows and changing their size</a></li><li><a href="01-the-screen.html#scrolling-and-finding-out-where-buffers-go">1.3.3 Scrolling and finding out where buffers go</a></li><li><a href="01-the-screen.html#commands-for-buffers">1.3.4 Commands for buffers</a></li><li><a href="01-the-screen.html#settings">1.3.5 Settings</a></li></ol></li><li><a href="01-the-screen.html#frames-windows-of-their-own-and-terminals">1.4 Frames, windows of their own and terminals</a><ol><li><a href="01-the-screen.html#commands-for-frames-and-the-windows-font">1.4.1 Commands for frames and the window's font</a></li><li><a href="01-the-screen.html#settings-2">1.4.2 Settings</a></li></ol></li><li><a href="01-the-screen.html#the-mode-line">1.5 The mode line</a><ol><li><a href="01-the-screen.html#the-modal-state">1.5.1 The modal state</a></li><li><a href="01-the-screen.html#the-signs-p-u-s-and-d">1.5.2 The signs P, U, S and D</a></li><li><a href="01-the-screen.html#saved-or-not">1.5.3 Saved or not</a></li><li><a href="01-the-screen.html#words-about-the-buffer">1.5.4 Words about the buffer</a></li><li><a href="01-the-screen.html#the-name-the-line-and-the-column">1.5.5 The name, the line and the column</a></li><li><a href="01-the-screen.html#other-things-the-mode-line-says">1.5.6 Other things the mode line says</a></li><li><a href="01-the-screen.html#the-folder">1.5.7 The folder</a></li><li><a href="01-the-screen.html#commands">1.5.8 Commands</a></li><li><a href="01-the-screen.html#settings-3">1.5.9 Settings</a></li><li><a href="01-the-screen.html#faces">1.5.10 Faces</a></li></ol></li><li><a href="01-the-screen.html#the-echo-area-and-the-messages-log">1.6 The echo area and the messages log</a><ol><li><a href="01-the-screen.html#commands-2">1.6.1 Commands</a></li><li><a href="01-the-screen.html#settings-4">1.6.2 Settings</a></li></ol></li><li><a href="01-the-screen.html#the-minibuffer-and-its-prompt">1.7 The minibuffer and its prompt</a><ol><li><a href="01-the-screen.html#settings-5">1.7.1 Settings</a></li><li><a href="01-the-screen.html#faces-2">1.7.2 Faces</a></li></ol></li><li><a href="01-the-screen.html#the-choices-panel">1.8 The choices panel</a><ol><li><a href="01-the-screen.html#commands-3">1.8.1 Commands</a></li><li><a href="01-the-screen.html#settings-6">1.8.2 Settings</a></li></ol></li><li><a href="01-the-screen.html#key-hints">1.9 Key hints</a><ol><li><a href="01-the-screen.html#commands-4">1.9.1 Commands</a></li><li><a href="01-the-screen.html#settings-7">1.9.2 Settings</a></li></ol></li><li><a href="01-the-screen.html#the-cursor-the-gutter-and-header-lines">1.10 The cursor, the gutter and header lines</a><ol><li><a href="01-the-screen.html#commands-5">1.10.1 Commands</a></li><li><a href="01-the-screen.html#settings-8">1.10.2 Settings</a></li></ol></li></ol></li><li id="nav-02-moving-around"><a href="02-moving-around.html">2 Moving around</a><ol><li><a href="02-moving-around.html#two-sets-of-keys">2.1 Two sets of keys</a></li><li><a href="02-moving-around.html#by-character-and-by-line">2.2 By character and by line</a><ol><li><a href="02-moving-around.html#commands">2.2.1 Commands</a></li></ol></li><li><a href="02-moving-around.html#by-word">2.3 By word</a><ol><li><a href="02-moving-around.html#commands-2">2.3.1 Commands</a></li></ol></li><li><a href="02-moving-around.html#within-a-line">2.4 Within a line</a><ol><li><a href="02-moving-around.html#commands-3">2.4.1 Commands</a></li></ol></li><li><a href="02-moving-around.html#by-sentence-and-paragraph">2.5 By sentence and paragraph</a><ol><li><a href="02-moving-around.html#commands-4">2.5.1 Commands</a></li><li><a href="02-moving-around.html#settings">2.5.2 Settings</a></li></ol></li><li><a href="02-moving-around.html#to-the-start-or-the-end-of-the-text">2.6 To the start or the end of the text</a><ol><li><a href="02-moving-around.html#commands-5">2.6.1 Commands</a></li></ol></li><li><a href="02-moving-around.html#to-a-line">2.7 To a line</a><ol><li><a href="02-moving-around.html#commands-6">2.7.1 Commands</a></li></ol></li><li><a href="02-moving-around.html#scrolling-and-recentring">2.8 Scrolling and recentring</a></li><li><a href="02-moving-around.html#counts">2.9 Counts</a><ol><li><a href="02-moving-around.html#commands-7">2.9.1 Commands</a></li></ol></li><li><a href="02-moving-around.html#marks-and-going-back">2.10 Marks and going back</a><ol><li><a href="02-moving-around.html#commands-8">2.10.1 Commands</a></li><li><a href="02-moving-around.html#settings-2">2.10.2 Settings</a></li><li><a href="02-moving-around.html#faces">2.10.3 Faces</a></li></ol></li><li><a href="02-moving-around.html#going-to-the-next-place-in-a-list">2.11 Going to the next place in a list</a><ol><li><a href="02-moving-around.html#commands-9">2.11.1 Commands</a></li></ol></li><li><a href="02-moving-around.html#in-help-lists-and-other-read-only-buffers">2.12 In help, lists and other read-only buffers</a></li></ol></li><li id="nav-03-writing-and-changing-text"><a href="03-writing-and-changing-text.html">3 Writing and changing text</a><ol><li><a href="03-writing-and-changing-text.html#the-two-states">3.1 The two states</a><ol><li><a href="03-writing-and-changing-text.html#commands-for-starting-to-type">3.1.1 Commands for starting to type</a></li></ol></li><li><a href="03-writing-and-changing-text.html#typing">3.2 Typing</a><ol><li><a href="03-writing-and-changing-text.html#commands">3.2.1 Commands</a></li><li><a href="03-writing-and-changing-text.html#settings">3.2.2 Settings</a></li></ol></li><li><a href="03-writing-and-changing-text.html#deleting">3.3 Deleting</a><ol><li><a href="03-writing-and-changing-text.html#commands-2">3.3.1 Commands</a></li></ol></li><li><a href="03-writing-and-changing-text.html#changing-text">3.4 Changing text</a><ol><li><a href="03-writing-and-changing-text.html#commands-for-case">3.4.1 Commands for case</a></li><li><a href="03-writing-and-changing-text.html#commands-for-swapping-and-joining">3.4.2 Commands for swapping and joining</a></li></ol></li><li><a href="03-writing-and-changing-text.html#undo-redo-and-repeat">3.5 Undo, redo and repeat</a><ol><li><a href="03-writing-and-changing-text.html#commands-3">3.5.1 Commands</a></li><li><a href="03-writing-and-changing-text.html#settings-2">3.5.2 Settings</a></li></ol></li><li><a href="03-writing-and-changing-text.html#repeat-counts">3.6 Repeat counts</a></li><li><a href="03-writing-and-changing-text.html#special-characters">3.7 Special characters</a><ol><li><a href="03-writing-and-changing-text.html#commands-4">3.7.1 Commands</a></li><li><a href="03-writing-and-changing-text.html#settings-3">3.7.2 Settings</a></li></ol></li><li><a href="03-writing-and-changing-text.html#indentation-and-filling-in-plain-text">3.8 Indentation and filling in plain text</a><ol><li><a href="03-writing-and-changing-text.html#commands-5">3.8.1 Commands</a></li><li><a href="03-writing-and-changing-text.html#settings-4">3.8.2 Settings</a></li></ol></li><li><a href="03-writing-and-changing-text.html#spelling">3.9 Spelling</a><ol><li><a href="03-writing-and-changing-text.html#commands-6">3.9.1 Commands</a></li><li><a href="03-writing-and-changing-text.html#settings-5">3.9.2 Settings</a></li><li><a href="03-writing-and-changing-text.html#faces">3.9.3 Faces</a></li></ol></li><li><a href="03-writing-and-changing-text.html#sorting-and-tidying-lines">3.10 Sorting and tidying lines</a><ol><li><a href="03-writing-and-changing-text.html#commands-7">3.10.1 Commands</a></li><li><a href="03-writing-and-changing-text.html#settings-6">3.10.2 Settings</a></li></ol></li><li><a href="03-writing-and-changing-text.html#recording-keys">3.11 Recording keys</a><ol><li><a href="03-writing-and-changing-text.html#commands-8">3.11.1 Commands</a></li></ol></li></ol></li><li id="nav-04-cutting-and-pasting"><a href="04-cutting-and-pasting.html">4 Cutting and pasting</a><ol><li><a href="04-cutting-and-pasting.html#the-kill-ring">4.1 The kill ring</a></li><li><a href="04-cutting-and-pasting.html#cutting-copying-and-pasting-with-the-emacs-keys">4.2 Cutting, copying and pasting with the Emacs keys</a><ol><li><a href="04-cutting-and-pasting.html#commands">4.2.1 Commands</a></li></ol></li><li><a href="04-cutting-and-pasting.html#cutting-copying-and-pasting-in-normal-state">4.3 Cutting, copying and pasting in NORMAL state</a></li><li><a href="04-cutting-and-pasting.html#the-system-clipboard-and-the-primary-selection">4.4 The system clipboard and the primary selection</a><ol><li><a href="04-cutting-and-pasting.html#settings">4.4.1 Settings</a></li></ol></li><li><a href="04-cutting-and-pasting.html#registers">4.5 Registers</a></li><li><a href="04-cutting-and-pasting.html#banked-lines">4.6 Banked lines</a><ol><li><a href="04-cutting-and-pasting.html#faces">4.6.1 Faces</a></li></ol></li><li><a href="04-cutting-and-pasting.html#pasting-into-prompts">4.7 Pasting into prompts</a></li></ol></li><li id="nav-05-selecting-rectangles-and-many-cursors"><a href="05-selecting-rectangles-and-many-cursors.html">5 Selecting, rectangles and many cursors</a><ol><li><a href="05-selecting-rectangles-and-many-cursors.html#selections-and-the-mark">5.1 Selections and the mark</a><ol><li><a href="05-selecting-rectangles-and-many-cursors.html#keys-that-select">5.1.1 Keys that select</a></li></ol></li><li><a href="05-selecting-rectangles-and-many-cursors.html#text-objects-the-m-keys">5.2 Text objects, the m keys</a><ol><li><a href="05-selecting-rectangles-and-many-cursors.html#wrapping-a-selection">5.2.1 Wrapping a selection</a></li><li><a href="05-selecting-rectangles-and-many-cursors.html#the-emacs-keys-for-the-same">5.2.2 The Emacs keys for the same</a></li></ol></li><li><a href="05-selecting-rectangles-and-many-cursors.html#the-mark-run">5.3 The mark run</a></li><li><a href="05-selecting-rectangles-and-many-cursors.html#growing-a-selection-by-the-code">5.4 Growing a selection by the code</a></li><li><a href="05-selecting-rectangles-and-many-cursors.html#rectangles">5.5 Rectangles</a><ol><li><a href="05-selecting-rectangles-and-many-cursors.html#rectangles-in-normal-state">5.5.1 Rectangles in NORMAL state</a></li><li><a href="05-selecting-rectangles-and-many-cursors.html#rectangles-with-the-emacs-keys">5.5.2 Rectangles with the Emacs keys</a></li></ol></li><li><a href="05-selecting-rectangles-and-many-cursors.html#many-cursors">5.6 Many cursors</a><ol><li><a href="05-selecting-rectangles-and-many-cursors.html#what-each-key-does-at-the-cursors">5.6.1 What each key does at the cursors</a></li><li><a href="05-selecting-rectangles-and-many-cursors.html#limits">5.6.2 Limits</a></li><li><a href="05-selecting-rectangles-and-many-cursors.html#showing-the-cursors">5.6.3 Showing the cursors</a></li></ol></li><li><a href="05-selecting-rectangles-and-many-cursors.html#splitting-a-selection-on-what-matches">5.7 Splitting a selection on what matches</a></li><li><a href="05-selecting-rectangles-and-many-cursors.html#summary-of-the-normal-keys">5.8 Summary of the NORMAL keys</a></li></ol></li><li id="nav-06-searching-and-replacing"><a href="06-searching-and-replacing.html">6 Searching and replacing</a><ol><li><a href="06-searching-and-replacing.html#searching-a-buffer">6.1 Searching a buffer</a><ol><li><a href="06-searching-and-replacing.html#capital-letters">6.1.1 Capital letters</a></li><li><a href="06-searching-and-replacing.html#regular-expressions-and-plain-text">6.1.2 Regular expressions and plain text</a></li><li><a href="06-searching-and-replacing.html#starting-from-the-word-under-the-cursor">6.1.3 Starting from the word under the cursor</a></li><li><a href="06-searching-and-replacing.html#search-history">6.1.4 Search history</a></li><li><a href="06-searching-and-replacing.html#keeping-the-matches-lit">6.1.5 Keeping the matches lit</a></li><li><a href="06-searching-and-replacing.html#the-count-before-the-prompt">6.1.6 The count before the prompt</a></li><li><a href="06-searching-and-replacing.html#matches-that-cross-many-lines">6.1.7 Matches that cross many lines</a></li></ol></li><li><a href="06-searching-and-replacing.html#replacing">6.2 Replacing</a><ol><li><a href="06-searching-and-replacing.html#what-goes-in-the-new-text">6.2.1 What goes in the new text</a></li><li><a href="06-searching-and-replacing.html#replacing-with-questions">6.2.2 Replacing with questions</a></li></ol></li><li><a href="06-searching-and-replacing.html#narrowing-a-list-to-its-matches">6.3 Narrowing a list to its matches</a></li><li><a href="06-searching-and-replacing.html#searching-many-files">6.4 Searching many files</a><ol><li><a href="06-searching-and-replacing.html#changing-the-lines-a-search-found">6.4.1 Changing the lines a search found</a></li><li><a href="06-searching-and-replacing.html#keeping-folders-read">6.4.2 Keeping folders read</a></li></ol></li><li><a href="06-searching-and-replacing.html#the-outline-of-a-buffer">6.5 The outline of a buffer</a></li></ol></li><li id="nav-07-buffers-and-sessions"><a href="07-buffers-and-sessions.html">7 Buffers and sessions</a><ol><li><a href="07-buffers-and-sessions.html#the-buffer-list">7.1 The buffer list</a><ol><li><a href="07-buffers-and-sessions.html#sections">7.1.1 Sections</a></li><li><a href="07-buffers-and-sessions.html#folding">7.1.2 Folding</a></li><li><a href="07-buffers-and-sessions.html#marks">7.1.3 Marks</a></li><li><a href="07-buffers-and-sessions.html#opening-and-keeping-the-list-current">7.1.4 Opening, and keeping the list current</a></li><li><a href="07-buffers-and-sessions.html#commands-for-the-buffer-list">7.1.5 Commands for the buffer list</a></li><li><a href="07-buffers-and-sessions.html#settings-and-faces">7.1.6 Settings and faces</a></li></ol></li><li><a href="07-buffers-and-sessions.html#scratch-buffers">7.2 Scratch buffers</a></li><li><a href="07-buffers-and-sessions.html#saving-and-killing-buffers">7.3 Saving and killing buffers</a></li><li><a href="07-buffers-and-sessions.html#recent-files-and-places">7.4 Recent files and places</a></li><li><a href="07-buffers-and-sessions.html#bookmarks">7.5 Bookmarks</a></li><li><a href="07-buffers-and-sessions.html#registers">7.6 Registers</a></li><li><a href="07-buffers-and-sessions.html#the-session-kept">7.7 The session kept</a></li><li><a href="07-buffers-and-sessions.html#auto-save-and-getting-changes-back">7.8 Auto-save and getting changes back</a></li><li><a href="07-buffers-and-sessions.html#narrowing-to-a-part-of-a-buffer">7.9 Narrowing to a part of a buffer</a></li></ol></li><li id="nav-08-commands-keys-and-help"><a href="08-commands-keys-and-help.html">8 Commands, keys and help</a><ol><li><a href="08-commands-keys-and-help.html#running-a-command-by-name">8.1 Running a command by name</a><ol><li><a href="08-commands-keys-and-help.html#the-count-before-m-x">8.1.1 The count before M-x</a></li></ol></li><li><a href="08-commands-keys-and-help.html#counts">8.2 Counts</a></li><li><a href="08-commands-keys-and-help.html#giving-up">8.3 Giving up</a></li><li><a href="08-commands-keys-and-help.html#prefix-keys">8.4 Prefix keys</a></li><li><a href="08-commands-keys-and-help.html#key-hints">8.5 Key hints</a></li><li><a href="08-commands-keys-and-help.html#menus">8.6 Menus</a></li><li><a href="08-commands-keys-and-help.html#asking-what-a-key-does">8.7 Asking what a key does</a></li><li><a href="08-commands-keys-and-help.html#asking-what-a-command-does">8.8 Asking what a command does</a></li><li><a href="08-commands-keys-and-help.html#finding-a-command-when-you-do-not-know-its-name">8.9 Finding a command when you do not know its name</a></li><li><a href="08-commands-keys-and-help.html#what-a-face-looks-like">8.10 What a face looks like</a></li><li><a href="08-commands-keys-and-help.html#messages-notifications-and-the-log-of-what-tuatara-says">8.11 Messages, notifications and the log of what Tuatara says</a></li><li><a href="08-commands-keys-and-help.html#the-tutor-and-manual-pages">8.12 The tutor and manual pages</a></li><li><a href="08-commands-keys-and-help.html#about-tuatara-and-what-is-there">8.13 About Tuatara and what is there</a></li><li><a href="08-commands-keys-and-help.html#checking-what-your-system-has">8.14 Checking what your system has</a></li><li><a href="08-commands-keys-and-help.html#lisp-in-the-running-editor">8.15 Lisp in the running editor</a></li><li><a href="08-commands-keys-and-help.html#binding-keys-yourself">8.16 Binding keys yourself</a></li></ol></li><li id="nav-09-files"><a href="09-files.html">9 Files</a><ol><li><a href="09-files.html#opening-a-file">9.1 Opening a file</a><ol><li><a href="09-files.html#other-places-to-open-a-file">9.1.1 Other places to open a file</a></li><li><a href="09-files.html#the-files-own-settings">9.1.2 The file's own settings</a></li><li><a href="09-files.html#seeing-a-file-before-you-choose-it">9.1.3 Seeing a file before you choose it</a></li></ol></li><li><a href="09-files.html#creating-a-file">9.2 Creating a file</a></li><li><a href="09-files.html#saving">9.3 Saving</a><ol><li><a href="09-files.html#what-a-save-does-with-your-file">9.3.1 What a save does with your file</a></li><li><a href="09-files.html#when-a-save-asks-first">9.3.2 When a save asks first</a></li></ol></li><li><a href="09-files.html#save-as-and-a-new-name">9.4 Save as, and a new name</a></li><li><a href="09-files.html#read-only-files-and-buffers">9.5 Read-only files and buffers</a></li><li><a href="09-files.html#the-file-changed-on-disk">9.6 The file changed on disk</a><ol><li><a href="09-files.html#reading-it-again">9.6.1 Reading it again</a></li><li><a href="09-files.html#keeping-up-by-itself">9.6.2 Keeping up by itself</a></li></ol></li><li><a href="09-files.html#line-endings-and-letters-from-other-languages">9.7 Line endings and letters from other languages</a><ol><li><a href="09-files.html#line-endings">9.7.1 Line endings</a></li><li><a href="09-files.html#letters-from-other-languages">9.7.2 Letters from other languages</a></li></ol></li><li><a href="09-files.html#files-with-formatted-names">9.8 Files with formatted names</a><ol><li><a href="09-files.html#making-and-finding">9.8.1 Making and finding</a></li><li><a href="09-files.html#renaming">9.8.2 Renaming</a></li></ol></li><li><a href="09-files.html#files-on-another-machine">9.9 Files on another machine</a><ol><li><a href="09-files.html#saving-2">9.9.1 Saving</a></li><li><a href="09-files.html#the-first-time-you-meet-a-machine">9.9.2 The first time you meet a machine</a></li><li><a href="09-files.html#passwords">9.9.3 Passwords</a></li><li><a href="09-files.html#folders-and-previews-on-a-server">9.9.4 Folders and previews on a server</a></li></ol></li><li><a href="09-files.html#opening-a-file-with-another-program">9.10 Opening a file with another program</a></li><li><a href="09-files.html#starting-tuatara-with-files">9.11 Starting Tuatara with files</a><ol><li><a href="09-files.html#options">9.11.1 Options</a></li></ol></li></ol></li><li id="nav-10-folders"><a href="10-folders.html">10 Folders</a><ol><li><a href="10-folders.html#opening-a-folder">10.1 Opening a folder</a><ol><li><a href="10-folders.html#commands-for-opening-a-folder">10.1.1 Commands for opening a folder</a></li></ol></li><li><a href="10-folders.html#moving-about">10.2 Moving about</a><ol><li><a href="10-folders.html#commands-for-moving">10.2.1 Commands for moving</a></li></ol></li><li><a href="10-folders.html#what-a-list-shows">10.3 What a list shows</a><ol><li><a href="10-folders.html#commands-for-what-a-list-shows">10.3.1 Commands for what a list shows</a></li><li><a href="10-folders.html#settings-for-what-a-list-shows">10.3.2 Settings for what a list shows</a></li></ol></li><li><a href="10-folders.html#the-preview-beside-the-list">10.4 The preview beside the list</a><ol><li><a href="10-folders.html#quick-edit">10.4.1 Quick edit</a></li><li><a href="10-folders.html#commands-for-the-preview">10.4.2 Commands for the preview</a></li><li><a href="10-folders.html#settings-for-the-preview">10.4.3 Settings for the preview</a></li></ol></li><li><a href="10-folders.html#marks">10.5 Marks</a><ol><li><a href="10-folders.html#filtering-a-list">10.5.1 Filtering a list</a></li><li><a href="10-folders.html#commands-for-marks-and-filters">10.5.2 Commands for marks and filters</a></li></ol></li><li><a href="10-folders.html#making-things">10.6 Making things</a><ol><li><a href="10-folders.html#commands-for-making-things">10.6.1 Commands for making things</a></li></ol></li><li><a href="10-folders.html#copying-moving-and-linking">10.7 Copying, moving and linking</a><ol><li><a href="10-folders.html#commands-for-copying-moving-and-linking">10.7.1 Commands for copying, moving and linking</a></li><li><a href="10-folders.html#settings-for-copying-and-moving">10.7.2 Settings for copying and moving</a></li></ol></li><li><a href="10-folders.html#renaming">10.8 Renaming</a><ol><li><a href="10-folders.html#commands-for-renaming">10.8.1 Commands for renaming</a></li></ol></li><li><a href="10-folders.html#deleting-the-trash-and-wiping">10.9 Deleting, the trash and wiping</a><ol><li><a href="10-folders.html#commands-for-deleting-and-the-trash">10.9.1 Commands for deleting and the trash</a></li><li><a href="10-folders.html#settings-for-deleting">10.9.2 Settings for deleting</a></li></ol></li><li><a href="10-folders.html#archives">10.10 Archives</a><ol><li><a href="10-folders.html#commands-for-archives">10.10.1 Commands for archives</a></li><li><a href="10-folders.html#settings-for-archives">10.10.2 Settings for archives</a></li></ol></li><li><a href="10-folders.html#drives-and-the-folder-tree">10.11 Drives and the folder tree</a></li><li><a href="10-folders.html#finding-checking-and-encrypting">10.12 Finding, checking and encrypting</a><ol><li><a href="10-folders.html#commands-for-finding-checking-and-encrypting">10.12.1 Commands for finding, checking and encrypting</a></li></ol></li><li><a href="10-folders.html#colours-of-a-list">10.13 Colours of a list</a></li></ol></li><li id="nav-11-large-files-and-background-work"><a href="11-large-files-and-background-work.html">11 Large files and work in the background</a><ol><li><a href="11-large-files-and-background-work.html#opening-a-very-large-file">11.1 Opening a very large file</a><ol><li><a href="11-large-files-and-background-work.html#the-line-number-while-the-lines-are-counted">11.1.1 The line number while the lines are counted</a></li><li><a href="11-large-files-and-background-work.html#going-to-a-line">11.1.2 Going to a line</a></li><li><a href="11-large-files-and-background-work.html#line-numbers-in-the-gutter">11.1.3 Line numbers in the gutter</a></li></ol></li><li><a href="11-large-files-and-background-work.html#jobs-work-in-the-background">11.2 Jobs: work in the background</a><ol><li><a href="11-large-files-and-background-work.html#what-runs-as-a-job">11.2.1 What runs as a job</a></li><li><a href="11-large-files-and-background-work.html#the-sign-p">11.2.2 The sign P</a></li><li><a href="11-large-files-and-background-work.html#what-a-job-will-change-is-painted">11.2.3 What a job will change is painted</a></li><li><a href="11-large-files-and-background-work.html#jobs-take-turns">11.2.4 Jobs take turns</a></li><li><a href="11-large-files-and-background-work.html#typing-while-a-job-runs">11.2.5 Typing while a job runs</a></li><li><a href="11-large-files-and-background-work.html#undo-and-jobs">11.2.6 Undo and jobs</a></li></ol></li><li><a href="11-large-files-and-background-work.html#the-list-of-jobs">11.3 The list of jobs</a><ol><li><a href="11-large-files-and-background-work.html#stopping-a-job">11.3.1 Stopping a job</a></li></ol></li><li><a href="11-large-files-and-background-work.html#searching-a-large-file">11.4 Searching a large file</a></li><li><a href="11-large-files-and-background-work.html#saving-a-large-file">11.5 Saving a large file</a><ol><li><a href="11-large-files-and-background-work.html#saving-in-place">11.5.1 Saving in place</a></li></ol></li><li><a href="11-large-files-and-background-work.html#memory-and-pauses-you-might-notice">11.6 Memory, and pauses you might notice</a><ol><li><a href="11-large-files-and-background-work.html#a-file-larger-than-your-memory">11.6.1 A file larger than your memory</a></li><li><a href="11-large-files-and-background-work.html#auto-save-and-large-buffers">11.6.2 Auto-save and large buffers</a></li><li><a href="11-large-files-and-background-work.html#undo">11.6.3 Undo</a></li><li><a href="11-large-files-and-background-work.html#collecting-garbage">11.6.4 Collecting garbage</a></li></ol></li><li><a href="11-large-files-and-background-work.html#a-large-file-on-another-machine">11.7 A large file on another machine</a><ol><li><a href="11-large-files-and-background-work.html#what-you-see-while-it-arrives">11.7.1 What you see while it arrives</a></li><li><a href="11-large-files-and-background-work.html#stopping-the-transfer-or-losing-the-connection">11.7.2 Stopping the transfer, or losing the connection</a></li></ol></li><li><a href="11-large-files-and-background-work.html#in-short">11.8 In short</a></li></ol></li><li id="nav-12-files-you-do-not-trust"><a href="12-files-you-do-not-trust.html">12 Files you do not trust</a><ol><li><a href="12-files-you-do-not-trust.html#opening-one-file-safely">12.1 Opening one file safely</a><ol><li><a href="12-files-you-do-not-trust.html#what-is-never-run">12.1.1 What is never run</a></li><li><a href="12-files-you-do-not-trust.html#why-a-files-own-settings-are-not-taken">12.1.2 Why a file's own settings are not taken</a></li><li><a href="12-files-you-do-not-trust.html#commands-for-opening-safely">12.1.3 Commands for opening safely</a></li><li><a href="12-files-you-do-not-trust.html#settings-and-faces">12.1.4 Settings and faces</a></li></ol></li><li><a href="12-files-you-do-not-trust.html#evidence-folders">12.2 Evidence folders</a><ol><li><a href="12-files-you-do-not-trust.html#naming-the-folders">12.2.1 Naming the folders</a></li><li><a href="12-files-you-do-not-trust.html#what-happens-to-a-file-of-evidence">12.2.2 What happens to a file of evidence</a></li><li><a href="12-files-you-do-not-trust.html#asking-and-copying-out">12.2.3 Asking, and copying out</a></li><li><a href="12-files-you-do-not-trust.html#what-the-guard-does-not-cover">12.2.4 What the guard does not cover</a></li><li><a href="12-files-you-do-not-trust.html#commands-settings-and-faces">12.2.5 Commands, settings and faces</a></li></ol></li><li><a href="12-files-you-do-not-trust.html#the-sandbox-around-decoders">12.3 The sandbox around decoders</a><ol><li><a href="12-files-you-do-not-trust.html#commands-and-settings">12.3.1 Commands and settings</a></li></ol></li><li><a href="12-files-you-do-not-trust.html#repositories-you-only-look-at">12.4 Repositories you only look at</a><ol><li><a href="12-files-you-do-not-trust.html#command-setting-and-faces">12.4.1 Command, setting and faces</a></li></ol></li><li><a href="12-files-you-do-not-trust.html#encrypted-files">12.5 Encrypted files</a><ol><li><a href="12-files-you-do-not-trust.html#a-file-that-ends-in-gpg">12.5.1 A file that ends in .gpg</a></li><li><a href="12-files-you-do-not-trust.html#the-passphrase-prompt">12.5.2 The passphrase prompt</a></li><li><a href="12-files-you-do-not-trust.html#encrypting-and-decrypting">12.5.3 Encrypting and decrypting</a></li><li><a href="12-files-you-do-not-trust.html#signing-and-checking">12.5.4 Signing and checking</a></li><li><a href="12-files-you-do-not-trust.html#keys">12.5.5 Keys</a></li><li><a href="12-files-you-do-not-trust.html#commands-and-settings-2">12.5.6 Commands and settings</a></li></ol></li></ol></li><li id="nav-13-writing-code"><a href="13-writing-code.html">13 Writing code</a><ol><li><a href="13-writing-code.html#what-tuatara-knows-about-code">13.1 What Tuatara knows about code</a><ol><li><a href="13-writing-code.html#how-much-colour">13.1.1 How much colour</a></li><li><a href="13-writing-code.html#seeing-what-a-language-has">13.1.2 Seeing what a language has</a></li><li><a href="13-writing-code.html#commands-settings-and-faces">13.1.3 Commands, settings and faces</a></li></ol></li><li><a href="13-writing-code.html#indentation-and-tabs">13.2 Indentation and tabs</a><ol><li><a href="13-writing-code.html#tabs-and-spaces">13.2.1 Tabs and spaces</a></li><li><a href="13-writing-code.html#commands-and-settings">13.2.2 Commands and settings</a></li></ol></li><li><a href="13-writing-code.html#comments">13.3 Comments</a><ol><li><a href="13-writing-code.html#commands">13.3.1 Commands</a></li></ol></li><li><a href="13-writing-code.html#brackets-and-pairs">13.4 Brackets and pairs</a><ol><li><a href="13-writing-code.html#commands-and-settings-2">13.4.1 Commands and settings</a></li></ol></li><li><a href="13-writing-code.html#moving-by-definitions-and-lists">13.5 Moving by definitions and lists</a><ol><li><a href="13-writing-code.html#selecting-by-the-code">13.5.1 Selecting by the code</a></li><li><a href="13-writing-code.html#an-outline-of-the-file">13.5.2 An outline of the file</a></li><li><a href="13-writing-code.html#commands-2">13.5.3 Commands</a></li></ol></li><li><a href="13-writing-code.html#finding-definitions">13.6 Finding definitions</a><ol><li><a href="13-writing-code.html#commands-3">13.6.1 Commands</a></li></ol></li><li><a href="13-writing-code.html#language-servers">13.7 Language servers</a><ol><li><a href="13-writing-code.html#starting-one-and-trust">13.7.1 Starting one, and trust</a></li><li><a href="13-writing-code.html#what-the-server-tells-you-as-you-type">13.7.2 What the server tells you as you type</a></li><li><a href="13-writing-code.html#completion">13.7.3 Completion</a></li><li><a href="13-writing-code.html#rename-fixes-and-tidying">13.7.4 Rename, fixes and tidying</a></li><li><a href="13-writing-code.html#formatting">13.7.5 Formatting</a></li><li><a href="13-writing-code.html#settings-of-your-own">13.7.6 Settings of your own</a></li><li><a href="13-writing-code.html#commands-4">13.7.7 Commands</a></li><li><a href="13-writing-code.html#settings-and-faces">13.7.8 Settings and faces</a></li></ol></li><li><a href="13-writing-code.html#snippets">13.8 Snippets</a><ol><li><a href="13-writing-code.html#commands-and-settings-3">13.8.1 Commands and settings</a></li></ol></li><li><a href="13-writing-code.html#running-a-build-or-the-tests">13.9 Running a build or the tests</a><ol><li><a href="13-writing-code.html#commands-and-settings-4">13.9.1 Commands and settings</a></li></ol></li><li><a href="13-writing-code.html#merge-conflicts">13.10 Merge conflicts</a><ol><li><a href="13-writing-code.html#commands-and-faces">13.10.1 Commands and faces</a></li></ol></li><li><a href="13-writing-code.html#lisp-development">13.11 Lisp development</a><ol><li><a href="13-writing-code.html#commands-5">13.11.1 Commands</a></li><li><a href="13-writing-code.html#settings">13.11.2 Settings</a></li></ol></li><li><a href="13-writing-code.html#the-commands-of-each-language">13.12 The commands of each language</a></li></ol></li><li id="nav-14-org"><a href="14-org.html">14 Org</a><ol><li><a href="14-org.html#an-org-file">14.1 An Org file</a><ol><li><a href="14-org.html#how-a-note-is-shown">14.1.1 How a note is shown</a></li></ol></li><li><a href="14-org.html#headings-and-folding">14.2 Headings and folding</a><ol><li><a href="14-org.html#folding">14.2.1 Folding</a></li><li><a href="14-org.html#new-headings">14.2.2 New headings</a></li><li><a href="14-org.html#moving-and-changing-level">14.2.3 Moving and changing level</a></li></ol></li><li><a href="14-org.html#lists-and-checkboxes">14.3 Lists and checkboxes</a><ol><li><a href="14-org.html#checkboxes">14.3.1 Checkboxes</a></li></ol></li><li><a href="14-org.html#tasks">14.4 Tasks</a><ol><li><a href="14-org.html#tasks-with-parts">14.4.1 Tasks with parts</a></li><li><a href="14-org.html#notes-on-a-task">14.4.2 Notes on a task</a></li><li><a href="14-org.html#keywords-of-your-own">14.4.3 Keywords of your own</a></li><li><a href="14-org.html#priorities">14.4.4 Priorities</a></li></ol></li><li><a href="14-org.html#tags">14.5 Tags</a></li><li><a href="14-org.html#dates-and-scheduling">14.6 Dates and scheduling</a><ol><li><a href="14-org.html#answering-the-date-question">14.6.1 Answering the date question</a></li><li><a href="14-org.html#things-that-come-round-again">14.6.2 Things that come round again</a></li><li><a href="14-org.html#being-told-on-the-desktop">14.6.3 Being told on the desktop</a></li></ol></li><li><a href="14-org.html#the-agenda">14.7 The agenda</a><ol><li><a href="14-org.html#telling-tuatara-which-files-to-read">14.7.1 Telling Tuatara which files to read</a></li><li><a href="14-org.html#opening-it">14.7.2 Opening it</a></li><li><a href="14-org.html#moving-about">14.7.3 Moving about</a></li><li><a href="14-org.html#changing-tasks-from-the-agenda">14.7.4 Changing tasks from the agenda</a></li><li><a href="14-org.html#views-of-your-own">14.7.5 Views of your own</a></li></ol></li><li><a href="14-org.html#capture">14.8 Capture</a><ol><li><a href="14-org.html#templates-of-your-own">14.8.1 Templates of your own</a></li></ol></li><li><a href="14-org.html#moving-an-entry-to-another-place">14.9 Moving an entry to another place</a></li><li><a href="14-org.html#clocking">14.10 Clocking</a></li><li><a href="14-org.html#tables-and-formulas">14.11 Tables and formulas</a><ol><li><a href="14-org.html#making-a-table">14.11.1 Making a table</a></li><li><a href="14-org.html#formulas">14.11.2 Formulas</a></li></ol></li><li><a href="14-org.html#links">14.12 Links</a><ol><li><a href="14-org.html#making-and-following-links">14.12.1 Making and following links</a></li></ol></li><li><a href="14-org.html#blocks-and-code">14.13 Blocks and code</a><ol><li><a href="14-org.html#writing-the-code-out-to-files">14.13.1 Writing the code out to files</a></li><li><a href="14-org.html#a-table-of-contents">14.13.2 A table of contents</a></li><li><a href="14-org.html#blocks-that-write-themselves">14.13.3 Blocks that write themselves</a></li></ol></li><li><a href="14-org.html#exporting">14.14 Exporting</a><ol><li><a href="14-org.html#what-goes-at-the-top-of-the-note">14.14.1 What goes at the top of the note</a></li><li><a href="14-org.html#making-a-pdf">14.14.2 Making a PDF</a></li><li><a href="14-org.html#making-a-word-document">14.14.3 Making a Word document</a></li><li><a href="14-org.html#two-kinds-of-export">14.14.4 Two kinds of export</a></li><li><a href="14-org.html#layout-in-plain-words">14.14.5 Layout in plain words</a></li><li><a href="14-org.html#your-own-look">14.14.6 Your own look</a></li><li><a href="14-org.html#hiding-names">14.14.7 Hiding names</a></li><li><a href="14-org.html#notes-from-other-people">14.14.8 Notes from other people</a></li></ol></li><li><a href="14-org.html#where-to-go-from-here">14.15 Where to go from here</a></li></ol></li><li id="nav-15-git"><a href="15-git.html">15 Git</a><ol><li><a href="15-git.html#what-git-keeps">15.1 What git keeps</a></li><li><a href="15-git.html#the-status">15.2 The status</a><ol><li><a href="15-git.html#menus">15.2.1 Menus</a></li><li><a href="15-git.html#commands-settings-and-faces-of-the-status">15.2.2 Commands, settings and faces of the status</a></li></ol></li><li><a href="15-git.html#staging">15.3 Staging</a><ol><li><a href="15-git.html#hunks-and-single-lines">15.3.1 Hunks and single lines</a></li><li><a href="15-git.html#reversing-a-change">15.3.2 Reversing a change</a></li><li><a href="15-git.html#from-the-file-itself">15.3.3 From the file itself</a></li></ol></li><li><a href="15-git.html#committing">15.4 Committing</a><ol><li><a href="15-git.html#changing-the-last-commit">15.4.1 Changing the last commit</a></li><li><a href="15-git.html#signing-commits">15.4.2 Signing commits</a></li><li><a href="15-git.html#commands-and-settings-for-committing">15.4.3 Commands and settings for committing</a></li></ol></li><li><a href="15-git.html#the-log-and-diffs">15.5 The log and diffs</a><ol><li><a href="15-git.html#the-log">15.5.1 The log</a></li><li><a href="15-git.html#diffs">15.5.2 Diffs</a></li></ol></li><li><a href="15-git.html#branches-and-tags">15.6 Branches and tags</a><ol><li><a href="15-git.html#branches">15.6.1 Branches</a></li><li><a href="15-git.html#merging">15.6.2 Merging</a></li><li><a href="15-git.html#tags">15.6.3 Tags</a></li></ol></li><li><a href="15-git.html#the-stash">15.7 The stash</a></li><li><a href="15-git.html#merge-conflicts">15.8 Merge conflicts</a></li><li><a href="15-git.html#rebase-cherry-pick-revert-and-reset">15.9 Rebase, cherry-pick, revert and reset</a><ol><li><a href="15-git.html#rebase">15.9.1 Rebase</a></li><li><a href="15-git.html#cherry-pick">15.9.2 Cherry-pick</a></li><li><a href="15-git.html#revert">15.9.3 Revert</a></li><li><a href="15-git.html#reset">15.9.4 Reset</a></li></ol></li><li><a href="15-git.html#pulling-and-pushing">15.10 Pulling and pushing</a></li><li><a href="15-git.html#blame-and-the-file-menu">15.11 Blame and the file menu</a><ol><li><a href="15-git.html#who-changed-each-line">15.11.1 Who changed each line</a></li><li><a href="15-git.html#the-file-menu">15.11.2 The file menu</a></li></ol></li><li><a href="15-git.html#rewind-a-file-as-it-was">15.12 Rewind: a file as it was</a></li><li><a href="15-git.html#repositories-you-only-look-at">15.13 Repositories you only look at</a></li><li><a href="15-git.html#less-common-work">15.14 Less common work</a><ol><li><a href="15-git.html#worktrees">15.14.1 Worktrees</a></li><li><a href="15-git.html#bisect-finding-the-commit-that-broke-something">15.14.2 Bisect: finding the commit that broke something</a></li><li><a href="15-git.html#ignoring-files">15.14.3 Ignoring files</a></li><li><a href="15-git.html#notes-on-commits">15.14.4 Notes on commits</a></li><li><a href="15-git.html#patches-and-bundles">15.14.5 Patches and bundles</a></li><li><a href="15-git.html#repositories-inside-repositories">15.14.6 Repositories inside repositories</a></li><li><a href="15-git.html#any-git-command">15.14.7 Any git command</a></li></ol></li></ol></li><li id="nav-16-data-pictures-and-pdfs"><a href="16-data-pictures-and-pdfs.html">16 Data, pictures and PDFs</a><ol><li><a href="16-data-pictures-and-pdfs.html#delimited-data-csv-and-tsv">16.1 Delimited data: CSV and TSV</a><ol><li><a href="16-data-pictures-and-pdfs.html#columns-are-counted-from-0">16.1.1 Columns are counted from 0</a></li><li><a href="16-data-pictures-and-pdfs.html#moving-in-a-table">16.1.2 Moving in a table</a></li><li><a href="16-data-pictures-and-pdfs.html#the-separator">16.1.3 The separator</a></li><li><a href="16-data-pictures-and-pdfs.html#the-header">16.1.4 The header</a></li><li><a href="16-data-pictures-and-pdfs.html#commands-settings-and-faces-for-tables">16.1.5 Commands, settings and faces for tables</a></li></ol></li><li><a href="16-data-pictures-and-pdfs.html#showing-only-some-records">16.2 Showing only some records</a><ol><li><a href="16-data-pictures-and-pdfs.html#deleting-records-for-good">16.2.1 Deleting records for good</a></li></ol></li><li><a href="16-data-pictures-and-pdfs.html#sorting-a-table">16.3 Sorting a table</a></li><li><a href="16-data-pictures-and-pdfs.html#the-hex-view">16.4 The hex view</a><ol><li><a href="16-data-pictures-and-pdfs.html#searching-for-octets">16.4.1 Searching for octets</a></li><li><a href="16-data-pictures-and-pdfs.html#changing-octets">16.4.2 Changing octets</a></li><li><a href="16-data-pictures-and-pdfs.html#files-that-open-in-hex-by-themselves">16.4.3 Files that open in hex by themselves</a></li></ol></li><li><a href="16-data-pictures-and-pdfs.html#pictures">16.5 Pictures</a><ol><li><a href="16-data-pictures-and-pdfs.html#pictures-in-a-terminal">16.5.1 Pictures in a terminal</a></li><li><a href="16-data-pictures-and-pdfs.html#very-large-pictures">16.5.2 Very large pictures</a></li></ol></li><li><a href="16-data-pictures-and-pdfs.html#pdfs">16.6 PDFs</a><ol><li><a href="16-data-pictures-and-pdfs.html#turning-pages">16.6.1 Turning pages</a></li><li><a href="16-data-pictures-and-pdfs.html#zoom">16.6.2 Zoom</a></li><li><a href="16-data-pictures-and-pdfs.html#searching-and-the-text-of-a-pdf">16.6.3 Searching, and the text of a PDF</a></li><li><a href="16-data-pictures-and-pdfs.html#what-the-pdf-says-of-itself-and-files-inside-it">16.6.4 What the PDF says of itself, and files inside it</a></li><li><a href="16-data-pictures-and-pdfs.html#commands-and-settings-for-pdfs">16.6.5 Commands and settings for PDFs</a></li></ol></li><li><a href="16-data-pictures-and-pdfs.html#office-documents">16.7 Office documents</a></li><li><a href="16-data-pictures-and-pdfs.html#what-a-file-says-of-itself">16.8 What a file says of itself</a></li><li><a href="16-data-pictures-and-pdfs.html#when-a-file-cannot-be-drawn">16.9 When a file cannot be drawn</a></li></ol></li><li id="nav-17-the-terminal"><a href="17-the-terminal.html">17 The terminal</a><ol><li><a href="17-the-terminal.html#opening-a-terminal">17.1 Opening a terminal</a><ol><li><a href="17-the-terminal.html#where-it-appears">17.1.1 Where it appears</a></li><li><a href="17-the-terminal.html#showing-and-hiding">17.1.2 Showing and hiding</a></li></ol></li><li><a href="17-the-terminal.html#typing-into-a-terminal">17.2 Typing into a terminal</a><ol><li><a href="17-the-terminal.html#sending-a-key-the-editor-keeps">17.2.1 Sending a key the editor keeps</a></li></ol></li><li><a href="17-the-terminal.html#the-history-view">17.3 The history view</a><ol><li><a href="17-the-terminal.html#searching-the-history">17.3.1 Searching the history</a></li></ol></li><li><a href="17-the-terminal.html#pasting">17.4 Pasting</a></li><li><a href="17-the-terminal.html#links">17.5 Links</a></li><li><a href="17-the-terminal.html#pictures-and-colours-from-programs">17.6 Pictures and colours from programs</a></li><li><a href="17-the-terminal.html#the-title">17.7 The title</a></li><li><a href="17-the-terminal.html#escape-nvim-and-the-shell">17.8 Escape, nvim and the shell</a></li><li><a href="17-the-terminal.html#the-terminal-library">17.9 The terminal library</a></li><li><a href="17-the-terminal.html#running-tuatara-inside-a-terminal">17.10 Running Tuatara inside a terminal</a><ol><li><a href="17-the-terminal.html#keys">17.10.1 Keys</a></li><li><a href="17-the-terminal.html#colours-and-pictures">17.10.2 Colours and pictures</a></li><li><a href="17-the-terminal.html#terminal-inside-the-terminal">17.10.3 Terminal inside the terminal</a></li></ol></li></ol></li><li id="nav-18-the-daemon-and-other-machines"><a href="18-the-daemon-and-other-machines.html">18 The daemon and other machines</a><ol><li><a href="18-the-daemon-and-other-machines.html#one-editor-in-the-background">18.1 One editor in the background</a><ol><li><a href="18-the-daemon-and-other-machines.html#the-commands-you-type-in-a-terminal">18.1.1 The commands you type in a terminal</a></li><li><a href="18-the-daemon-and-other-machines.html#names-for-several-daemons">18.1.2 Names for several daemons</a></li><li><a href="18-the-daemon-and-other-machines.html#closing-a-client">18.1.3 Closing a client</a></li><li><a href="18-the-daemon-and-other-machines.html#more-than-one-window-of-a-client">18.1.4 More than one window of a client</a></li><li><a href="18-the-daemon-and-other-machines.html#the-d-in-the-mode-line">18.1.5 The D in the mode line</a></li><li><a href="18-the-daemon-and-other-machines.html#commands-settings-and-faces-for-the-daemon">18.1.6 Commands, settings and faces for the daemon</a></li></ol></li><li><a href="18-the-daemon-and-other-machines.html#clients-in-the-buffer-list">18.2 Clients in the buffer list</a><ol><li><a href="18-the-daemon-and-other-machines.html#the-client-that-stays">18.2.1 The client that stays</a></li><li><a href="18-the-daemon-and-other-machines.html#commands-and-settings-for-clients">18.2.2 Commands and settings for clients</a></li></ol></li><li><a href="18-the-daemon-and-other-machines.html#stopping-the-daemon">18.3 Stopping the daemon</a></li><li><a href="18-the-daemon-and-other-machines.html#sessions-for-each-client">18.4 Sessions for each client</a></li><li><a href="18-the-daemon-and-other-machines.html#a-daemon-on-another-machine">18.5 A daemon on another machine</a><ol><li><a href="18-the-daemon-and-other-machines.html#starting-using-and-stopping">18.5.1 Starting, using and stopping</a></li><li><a href="18-the-daemon-and-other-machines.html#what-has-to-be-in-place">18.5.2 What has to be in place</a></li><li><a href="18-the-daemon-and-other-machines.html#keys-limited-with-command">18.5.3 Keys limited with command=</a></li><li><a href="18-the-daemon-and-other-machines.html#what-a-server-is-given">18.5.4 What a server is given</a></li></ol></li><li><a href="18-the-daemon-and-other-machines.html#the-trusted-servers">18.6 The trusted servers</a><ol><li><a href="18-the-daemon-and-other-machines.html#the-columns">18.6.1 The columns</a></li><li><a href="18-the-daemon-and-other-machines.html#the-keys-of-the-list">18.6.2 The keys of the list</a></li><li><a href="18-the-daemon-and-other-machines.html#the-ssh-agent">18.6.3 The ssh agent</a></li><li><a href="18-the-daemon-and-other-machines.html#the-gpg-agent">18.6.4 The gpg agent</a></li><li><a href="18-the-daemon-and-other-machines.html#the-clipboard-and-dropped-files">18.6.5 The clipboard and dropped files</a></li><li><a href="18-the-daemon-and-other-machines.html#a-language-server-for-a-server">18.6.6 A language server for a server</a></li><li><a href="18-the-daemon-and-other-machines.html#commands-for-the-trusted-servers">18.6.7 Commands for the trusted servers</a></li></ol></li></ol></li><li id="nav-19-packages"><a href="19-packages.html">19 Packages</a><ol><li><a href="19-packages.html#what-a-package-is">19.1 What a package is</a></li><li><a href="19-packages.html#naming-a-package-in-your-init-file">19.2 Naming a package in your init file</a><ol><li><a href="19-packages.html#the-keywords">19.2.1 The keywords</a></li><li><a href="19-packages.html#the-first-load">19.2.2 The first load</a></li></ol></li><li><a href="19-packages.html#the-package-manager">19.3 The package manager</a><ol><li><a href="19-packages.html#commands-of-the-package-manager">19.3.1 Commands of the package manager</a></li></ol></li><li><a href="19-packages.html#updating">19.4 Updating</a><ol><li><a href="19-packages.html#commands-for-updating">19.4.1 Commands for updating</a></li></ol></li><li><a href="19-packages.html#signatures-and-trust">19.5 Signatures and trust</a><ol><li><a href="19-packages.html#naming-the-signers-yourself">19.5.1 Naming the signers yourself</a></li><li><a href="19-packages.html#sources-that-are-not-encrypted">19.5.2 Sources that are not encrypted</a></li><li><a href="19-packages.html#settings">19.5.3 Settings</a></li></ol></li><li><a href="19-packages.html#unloading-and-removing">19.6 Unloading and removing</a><ol><li><a href="19-packages.html#commands-for-unloading-and-removing">19.6.1 Commands for unloading and removing</a></li><li><a href="19-packages.html#clearing-out-sources-no-longer-used">19.6.2 Clearing out sources no longer used</a></li><li><a href="19-packages.html#where-packages-are-kept">19.6.3 Where packages are kept</a></li></ol></li><li><a href="19-packages.html#what-a-package-needs-check-health">19.7 What a package needs: check-health</a></li><li><a href="19-packages.html#the-packages-the-project-publishes">19.8 The packages the project publishes</a><ol><li><a href="19-packages.html#palimpsest">19.8.1 palimpsest</a></li><li><a href="19-packages.html#csvdt">19.8.2 csvdt</a></li><li><a href="19-packages.html#csv-columns">19.8.3 csv-columns</a></li><li><a href="19-packages.html#facematch">19.8.4 facematch</a></li><li><a href="19-packages.html#garamond">19.8.5 garamond</a></li><li><a href="19-packages.html#kitty">19.8.6 kitty</a></li><li><a href="19-packages.html#outlook">19.8.7 outlook</a></li><li><a href="19-packages.html#caldav">19.8.8 caldav</a></li><li><a href="19-packages.html#themes">19.8.9 themes</a></li></ol></li><li><a href="19-packages.html#writing-a-package-of-your-own">19.9 Writing a package of your own</a></li></ol></li><li id="nav-20-making-it-your-own"><a href="20-making-it-your-own.html">20 Making it your own</a><ol><li><a href="20-making-it-your-own.html#the-init-file">20.1 The init file</a></li><li><a href="20-making-it-your-own.html#where-tuatara-keeps-its-files">20.2 Where Tuatara keeps its files</a><ol><li><a href="20-making-it-your-own.html#what-to-copy-to-another-computer">20.2.1 What to copy to another computer</a></li><li><a href="20-making-it-your-own.html#settings-for-the-folders">20.2.2 Settings for the folders</a></li></ol></li><li><a href="20-making-it-your-own.html#changing-a-setting">20.3 Changing a setting</a></li><li><a href="20-making-it-your-own.html#keys-of-your-own">20.4 Keys of your own</a></li><li><a href="20-making-it-your-own.html#a-leader-key-of-your-own">20.5 A leader key of your own</a></li><li><a href="20-making-it-your-own.html#modal-editing-and-turning-it-off">20.6 Modal editing, and turning it off</a></li><li><a href="20-making-it-your-own.html#themes-and-faces">20.7 Themes and faces</a><ol><li><a href="20-making-it-your-own.html#choosing-a-theme">20.7.1 Choosing a theme</a></li><li><a href="20-making-it-your-own.html#changing-one-face">20.7.2 Changing one face</a></li><li><a href="20-making-it-your-own.html#a-theme-of-your-own">20.7.3 A theme of your own</a></li><li><a href="20-making-it-your-own.html#the-faces">20.7.4 The faces</a></li></ol></li><li><a href="20-making-it-your-own.html#fonts">20.8 Fonts</a><ol><li><a href="20-making-it-your-own.html#commands-and-faces-for-fonts-and-the-window">20.8.1 Commands and faces for fonts and the window</a></li></ol></li><li><a href="20-making-it-your-own.html#your-name">20.9 Your name</a></li><li><a href="20-making-it-your-own.html#snippets-of-your-own">20.10 Snippets of your own</a></li><li><a href="20-making-it-your-own.html#how-lines-are-shown">20.11 How lines are shown</a></li><li><a href="20-making-it-your-own.html#the-calendar">20.12 The calendar</a><ol><li><a href="20-making-it-your-own.html#commands-settings-and-faces-for-the-calendar">20.12.1 Commands, settings and faces for the calendar</a></li></ol></li><li><a href="20-making-it-your-own.html#the-journal">20.13 The journal</a></li><li><a href="20-making-it-your-own.html#odds-and-ends">20.14 Odds and ends</a><ol><li><a href="20-making-it-your-own.html#changing-case-and-what-a-character-is">20.14.1 Changing case, and what a character is</a></li><li><a href="20-making-it-your-own.html#buttons-and-the-mouse">20.14.2 Buttons and the mouse</a></li><li><a href="20-making-it-your-own.html#modes-for-other-kinds-of-text">20.14.3 Modes for other kinds of text</a></li><li><a href="20-making-it-your-own.html#lists-and-the-cursors-popups">20.14.4 Lists and the cursor's popups</a></li><li><a href="20-making-it-your-own.html#limits-and-safety">20.14.5 Limits and safety</a></li><li><a href="20-making-it-your-own.html#about-the-tutor-and-lisp">20.14.6 About, the tutor and Lisp</a></li></ol></li></ol></li><li id="nav-21-every-setting"><a href="21-every-setting.html">21 Every setting</a></li><li id="nav-22-every-command"><a href="22-every-command.html">22 Every command</a><ol><li><a href="22-every-command.html#commands-that-switch-to-a-major-mode">22.1 Commands that switch to a major mode</a></li></ol></li></ol>
+</nav>
+<main>
+<article>
+<div class="node"><span>Next: <a href="02-moving-around.html">Moving around</a></span><span>Up: <a href="index.html">Contents</a></span></div>
+<h1 id="the-screen">The screen</h1>
+<p class="lead">What Tuatara shows you, and the name of each part.</p>
+<p>When Tuatara starts, its screen is divided into a few parts. Each part has a
+name, and the rest of this manual uses those names. This chapter goes through
+them from the large ones to the small ones. For each part it lists the keys
+that act on it and the settings that change how it looks.</p>
+<h2 id="keys-and-names"><span class="num">1.1</span> Keys and names</h2>
+<p>Most commands have a key. A key written as <kbd>C-x</kbd> means hold down the Control
+key and press x. A key written as <kbd>M-x</kbd> means hold down Alt (called Meta in
+older manuals) and press x. On a terminal where Alt does not reach the
+program, press Escape, let go, then press x. <kbd>S-</kbd> stands for Shift.</p>
+<p>Several keys in a row, as in <kbd>C-x C-f</kbd>, are pressed one after the other. You
+may keep Control held down through the whole sequence. A few keys have names
+instead of letters: <kbd>RET</kbd> is Return (Enter), <kbd>TAB</kbd> is Tab, <kbd>SPC</kbd> is the space
+bar, <kbd>DEL</kbd> is the Backspace key and <kbd>ESC</kbd> is Escape.</p>
+<p>Every command also has a name, such as <code>find-file</code>. You can run any command by
+its name. Press <kbd>M-x</kbd>, type a few letters of the name, and press <kbd>RET</kbd>. The
+list of choices that appears shows the keys of each command beside it. A
+command that has no key can only be run this way, and the tables in this
+manual say &quot;none&quot; for it.</p>
+<p>A setting is a name that starts and ends with a star, such as
+<code>*mode-line-tuatara*</code>. Settings go in your init file, the file Tuatara reads
+when it starts, as in <code>(setf *mode-line-tuatara* nil)</code>. Each table of settings
+in this chapter gives the standard value, the one Tuatara has until you
+change it.</p>
+<p>Tuatara is a modal editor, which means a key can do different things
+depending on a state the editor is in. There are two states you will meet
+first. In NORMAL state, the letter keys are commands: <kbd>i</kbd> starts INSERT
+state. In INSERT state, the letter keys write text. <kbd>C-g</kbd> or <kbd>ESC</kbd> takes you
+back to NORMAL state. The mode line, described below, always tells you which
+state you are in.</p>
+<h2 id="the-parts-of-the-screen"><span class="num">1.2</span> The parts of the screen</h2>
+<p>Figure 1.1 shows the whole editor with two windows and a question open, and
+names each part.</p>
+<figure id="fig-parts">
+<pre class="ex"> +-------------------------------+  +------------------------------+
+ | eggs                          |  | Pancakes                     |  Window
+ | bread                         |  | 2 eggs, 200 g flour, milk    |
+ | milk                          |  | Mix, rest, fry.              |
+ |                               |  |                              |
+ +-------------------------------+  +------------------------------+
+ | TUATARA[N] PD [-] list.txt .. |  | TUATARA[N] PD [-] pancakes.. |  Mode line
+ +-------------------------------+  +------------------------------+
+ | 3/12 Find file: ~/notes/sh                                      |  Panel
+ | shopping.txt                                                    |
+ | sheep-notes.org                                                 |
+ +-----------------------------------------------------------------+
+ | (echo area, or the minibuffer when a question is open)          |  Last row
+ +-----------------------------------------------------------------+
+</pre>
+<figcaption>Figure 1.1. The parts of the screen. Frame is the name for all of it.</figcaption>
+</figure>
+<p>The frame is everything Tuatara draws. In a window of its own it is that
+window, and in a terminal it is the terminal's screen.</p>
+<p>A window is a part of the frame that shows one piece of text. Each window has
+a mode line under it, a row that describes what the window shows.</p>
+<p>The echo area is the last row of the frame. Tuatara says short things there,
+such as <code>Wrote /home/you/list.txt</code>.</p>
+<p>The minibuffer is the same row when Tuatara asks you a question. The question
+is called the prompt, and what you type after it is your answer.</p>
+<p>The panel is a few rows above the last row. It lists choices while a question
+is open, and it lists the keys you can press next after a key such as <kbd>C-x</kbd>.
+It is only there when it has something to say.</p>
+<p>The cursor is the mark that shows where typed text goes. Other editors call
+that place the point, and Tuatara's help uses the word too.</p>
+<p>The gutter is the narrow strip at the left edge of a window. It can hold line
+numbers.</p>
+<h2 id="windows-and-buffers"><span class="num">1.3</span> Windows and buffers</h2>
+<p>A buffer is a piece of text Tuatara holds in memory. When you open a file,
+Tuatara reads it into a buffer. Your changes go to the buffer, and the file on
+disk changes only when you save with <kbd>C-x C-s</kbd>. Not every buffer has a file.
+<code>*Messages*</code>, the log of what the echo area said, is a buffer. So is the list of
+files you get from <code>find-file</code>. Buffers that Tuatara makes itself have their
+names between stars.</p>
+<p>A window is a view of one buffer. Two windows may show the same buffer, each
+at its own place, or different buffers. Closing a window never closes its
+buffer, and killing a buffer closes only the windows that were made for it.</p>
+<p>Tuatara puts new windows where you would expect. A help buffer opens in
+another window. The <code>*Messages*</code> log opens across the bottom, 30% of the
+height, and takes the cursor so that you can read it; <kbd>q</kbd> closes it. A window
+that already holds a buffer is never split into pieces smaller than
+<code>*window-min-height*</code> rows or <code>*window-min-width*</code> columns.</p>
+<div class="try">
+<h3>Try it, with a shopping list and a recipe</h3>
+<ol>
+<li>Press <kbd>C-x C-f</kbd>, type <code>~/shopping.txt</code> and press <kbd>RET</kbd>. The file does not
+   exist yet, so Tuatara makes an empty buffer with that name.</li>
+<li>Press <kbd>i</kbd> to start INSERT state. Type <code>eggs</code>, <kbd>RET</kbd>, <code>bread</code>, <kbd>RET</kbd>, <code>milk</code>.
+   Press <kbd>C-g</kbd> to go back to NORMAL state, then <kbd>C-x C-s</kbd> to save.</li>
+<li>Press <kbd>C-x 3</kbd>. The window splits in two, side by side, and both show the
+   shopping list. The left window keeps the cursor.</li>
+<li>Press <kbd>C-x o</kbd> to move to the right window. Press <kbd>C-x C-f</kbd>, type
+   <code>~/pancakes.txt</code>, press <kbd>RET</kbd>, then press <kbd>i</kbd> and type a recipe.</li>
+<li>Press <kbd>C-x o</kbd> to go back to the left window. Press <kbd>C-x 1</kbd>. The left window
+   fills the frame again. The pancake buffer is still there: press <kbd>C-x b</kbd>,
+   type <code>pan</code> and press <kbd>RET</kbd> to bring it back.</li>
+</ol>
+</div>
+<h3 id="commands-for-windows"><span class="num">1.3.1</span> Commands for windows</h3>
+<div class="tablewrap"><table>
+<thead>
+<tr><th>Keys</th><th>Command</th><th>What it does</th></tr>
+</thead>
+<tbody>
+<tr><td><kbd>C-x 2</kbd></td><td><code>split-window-below</code></td><td>Two windows, one above the other. The upper one keeps the cursor. A number before it sets the upper window's rows.</td></tr>
+<tr><td><kbd>C-x 3</kbd></td><td><code>split-window-right</code></td><td>Two windows side by side. The left one keeps the cursor.</td></tr>
+<tr><td><kbd>C-x 0</kbd></td><td><code>delete-window</code></td><td>Closes this window. Its room goes to its neighbour.</td></tr>
+<tr><td><kbd>C-x 1</kbd>, <kbd>F</kbd></td><td><code>delete-other-windows</code></td><td>Closes all other windows. <kbd>F</kbd> works in NORMAL state.</td></tr>
+<tr><td><kbd>C-x o</kbd></td><td><code>other-window</code></td><td>Moves to the next window, from the top left. A number moves that many windows on, and a negative one goes back.</td></tr>
+<tr><td><kbd>C-M-h</kbd></td><td><code>select-window-left</code></td><td>Moves to the window on the left.</td></tr>
+<tr><td><kbd>C-M-l</kbd></td><td><code>select-window-right</code></td><td>Moves to the window on the right.</td></tr>
+<tr><td><kbd>C-M-k</kbd></td><td><code>select-window-above</code></td><td>Moves to the window above.</td></tr>
+<tr><td><kbd>C-M-j</kbd></td><td><code>select-window-below</code></td><td>Moves to the window below.</td></tr>
+<tr><td><kbd>q</kbd>, <kbd>h</kbd></td><td><code>quit-window</code></td><td>Closes a window that was opened for a help buffer, a list or a log, or shows the buffer it had before. <kbd>h</kbd> works in lists.</td></tr>
+<tr><td><kbd>C-x 4 0</kbd></td><td><code>kill-buffer-and-window</code></td><td>Kills this buffer, asking first if it has unsaved changes, and closes its window.</td></tr>
+<tr><td><kbd>C-x 4 b</kbd></td><td><code>switch-to-buffer-other-window</code></td><td>Asks for a buffer and shows it in another window.</td></tr>
+<tr><td><kbd>C-x 4 f</kbd>, <kbd>C-x 4 C-f</kbd></td><td><code>find-file-other-window</code></td><td>Opens a file in another window.</td></tr>
+</tbody></table></div>
+<h3 id="moving-windows-and-changing-their-size"><span class="num">1.3.2</span> Moving windows and changing their size</h3>
+<div class="tablewrap"><table>
+<thead>
+<tr><th>Keys</th><th>Command</th><th>What it does</th></tr>
+</thead>
+<tbody>
+<tr><td><kbd>C-x w h</kbd></td><td><code>swap-window-left</code></td><td>Swaps this window's buffer with the one on the left. The cursor goes with the buffer.</td></tr>
+<tr><td><kbd>C-x w l</kbd></td><td><code>swap-window-right</code></td><td>The same, with the window on the right.</td></tr>
+<tr><td><kbd>C-x w k</kbd></td><td><code>swap-window-above</code></td><td>The same, with the window above.</td></tr>
+<tr><td><kbd>C-x w j</kbd></td><td><code>swap-window-below</code></td><td>The same, with the window below.</td></tr>
+<tr><td><kbd>C-x w x</kbd></td><td><code>window-swap-states</code></td><td>Swaps what this window shows with the next window.</td></tr>
+<tr><td><kbd>C-x w r</kbd></td><td><code>rotate-windows</code></td><td>Moves each buffer to the next window.</td></tr>
+<tr><td><kbd>C-x w R</kbd></td><td><code>rotate-windows-back</code></td><td>Moves each buffer to the window before.</td></tr>
+<tr><td><kbd>C-x w .</kbd></td><td><code>rotate-window-layout-clockwise</code></td><td>Turns the arrangement of windows a quarter turn clockwise.</td></tr>
+<tr><td><kbd>C-x w ,</kbd></td><td><code>rotate-window-layout-anticlockwise</code></td><td>Turns the arrangement a quarter turn the other way.</td></tr>
+<tr><td><kbd>C-x w t</kbd></td><td><code>transpose-window-layout</code></td><td>Windows that were stacked go side by side, and the other way round.</td></tr>
+<tr><td>none</td><td><code>flip-window-layout-horizontally</code></td><td>Mirrors the arrangement from left to right.</td></tr>
+<tr><td>none</td><td><code>flip-window-layout-vertically</code></td><td>Mirrors the arrangement from top to bottom.</td></tr>
+<tr><td><kbd>C-x ^</kbd></td><td><code>enlarge-window</code></td><td>Makes this window a row taller, or as many rows as the number you gave first.</td></tr>
+<tr><td>none</td><td><code>shrink-window</code></td><td>Makes this window a row shorter. Right after <kbd>C-x ^</kbd>, <kbd>v</kbd> does it.</td></tr>
+<tr><td><kbd>C-x }</kbd></td><td><code>enlarge-window-horizontally</code></td><td>Makes this window a column wider.</td></tr>
+<tr><td><kbd>C-x {</kbd></td><td><code>shrink-window-horizontally</code></td><td>Makes this window a column narrower.</td></tr>
+<tr><td><kbd>C-x +</kbd></td><td><code>balance-windows</code></td><td>Gives all windows the same size.</td></tr>
+<tr><td><kbd>C-x -</kbd></td><td><code>shrink-window-if-larger-than-buffer</code></td><td>Shrinks the window to the height its text needs.</td></tr>
+</tbody></table></div>
+<p>Each of the four keys that make a window larger or smaller says in the echo
+area what share of the split every window has now, in per cent. Side by side
+it reads <code>Widths, left to right: 52%, 48%</code>, and one above the other it reads
+<code>Heights, top to bottom: 55%, 45%</code>. The shares may not add up to exactly 100,
+as each is rounded. The echo area then lists the keys that repeat the change.
+Right after one of the size commands, you can press a key alone to go on
+resizing. <kbd>}</kbd> and <kbd>&gt;</kbd> make the window wider, <kbd>{</kbd> and <kbd>&lt;</kbd> narrower, <kbd>^</kbd> and <kbd>+</kbd>
+taller, and <kbd>v</kbd> and <kbd>-</kbd> shorter. If the window has no neighbour in that
+direction, the echo area says that it cannot be made larger or smaller. With
+the mouse,
+drag a mode line up or down, or the line between two windows left or right.</p>
+<h3 id="scrolling-and-finding-out-where-buffers-go"><span class="num">1.3.3</span> Scrolling and finding out where buffers go</h3>
+<div class="tablewrap"><table>
+<thead>
+<tr><th>Keys</th><th>Command</th><th>What it does</th></tr>
+</thead>
+<tbody>
+<tr><td><kbd>C-v</kbd>, <kbd>&lt;next&gt;</kbd></td><td><code>scroll-up-command</code></td><td>Scrolls forward by nearly a screenful. A number scrolls that many rows.</td></tr>
+<tr><td><kbd>M-v</kbd>, <kbd>&lt;prior&gt;</kbd></td><td><code>scroll-down-command</code></td><td>Scrolls back by nearly a screenful.</td></tr>
+<tr><td><kbd>C-l</kbd>, <kbd>z z</kbd></td><td><code>recenter</code></td><td>Puts the cursor's line in the middle of the window. <kbd>z z</kbd> works in NORMAL state.</td></tr>
+<tr><td><kbd>C-M-v</kbd></td><td><code>scroll-other-window</code></td><td>Scrolls the next window forward.</td></tr>
+<tr><td><kbd>C-M-S-v</kbd></td><td><code>scroll-other-window-down</code></td><td>Scrolls the next window back.</td></tr>
+<tr><td><kbd>&lt;wheel-up&gt;</kbd>, <kbd>&lt;wheel-down&gt;</kbd></td><td><code>scroll-by-wheel</code></td><td>Scrolls the window under the mouse.</td></tr>
+<tr><td>none</td><td><code>describe-buffer-places</code></td><td>Lists where each kind of buffer is shown.</td></tr>
+</tbody></table></div>
+<h3 id="commands-for-buffers"><span class="num">1.3.4</span> Commands for buffers</h3>
+<div class="tablewrap"><table>
+<thead>
+<tr><th>Keys</th><th>Command</th><th>What it does</th></tr>
+</thead>
+<tbody>
+<tr><td><kbd>C-x b</kbd></td><td><code>switch-to-buffer</code></td><td>Asks for a buffer. A name that does not exist makes a new buffer. <kbd>RET</kbd> alone goes back to the last one.</td></tr>
+<tr><td><kbd>C-x x b</kbd></td><td><code>switch-other-buffer</code></td><td>Goes to the buffer used before this one. Press it again to come back.</td></tr>
+<tr><td><kbd>C-x C-b</kbd></td><td><code>buffers</code></td><td>Lists every buffer, grouped by project.</td></tr>
+<tr><td><kbd>C-x k</kbd></td><td><code>kill-buffer</code></td><td>Kills this buffer, asking first if it has unsaved changes.</td></tr>
+<tr><td><kbd>C-x C-s</kbd></td><td><code>save-buffer</code></td><td>Writes the buffer to its file.</td></tr>
+</tbody></table></div>
+<h3 id="settings"><span class="num">1.3.5</span> Settings</h3>
+<div class="tablewrap"><table>
+<thead>
+<tr><th>Setting</th><th>Standard</th><th>What it changes</th></tr>
+</thead>
+<tbody>
+<tr><td><code>*window-min-height*</code></td><td><code>4</code></td><td>The fewest rows, mode line included, a window may be left with when it is split or made smaller.</td></tr>
+<tr><td><code>*window-min-width*</code></td><td><code>10</code></td><td>The fewest columns a window may be left with.</td></tr>
+<tr><td><code>*split-height-threshold*</code></td><td><code>80</code></td><td>The rows a window needs before a buffer shown &quot;in another window&quot; splits it into one above the other. A lone window always splits when it has room.</td></tr>
+<tr><td><code>*split-width-threshold*</code></td><td><code>160</code></td><td>The columns a window needs before it is split into two side by side for the same purpose.</td></tr>
+<tr><td><code>*help-window-select*</code></td><td><code>nil</code></td><td>Set to <code>t</code> to move the cursor to a help window when it opens. <kbd>q</kbd> there closes it and goes back.</td></tr>
+<tr><td><code>*scroll-margin*</code></td><td><code>0</code></td><td>How many rows to keep between the cursor and the top or bottom of a window.</td></tr>
+<tr><td><code>*scroll-recenter*</code></td><td><code>nil</code></td><td>Set to <code>t</code> to put the cursor's line in the middle of the window whenever it leaves the window or comes within the margin.</td></tr>
+</tbody></table></div>
+<h2 id="frames-windows-of-their-own-and-terminals"><span class="num">1.4</span> Frames, windows of their own and terminals</h2>
+<p>Tuatara runs in two ways. Typed as <code>tuatara</code>, it runs in the terminal you
+started it from. Typed as <code>tuatara --gui</code>, it opens a window of its own on the
+desktop, drawn with GTK, the toolkit most Linux desktops use. Both have the
+same keys, the same commands and the same parts. The window of its own has
+things a terminal does not, such as pictures in every case, a font you can
+change and ligatures where the font has them.</p>
+<p>A frame is one such screen. You can have several frames. In a window of its
+own each frame is a separate desktop window. A terminal has only one screen,
+so its frames take turns: the one you work in is shown, and the others wait.
+When frames take turns, the mode line starts the buffer's name with the
+frame's name, F1, F2 and so on. Every frame has its own windows and its own
+echo area. They all show the same buffers, so a change you make in one frame
+is in the other at once.</p>
+<p>Tuatara can also run in the background as a daemon, started with
+<code>tuatara --daemon</code>, and be reached with <code>tuatara --client</code>, each client with
+frames of its own. The sign D in the mode line, described below, says that the
+editor you are in runs as a daemon.</p>
+<div class="try">
+<h3>Try it, with two frames</h3>
+<ol>
+<li>In a terminal, start Tuatara with <code>tuatara ~/shopping.txt</code>.</li>
+<li>Press <kbd>C-x 5 2</kbd>. A second frame opens showing the same file. In a terminal
+   the new frame replaces the first on the screen, and the mode line now
+   starts the buffer's name with <code>F2</code>.</li>
+<li>Press <kbd>C-x 5 o</kbd> to go to the other frame, and back again with the same
+   keys. The mode line says <code>F1</code> in the first.</li>
+<li>Press <kbd>C-x 5 0</kbd> in the second frame to close it. Closing the last frame is
+   refused. Quit with <kbd>C-x C-c</kbd>.</li>
+</ol>
+</div>
+<h3 id="commands-for-frames-and-the-windows-font"><span class="num">1.4.1</span> Commands for frames and the window's font</h3>
+<div class="tablewrap"><table>
+<thead>
+<tr><th>Keys</th><th>Command</th><th>What it does</th></tr>
+</thead>
+<tbody>
+<tr><td><kbd>C-x 5 2</kbd></td><td><code>make-frame</code></td><td>Opens another frame showing this buffer.</td></tr>
+<tr><td><kbd>C-x 5 0</kbd></td><td><code>delete-frame</code></td><td>Closes this frame. The buffers stay. The last frame cannot be closed this way.</td></tr>
+<tr><td><kbd>C-x 5 1</kbd></td><td><code>delete-other-frames</code></td><td>Closes all frames but this one.</td></tr>
+<tr><td><kbd>C-x 5 o</kbd></td><td><code>other-frame</code></td><td>Goes to the next frame. A number goes that many on, a negative one goes back.</td></tr>
+<tr><td><kbd>C-x 5 f</kbd></td><td><code>find-file-other-frame</code></td><td>Opens a file in another frame.</td></tr>
+<tr><td><kbd>C-x 5 b</kbd></td><td><code>switch-to-buffer-other-frame</code></td><td>Shows a buffer in another frame.</td></tr>
+<tr><td><kbd>C-x 5 d</kbd></td><td><code>rimu-other-frame</code></td><td>Lists a folder in another frame.</td></tr>
+<tr><td><kbd>C-x C-+</kbd>, <kbd>C-x C-=</kbd></td><td><code>text-scale-adjust</code></td><td>Makes the font a step larger. After it, <kbd>+</kbd>, <kbd>=</kbd>, <kbd>-</kbd> and <kbd>0</kbd> alone go on.</td></tr>
+<tr><td><kbd>C-x C--</kbd></td><td><code>text-scale-adjust</code></td><td>Makes the font a step smaller.</td></tr>
+<tr><td><kbd>C-x C-0</kbd></td><td><code>text-scale-adjust</code></td><td>Goes back to the size the window started with.</td></tr>
+<tr><td>none</td><td><code>text-scale-increase</code></td><td>Makes the font a step larger.</td></tr>
+<tr><td>none</td><td><code>text-scale-decrease</code></td><td>Makes the font a step smaller.</td></tr>
+<tr><td><kbd>C-&lt;wheel-up&gt;</kbd>, <kbd>C-&lt;wheel-down&gt;</kbd></td><td><code>mouse-wheel-text-scale</code></td><td>Larger or smaller as the wheel turns with Control held.</td></tr>
+<tr><td>none</td><td><code>set-frame-font</code></td><td>Asks for a font family. It lasts until you quit.</td></tr>
+<tr><td><kbd>&lt;f11&gt;</kbd></td><td><code>toggle-frame-fullscreen</code></td><td>Fills the screen, or goes back.</td></tr>
+<tr><td><kbd>M-&lt;f10&gt;</kbd></td><td><code>toggle-frame-maximized</code></td><td>Makes the window as large as the screen allows, or goes back.</td></tr>
+</tbody></table></div>
+<p>Font steps are 1.2 times each, from 0.4 to 15 times the starting size. In a
+terminal the font belongs to the terminal, and these commands say so.</p>
+<h3 id="settings-2"><span class="num">1.4.2</span> Settings</h3>
+<div class="tablewrap"><table>
+<thead>
+<tr><th>Setting</th><th>Standard</th><th>What it changes</th></tr>
+</thead>
+<tbody>
+<tr><td><code>*startup-buffer*</code></td><td><code>&quot;*lisp-scratch*&quot;</code></td><td>The buffer shown when Tuatara starts without files, either <code>&quot;*lisp-scratch*&quot;</code> or <code>&quot;*org-scratch*&quot;</code>.</td></tr>
+<tr><td><code>*auto-scratch-buffers*</code></td><td><code>(&quot;*lisp-scratch*&quot; &quot;*org-scratch*&quot;)</code></td><td>The scratch buffers made without being asked for.</td></tr>
+<tr><td><code>*gui-font*</code></td><td><code>nil</code></td><td>The window's font as Pango reads it, <code>&quot;Adwaita Mono 12&quot;</code> for one. <code>nil</code> takes the desktop's monospace font.</td></tr>
+<tr><td><code>*gui-padding*</code></td><td><code>8</code></td><td>Pixels between the window's edge and its text. One number, or a list of two, three or four, read as in CSS.</td></tr>
+<tr><td><code>*gui-renderer*</code></td><td><code>:gl</code></td><td>How the window is drawn: <code>:gl</code>, <code>:vulkan</code>, <code>:cairo</code>, or <code>nil</code> for GTK's choice.</td></tr>
+<tr><td><code>*gui-title*</code></td><td><code>&quot;~a - Tuatara&quot;</code></td><td>The window's title. <code>~a</code> is the name of the buffer shown.</td></tr>
+<tr><td><code>*window-colours-from-desktop*</code></td><td><code>nil</code></td><td>Set to <code>t</code> to take colours the theme leaves out from the desktop's style.</td></tr>
+<tr><td><code>*tui-padding*</code></td><td><code>0</code></td><td>Cells between the terminal's edge and the text, in the same forms as <code>*gui-padding*</code>.</td></tr>
+<tr><td><code>*tui-mouse*</code></td><td><code>t</code></td><td>Whether the mouse works in a terminal. <code>nil</code> leaves it to the terminal.</td></tr>
+<tr><td><code>*tui-colours*</code></td><td><code>:auto</code></td><td>How many colours to use in a terminal: <code>:auto</code>, <code>:24-bit</code>, <code>256</code>, <code>16</code>, <code>8</code> or <code>nil</code>.</td></tr>
+<tr><td><code>*tui-pictures*</code></td><td><code>:auto</code></td><td>Whether pictures show in a terminal: <code>:auto</code>, <code>t</code> or <code>nil</code>.</td></tr>
+</tbody></table></div>
+<h2 id="the-mode-line"><span class="num">1.5</span> The mode line</h2>
+<p>The mode line is the bar under every window. It says what the window shows
+and in what state. The mode line of the window you are working in is drawn
+brighter than the others. Here is a typical one.</p>
+<figure>
+<div class="screen"><div>Dear Hana, thank you for the lovely weekend.</div><div class="ml"> TUATARA[N] <span class="sign">P</span><span class="faint">D</span> [-] letter.txt  L1 C0  Text  ~/letters/</div></div>
+<figcaption>Figure 1.2. A mode line. The sign P is lit: a job is running.</figcaption>
+</figure>
+<p>Read left to right, the parts are these.</p>
+<ol>
+<li>The modal state, in square brackets after the word TUATARA.</li>
+<li>Up to four signs, P, U, S and D, always in the same place.</li>
+<li>The marker that says whether the buffer is saved, [-], [*] or [%].</li>
+<li>Words about the buffer itself, such as Safe or Narrow, when they apply.</li>
+<li>The buffer's name.</li>
+<li>The line and the column of the cursor.</li>
+<li>The name of the buffer's major mode, when it has one.</li>
+<li>Anything more the buffer has to say, such as CRLF or Page 3 of 10.</li>
+<li>The folder the buffer lives in, at the right end.</li>
+</ol>
+<p>Only the parts that apply are shown, and a mode line that is too narrow cuts
+the buffer's name in the middle, with a mark for what is left out.</p>
+<h3 id="the-modal-state"><span class="num">1.5.1</span> The modal state</h3>
+<p>The first part tells you what a key will do. <code>TUATARA[N]</code> is NORMAL state,
+<code>TUATARA[I]</code> is INSERT state. <code>TUATARA[S]</code> is a support buffer, one that holds
+a list, help or the <code>*Messages*</code> log. There you can read, move and select but
+not type. <code>TUATARA[E]</code> is a buffer that holds no modal keys, such as the Lisp
+prompt (IELM). With <code>*modal-editing*</code> set to <code>nil</code> there is no
+modal part at all.</p>
+<p>With <code>*mode-line-tuatara*</code> set to <code>nil</code> the word TUATARA is left out and only
+<code>[N]</code> remains. <kbd>C-x T t</kbd> switches it while Tuatara runs.</p>
+<h3 id="the-signs-p-u-s-and-d"><span class="num">1.5.2</span> The signs P, U, S and D</h3>
+<p>Four letters stand before the saved marker, side by side. Each is faint when
+nothing is going on and bright, in the warning colour, while its work goes on.
+They never move, so nothing after them jumps when one lights up. A sign stays
+lit for half a second after its work ends, so that a short job can be seen.</p>
+<div class="tablewrap"><table>
+<thead>
+<tr><th>Sign</th><th>Setting</th><th>What it says</th></tr>
+</thead>
+<tbody>
+<tr><td>P</td><td><code>*processing-indicator*</code></td><td>Processing. A job is running for this buffer, or waits its turn. Jobs are things done in the background, such as a search through a large file, a sort or a save. <kbd>C-x j</kbd> lists them.</td></tr>
+<tr><td>U</td><td><code>*indexing-indicator*</code></td><td>Update. A folder you asked Tuatara to keep read in memory is being read.</td></tr>
+<tr><td>S</td><td><code>*searching-indicator*</code></td><td>Search. A search runs over such a folder.</td></tr>
+<tr><td>D</td><td><code>*daemon-indicator*</code></td><td>Daemon. This editor runs in the background as a daemon.</td></tr>
+</tbody></table></div>
+<p>U and S only appear when <code>*indexed-directories*</code> names some folder, and P and D
+always appear. Set any of the four settings to <code>nil</code> to hide that sign, or to
+another piece of text, such as <code>&quot;indexing&quot;</code> or an icon from a font that has
+one, to show that instead.</p>
+<h3 id="saved-or-not"><span class="num">1.5.3</span> Saved or not</h3>
+<p>Next comes the marker for the buffer's state.</p>
+<div class="tablewrap"><table>
+<thead>
+<tr><th>Marker</th><th>Meaning</th></tr>
+</thead>
+<tbody>
+<tr><td>[-]</td><td>The buffer is as it was saved or read.</td></tr>
+<tr><td>[*]</td><td>You have changed it and not yet saved it.</td></tr>
+<tr><td>[%]</td><td>The buffer is read-only. Typing does not change it. <kbd>C-x C-q</kbd> switches that.</td></tr>
+</tbody></table></div>
+<h3 id="words-about-the-buffer"><span class="num">1.5.4</span> Words about the buffer</h3>
+<p>Just before the buffer's name, Tuatara may add a word that is lit up in a
+colour of its own.</p>
+<div class="tablewrap"><table>
+<thead>
+<tr><th>Word</th><th>Meaning</th></tr>
+</thead>
+<tbody>
+<tr><td>Safe</td><td>The file was opened safely. Tuatara shows its text and leaves the file untouched.</td></tr>
+<tr><td>Evidence</td><td>The file is in a folder listed in <code>*evidence-folders*</code>. It is never written to.</td></tr>
+<tr><td>Narrow</td><td>The buffer shows only a part of its text (<kbd>C-x x n</kbd>, <kbd>C-x x s</kbd>). <kbd>C-x x w</kbd> shows all of it again.</td></tr>
+<tr><td>Look only</td><td>The buffer belongs to a git repository opened for looking at only. Commands that would change it are refused.</td></tr>
+</tbody></table></div>
+<h3 id="the-name-the-line-and-the-column"><span class="num">1.5.5</span> The name, the line and the column</h3>
+<p>The buffer's name follows. When it is long, it is cut in the middle and a
+mark stands for what is left out, down to 12 columns. <code>*mode-line-name-limit*</code>
+sets a shorter limit.</p>
+<p>After the name comes <code>L</code> and the line number, then <code>C</code> and the column, which
+counts from 0. A number above 999 has commas, as in <code>L100,000,001</code>. When Tuatara
+is still counting the lines of a very large file you see <code>L...</code> instead, and
+the number appears when the count is done. The same holds for a column on a
+line too long to measure at once.</p>
+<p>After them, if the buffer has a major mode, comes its name, such as Org or
+Terminal. A major mode is the set of habits Tuatara gives a buffer according to
+what it holds: how it colours text, which keys it adds, and so on.</p>
+<h3 id="other-things-the-mode-line-says"><span class="num">1.5.6</span> Other things the mode line says</h3>
+<p>While keys are recorded, the word Rec stands before the signs (<kbd>C-x (</kbd>
+starts recording). While recorded keys play over and over for more than a
+second, <code>Played 1,200/10,000</code> says how many plays are done. The words below
+follow the mode name, each when it applies.</p>
+<div class="tablewrap"><table>
+<thead>
+<tr><th>Shows</th><th>Meaning</th></tr>
+</thead>
+<tbody>
+<tr><td>CRLF or CR</td><td>The file's lines end the way Windows (CRLF) or old Macintosh files (CR) end them. Plain files with the usual ending show nothing.</td></tr>
+<tr><td>Following</td><td>The buffer follows its file as it grows, like <code>tail -f</code> (<code>follow-file</code>).</td></tr>
+<tr><td>Counting lines 40%</td><td>Tuatara is counting the lines of a large file.</td></tr>
+<tr><td>Saving 50%</td><td>A save is under way. Another buffer's save shows with its name.</td></tr>
+<tr><td>Changed on disk</td><td>Another program changed the file after you read it.</td></tr>
+<tr><td>Deleted on disk</td><td>The file was removed.</td></tr>
+<tr><td>Stale, read-only</td><td>The file was rewritten on disk while it was shown, so the buffer is read-only. <code>revert-buffer</code> reads it again.</td></tr>
+<tr><td>incomplete</td><td>A file from another machine stopped arriving before it was all there.</td></tr>
+<tr><td>Wrap, Centred</td><td>The buffer wraps long lines (<kbd>C-x T l</kbd>) or shows its text in a column in the middle (<kbd>C-x T o</kbd>).</td></tr>
+<tr><td>Rewind a1b2c3d</td><td>The buffer shows a file as an older git commit had it (<kbd>C-x G</kbd>). The commit's date and its place in the history follow.</td></tr>
+<tr><td>Conflicts 3</td><td>The buffer holds git conflict markers, and says how many.</td></tr>
+<tr><td>Hex 0x00000010 digits</td><td>The buffer shows the file's bytes. <code>digits</code> or <code>text</code> says which side the cursor is on.</td></tr>
+<tr><td>Page 3 of 10</td><td>A PDF's page, the number of pages and its zoom.</td></tr>
+<tr><td>Sandboxed</td><td>What you see was made by a program shut in a sandbox.</td></tr>
+<tr><td>Quick edit</td><td>A file opened from a folder list to be edited there.</td></tr>
+<tr><td>Filtered by kiwi: 12 of 1,000 records</td><td>A search filter hides some lines of the file.</td></tr>
+<tr><td>✘2 ⚠1</td><td>A language server found 2 errors and 1 warning.</td></tr>
+<tr><td>Debug</td><td>Debug mode is on.</td></tr>
+<tr><td>SV&lt;</td><td>An input method is on, here the one for Swedish.</td></tr>
+<tr><td>[0:22] (Task)</td><td>The Org clock is running on a task.</td></tr>
+<tr><td>by time, by name</td><td>How a folder list is sorted.</td></tr>
+</tbody></table></div>
+<h3 id="the-folder"><span class="num">1.5.7</span> The folder</h3>
+<p>The last part is the folder the buffer lives in, written with <code>~</code> for your home
+folder: <code>~/letters/</code>. A buffer with no file, such as a scratch buffer, shows the
+folder named by <code>*default-directory*</code>. Files on another machine show their
+<code>/ssh:pinetree:</code> path.</p>
+<div class="try">
+<h3>Try it, with a letter</h3>
+<ol>
+<li>Press <kbd>C-x C-f</kbd>, type <code>~/letter.txt</code> and press <kbd>RET</kbd>. Look at the mode line:
+   <code>[-]</code>, the name, <code>L1 C0</code>.</li>
+<li>Press <kbd>i</kbd>, type <code>Dear Hana,</code> and press <kbd>RET</kbd>. The mode line now says <code>[*]</code>,
+   and <code>TUATARA[I]</code>, and <code>L2 C0</code>.</li>
+<li>Press <kbd>C-g</kbd> to leave INSERT state, then <kbd>C-x C-s</kbd>. The marker goes back to
+   <code>[-]</code> and the echo area says that the file was written.</li>
+<li>Press <kbd>C-x C-q</kbd>. The marker becomes <code>[%]</code>. Now <kbd>C-x C-q</kbd> again.</li>
+<li>Press <kbd>C-x T t</kbd>. The word TUATARA disappears from the mode line. Press the
+   same keys to bring it back.</li>
+<li>Press <kbd>M-x</kbd>, type <code>follow-file</code> and press <kbd>RET</kbd>. The word <code>Following</code>
+   appears. Run it again to stop it.</li>
+</ol>
+</div>
+<h3 id="commands"><span class="num">1.5.8</span> Commands</h3>
+<div class="tablewrap"><table>
+<thead>
+<tr><th>Keys</th><th>Command</th><th>What it does</th></tr>
+</thead>
+<tbody>
+<tr><td><kbd>C-x T t</kbd></td><td><code>toggle-mode-line-tuatara</code></td><td>Writes TUATARA before the modal state, or only the state.</td></tr>
+<tr><td><kbd>C-x C-q</kbd></td><td><code>read-only-mode</code></td><td>Makes the buffer read-only, or editable again.</td></tr>
+<tr><td><kbd>C-x j</kbd></td><td><code>list-jobs</code></td><td>Lists the jobs running or waiting, which P stands for.</td></tr>
+<tr><td><kbd>C-x J</kbd></td><td><code>stop-job</code></td><td>Stops the job running in this buffer, after asking.</td></tr>
+</tbody></table></div>
+<p>Clicking a window's mode line with the mouse selects that window.</p>
+<h3 id="settings-3"><span class="num">1.5.9</span> Settings</h3>
+<div class="tablewrap"><table>
+<thead>
+<tr><th>Setting</th><th>Standard</th><th>What it changes</th></tr>
+</thead>
+<tbody>
+<tr><td><code>*mode-line-tuatara*</code></td><td><code>t</code></td><td>Writes TUATARA before the modal state.</td></tr>
+<tr><td><code>*modal-editing*</code></td><td><code>t</code></td><td>Modal editing on. With <code>nil</code> the mode line has no state and every key types.</td></tr>
+<tr><td><code>*mode-line-name-limit*</code></td><td><code>nil</code></td><td>The most columns the buffer's name may take, or <code>nil</code> for as many as fit.</td></tr>
+<tr><td><code>*processing-indicator*</code></td><td><code>&quot;P&quot;</code></td><td>The sign for jobs. <code>nil</code> hides it.</td></tr>
+<tr><td><code>*indexing-indicator*</code></td><td><code>&quot;U&quot;</code></td><td>The sign for folders being read.</td></tr>
+<tr><td><code>*searching-indicator*</code></td><td><code>&quot;S&quot;</code></td><td>The sign for searches over those folders.</td></tr>
+<tr><td><code>*daemon-indicator*</code></td><td><code>&quot;D&quot;</code></td><td>The sign for a daemon.</td></tr>
+<tr><td><code>*default-directory*</code></td><td><code>&quot;~/&quot;</code></td><td>The folder of a buffer with no file. <code>nil</code> is the folder Tuatara started in.</td></tr>
+<tr><td><code>*terminal-title-limit*</code></td><td><code>40</code></td><td>The most columns of the title a program in a terminal buffer gave itself, shown in the mode line.</td></tr>
+</tbody></table></div>
+<h3 id="faces"><span class="num">1.5.10</span> Faces</h3>
+<p>A face is a name for a way of drawing text: a colour, bold, and so on. The
+theme in force, ao-dark as standard, gives each face its look. Change one in
+your init file, for example <code>(set-face :mode-line-sign :fg &quot;#e0a33a&quot;)</code>.</p>
+<div class="tablewrap"><table>
+<thead>
+<tr><th>Face</th><th>Standard</th><th>What it paints</th></tr>
+</thead>
+<tbody>
+<tr><td><code>:mode-line</code></td><td>theme</td><td>The mode line of the selected window.</td></tr>
+<tr><td><code>:mode-line-inactive</code></td><td>theme</td><td>The mode lines of the other windows.</td></tr>
+<tr><td><code>:mode-line-directory</code></td><td>theme</td><td>The folder at the right end.</td></tr>
+<tr><td><code>:mode-line-sign</code></td><td>theme</td><td>A sign while its work goes on.</td></tr>
+<tr><td><code>:mode-line-sign-idle</code></td><td>theme</td><td>A sign while nothing happens. Worked out from the mode line's colours unless you set it.</td></tr>
+<tr><td><code>:mode-line-narrowed</code></td><td>theme</td><td>The word Narrow.</td></tr>
+<tr><td><code>:mode-line-evidence</code></td><td>theme</td><td>The word Evidence.</td></tr>
+<tr><td><code>:mode-line-look-only</code></td><td>theme</td><td>The words Look only.</td></tr>
+<tr><td><code>:mode-line-rewind</code></td><td>theme</td><td>Rewind and the commit's short name.</td></tr>
+<tr><td><code>:mode-line-recording</code></td><td>theme</td><td>Rec and Played.</td></tr>
+<tr><td><code>:org-mode-line-clock</code></td><td>theme</td><td>The running Org clock.</td></tr>
+</tbody></table></div>
+<h2 id="the-echo-area-and-the-messages-log"><span class="num">1.6</span> The echo area and the messages log</h2>
+<p>The echo area is the last row of the frame. Tuatara writes a short message
+there after most things you do, such as <code>Wrote /home/you/letter.txt</code>, and the
+message stays until the next key you press does something. It also shows the
+keys of a long sequence while you are typing it, and asks questions that one
+key answers, such as yes or no.</p>
+<p>Every message is also kept in the <code>*Messages*</code> buffer. A message said twice in
+a row is written once with a count, as in <code>Saved [3 times]</code>. The buffer is
+read-only, and it holds the last 1000 lines. Messages said while a password or
+other secret was at hand are shown but not kept.</p>
+<p><kbd>C-h e</kbd> opens the log across the bottom of the frame, 30% of the height,
+with the cursor in it. It is a read-only buffer, so <kbd>q</kbd> closes it. The log
+is the place to look when a message went by too fast.</p>
+<div class="try">
+<h3>Try it, with a message gone by</h3>
+<ol>
+<li>Press <kbd>C-x C-f</kbd>, open <code>~/shopping.txt</code>, press <kbd>i</kbd>, type <code>tea</code> and press
+   <kbd>C-g</kbd>. Then press <kbd>C-x C-s</kbd>. The echo area says that the file was written
+   (on a file with no change it says that no changes need to be saved). The
+   message disappears when you press the next key.</li>
+<li>Press <kbd>C-h e</kbd>. The log opens at the bottom with the message in its last
+   line. Press <kbd>q</kbd> to close it.</li>
+<li>Press <kbd>C-h N</kbd> to read the notifications Tuatara or its packages have given
+   this session, for example when an agenda entry's time came.</li>
+</ol>
+</div>
+<h3 id="commands-2"><span class="num">1.6.1</span> Commands</h3>
+<div class="tablewrap"><table>
+<thead>
+<tr><th>Keys</th><th>Command</th><th>What it does</th></tr>
+</thead>
+<tbody>
+<tr><td><kbd>C-h e</kbd></td><td><code>view-echo-area-messages</code></td><td>Shows the <code>*Messages*</code> log.</td></tr>
+<tr><td><kbd>C-h N</kbd></td><td><code>view-notifications</code></td><td>Shows the <code>*Notifications*</code> log, each line dated.</td></tr>
+<tr><td><kbd>C-g</kbd></td><td><code>keyboard-quit</code></td><td>Stops what is going on, drops a selection and closes a question.</td></tr>
+</tbody></table></div>
+<h3 id="settings-4"><span class="num">1.6.2</span> Settings</h3>
+<div class="tablewrap"><table>
+<thead>
+<tr><th>Setting</th><th>Standard</th><th>What it changes</th></tr>
+</thead>
+<tbody>
+<tr><td><code>*message-log-max*</code></td><td><code>1000</code></td><td>Lines <code>*Messages*</code> keeps. The oldest go first. <code>nil</code> keeps none.</td></tr>
+<tr><td><code>*lsp-hover-echo*</code></td><td><code>t</code></td><td>Shows in the echo area what the thing under the cursor is, as a language server knows it.</td></tr>
+<tr><td><code>*escape-quits*</code></td><td><code>nil</code></td><td>Set to <code>t</code> to have <kbd>ESC</kbd> do what <kbd>C-g</kbd> does everywhere.</td></tr>
+<tr><td><code>*help-window-select*</code></td><td><code>nil</code></td><td>See the settings for windows.</td></tr>
+</tbody></table></div>
+<h2 id="the-minibuffer-and-its-prompt"><span class="num">1.7</span> The minibuffer and its prompt</h2>
+<p>When a command needs something from you, a file name, a word to search for, a
+yes or no, it asks in the last row of the frame. That row is then called the
+minibuffer. The words that ask are the prompt, such as <code>Find file:</code>, and
+your answer follows it. The prompt is drawn in bold. A frame that has a
+question open keeps its window text where it was, and its cursor is drawn as
+an outline there while you type in the row below.</p>
+<p>Press <kbd>RET</kbd> to give the answer, or <kbd>C-g</kbd> or <kbd>ESC</kbd> to give up. Before the prompt
+Tuatara may show a count, such as <code>3/12</code>, which means the third of twelve
+choices. A search shows which match the cursor is at and how many there are.
+<code>*/0</code> means nothing matches but what you typed can be taken, and <code>!/0</code> means it
+cannot.</p>
+<p>You edit the answer with keys much like the ones in a text buffer. These keys
+work only while a question is open, so <code>M-x</code> does not list their commands.</p>
+<div class="tablewrap"><table>
+<thead>
+<tr><th>Keys</th><th>Command</th><th>What it does</th></tr>
+</thead>
+<tbody>
+<tr><td><kbd>RET</kbd></td><td><code>minibuffer-finish</code></td><td>Gives the answer, taking the selected choice if there is one.</td></tr>
+<tr><td><kbd>C-j</kbd>, <kbd>M-RET</kbd></td><td><code>minibuffer-submit-input</code></td><td>Gives the answer exactly as typed, whatever is selected.</td></tr>
+<tr><td><kbd>C-g</kbd>, <kbd>ESC</kbd></td><td><code>minibuffer-cancel</code></td><td>Gives up the question.</td></tr>
+<tr><td><kbd>DEL</kbd>, <kbd>C-h</kbd></td><td><code>minibuffer-backward-delete-char</code></td><td>Deletes the character before the cursor.</td></tr>
+<tr><td><kbd>C-b</kbd>, <kbd>&lt;left&gt;</kbd></td><td><code>minibuffer-backward-char</code></td><td>Moves the cursor left.</td></tr>
+<tr><td><kbd>C-f</kbd>, <kbd>&lt;right&gt;</kbd></td><td><code>minibuffer-forward-char</code></td><td>Moves the cursor right.</td></tr>
+<tr><td><kbd>C-a</kbd>, <kbd>&lt;home&gt;</kbd></td><td><code>minibuffer-beginning</code></td><td>Moves to the start of the answer.</td></tr>
+<tr><td><kbd>C-e</kbd>, <kbd>&lt;end&gt;</kbd></td><td><code>minibuffer-end</code></td><td>Moves to the end of the answer.</td></tr>
+<tr><td><kbd>C-k</kbd></td><td><code>minibuffer-kill-line</code></td><td>Deletes the answer after the cursor.</td></tr>
+<tr><td><kbd>C-u</kbd></td><td><code>minibuffer-clear</code></td><td>Clears the answer. The prompt stays.</td></tr>
+<tr><td><kbd>C-&lt;backspace&gt;</kbd>, <kbd>M-DEL</kbd></td><td><code>minibuffer-backward-kill-word</code></td><td>Deletes the word before the cursor.</td></tr>
+<tr><td><kbd>C-y</kbd>, <kbd>C-V</kbd>, <kbd>S-&lt;insert&gt;</kbd></td><td><code>minibuffer-paste</code></td><td>Pastes the clipboard, or what you cut last.</td></tr>
+<tr><td><kbd>M-p</kbd></td><td><code>minibuffer-previous-history</code></td><td>Brings back an earlier answer to this question.</td></tr>
+<tr><td><kbd>M-n</kbd></td><td><code>minibuffer-next-history</code></td><td>Goes to a later answer.</td></tr>
+</tbody></table></div>
+<p>A question the editor thinks is risky, such as deleting a file, needs the
+whole word yes or no and then <kbd>RET</kbd>. A question whose answer is easy to undo
+takes one key. A password is typed with stars shown, and is never kept.</p>
+<p>A question that offers a text to start with selects it, so that typing
+replaces it and <kbd>RET</kbd> takes it.</p>
+<h3 id="settings-5"><span class="num">1.7.1</span> Settings</h3>
+<div class="tablewrap"><table>
+<thead>
+<tr><th>Setting</th><th>Standard</th><th>What it changes</th></tr>
+</thead>
+<tbody>
+<tr><td><code>*show-completion-count*</code></td><td><code>t</code></td><td>Shows the place of the selected choice and how many there are before the prompt.</td></tr>
+<tr><td><code>*prompt-above-candidates*</code></td><td><code>t</code></td><td>Shows the prompt above the list of choices. <code>nil</code> puts it on the last row, under them.</td></tr>
+<tr><td><code>*last-used-first*</code></td><td><code>t</code></td><td>Questions for a file or folder start where you chose last and list that entry first.</td></tr>
+</tbody></table></div>
+<h3 id="faces-2"><span class="num">1.7.2</span> Faces</h3>
+<div class="tablewrap"><table>
+<thead>
+<tr><th>Face</th><th>Standard</th><th>What it paints</th></tr>
+</thead>
+<tbody>
+<tr><td><code>:minibuffer-prompt</code></td><td>theme</td><td>The prompt.</td></tr>
+<tr><td><code>:cursor</code></td><td>theme</td><td>The cursor in a window of Tuatara's own.</td></tr>
+<tr><td><code>:cursor-inactive</code></td><td>theme</td><td>The cursor in a window that does not get the typing.</td></tr>
+</tbody></table></div>
+<h2 id="the-choices-panel"><span class="num">1.8</span> The choices panel</h2>
+<p>When a question has a list of answers, Tuatara shows them in the panel above
+the last row, and narrows them as you type. Completing means finishing your
+answer from that list. Type any part of a name. Several words may be typed,
+and a choice has to match all of them, in any order. The letters that matched
+are coloured, one colour for each word.</p>
+<figure>
+<div class="screen"><div>Mix the batter and let it rest.</div><div class="ml"> TUATARA[N] <span class="faint">P</span><span class="faint">D</span> [-] pancakes.txt  L2 C0  Text  ~/notes/</div><div class="pr">  2/3  <b>Find file:</b> ~/notes/sh█</div><div>  shed-plan.txt</div><div>  shopping.txt</div><div>  sheep-notes.org</div></div>
+<figcaption>Figure 1.3. Choosing a file. The prompt is above the choices.</figcaption>
+</figure>
+<p>The selected choice is drawn reversed. <kbd>C-n</kbd> or <kbd>&lt;down&gt;</kbd> select the next one and
+<kbd>C-p</kbd> or <kbd>&lt;up&gt;</kbd> the one before. Above the first one is the line you typed, when
+what you typed can be taken as it is. <kbd>TAB</kbd> puts the selected choice into the
+answer. For a file name it replaces the part after the last slash, and for a
+folder it goes into the folder, so that you can walk down a path with <kbd>TAB</kbd>.
+<kbd>RET</kbd> gives the selected choice, and <kbd>C-j</kbd> gives what you typed.</p>
+<p>At most 10 rows are used for the panel, the prompt row included. When there
+are more choices, <kbd>M-t</kbd> makes the panel as tall as the frame allows, and
+again as usual. A choice may
+have a note beside it, such as the keys of a command, the mode of a buffer or
+the permissions of a file. A title with a line beside it begins a group, such
+as the folder that the files under it are in.</p>
+<div class="try">
+<h3>Try it, with a folder of notes</h3>
+<ol>
+<li>Press <kbd>C-x C-f</kbd>. Tuatara starts where you chose last and lists what is there.</li>
+<li>Type <code>~/</code> and look at the panel. Each choice is a file or a folder.</li>
+<li>Type a few letters of a file's name. The list shrinks.</li>
+<li>Press <kbd>C-n</kbd> twice and <kbd>C-p</kbd> once. The marked line moves.</li>
+<li>Press <kbd>TAB</kbd>. The name is put into the answer. If it was a folder, its
+   contents are listed.</li>
+<li>Press <kbd>M-t</kbd>. The panel grows. Press it again to shrink it.</li>
+<li>Press <kbd>C-g</kbd> to give up.</li>
+</ol>
+</div>
+<h3 id="commands-3"><span class="num">1.8.1</span> Commands</h3>
+<div class="tablewrap"><table>
+<thead>
+<tr><th>Keys</th><th>Command</th><th>What it does</th></tr>
+</thead>
+<tbody>
+<tr><td><kbd>C-n</kbd>, <kbd>&lt;down&gt;</kbd></td><td><code>minibuffer-next-candidate</code></td><td>Selects the next choice.</td></tr>
+<tr><td><kbd>C-p</kbd>, <kbd>&lt;up&gt;</kbd></td><td><code>minibuffer-previous-candidate</code></td><td>Selects the previous choice.</td></tr>
+<tr><td><kbd>TAB</kbd>, <kbd>C-M-i</kbd>, <kbd>M-TAB</kbd></td><td><code>minibuffer-complete</code></td><td>Puts the selected choice into the answer. In a Lisp question it lists the names that fit the word at the cursor.</td></tr>
+<tr><td><kbd>M-t</kbd></td><td><code>minibuffer-toggle-tall</code></td><td>Makes the panel as tall as it can be, or as usual.</td></tr>
+</tbody></table></div>
+<h3 id="settings-6"><span class="num">1.8.2</span> Settings</h3>
+<p>The settings for the prompt, <code>*prompt-above-candidates*</code> and
+<code>*show-completion-count*</code>, are in the table in the section before this one.</p>
+<div class="tablewrap"><table>
+<thead>
+<tr><th>Face</th><th>Standard</th><th>What it paints</th></tr>
+</thead>
+<tbody>
+<tr><td><code>:completion-selected</code></td><td>theme</td><td>The selected choice.</td></tr>
+<tr><td><code>:completion-annotation</code></td><td>theme</td><td>Notes beside choices.</td></tr>
+<tr><td><code>:completion-group-title</code></td><td>theme</td><td>The title of a group of choices.</td></tr>
+<tr><td><code>:completion-group-line</code></td><td>theme</td><td>The line beside a title.</td></tr>
+<tr><td><code>:completion-match-0</code></td><td>theme</td><td>What the first word typed matches.</td></tr>
+<tr><td><code>:completion-match-1</code></td><td>theme</td><td>What the second word matches.</td></tr>
+<tr><td><code>:completion-match-2</code></td><td>theme</td><td>What the third word matches.</td></tr>
+<tr><td><code>:completion-match-3</code></td><td>theme</td><td>What the fourth and later words match.</td></tr>
+<tr><td><code>:completion-key</code></td><td>theme</td><td>The keys beside commands.</td></tr>
+<tr><td><code>:completion-major-mode</code></td><td>theme</td><td>The major mode beside a buffer.</td></tr>
+<tr><td><code>:completion-modified</code></td><td>theme</td><td>The mark beside a buffer with unsaved changes.</td></tr>
+<tr><td><code>:completion-safe</code></td><td>theme</td><td>The mark beside a file that opens safely.</td></tr>
+</tbody></table></div>
+<h2 id="key-hints"><span class="num">1.9</span> Key hints</h2>
+<p>Press <kbd>C-x</kbd> and wait. The panel lists every key that can follow, with the
+name of its command, so you do not have to remember them. Names that start
+with a plus sign, such as <code>+rectangles and registers</code>, are further prefixes,
+and pressing their key opens another list. A key whose command cannot run in
+this buffer is dimmed, and pressing it says why. <kbd>C-h</kbd> right after a prefix
+key lists every key under it in a buffer of its own. <kbd>C-g</kbd> closes the hints.</p>
+<p>The hints take as many rows as the frame has room for, and the echo area
+stays under them. If they do not all fit, the last row ends in <code>... C-h lists
+all</code>.</p>
+<div class="try">
+<h3>Try it, with the keys under C-x</h3>
+<ol>
+<li>Press <kbd>C-x</kbd> and wait a moment. The panel appears with keys such as <code>C-f</code>,
+   <code>C-s</code> and <code>5</code>.</li>
+<li>Press <kbd>5</kbd>. The panel changes to the keys under <kbd>C-x 5</kbd>, the ones for frames.</li>
+<li>Press <kbd>C-g</kbd>. The hints close and nothing was run.</li>
+<li>Press <kbd>C-x</kbd> and then <kbd>C-h</kbd>. A buffer lists all the keys under <kbd>C-x</kbd>.</li>
+</ol>
+</div>
+<h3 id="commands-4"><span class="num">1.9.1</span> Commands</h3>
+<div class="tablewrap"><table>
+<thead>
+<tr><th>Keys</th><th>Command</th><th>What it does</th></tr>
+</thead>
+<tbody>
+<tr><td><kbd>C-h</kbd> after a prefix</td><td>none</td><td>Lists every key under the prefix in a buffer.</td></tr>
+<tr><td><kbd>M-x</kbd></td><td><code>execute-extended-command</code></td><td>Asks for a command by name, with its keys beside each choice.</td></tr>
+</tbody></table></div>
+<h3 id="settings-7"><span class="num">1.9.2</span> Settings</h3>
+<div class="tablewrap"><table>
+<thead>
+<tr><th>Setting</th><th>Standard</th><th>What it changes</th></tr>
+</thead>
+<tbody>
+<tr><td><code>*key-hint-rows*</code></td><td><code>nil</code></td><td>The most rows for the hints, the echo row included. <code>nil</code> takes all the room.</td></tr>
+</tbody></table></div>
+<div class="tablewrap"><table>
+<thead>
+<tr><th>Face</th><th>Standard</th><th>What it paints</th></tr>
+</thead>
+<tbody>
+<tr><td><code>:key-hint-key</code></td><td>theme</td><td>The keys.</td></tr>
+<tr><td><code>:key-hint-command</code></td><td>theme</td><td>The command names.</td></tr>
+<tr><td><code>:key-hint-prefix</code></td><td>theme</td><td>The names of prefixes.</td></tr>
+<tr><td><code>:key-hint-unavailable</code></td><td>theme</td><td>Keys whose command cannot run here.</td></tr>
+<tr><td><code>:help-key-binding</code></td><td>theme</td><td>Keys named in help and messages.</td></tr>
+</tbody></table></div>
+<h2 id="the-cursor-the-gutter-and-header-lines"><span class="num">1.10</span> The cursor, the gutter and header lines</h2>
+<p>The cursor is drawn as a block as standard. A bar or an underline can be
+chosen, and each modal state may have its own shape and colour, so that you
+see at once whether you are in NORMAL or INSERT state. In a window that does
+not get the typing the cursor is drawn as an outline in a window of its own
+and as an underline in a terminal.</p>
+<p>The gutter is on the left edge of a window. It is empty as standard. Line
+numbers appear in it when you ask: <kbd>M-x toggle-line-numbers</kbd> goes through none,
+absolute and relative, where relative numbers show how many lines away each
+line is. Where a long line wraps, the gutter shows a mark beside the extra
+rows.</p>
+<p>Tuatara has no tab bar. Buffers are reached by name (<kbd>C-x b</kbd>) or from the list
+(<kbd>C-x C-b</kbd>). A window can have a header line at its top. A file of records,
+such as a CSV, can keep its first row, the header, at the top of the window
+while the rest scrolls under it.</p>
+<h3 id="commands-5"><span class="num">1.10.1</span> Commands</h3>
+<div class="tablewrap"><table>
+<thead>
+<tr><th>Keys</th><th>Command</th><th>What it does</th></tr>
+</thead>
+<tbody>
+<tr><td>none</td><td><code>toggle-line-numbers</code></td><td>Goes through no numbers, absolute and relative in this buffer.</td></tr>
+<tr><td>none</td><td><code>display-line-numbers-mode</code></td><td>Absolute line numbers on or off.</td></tr>
+<tr><td>none</td><td><code>display-relative-line-numbers-mode</code></td><td>Relative line numbers on or off.</td></tr>
+<tr><td>none</td><td><code>global-display-line-numbers-mode</code></td><td>The same for every buffer.</td></tr>
+<tr><td><kbd>C-x / t</kbd></td><td><code>list-toggle-header</code></td><td>Takes the first line of a file of records as its header, or as a record.</td></tr>
+<tr><td><kbd>C-x / L</kbd></td><td><code>list-toggle-header-lock</code></td><td>Keeps the header at the top of the window while the rest scrolls.</td></tr>
+</tbody></table></div>
+<h3 id="settings-8"><span class="num">1.10.2</span> Settings</h3>
+<div class="tablewrap"><table>
+<thead>
+<tr><th>Setting</th><th>Standard</th><th>What it changes</th></tr>
+</thead>
+<tbody>
+<tr><td><code>*cursor-shape*</code></td><td><code>:block</code></td><td>The cursor's shape: <code>:block</code>, <code>:bar</code> or <code>:underline</code>.</td></tr>
+<tr><td><code>*cursor-colour*</code></td><td><code>nil</code></td><td>The cursor's colour. <code>nil</code> uses the text's colour.</td></tr>
+<tr><td><code>*tuatara-normal-cursor-shape*</code></td><td><code>nil</code></td><td>The shape in NORMAL state. <code>nil</code> uses <code>*cursor-shape*</code>.</td></tr>
+<tr><td><code>*tuatara-normal-cursor-colour*</code></td><td><code>nil</code></td><td>The colour in NORMAL state.</td></tr>
+<tr><td><code>*tuatara-insert-cursor-shape*</code></td><td><code>nil</code></td><td>The shape in INSERT state.</td></tr>
+<tr><td><code>*tuatara-insert-cursor-colour*</code></td><td><code>nil</code></td><td>The colour in INSERT state.</td></tr>
+<tr><td><code>*tuatara-support-cursor-shape*</code></td><td><code>nil</code></td><td>The shape in lists, help and the log.</td></tr>
+<tr><td><code>*tuatara-support-cursor-colour*</code></td><td><code>nil</code></td><td>The colour in those buffers.</td></tr>
+<tr><td><code>*line-numbers-default*</code></td><td><code>nil</code></td><td>Line numbers for buffers that did not choose: <code>nil</code>, <code>:absolute</code> or <code>:relative</code>.</td></tr>
+<tr><td><code>*line-numbers-modes*</code></td><td><code>nil</code></td><td>Line numbers by major mode, such as <code>((prog-mode . :relative))</code>.</td></tr>
+<tr><td><code>*soft-wrap-indicator*</code></td><td><code>&quot;↪&quot;</code></td><td>The gutter's mark beside a wrapped row. <code>nil</code> for none.</td></tr>
+<tr><td><code>*list-header-lock*</code></td><td><code>nil</code></td><td>Keeps a header at the top wherever there is one.</td></tr>
+<tr><td><code>*csv-header*</code></td><td><code>t</code></td><td>Takes a CSV's first line as its header.</td></tr>
+</tbody></table></div>
+<div class="tablewrap"><table>
+<thead>
+<tr><th>Face</th><th>Standard</th><th>What it paints</th></tr>
+</thead>
+<tbody>
+<tr><td><code>:line-number</code></td><td>theme</td><td>The line numbers.</td></tr>
+<tr><td><code>:wrap-indicator</code></td><td>theme</td><td>The mark beside a wrapped row.</td></tr>
+<tr><td><code>:header-line</code></td><td>theme</td><td>The header of a list or a table.</td></tr>
+<tr><td><code>:vertical-border</code></td><td>theme</td><td>The line between windows side by side.</td></tr>
+</tbody></table></div>
+<div class="node end"><span>Next: <a href="02-moving-around.html">Moving around</a></span><span>Up: <a href="index.html">Contents</a></span></div>
+</article>
+</main>
+</div>
+</body>
+</html>
