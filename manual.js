@@ -1,7 +1,7 @@
 // The manual's pages: filter the contents column to the headings holding what
 // is typed in its box, and change between light and dark colours (the choice
-// kept in this browser for the next page). Links are left alone: the corner
-// link always opens the contents page. No address is ever loaded.
+// kept in this browser for the next page). Links are left alone. No address
+// is ever loaded.
 (function () {
   var root = document.documentElement;
   var key = "tuatara-manual-theme";
