@@ -14,13 +14,13 @@
 (in-package #:tuatara.defaults)
 
 (defstruct (org-table-model (:conc-name org-table-))
-  "An Org table as its fields: INDENT, the white space before its rows; ROWS,
-each :RULE or a list of its fields' text; ROW, FIELD and OFFSET, where point is
-(the row, the field, the character of the field's text, or :START before the
-spaces that align it); BEGIN and END, the
-characters of its rows in the text; NEWLINE, true when they end with one;
-FORMULAS, the formulas of its #+TBLFM: line, FORMULAS-END where that line ends
-(NIL when it has none), FORMULAS-CHANGED true when they are to be written."
+  "An Org table as its fields: INDENT, the white space before its rows. ROWS,
+each :RULE or a list of its fields' text. ROW, FIELD and OFFSET, where point is
+\(the row, the field, the character of the field's text, or :START before the
+spaces that align it). BEGIN and END, the characters of its rows in the text.
+NEWLINE, true when they end with one. FORMULAS, the formulas of its #+TBLFM:
+line, FORMULAS-END where that line ends (NIL when it has none), FORMULAS-CHANGED
+true when they are to be written."
   indent rows row field offset begin end newline formulas formulas-end formulas-changed)
 
 (defun org-table-at (tree text position)
@@ -335,7 +335,8 @@ A field holding =FORMULA or :=FORMULA makes it a formula of the table, worked ou
   (unless (with-org-table (parse model)
             (let ((row (org-table-row model)))
               (setf (org-table-rows model)
-                    (append (subseq (org-table-rows model) 0 (1+ row)) (list :rule) (nthcdr (1+ row) (org-table-rows model))))))
+                    (append (subseq (org-table-rows model) 0 (1+ row)) (list :rule) (nthcdr (1+ row)
+                                                                                            (org-table-rows model))))))
     (message "Not in a table")))
 
 (defun org-table-move-row (by)
@@ -434,7 +435,8 @@ columns, else promote and demote subtrees; \\`C-c -' puts a rule below a
 table row, and gives a list its next kind of bullet."
   (let ((keymap (mode-keymap 'org-mode)))
     (define-keys keymap '(("M-j" org-metadown) ("M-k" org-metaup) ("M-<down>" org-metadown) ("M-<up>" org-metaup)
-                          ("M-h" org-metaleft) ("M-l" org-metaright) ("M-<left>" org-metaleft) ("M-<right>" org-metaright)
+                          ("M-h" org-metaleft) ("M-l" org-metaright) ("M-<left>" org-metaleft)
+                          ("M-<right>" org-metaright)
                           ("M-H" org-shiftmetaleft) ("M-L" org-shiftmetaright)
                           ("M-S-<left>" org-shiftmetaleft) ("M-S-<right>" org-shiftmetaright)
                           ("M-S-<up>" org-shiftmetaup) ("M-S-<down>" org-shiftmetadown)

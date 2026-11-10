@@ -372,7 +372,9 @@ Complexity: O(END - START)."
                   do (let ((word (sb-sys:sap-ref-64 sap i)))
                        (declare (type (unsigned-byte 64) word))
                        (unless (zerop (logand word +ascii-mask+)) (return))
-                       (incf lines (the fixnum (word-line-ends-form word (and (< (+ i 8) end) (sb-sys:sap-ref-8 sap (+ i 8))))))
+                       (incf lines
+                             (the fixnum
+                                  (word-line-ends-form word (and (< (+ i 8) end) (sb-sys:sap-ref-8 sap (+ i 8))))))
                        (when (word-holds-p word +returns+) (incf crs (logcount (word-octets-of word +returns+))))
                        (incf lfs (logcount (word-octets-of word +newlines+)))
                        (incf chars 8) (incf utf16 8) (incf i 8)))
@@ -568,5 +570,7 @@ to, as U+FFFD."
   (if (not (find-if (lambda (c) (<= #xD800 (char-code c) #xDFFF)) string :start start :end end))
       (sb-ext:string-to-octets string :external-format :utf-8 :start start :end end)
       (multiple-value-bind (out at)
-          (put-string-octets string (make-array (* 4 (- end start)) :element-type '(unsigned-byte 8)) 0 :start start :end end)
+          (put-string-octets string (make-array (* 4 (- end start))
+                                                :element-type
+                                                '(unsigned-byte 8)) 0 :start start :end end)
         (subseq out 0 at))))

@@ -13,11 +13,16 @@ and return the warnings that gave, one string each."
   (flet ((put (name text)
            (with-open-file (out (merge-pathnames name dir) :direction :output :if-exists :supersede)
              (write-string text out))))
-    (put "gate-scratch.asd" "(asdf:defsystem \"gate-scratch\" :serial t :components ((:file \"first\") (:file \"second\")))")
+    (put "gate-scratch.asd"
+         "(asdf:defsystem \"gate-scratch\" :serial t :components ((:file \"first\") (:file \"second\")))")
     (put "first.lisp" first)
     (put "second.lisp" second)
     (let ((output (uiop:run-program
-                   (list (namestring sb-ext:*runtime-pathname*) "--noinform" "--non-interactive" "--no-sysinit" "--no-userinit"
+                   (list (namestring sb-ext:*runtime-pathname*)
+                         "--noinform"
+                         "--non-interactive"
+                         "--no-sysinit"
+                         "--no-userinit"
                          "--eval" "(require :asdf)"
                          "--load" (namestring (asdf:system-relative-pathname :tuatara "test/compile-gate.lisp"))
                          "--eval" (format nil "(push #p~s asdf:*central-registry*)" (namestring dir))

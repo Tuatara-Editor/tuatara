@@ -1,4 +1,5 @@
-;;;; src/syntax/named-patterns.lisp --- The named patterns of the search patterns: addresses, card numbers, hashes, encoded blocks, dates.
+;;;; src/syntax/named-patterns.lisp --- The named patterns of the search patterns: addresses, card numbers, hashes,
+;;;; encoded blocks, dates.
 ;;;; Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
 ;;;;
 ;;;; [[:ipv4:]], [[:creditcard:]], [[:base64:]] and the others, each what a
@@ -47,10 +48,10 @@ hold none."
 (defun ipv6-pattern ()
   "An IPv6 address as RFC 3986's IPv6address has it (RFC 4291's text forms):
 eight groups of one to four hex digits, a run of them left out as ::, the
-last two may be an IPv4 address; not inside a word (no letter, digit,
+last two may be an IPv4 address. It is not inside a word (no letter, digit,
 underscore or colon just before it, nor a letter, digit or underscore just
-after, so std::cout holds none), nor followed by a colon and more of an
-address, or a dot and a digit; a colon that ends a sentence may follow."
+after, so std::cout holds none). It is not followed by a colon and more of an
+address, or a dot and a digit. A colon that ends a sentence may follow."
   (let* ((h16 "[0-9A-Fa-f]{1,4}")
          (ls32 (format nil "(?:~a|~a:~a)" (ipv4-core) h16 h16))
          (forms (flet ((groups (least &optional (most least))
@@ -85,11 +86,11 @@ with a hyphen nor longer than 63."
 
 (defun url-pattern ()
   "A web or FTP address, http, https, ftp or ftps (in any case), :// and the
-characters RFC 3986 lets a uniform resource identifier (URI) hold; its end not
-a dot, comma, semicolon, colon, mark, quote or bracket, which close a sentence
-rather than the address \(RFC 3986, appendix C), but for a closing bracket
-whose opening one it holds: https://en.wikipedia.org/wiki/Kea_(bird) whole,
-(see https://x.nz/a) without the last bracket."
+characters RFC 3986 lets a uniform resource identifier (URI) hold. Its end is
+not a dot, comma, semicolon, colon, mark, quote or bracket, which close a
+sentence rather than the address (RFC 3986, appendix C). The exception is a
+closing bracket whose opening one it holds: https://en.wikipedia.org/wiki/Kea_(bird)
+whole, (see https://x.nz/a) without the last bracket."
   (let* ((inside "[A-Za-z0-9._~:/?#\\[\\]@!$&'*+,;=%-]")
          (last "[A-Za-z0-9_~/#@$&*+=%-]")
          (brackets (format nil "\\(~a*\\)" inside)))
@@ -138,7 +139,8 @@ stand; or the nil or max UUID."
   "The digits 0 to 9.")
 (sb-ext:define-load-time-global *ascii-alphanumerics* (char-table #'alphanumericp*)
   "The ASCII letters and digits.")
-(sb-ext:define-load-time-global *base32-either* (char-table (lambda (ch) (or (char<= #\A ch #\Z) (char<= #\a ch #\z) (char<= #\2 ch #\7))))
+(sb-ext:define-load-time-global *base32-either*
+    (char-table (lambda (ch) (or (char<= #\A ch #\Z) (char<= #\a ch #\z) (char<= #\2 ch #\7))))
   "The characters of Base32, in capitals or small.")
 
 (defun read-run (text start end table run &key gaps (separators ""))
@@ -243,11 +245,11 @@ off a double past nine, the sum a multiple of ten."
 
 (defun card-end (text start end networks)
   "Where the card number that begins at START of TEXT (before END) ends, or
-NIL when none does: the most digits, read with the spaces or hyphens between
-them (READ-RUN), that are written as a card number is, together, in fours,
-or for 14 and 15 digits after the fourth and the tenth (GROUPED-IN-FOURS-P),
-are a number of one of NETWORKS (CARD-NETWORK-P), pass the Luhn check, and
-are followed by no digit."
+NIL when none does. It is the most digits, read with the spaces or hyphens
+between them (READ-RUN), that are written as a card number is, together, in
+fours, or for 14 and 15 digits after the fourth and the tenth
+\(GROUPED-IN-FOURS-P), are a number of one of NETWORKS (CARD-NETWORK-P), pass
+the Luhn check, and are followed by no digit."
   (let ((digits (make-string 19)) (gaps (make-array 18 :element-type 'fixnum)))
     (declare (dynamic-extent digits gaps))
     (multiple-value-bind (count gap-count)
@@ -520,7 +522,8 @@ returns: for the few octets a check sums, as an onion address's."
                    (setf (aref a lane) (logxor (aref a lane) (ash (aref padded (+ block (* 8 lane) k)) (* 8 k))))))
                (dotimes (round 24)
                  (dotimes (x 5)
-                   (setf (aref c x) (logxor (aref a x) (aref a (+ x 5)) (aref a (+ x 10)) (aref a (+ x 15)) (aref a (+ x 20)))))
+                   (setf (aref c x)
+                         (logxor (aref a x) (aref a (+ x 5)) (aref a (+ x 10)) (aref a (+ x 15)) (aref a (+ x 20)))))
                  (dotimes (x 5)
                    (let ((d (logxor (aref c (mod (+ x 4) 5)) (rot (aref c (mod (1+ x) 5)) 1))))
                      (dotimes (y 5) (setf (aref a (+ x (* 5 y))) (logxor (aref a (+ x (* 5 y))) d)))))
@@ -630,7 +633,8 @@ the table, or the limit."
                         (unless (and (< b 128) (= 1 (sbit table b))) (return-from run j))))
              (setf at stop))))))))
 
-(sb-ext:define-load-time-global *base32-capitals* (char-table (lambda (ch) (or (char<= #\A ch #\Z) (char<= #\2 ch #\7))))
+(sb-ext:define-load-time-global *base32-capitals*
+    (char-table (lambda (ch) (or (char<= #\A ch #\Z) (char<= #\2 ch #\7))))
   "The characters of Base32 written in capitals (RFC 4648).")
 (sb-ext:define-load-time-global *base32-small* (char-table (lambda (ch) (or (char<= #\a ch #\z) (char<= #\2 ch #\7))))
   "The characters of Base32 written small.")
@@ -640,18 +644,19 @@ the table, or the limit."
   "The characters of Base64 for addresses and file names, - and _ for + and /.")
 
 (defun call-with-text-reader (text end function)
-  "Call FUNCTION with five values for reading TEXT, which ends at END: a
-function of an index giving the character there; the index the text it
-reads ends at; whether that end is a window's that says it may go on
-\(*WINDOW-OPEN*); the first index it reads; and a function of an index and a
-CHAR-TABLE giving the first index from there whose character is not in the
-table, or the end. On a window of a rope (*WINDOW-ROPE*), END the window's
-end, the rope is read before the window, from its start, and after it, as
-far as the pattern sees, when the window may go on: an index before 0 or
-past END stands for the octet as far before or past the window, each octet
-as a character. So a run of ASCII characters, a block of Base64 say, is read
-whole however long, for WINDOW-INDEX to give back. The two functions are
-made on the stack: FUNCTION may pass them on, never keep them."
+  "Call FUNCTION with five values for reading TEXT, which ends at END. The
+first is a function of an index giving the character there. The second is the
+index the text it reads ends at. The third is whether that end is a window's
+that says it may go on (*WINDOW-OPEN*). The fourth is the first index it
+reads. The fifth is a function of an index and a CHAR-TABLE giving the first
+index from there whose character is not in the table, or the end.
+On a window of a rope (*WINDOW-ROPE*), END the window's end, the rope is read
+before the window, from its start, and after it, as far as the pattern sees,
+when the window may go on. An index before 0 or past END stands for the octet
+as far before or past the window, each octet as a character. So a run of ASCII
+characters, a block of Base64 say, is read whole however long, for
+WINDOW-INDEX to give back. The two functions are made on the stack: FUNCTION
+may pass them on, never keep them."
   (declare (type function function))
   (destructuring-bind (&optional rope context octet bound) *window-rope*
     (if rope
@@ -685,7 +690,9 @@ made on the stack: FUNCTION may pass them on, never keep them."
                                            (+ end (- (the fixnum (after-run (+ octet (- j end)) table)) octet))
                                            j))))
                               (declare (dynamic-extent #'char-at #'run))
-                              (funcall function #'char-at (if open (+ end (- bound octet)) end) nil (- context) #'run)))))
+                              (funcall function #'char-at (if open
+                                                              (+ end (- bound octet))
+                                                              end) nil (- context) #'run)))))
               (if (typep text 'simple-base-string)
                   (reading simple-base-string)
                   (reading (simple-array character (*)))))))
@@ -717,10 +724,10 @@ index of that text: one at END or past it read on in the rope is kept in
 
 (defun continued-line-p (char-at first start end table group)
   "True when START, read by CHAR-AT from FIRST, begins a line that goes on a
-block of RFC 4648 encoding before it: the line before is of the block's
+block of RFC 4648 encoding before it. The line before is of the block's
 characters (TABLE, a CHAR-TABLE) from a start a block may have, after no +,
-/, -, _ or =, its width a whole number of GROUP and 16 or more, and the line
-at START no longer, before END. Such a line begins no block, the block before
+/, -, _ or =, its width a whole number of GROUP and 16 or more. The line at
+START is no longer, before END. Such a line begins no block, the block before
 taking it in."
   (declare (type function char-at) (type fixnum first start end group))
   (let ((e (1- start)))
@@ -780,7 +787,9 @@ window grows and it is read whole."
             (incf count length)
             (unless width (setf width length))
             (let ((next (cond ((and (< i end) (char= (funcall char-at i) #\Newline)) (1+ i))
-                              ((and (< (1+ i) end) (char= (funcall char-at i) #\Return) (char= (funcall char-at (1+ i)) #\Newline)) (+ i 2)))))
+                              ((and (< (1+ i) end)
+                                    (char= (funcall char-at i) #\Return)
+                                    (char= (funcall char-at (1+ i)) #\Newline)) (+ i 2)))))
               (when (and open next (>= next end)) (return end))
               (if (and next (= length width) (>= width 16) (zerop (mod width group))
                        (< next end) (in-table-p table (funcall char-at next)))
@@ -818,13 +827,12 @@ both, or NIL: see ENCODED-BLOCK-END. It holds small and capital letters."
   '(("date" :iso nil) ("dateutc" :iso t)
     ("datedmy" :dmy nil) ("datedmyutc" :dmy t)
     ("datemdy" :mdy nil) ("datemdyutc" :mdy t))
-  "The named patterns of dates, each (NAME FORMAT UTC): FORMAT the way the
-dates are written, :ISO (2026-06-30, RFC 3339's 2026-06-30T14:05:00+02:00),
-:DMY, day, month, year (30.06.2026 14:05, 30/06/2026, as in Norway, Denmark,
-Finland, New Zealand and Britain) or :MDY, month, day, year (06/30/2026 2:05
-PM, as in the United States); UTC true when a
-time with an offset is compared as the moment it names, in UTC, else as it
-is written.")
+  "The named patterns of dates, each (NAME FORMAT UTC). FORMAT is the way the
+dates are written. :ISO is 2026-06-30, RFC 3339's 2026-06-30T14:05:00+02:00.
+:DMY is day, month, year (30.06.2026 14:05, 30/06/2026, as in Norway, Denmark,
+Finland, New Zealand and Britain). :MDY is month, day, year (06/30/2026 2:05
+PM, as in the United States). UTC is true when a time with an offset is
+compared as the moment it names, in UTC, else as it is written.")
 
 (defconstant +date-mark-days+ 1000000
   "What is added to a day number written in a date filter's mark, so that it

@@ -71,18 +71,17 @@ their names, the first of each."
                              (octets entries cancel &aux (by-name (docx-entries-by entries #'identity))
                                                          (by-lower-name (docx-entries-by entries #'string-downcase))))
                          (:copier nil))
-  "A Word document, an Excel workbook or a PowerPoint presentation being
-read: its OCTETS, its zip ENTRIES, BY-NAME and BY-LOWER-NAME, the entries
-by their names as written and in small letters (the first of each); the
-PARTS read so far by name, the RELATIONS of each part read so far
-\(DOCX-PART-RELATIONS); of a Word document, its
-STYLES (id to name and outline level), NUMBERING (list kinds by number and
-level), FOOTNOTES (endnotes as eID) and COMMENTS by id, CHANGES, the tracked
-changes met, each (KIND AUTHOR DATE TEXT); UNPACKED, the octets of its parts
-unpacked so far, held to *DOCX-LARGEST-UNPACKED*; ELEMENTS, the XML elements
-of its parts read so far, held to *XML-MOST-ELEMENTS*; ROOM, the characters
-its note may still take (*OFFICE-NOTE-SIZE-LIMIT*); CANCEL, a cons whose car
-turns true to stop the reading, or NIL."
+  "A Word document, an Excel workbook or a PowerPoint presentation being read:
+its OCTETS, its zip ENTRIES, BY-NAME and BY-LOWER-NAME, the entries by their
+names as written and in small letters (the first of each). The PARTS read so far
+by name, the RELATIONS of each part read so far \(DOCX-PART-RELATIONS). Of a
+Word document, its STYLES (id to name and outline level), NUMBERING (list kinds
+by number and level), FOOTNOTES (endnotes as eID) and COMMENTS by id, CHANGES,
+the tracked changes met, each (KIND AUTHOR DATE TEXT). UNPACKED, the octets of
+its parts unpacked so far, held to *DOCX-LARGEST-UNPACKED*. ELEMENTS, the XML
+elements of its parts read so far, held to *XML-MOST-ELEMENTS*. ROOM, the
+characters its note may still take (*OFFICE-NOTE-SIZE-LIMIT*). CANCEL, a cons
+whose car turns true to stop the reading, or NIL."
   octets entries cancel (unpacked 0) (elements 0) (room *office-note-size-limit*)
   by-name by-lower-name
   (parts (make-hash-table :test 'equal)) (relations (make-hash-table :test 'equal))
@@ -162,7 +161,9 @@ an office file's note, or of a part of it; cut where the note reached
   (let ((out (make-string-output-stream)))
     (handler-case (funcall writer out)
       (office-note-full ()
-        (format out "~&~%The rest is left out: the note reached ~:d characters (*office-note-size-limit*).~%~%" *office-note-size-limit*)))
+        (format out
+                "~&~%The rest is left out: the note reached ~:d characters (*office-note-size-limit*).~%~%"
+                *office-note-size-limit*)))
     (get-output-stream-string out)))
 
 (defun docx-main-tree (path usual root what)
@@ -220,7 +221,9 @@ or for one leading outside the document (OUTSIDE true) the address as written."
                 (let ((rels (docx-reading-part (docx-relations-part part))))
                   (loop for rel in (and rels (xml-find-all rels "Relationship"))
                         for outside = (equal (xml-attribute rel "TargetMode") "External")
-                        collect (list :id (xml-attribute rel "Id") :type (or (xml-attribute rel "Type") "") :outside outside
+                        collect (list :id (xml-attribute rel "Id")
+                                      :type (or (xml-attribute rel "Type") "")
+                                      :outside outside
                                       :target (if outside
                                                   (or (xml-attribute rel "Target") "")
                                                   (docx-target-part part (or (xml-attribute rel "Target") "")))))))))))
@@ -289,7 +292,8 @@ or NIL; an error when it is larger than *DOCX-LARGEST-XML*."
           do (let ((notes (docx-reading-part part)))
                (dolist (note (and notes (xml-find-all notes element)))
                  (unless (xml-attribute note "w:type")
-                   (setf (gethash (docx-read-label (concatenate 'string prefix (xml-attribute note "w:id"))) (docx-reading-footnotes r)) note)))))
+                   (setf (gethash (docx-read-label (concatenate 'string prefix (xml-attribute note "w:id")))
+                                  (docx-reading-footnotes r)) note)))))
     (let ((comments (docx-reading-part "word/comments.xml")))
       (dolist (comment (and comments (xml-find-all comments "w:comment")))
         (setf (gethash (xml-attribute comment "w:id") (docx-reading-comments r)) comment)))))
@@ -301,7 +305,9 @@ or NIL; an error when it is larger than *DOCX-LARGEST-XML*."
 :UNDERLINE :STRIKE :HIDDEN :SUPERSCRIPT :SUBSCRIPT."
   (let ((rpr (xml-child run "w:rPr")) (look '()))
     (when rpr
-      (flet ((on (name) (let ((e (xml-child rpr name))) (and e (not (member (xml-attribute e "w:val") '("0" "false" "none") :test #'equal))))))
+      (flet ((on (name)
+               (let ((e (xml-child rpr name)))
+                 (and e (not (member (xml-attribute e "w:val") '("0" "false" "none") :test #'equal))))))
         (when (on "w:b") (push :bold look))
         (when (on "w:i") (push :italic look))
         (when (on "w:u") (push :underline look))
@@ -369,10 +375,13 @@ label may have it: its letters, digits, - and _ only, never markup of its own."
                      (cond ((string= name "m:t") (docx-read-escaped (xml-all-text n)))
                            ((string= name "m:sSup") (format nil "~a^{~a}" (part "m:e") (part "m:sup")))
                            ((string= name "m:sSub") (format nil "~a_{~a}" (part "m:e") (part "m:sub")))
-                           ((string= name "m:sSubSup") (format nil "~a_{~a}^{~a}" (part "m:e") (part "m:sub") (part "m:sup")))
+                           ((string= name "m:sSubSup")
+                            (format nil "~a_{~a}^{~a}" (part "m:e") (part "m:sub") (part "m:sup")))
                            ((string= name "m:f") (format nil "(~a)/(~a)" (part "m:num") (part "m:den")))
                            ((string= name "m:rad") (format nil "√(~a)" (part "m:e")))
-                           ((member name '("m:rPr" "m:ctrlPr" "m:fPr" "m:radPr" "m:sSupPr" "m:sSubPr" "w:rPr") :test #'string=) "")
+                           ((member name
+                                    '("m:rPr" "m:ctrlPr" "m:fPr" "m:radPr" "m:sSupPr" "m:sSubPr" "w:rPr")
+                                    :test #'string=) "")
                            (t (format nil "~{~a~}" (mapcar #'text (xml-children n))))))))))
     (text node)))
 
@@ -383,11 +392,11 @@ words.")
 
 (defun docx-read-escaped (text)
   "TEXT, words a Word document holds, written so that the note made from it
-reads them as those words and never as markup that writes into an export as
-it is: a zero-width space after each backslash (no LaTeX command, \\=\\( \\=\\) or
-\\=\\[ \\=\\] formula, \\begin{...} environment) and between the @s of @@ (no
-@@latex:...@@ snippet), the [s of [[ (no link) and the first two {s of {{{ (no
-macro call); each $ as \\dollar{}, which shows as $ (no $...$ formula)."
+reads them as those words and never as markup that writes into an export as it
+is. A zero-width space goes after each backslash (no LaTeX command, \\=\\(
+\\=\\) or \\=\\[ \\=\\] formula, \\begin{...} environment) and between the @s of
+@@ (no @@latex:...@@ snippet), the [s of [[ (no link) and the first two {s of
+{{{ (no macro call). Each $ as \\dollar{}, which shows as $ (no $...$ formula)."
   (cl-ppcre:regex-replace-all "\\\\|\\$|@(?=@)|\\[(?=\\[)|\\{(?=\\{\\{)" text
                               (lambda (match)
                                 (if (string= match "$")
@@ -416,9 +425,9 @@ taken out, and each \\dollar{} a $ again."
 (defun docx-read-guarded (text)
   "TEXT with a zero-width space set before what begins each of its lines when
 Org would read the line as a heading, a keyword (#+, after spaces too), a
-comment (# and a space), a table, a drawer's line, a footnote or a diary
-entry: text a document holds stays text in the note, whatever it says, and
-reads as it did."
+comment (# and a space), a table, a drawer's line, a footnote or a diary entry.
+Text a document holds stays text in the note, whatever it says, and reads as it
+did."
   (cl-ppcre:regex-replace-all "(?m)^([ \\t]*)(\\*+\\s|#\\+|#(?=[ \\t]|$)|\\||:[-\\w]*:|\\[fn:|%%\\()" text
                               (format nil "\\1~a\\2" *docx-read-zero-width-space*)))
 
@@ -427,7 +436,8 @@ reads as it did."
 reference, a picture, a text box), to OUT as Org text."
   (when (consp part)
     (let ((pn (xml-name part)))
-      (cond ((member pn '("w:t" "w:delText") :test #'string=) (write-string (docx-read-escaped (xml-all-text part)) out))
+      (cond ((member pn '("w:t" "w:delText") :test #'string=)
+             (write-string (docx-read-escaped (xml-all-text part)) out))
             ((string= pn "w:tab") (write-char #\Tab out))
             ((member pn '("w:br" "w:cr") :test #'string=)
              (if (equal (xml-attribute part "w:type") "page") (write-string " " out) (format out "\\\\~%")))
@@ -447,14 +457,19 @@ reference, a picture, a text box), to OUT as Org text."
              (let ((box (first (xml-find-all part "w:txbxContent"))))
                (if box
                    (format out (if *docx-read-writing* "~a" "[text box: ~a]")
-                           (string-trim " " (org-safe-line (with-output-to-string (b) (docx-read-block box b)) :escaped t)))
+                           (string-trim " "
+                                        (org-safe-line (with-output-to-string (b) (docx-read-block box b)) :escaped t)))
                    (let* ((blip (first (xml-find-all part "a:blip")))
-                          (target (and blip (docx-relation-target (docx-part-relations (docx-main-part)) (xml-attribute blip "r:embed"))))
+                          (target (and blip
+                                       (docx-relation-target (docx-part-relations (docx-main-part))
+                                                             (xml-attribute blip "r:embed"))))
                           (doc (first (xml-find-all part "wp:docPr")))
                           (alt (and doc (or (xml-attribute doc "descr") (xml-attribute doc "title")))))
                      (if (and *docx-read-writing* *docx-read-media* target
                               (docx-safe-file-name-p (subseq target (1+ (or (position #\/ target :from-end t) -1))) :link t))
-                         (let ((file (import-picture-file target *docx-read-media* (subseq target (1+ (or (position #\/ target :from-end t) -1)))
+                         (let ((file (import-picture-file target
+                                                          *docx-read-media*
+                                                          (subseq target (1+ (or (position #\/ target :from-end t) -1)))
                                                           *docx-read-pictures*)))
                            (pushnew (cons target file) *docx-read-pictures* :test #'equal)
                            (format out "[[file:~a]]" file))
@@ -490,7 +505,8 @@ tracked change."
           ((string= name "w:hyperlink")
            ;; a link within the document (its contents, a cross-reference) as its words
            (let* ((words (with-output-to-string (s) (docx-read-inline child s :change change)))
-                  (target (getf (docx-relation-with-id (docx-part-relations (docx-main-part)) (xml-attribute child "r:id")) :target)))
+                  (target (getf (docx-relation-with-id (docx-part-relations (docx-main-part))
+                                                       (xml-attribute child "r:id")) :target)))
              (if (and target (plusp (length words)))
                  (write-string (office-link-text target words) out)
                  (write-string words out))))
@@ -510,7 +526,9 @@ tracked change."
           ((string= name "mc:AlternateContent")
            (let ((choice (or (xml-child child "mc:Choice") (xml-child child "mc:Fallback"))))
              (when choice (docx-read-inline choice out :change change))))
-          ((member name '("w:smartTag" "w:sdt" "w:sdtContent" "w:customXml" "w:fldSimple" "w:bdo" "w:dir") :test #'string=)
+          ((member name
+                   '("w:smartTag" "w:sdt" "w:sdtContent" "w:customXml" "w:fldSimple" "w:bdo" "w:dir")
+                   :test #'string=)
            (docx-read-inline child out :change change)))))))
 
 (defun docx-read-heading-level (style own)
@@ -616,7 +634,9 @@ a level below 0 or past 8 none."
 
 (defun points-text (points)
   "POINTS, a number, as LaTeX and words take it: 12 or 13.5, never 27/2."
-  (if (integerp points) (format nil "~d" points) (string-right-trim "." (string-right-trim "0" (format nil "~,2f" (float points))))))
+  (if (integerp points)
+      (format nil "~d" points)
+      (string-right-trim "." (string-right-trim "0" (format nil "~,2f" (float points))))))
 
 (defun docx-twips-pt (twips)
   "TWIPS, twentieths of a point, in points, as words: 12 or 13.5."
@@ -643,7 +663,8 @@ plist of those they set: :FONT (a name, or (:THEME :MAJOR) or (:THEME :MINOR)),
 :LINE-RULE, :LEFT, :FIRST, :HANGING, :ALIGN."
   (let ((look '()))
     (flet ((put (key value) (setf (getf look key) value))
-           (on (element) (and element (not (member (xml-attribute element "w:val") '("0" "false" "off") :test #'equal)))))
+           (on (element)
+             (and element (not (member (xml-attribute element "w:val") '("0" "false" "off") :test #'equal)))))
       (when rpr
         (let ((fonts (xml-child rpr "w:rFonts")))
           (when fonts
@@ -665,7 +686,9 @@ plist of those they set: :FONT (a name, or (:THEME :MAJOR) or (:THEME :MINOR)),
             (when (xml-attribute spacing "w:lineRule") (put :line-rule (xml-attribute spacing "w:lineRule")))))
         (let ((indent (xml-child ppr "w:ind")))
           (when indent
-            (loop for (attributes key) in '((("w:left" "w:start") :left) (("w:firstLine") :first) (("w:hanging") :hanging))
+            (loop for (attributes key) in '((("w:left" "w:start") :left)
+                                            (("w:firstLine") :first)
+                                            (("w:hanging") :hanging))
                   for value = (some (lambda (a) (docx-read-number indent a)) attributes)
                   when value do (put key value))))
         (let ((align (xml-child ppr "w:jc"))) (when align (put :align (xml-attribute align "w:val"))))))
@@ -786,18 +809,27 @@ document's body: its paper, margins, columns and headers and footers."
   (format s "** Pages~%| Section | Paper | Margins: top, bottom, left, right | Columns | Headers, footers |~%|-~%")
   (loop for section in (and body (xml-find-all body "w:sectPr"))
         for n from 1
-        do (let* ((size (xml-child section "w:pgSz")) (margins (xml-child section "w:pgMar")) (cols (xml-child section "w:cols"))
+        do (let* ((size (xml-child section "w:pgSz"))
+                  (margins (xml-child section "w:pgMar"))
+                  (cols (xml-child section "w:cols"))
                   (w (docx-read-number size "w:w")) (h (docx-read-number size "w:h"))
                   (paper (and w h (let ((short (min w h)) (long (max w h)))
-                                    (loop for (name sw sh) in '(("A4" 11906 16838) ("Letter" 12240 15840) ("Legal" 12240 20160) ("A3" 16838 23811) ("A5" 8391 11906))
+                                    (loop for (name sw sh) in '(("A4" 11906 16838)
+                                                                ("Letter" 12240 15840)
+                                                                ("Legal" 12240 20160)
+                                                                ("A3" 16838 23811)
+                                                                ("A5" 8391 11906))
                                           when (and (< (abs (- short sw)) 30) (< (abs (- long sh)) 30)) return name))))
                   (columns (or (docx-read-number cols "w:num") 1)))
              (format s "| ~d | ~:[~a × ~a cm~*~;~*~*~a~], ~:[portrait~;landscape~] | ~{~a~^, ~} cm | ~d~:[~*~;, ~a cm apart~] | ~a |~%"
                      n paper (and w (docx-twips-cm w)) (and h (docx-twips-cm h)) paper (and w h (> w h))
-                     (mapcar (lambda (a) (let ((v (docx-read-number margins a))) (if v (docx-twips-cm v) "?"))) '("w:top" "w:bottom" "w:left" "w:right"))
-                     columns (> columns 1) (let ((space (docx-read-number cols "w:space"))) (if space (docx-twips-cm space) "?"))
+                     (mapcar (lambda (a) (let ((v (docx-read-number margins a))) (if v (docx-twips-cm v) "?")))
+                             '("w:top" "w:bottom" "w:left" "w:right"))
+                     columns (> columns 1)
+                     (let ((space (docx-read-number cols "w:space"))) (if space (docx-twips-cm space) "?"))
                      (format nil "~d~:[~;, the first page its own~]"
-                             (+ (length (xml-find-all section "w:headerReference")) (length (xml-find-all section "w:footerReference")))
+                             (+ (length (xml-find-all section "w:headerReference"))
+                                (length (xml-find-all section "w:footerReference")))
                              (xml-child section "w:titlePg"))))))
 
 (defun docx-read-by-hand-words (look)
@@ -806,7 +838,8 @@ spacing before and after, lines, indentation and alignment."
   (remove nil (list (and (getf look :before) (format nil "~a pt before" (docx-twips-pt (getf look :before))))
                     (and (getf look :after) (format nil "~a pt after" (docx-twips-pt (getf look :after))))
                     (and (getf look :line) (format nil "lines ~a" (docx-read-lines-words look)))
-                    (let ((indent (docx-read-indent-words look))) (and (plusp (length indent)) (format nil "indented ~a" indent)))
+                    (let ((indent (docx-read-indent-words look)))
+                      (and (plusp (length indent)) (format nil "indented ~a" indent)))
                     (and (getf look :align) (docx-read-align-words (getf look :align))))))
 
 (defun docx-read-look ()
@@ -846,11 +879,14 @@ size and spacing, and what is set by hand."
               (let ((font (getf (docx-read-style-look character) :font)))
                 (when font (use-font font (format nil "~a (character style)" (docx-read-style-name character))))))
             (when (or (getf own :font) (getf own :size))
-              (let ((key (format nil "~@[~a~]~@[, ~a pt~]" (and (getf own :font) (docx-read-font-name (getf own :font) major minor))
+              (let ((key (format nil
+                                 "~@[~a~]~@[, ~a pt~]"
+                                 (and (getf own :font) (docx-read-font-name (getf own :font) major minor))
                                  (and (getf own :size) (docx-twips-pt (* 10 (getf own :size)))))))
                 (when (getf own :font) (use-font (getf own :font) "set by hand"))
                 (let ((entry (gethash key by-hand-runs)))
-                  (setf (gethash key by-hand-runs) (list (1+ (or (first entry) 0)) (or (second entry) (docx-read-first-words run)))))))))
+                  (setf (gethash key by-hand-runs)
+                        (list (1+ (or (first entry) 0)) (or (second entry) (docx-read-first-words run)))))))))
         (setf order (nreverse order))
         (with-output-to-string (s)
           (format s "* Its look~%~%")
@@ -866,19 +902,28 @@ size and spacing, and what is set by hand."
                       (getf look :bold) (getf look :italic)
                       (docx-twips-pt (* 10 (or (getf look :size) 20)))
                       (docx-twips-pt (or (getf look :before) 0)) (docx-twips-pt (or (getf look :after) 0))
-                      (docx-read-lines-words look) (docx-read-indent-words look) (docx-read-align-words (getf look :align)))))
+                      (docx-read-lines-words look) (docx-read-indent-words look)
+                      (docx-read-align-words (getf look :align)))))
           (format s "~%** Fonts~%| Font | Used by | Stands in where missing | Here |~%|-~%")
           (let ((names '()) (installed (installed-font-families :every-kind t)) (stand-ins (list 0)))
             (maphash (lambda (name where) (push (cons name (reverse where)) names)) fonts)
             (dolist (entry (sort names #'string< :key #'car))
-              (let ((family (let ((paren (search " (" (car entry)))) (if paren (subseq (car entry) 0 paren) (car entry)))))
-                (format s "| ~a | ~{~a~^, ~} | ~a | ~a |~%" (cell (car entry)) (mapcar #'cell (cdr entry)) (cell (or (gethash family font-table) ""))
+              (let ((family (let ((paren (search " (" (car entry))))
+                              (if paren (subseq (car entry) 0 paren) (car entry)))))
+                (format s
+                        "| ~a | ~{~a~^, ~} | ~a | ~a |~%"
+                        (cell (car entry))
+                        (mapcar #'cell (cdr entry))
+                        (cell (or (gethash family font-table) ""))
                         (if (string= family "unknown") "" (docx-read-font-here family installed stand-ins))))))
           (when (or by-hand-paragraphs (plusp (hash-table-count by-hand-runs)))
             (format s "~%** Set by hand, not by a style~%")
             (dolist (entry (reverse by-hand-paragraphs))
               (let ((look (cdr entry)))
-                (format s "- Paragraph \"~a\" :: ~{~a~^, ~}~%" (org-safe-line (car entry)) (docx-read-by-hand-words look))))
+                (format s
+                        "- Paragraph \"~a\" :: ~{~a~^, ~}~%"
+                        (org-safe-line (car entry))
+                        (docx-read-by-hand-words look))))
             (maphash (lambda (key value)
                        (format s "- Text in ~a :: ~d run~:p, first \"~a\"~%" (org-safe-line key) (first value) (org-safe-line (second value))))
                      by-hand-runs))
@@ -900,7 +945,10 @@ size and spacing, and what is set by hand."
             (let ((tree (docx-reading-part (cdr part))))
               (format s "- ~a (~a) :: ~a~%" (car part) (org-safe-line (cdr part))
                       (if tree
-                          (string-trim " " (org-safe-line (with-output-to-string (b) (dolist (root (xml-children tree)) (when (consp root) (docx-read-block root b)))) :escaped t))
+                          (string-trim " "
+                                       (org-safe-line (with-output-to-string (b)
+                                                        (dolist (root (xml-children tree))
+                                                          (when (consp root) (docx-read-block root b)))) :escaped t))
                           ""))))
           (terpri s)))))
 
@@ -953,7 +1001,9 @@ changed; an empty string when there are none."
       (with-output-to-string (s)
         (format s "* Tracked changes~%")
         (loop for (kind author date words) in changes
-              do (format s "- ~a by ~a~@[, ~a~] :: ~a~%" (case kind (:inserted "Inserted") (:deleted "Deleted") (t "Formatting changed"))
+              do (format s
+                         "- ~a by ~a~@[, ~a~] :: ~a~%"
+                         (case kind (:inserted "Inserted") (:deleted "Deleted") (t "Formatting changed"))
                          (org-safe-line (or author "someone")) (and date (org-safe-line date)) (org-safe-line words)))
         (terpri s))))
 
@@ -985,15 +1035,19 @@ it holds macros, embedded files or links outside it."
              (cons "Printed" (core "cp:lastPrinted")) (cons "Revision" (core "cp:revision"))
              (cons "Keywords" (core "cp:keywords")) (cons "Description" (core "dc:description"))
              (cons "Company" (app "Company")) (cons "Program" (app "Application"))
-             (cons "Template" (app "Template")) (cons "Editing time" (let ((m (app "TotalTime"))) (and m (format nil "~a minutes" m))))
-             (cons "Pages, words" (let ((p (app "Pages")) (w (app "Words"))) (and (or p w) (format nil "~@[~a pages~]~@[, ~a words~]" p w))))
+             (cons "Template" (app "Template"))
+             (cons "Editing time" (let ((m (app "TotalTime"))) (and m (format nil "~a minutes" m))))
+             (cons "Pages, words"
+                   (let ((p (app "Pages")) (w (app "Words")))
+                     (and (or p w) (format nil "~@[~a pages~]~@[, ~a words~]" p w))))
              (cons "Slides" (let ((n (app "Slides")) (hidden (app "HiddenSlides")) (notes (app "Notes")))
                               (and n (format nil "~a~@[, ~a hidden~]~@[, ~a with notes~]" n
                                              (and (not (equal hidden "0")) hidden) (and (not (equal notes "0")) notes))))))
        :more (with-output-to-string (s)
                (let ((attached (and settings (first (xml-find-all settings "w:attachedTemplate")))))
                  (when attached
-                   (let ((target (getf (docx-relation-with-id (docx-part-relations "word/settings.xml") (xml-attribute attached "r:id")) :target)))
+                   (let ((target (getf (docx-relation-with-id (docx-part-relations "word/settings.xml")
+                                                              (xml-attribute attached "r:id")) :target)))
                      (when target (format s "- Attached template :: ~a (not fetched)~%" (org-safe-line target))))))
                ;; the part its program shows is elsewhere than usual: said, and what is under the usual name too
                (let ((main (docx-main-part usual)))
@@ -1038,7 +1092,8 @@ footnotes; true when there was one."
         (let ((note (gethash id (docx-reading-footnotes *docx-reading*))))
           (when note
             (setf any t)
-            (format out "[fn:~a] ~a~%" id (string-trim '(#\Space #\Newline) (with-output-to-string (n) (docx-read-block note n))))))))))
+            (format out "[fn:~a] ~a~%" id (string-trim '(#\Space #\Newline)
+                                                       (with-output-to-string (n) (docx-read-block note n))))))))))
 
 (defun docx-read-note (path &key octets cancel)
   "The Word document at PATH as an Org note, read as this file's header says,
@@ -1056,7 +1111,10 @@ Signals ZIP-ERROR or an error when it cannot be read."
                      (dolist (id (reverse (docx-reading-comment-order *docx-reading*)))
                        (let ((comment (gethash id (docx-reading-comments *docx-reading*))))
                          (when comment
-                           (format s "[fn:c~a] Comment by ~a~@[, ~a~]: ~a~%" (docx-read-label id) (org-safe-line (or (xml-attribute comment "w:author") "someone"))
+                           (format s
+                                   "[fn:c~a] Comment by ~a~@[, ~a~]: ~a~%"
+                                   (docx-read-label id)
+                                   (org-safe-line (or (xml-attribute comment "w:author") "someone"))
                                    (let ((date (xml-attribute comment "w:date"))) (and date (org-safe-line date)))
                                    (string-trim " " (org-safe-line (with-output-to-string (n) (docx-read-block comment n)) :escaped t)))))))))
            (changes (office-changes-section (reverse (docx-reading-changes *docx-reading*)))))

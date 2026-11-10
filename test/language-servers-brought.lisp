@@ -129,9 +129,10 @@ commands ssh runs there run by the shell in DIR, the name and text of each of
 FAKES put first on their PATH; skipped when there is no sftp-server here."
   `(if (null (sftp-server-program))
        (skip "no sftp-server here" (true nil))
-       (with-stand-in-sftp (,dir ,log :before (format nil "PATH='~afake':\"$PATH\"; cd '~a'; for a do last=\"$a\"; done; ~
+       (with-stand-in-sftp (,dir ,log
+                                 :before (format nil "PATH='~afake':\"$PATH\"; cd '~a'; for a do last=\"$a\"; done; ~
                                                            case \"$last\" in sftp) ;; *) exec sh -c \"$last\";; esac"
-                                                      (namestring ,dir) (namestring ,dir)))
+                                                 (namestring ,dir) (namestring ,dir)))
          (ensure-directories-exist (merge-pathnames "fake/" ,dir))
          (loop for (name text) in ,fakes
                do (put-program (merge-pathnames (concatenate 'string "fake/" name) ,dir) text))
@@ -203,7 +204,9 @@ FAKES put first on their PATH; skipped when there is no sftp-server here."
 (define-test (remote-files language-server-sum-answer-malformed)
   ;; sha256sum's answer of exactly 64 or 65 characters is no sum, said in words, nothing signalled
   (dolist (answer (list (make-string 64 :initial-element #\a) (format nil "~a " (make-string 64 :initial-element #\a))))
-    (with-server-for-language-servers (dir log :fakes (list (list "sha256sum" (format nil "#!/bin/sh~%printf '%s' '~a'~%" answer))))
+    (with-server-for-language-servers (dir log
+                                           :fakes (list (list "sha256sum"
+                                                              (format nil "#!/bin/sh~%printf '%s' '~a'~%" answer))))
       (with-fresh-state
         (multiple-value-bind (sum why) (tuatara.defaults::server-sum "build.example" "x")
           (false sum)
@@ -277,7 +280,11 @@ FAKES put first on their PATH; skipped when there is no sftp-server here."
 
 (define-test (remote-files language-server-hostile-answers-cleaned)
   ;; a server saying anything for uname is refused without showing what it said raw, and its name goes to no shell
-  (with-server-for-language-servers (dir log :fakes (list (list "uname" (format nil "#!/bin/sh~%printf 'x86~c$(reboot)\\n'~%" (code-char 27)))))
+  (with-server-for-language-servers (dir log
+                                         :fakes (list (list "uname"
+                                                            (format nil
+                                                                    "#!/bin/sh~%printf 'x86~c$(reboot)\\n'~%"
+                                                                    (code-char 27)))))
     (with-fresh-state
       (let* ((path (put-here-program dir "gopls" (made-program)))
              (words (handler-case (progn (bring-program "build.example" "gopls" path) "no refusal")
@@ -309,10 +316,12 @@ FAKES put first on their PATH; skipped when there is no sftp-server here."
                                 (list :until (lambda () (probe-file there)))
                                 (list :until (lambda ()
                                                (search (format nil "gopls ~a" sum)
-                                                       (handler-case (uiop:read-file-string (brought-file dir ".manifest"))
+                                                       (handler-case (uiop:read-file-string (brought-file dir
+                                                                                                          ".manifest"))
                                                          (error () ""))))))
                (is = #o755 (logand #o777 (sb-posix:stat-mode (sb-posix:stat there))))
-               (is = #o700 (logand #o777 (sb-posix:stat-mode (sb-posix:stat (string-right-trim "/" (brought-file dir ""))))))
+               (is = #o700
+                   (logand #o777 (sb-posix:stat-mode (sb-posix:stat (string-right-trim "/" (brought-file dir ""))))))
                (is = #o600 (logand #o777 (sb-posix:stat-mode (sb-posix:stat (brought-file dir ".manifest")))))
                (is equalp octets (alexandria:read-file-into-byte-vector there))
                (is string= (format nil "gopls ~a~%" sum) (uiop:read-file-string (brought-file dir ".manifest")))

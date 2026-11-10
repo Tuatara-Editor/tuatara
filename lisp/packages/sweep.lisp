@@ -41,8 +41,10 @@ scratch) and anything that is not a folder of its own (a symbolic link)."
           (cond ((or (member source-name whole :test #'string=) (member (string-right-trim "/" source-folder) busy :key (lambda (b) (string-right-trim "/" b)) :test #'string=)))
                 ((find source-name pairs :key #'car :test #'string=)
                  (dolist (package (own-folders source-folder))
-                   (unless (find-if (lambda (pair) (and (string= (car pair) source-name) (string= (cdr pair) (car package)))) pairs)
-                     (push (cons (cdr package) (format nil "~a from ~a" (car package) (tuatara.io:percent-decoded source-name)))
+                   (unless (find-if (lambda (pair)
+                                      (and (string= (car pair) source-name) (string= (cdr pair) (car package)))) pairs)
+                     (push (cons (cdr package)
+                                 (format nil "~a from ~a" (car package) (tuatara.io:percent-decoded source-name)))
                            found))))
                 (t (push (cons source-folder (format nil "~a, all of it" (tuatara.io:percent-decoded source-name))) found))))))
     (nreverse found)))
@@ -66,10 +68,10 @@ within FOLDER, deleted. Who signed their source is not forgotten."
 (defstruct (package-sweep (:include tuatara.runtime:job)
                           (:constructor make-package-sweep (phase folders &optional packages)) (:copier nil))
   "Package sources no longer named, or the folders of PACKAGES, the names of
-packages deleted (\\[package-delete]), being looked for (PHASE :look), or one
-of them being deleted (:delete): FOLDERS, each (FOLDER WORDS OCTETS NAME),
-NAME the package's for PACKAGES, what was found, or the one being deleted
-followed by those still to go; FREED, the octets freed so far, and DELETED,
+packages deleted (\\[package-delete]), being looked for (PHASE :look), or one of
+them being deleted (:delete). FOLDERS holds entries, each (FOLDER WORDS OCTETS
+NAME), NAME the package's for PACKAGES, what was found, or the one being deleted
+followed by those still to go. FREED is the octets freed so far, and DELETED is
 how many folders."
   phase folders packages (freed 0) (deleted 0))
 
@@ -79,7 +81,9 @@ how many folders."
   :doing (if (package-sweep-packages job) "Deleting packages" "Removing package sources no longer named")
   :verb (if (package-sweep-packages job) "delete packages" "remove package sources no longer named")
   :description (cond ((package-sweep-packages job)
-                      (format nil "~:[Deleting~;Measuring~] the package~p ~{~a~^, ~}" (eq (package-sweep-phase job) :look)
+                      (format nil
+                              "~:[Deleting~;Measuring~] the package~p ~{~a~^, ~}"
+                              (eq (package-sweep-phase job) :look)
                               (length (package-sweep-packages job)) (package-sweep-packages job)))
                      ((eq (package-sweep-phase job) :look) "Looking for package sources no longer named")
                      (t "Deleting package sources no longer named"))
@@ -99,7 +103,8 @@ on the editor's thread."
   "Start JOB, a PACKAGE-SWEEP, running WORK, a function of it, in the
 background with the settings of the editor's thread now (CALL-WITH-SWEEP-SETTINGS)."
   (let ((settings (mapcar #'symbol-value *package-sweep-settings*)))
-    (tuatara.runtime:start-job-thread job (lambda (job) (call-with-sweep-settings settings (lambda () (funcall work job))))
+    (tuatara.runtime:start-job-thread job
+                                      (lambda (job) (call-with-sweep-settings settings (lambda () (funcall work job))))
                                       :name "tuatara package sweep")))
 
 (defun sweep-entry-octets (folder)
@@ -200,7 +205,7 @@ named, the preview beside the package manager then showing its entry anew."
   "Delete ENTRY's folder, (FOLDER WORDS OCTETS NAME), on the thread of JOB, a
 PACKAGE-SWEEP, with its files compiled when it is a folder of the packages
 directory, what is remembered of the packages in it forgotten
-\(FORGET-PACKAGES-WITHIN), its octets added to those freed; left as it is
+\(FORGET-PACKAGES-WITHIN), its octets added to those freed. It is left as it is
 when it is no longer a folder of its own whose real path is in the packages
 directory or the folder packages are compiled into, as looked at again now."
   (destructuring-bind (folder words octets &optional name) entry

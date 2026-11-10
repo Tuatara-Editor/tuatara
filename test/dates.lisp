@@ -133,19 +133,27 @@
     (let ((plain (tuatara.dates:format-time "%z" time))
           (colon (tuatara.dates:format-time "%:z" time))
           (east (tuatara.dates:local-offset time)))
-      (is string= (format nil "~:[+~;-~]~2,'0d~2,'0d" (minusp east) (floor (abs east) 3600) (mod (floor (abs east) 60) 60)) plain)
+      (is string= (format nil
+                          "~:[+~;-~]~2,'0d~2,'0d"
+                          (minusp east)
+                          (floor (abs east) 3600)
+                          (mod (floor (abs east) 60) 60)) plain)
       (is string= (format nil "~a:~a" (subseq plain 0 3) (subseq plain 3)) colon)))
   (is string= "53 2026 001 Fri"
-      (tuatara.dates:format-time "%V %G %j %a" (tuatara.dates:day-universal-time (tuatara.dates:day-number 2027 1 1) 12)))
+      (tuatara.dates:format-time "%V %G %j %a"
+                                 (tuatara.dates:day-universal-time (tuatara.dates:day-number 2027 1 1) 12)))
   ;; midnight and noon on a twelve-hour clock
-  (is string= "12 AM, 12 PM" (format nil "~a, ~a" (tuatara.dates:format-day "%I %p" 0 0) (tuatara.dates:format-day "%I %p" 0 12)))
+  (is string= "12 AM, 12 PM"
+      (format nil "~a, ~a" (tuatara.dates:format-day "%I %p" 0 0) (tuatara.dates:format-day "%I %p" 0 12)))
   ;; before 1900, as on any other day
   (is string= "1850-03-04 Mon Monday March Mar 063 10 1850 1 1  4"
       (tuatara.dates:format-day "%F %a %A %B %b %j %V %G %u %w %e" (tuatara.dates:day-number 1850 3 4)))
   (is string= "1850-03-04 09:30:15"
-      (tuatara.dates:format-time "%F %T" (tuatara.dates:day-universal-time (tuatara.dates:day-number 1850 3 4) 9 30 15)))
+      (tuatara.dates:format-time "%F %T"
+                                 (tuatara.dates:day-universal-time (tuatara.dates:day-number 1850 3 4) 9 30 15)))
   (is string= "1899-12-31 Sun 23:59"
-      (tuatara.dates:format-time "%F %a %R" (tuatara.dates:day-universal-time (tuatara.dates:day-number 1899 12 31) 23 59)))
+      (tuatara.dates:format-time "%F %a %R"
+                                 (tuatara.dates:day-universal-time (tuatara.dates:day-number 1899 12 31) 23 59)))
   ;; years of fewer than four digits padded to four, as Org's timestamps have them
   (is string= "0999-01-01 Tue 999" (tuatara.dates:format-day "%F %a %-Y" (tuatara.dates:day-number 999 1 1)))
   ;; a % with no specifier after it, or one not known, written as it is
@@ -211,7 +219,8 @@
   ;; each key at a date question reads what is typed: its patterns are made once, not at each read
   (let ((today (tuatara.dates:day-number 2026 10 3)))
     (flet ((consed (text)
-             (loop repeat 3 minimize (nth-value 2 (tuatara.bench::measuring (tuatara.dates:read-date-text text today))))))
+             (loop repeat 3 minimize (nth-value 2
+                                                (tuatara.bench::measuring (tuatara.dates:read-date-text text today))))))
       (dolist (text '("fri 10:00" "sep 30 3pm" "2026-10-20 +3d" "tomorrow"))
         (let ((bytes (consed text)))
           (true (< bytes 8000) "~d bytes to read ~s" bytes text))))))
@@ -259,7 +268,8 @@
       (is equal '(nil) (range none) "~s is no time" none)))
   (is string= "09:05" (tuatara.dates:time-range-text 9 5))
   (is string= "09:05-10:00" (tuatara.dates:time-range-text 9 5 10 0))
-  (is string= "2026-12-24 Thu 14:00-15:30" (tuatara.dates:date-time-text (tuatara.dates:day-number 2026 12 24) 14 0 15 30))
+  (is string= "2026-12-24 Thu 14:00-15:30"
+      (tuatara.dates:date-time-text (tuatara.dates:day-number 2026 12 24) 14 0 15 30))
   ;; found in text: not inside a date, nor right after a digit
   (is equal '(5 11 15 30 nil nil) (multiple-value-list (tuatara.dates:find-time-range "Call 3:30pm Bob")))
   (is equal '(nil) (multiple-value-list (tuatara.dates:find-time-range "2026-10-20 and 25:00")))
@@ -295,7 +305,8 @@
 
 (define-test (dates ordinals-as-words)
   ;; the first five as words, read and written one way
-  (is equal '(1 2 3 4 5 1 2 3 5) (mapcar #'tuatara.dates:ordinal-of-word '("first" "Second" "third" "fourth" "fifth" "1st" "2nd" "3rd" "5th")))
+  (is equal '(1 2 3 4 5 1 2 3 5)
+      (mapcar #'tuatara.dates:ordinal-of-word '("first" "Second" "third" "fourth" "fifth" "1st" "2nd" "3rd" "5th")))
   (false (tuatara.dates:ordinal-of-word "2st"))
   (false (tuatara.dates:ordinal-of-word "sixth"))
   (let ((now (encode-universal-time 0 0 12 23 10 2026)))
@@ -349,7 +360,13 @@
   ;; names of a zone and no more
   (dolist (name '("Europe/Stockholm" "Etc/GMT+5" "America/Port-au-Prince" "UTC"))
     (true (tuatara.dates:time-zone-name-p name) "~a" name))
-  (dolist (name '("../etc/passwd" "Europe/../../etc/passwd" "/etc/passwd" "-x" "" "Europe//Stockholm" "Europe/Stock holm"))
+  (dolist (name '("../etc/passwd"
+                  "Europe/../../etc/passwd"
+                  "/etc/passwd"
+                  "-x"
+                  ""
+                  "Europe//Stockholm"
+                  "Europe/Stock holm"))
     (false (tuatara.dates:time-zone-name-p name) "~s" name))
   (false (tuatara.dates:time-zone-named "Nowhere/Particular"))
   ;; rules as the TZ strings write them

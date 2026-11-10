@@ -4,8 +4,9 @@
 ;;;; The pages are written by hand in data/man/*.in, in man's own macros, with
 ;;;; a line "@NAME@" where a part goes that the program knows better than a
 ;;;; person writing it down: the ways of starting it and the options (the table
-;;;; --help is made from), the settings of the init file with the first sentence
-;;;; of each one's documentation, and the files that are kept
+;;;; --help is made from), the environment variables, the settings of the init
+;;;; file with the first paragraph of each one's documentation, and the files
+;;;; that are kept
 ;;;; (test/api/kept-files.sexp).  tools/build-image.lisp writes them to
 ;;;; build/man/.
 
@@ -89,14 +90,36 @@ commas."
                                                  (tuatara.text:split-words (second flag) " "))))))
                   flags)))
 
+(defun roff-entry-body (text why)
+  "The body of a paragraph for an entry of *OPTION-HELP* or
+*ENVIRONMENT-HELP*: what it does (TEXT, lines) as a paragraph and, when there
+is one, why someone would change it (WHY, lines) as paragraphs under it, a
+new one at each empty line."
+  (flet ((paragraph (lines) (roff-fill (format nil "~{~a~^ ~}" lines))))
+    (with-output-to-string (out)
+      (write-string (paragraph text) out)
+      (loop while why
+            do (let ((end (or (position "" why :test #'string=) (length why))))
+                 (format out ".IP~%~a" (paragraph (subseq why 0 end)))
+                 (setf why (nthcdr (1+ end) why)))))))
+
 (defun options-roff ()
   "The options of *OPTION-HELP* as paragraphs of OPTIONS: the ways of writing
-each, what it does, and for an option only the AppImage takes, or only the
-runtime does, a closing sentence saying so is left to its text."
+each, what it does, and for an option with a choice why someone would take it
+and what it costs."
   (with-output-to-string (out)
     (dolist (entry *option-help*)
       (format out ".TP~%~a~%~a" (roff-flags (getf entry :flags))
-              (roff-fill (format nil "~{~a~^ ~}" (getf entry :text)))))))
+              (roff-entry-body (getf entry :text) (getf entry :why))))))
+
+(defun environment-roff ()
+  "The variables of *ENVIRONMENT-HELP* as paragraphs of ENVIRONMENT, each
+with what it does and, for one with a choice, why someone would set it and
+what to expect."
+  (with-output-to-string (out)
+    (dolist (entry *environment-help*)
+      (format out ".TP~%.BR~{ ~a~^ \", \"~}~%~a" (mapcar #'roff-text (getf entry :names))
+              (roff-entry-body (getf entry :text) (getf entry :why))))))
 
 (defun synopsis-roff ()
   "The ways of starting Tuatara (*USAGE-FORMS*) as the lines of SYNOPSIS."
@@ -104,20 +127,14 @@ runtime does, a closing sentence saying so is left to its text."
 
 ;;; The init file
 
-(defun sentence-start (documentation)
-  "The first sentence of DOCUMENTATION, its lines joined, up to the first full
-stop followed by a space or the end, or up to the first blank line; a command
-written in a docstring as a key reference is replaced by its name, and a keymap
-summary or a keymap name is left out."
+(defun documentation-paragraph (documentation)
+  "The first paragraph of DOCUMENTATION, up to the first blank line, its lines
+joined; a command written in a docstring as a key reference is replaced by its
+name, and a keymap summary or a keymap name is left out."
   (let* ((paragraph (subseq documentation 0 (search (format nil "~%~%") documentation)))
          (joined (format nil "~{~a~^ ~}" (tuatara.text:split-words paragraph (list #\Newline #\Space))))
-         (named (cl-ppcre:regex-replace-all "\\\\\\[([^]]*)\\]" joined "\\1"))
-         (flat (cl-ppcre:regex-replace-all "\\\\[<{][^>}]*[>}]" named ""))
-         (stop (loop for i from 0 below (length flat)
-                     when (and (char= (char flat i) #\.)
-                               (or (= (1+ i) (length flat)) (char= (char flat (1+ i)) #\Space)))
-                       return (1+ i))))
-    (subseq flat 0 (or stop (length flat)))))
+         (named (cl-ppcre:regex-replace-all "\\\\\\[([^]]*)\\]" joined "\\1")))
+    (cl-ppcre:regex-replace-all "\\\\[<{][^>}]*[>}]" named "")))
 
 (defun starter-settings ()
   "The settings the starter init file lists, in its order, as a list of (AREA
@@ -156,13 +173,13 @@ the text first names it."
 
 (defun settings-roff ()
   "The settings of the init file as paragraphs of the page: for each area a
-sub-heading, then each setting with the first sentence of its documentation."
+sub-heading, then each setting with the first paragraph of its documentation."
   (with-output-to-string (out)
     (dolist (group (starter-settings))
       (format out ".SS ~s~%" (roff-text (car group)))
       (dolist (symbol (cdr group))
         (format out ".TP~%.B ~a~%~a" (roff-text (string-downcase (symbol-name symbol)))
-                (roff-fill (sentence-start (or (documentation symbol 'variable) ""))))))))
+                (roff-fill (documentation-paragraph (or (documentation symbol 'variable) ""))))))))
 
 ;;; The files that are kept
 
@@ -231,7 +248,8 @@ rebuilt, each with where it is and what it is."
 ;;; Putting the pages together
 
 (defparameter *man-parts*
-  '(("SYNOPSIS" . synopsis-roff) ("OPTIONS" . options-roff) ("SETTINGS" . settings-roff)
+  '(("SYNOPSIS" . synopsis-roff) ("OPTIONS" . options-roff) ("ENVIRONMENT" . environment-roff)
+    ("SETTINGS" . settings-roff)
     ("KEPT-FILES" . kept-files-roff))
   "The parts of the pages made by the program, by the name between @ signs on
 a line of a page's source, with the function that makes each.")

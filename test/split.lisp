@@ -23,7 +23,9 @@
   ;; what c and d take is one kill: one copy where the matches agree, one a line where not
   (is string= "foo" (first (tuatara.command:editor-kill-ring (nth-value 1 (run-keys-in-turns '("f f o o RET" "d") :text "foo bar foo")))))
   (is string= (format nil "1~%22~%333")
-      (first (tuatara.command:editor-kill-ring (nth-value 1 (run-keys-in-turns '("f [ 0 - 9 ] + RET" "d") :text "1 22 333")))))
+      (first (tuatara.command:editor-kill-ring (nth-value 1
+                                                          (run-keys-in-turns '("f [ 0 - 9 ] + RET" "d")
+                                                                             :text "1 22 333")))))
   ;; matches that differ: a types at each one's end
   (is string= "1x 22x 333x" (split-text "f [ 0 - 9 ] + RET a x C-g" "1 22 333"))
   ;; the report says what was done
@@ -54,15 +56,21 @@
     (is string= (format nil "a foor~%c foozooka") (split-text "% f f o o RET a M-z r C-g" text))
     ;; each C-d deleting the same character at both, until one does not
     (is string= (format nil "a foo~%c foozooka") (split-text "% f f o o RET a C-d C-d C-d C-d C-g" text))
-    (is string= (format nil "a foobar~%c foo b  zooka") (split-text "% f f o o RET a M-\\ C-g" (format nil "a foo   bar~%c foo b  zooka")))
-    (is string= (format nil "a foo~%c bazookafoo") (split-text "% f f o o RET i DEL DEL DEL DEL C-g" (format nil "a bar foo~%c bazooka foo")))
+    (is string=
+        (format nil "a foobar~%c foo b  zooka")
+        (split-text "% f f o o RET a M-\\ C-g" (format nil "a foo   bar~%c foo b  zooka")))
+    (is string=
+        (format nil "a foo~%c bazookafoo")
+        (split-text "% f f o o RET i DEL DEL DEL DEL C-g" (format nil "a bar foo~%c bazooka foo")))
     (is string= "1 b1" (split-text "f 1 RET i DEL C-g" "a1 b1"))
     ;; what came before the deletion stays written at every place, one change for undo with it
     (is string= (format nil "a fooX~%c fooX bazooka") (split-text "% f f o o RET a X C-k C-g" text))
     (is string= text (split-text "% f f o o RET a X C-k C-g u" text))
     ;; the same text there: deleted at every place
     (is string= (format nil "a foo~%c foo") (split-text "% f f o o RET a C-k C-g" (format nil "a foo bar~%c foo bar")))
-    (is string= (format nil "a foobar~%c foobar") (split-text "% f f o o RET a M-\\ C-g" (format nil "a foo   bar~%c foo   bar"))))
+    (is string=
+        (format nil "a foobar~%c foobar")
+        (split-text "% f f o o RET a M-\\ C-g" (format nil "a foo   bar~%c foo   bar"))))
   ;; past the limit, a match out of sight without the same text beside it is left as it is
   (multiple-value-bind (f editor)
       (let ((tuatara-user:*split-limit* 2))
@@ -203,7 +211,11 @@ whether the buffer has changes not saved; the frontend fourth."
       (let ((editor (nth-value 1 (run-keys-in-turns '("% f o o SPC RET" "i DEL C-g") :text text :width 80 :height 10))))
         (is string= "oo 0" (first (lines editor)))
         (is string= "oo 299" (nth 299 (lines editor))))
-      (let ((editor (nth-value 1 (run-keys-in-turns '("% f [ 0 - 9 ] + RET" "i DEL Z C-g") :text text :width 80 :height 10))))
+      (let ((editor (nth-value 1
+                               (run-keys-in-turns '("% f [ 0 - 9 ] + RET" "i DEL Z C-g")
+                                                  :text text
+                                                  :width 80
+                                                  :height 10))))
         (is string= "fooZ0" (first (lines editor)))
         (is string= "fooZ299" (nth 299 (lines editor))))
       ;; moving into another place while typing: every place brought up first
@@ -298,7 +310,11 @@ BACKGROUND, the search too goes to the background."
   (let ((text (format nil "ab ab~%ab ab~%ab ab~%")))
     (let ((tuatara.defaults::*rewrite-threshold* 0))
       (is string= (format nil "ab Xab~%ab Xab~%ab Xab~%")
-          (session-text (nth-value 1 (run-keys-in-turns '("l l l m v j j l f a RET" "i X C-g") :text text :width 80 :height 10)))))
+          (session-text (nth-value 1
+                                   (run-keys-in-turns '("l l l m v j j l f a RET" "i X C-g")
+                                                      :text text
+                                                      :width 80
+                                                      :height 10)))))
     ;; and past what a split holds, every match of them
     (is string= (format nil "ab b~%ab b~%ab b~%")
         (every-match-text '("l l l m v j j l f a RET" "y d") text :background t))
@@ -322,8 +338,11 @@ BACKGROUND, the search too goes to the background."
     (let ((found '()))
       (dolist (piece pieces)
         (tuatara.defaults::piece-matches (lambda (s e m g) (declare (ignore m g)) (push (cons s e) found) nil)
-                                         rope (tuatara.defaults::make-pattern-matcher "foo" :regex t :compiled t) '((0 . 3) (8 . 11)) groups
-                                         (tuatara.defaults::rewrite-piece-start piece) (tuatara.defaults::rewrite-piece-end piece)
+                                         rope
+                                         (tuatara.defaults::make-pattern-matcher "foo" :regex t :compiled t)
+                                         '((0 . 3) (8 . 11)) groups
+                                         (tuatara.defaults::rewrite-piece-start piece)
+                                         (tuatara.defaults::rewrite-piece-end piece)
                                          (constantly nil)))
       (is equal '((0 . 3) (8 . 11)) (reverse found)))))
 
@@ -338,7 +357,9 @@ BACKGROUND, the search too goes to the background."
             "~a held" pattern))
       (let ((tuatara.defaults::*rewrite-piece* 8))
         (is string= (cl-ppcre:regex-replace-all pattern text "<\\&>")
-            (every-match-text (list (format nil "% f ~a RET" (key-string pattern)) "w <" "C-g") text :limit 1 :background t)
+            (every-match-text (list (format nil "% f ~a RET" (key-string pattern)) "w <" "C-g") text
+                              :limit 1
+                              :background t)
             "~a written" pattern)))))
 
 (define-test (split split-in-the-background)
@@ -409,7 +430,9 @@ BACKGROUND, the search too goes to the background."
     ;; the column is the one on the screen, as moving a line down keeps it: a wide
     ;; character two, a tab to its stop; never inside a character's combining marks
     (is string= (format nil "あいWう~%abcdWefgh~%") (split-text "l l t i W C-g" (format nil "あいう~%abcdefgh~%")))
-    (is string= (format nil "a~aWb~%abcdWefghijk~%" #\Tab) (split-text "l l t i W C-g" (format nil "a~ab~%abcdefghijk~%" #\Tab)))
+    (is string=
+        (format nil "a~aWb~%abcdWefghijk~%" #\Tab)
+        (split-text "l l t i W C-g" (format nil "a~ab~%abcdefghijk~%" #\Tab)))
     (let ((marks (format nil "e~a~a" (code-char #x301) (code-char #x301))))
       (is string= (format nil "~axyWz~%abcWdefgh~%abcWdefgh~%" marks)
           (split-text "j j l l l T T i W C-g" (format nil "~axyz~%abcdefgh~%abcdefgh~%" marks)))
@@ -517,7 +540,8 @@ end its lines with a carriage return and a newline."
           (every-line-text '("l v j j t d") crlf :crlf t))
       ;; a deletion back over the line end at every cursor: the carriage return and newline one step
       (is string= (format nil "aabbccdd~c~%" #\Return)
-          (every-line-text '("j t t I DEL C-g") (format nil "aa~c~%bb~c~%cc~c~%dd~c~%" #\Return #\Return #\Return #\Return)
+          (every-line-text '("j t t I DEL C-g")
+                           (format nil "aa~c~%bb~c~%cc~c~%dd~c~%" #\Return #\Return #\Return #\Return)
                            :crlf t :limit 5)))
     ;; what the echo area says; any key the cursors past the limit do not have ends them
     (let ((tuatara-user:*cursors-limit* 2))
@@ -525,7 +549,9 @@ end its lines with a carriage return and a newline."
                                                       "Split: 2 cursors of 4, those out of sight written in the background")))
     (is string= text (every-line-text '("l v j j j t j") text))
     ;; a rectangle whose corner is at a line's start: that line is one of its rows, and gets a cursor
-    (is string= (format nil "Xabcd~%Xabcd~%Xabcd~%abcd") (split-text "l l l m v j j g h t i X C-g" (format nil "abcd~%abcd~%abcd~%abcd")))
+    (is string=
+        (format nil "Xabcd~%Xabcd~%Xabcd~%abcd")
+        (split-text "l l l m v j j g h t i X C-g" (format nil "abcd~%abcd~%abcd~%abcd")))
     ;; a negative count: moves out of sight as in sight; refused where those out of sight would differ
     (is string= (format nil "Xabc~%Xabc~%Xa~%Xabc~%") (every-line-text '("l l v j j j t C-u - 2 l i X C-g") text))
     (is string= text (every-line-text '("l v j j j t C-u - 1 d") text))
@@ -567,11 +593,16 @@ end its lines with a carriage return and a newline."
          (pattern (key-string "BEGIN[\\s\\S]*?END")))
     (true (search "Nothing matched" (split-echo (format nil "% f ~a RET" pattern) text)))
     (multiple-value-bind (f editor)
-        (run-keys (format nil "% M-x ~a RET ~a RET c Z C-g" (key-string "split-selection-thorough") pattern) :text text :width 80 :height 10)
+        (run-keys (format nil "% M-x ~a RET ~a RET c Z C-g" (key-string "split-selection-thorough") pattern)
+                  :text text
+                  :width 80
+                  :height 10)
       (true (tuatara.frontend.fake:fake-frame-showing f "Thorough regex split on: "))
       (is string= (format nil "~aZ~%" filler) (session-text editor))))
   ;; how many matches the regexp has in what is split, before the prompt, as it is typed
-  (dolist (case '(("% f o" "6      Regex split on: o") ("f o" "4      Regex split on: o") ("f % o" "6      Regex split on: %o")))
+  (dolist (case '(("% f o" "6      Regex split on: o")
+                  ("f o" "4      Regex split on: o")
+                  ("f % o" "6      Regex split on: %o")))
     (multiple-value-bind (f editor)
         (run-keys (list (first case) (lambda () (sleep 0.2)) :tick "C-g") :text (format nil "foo foo~%foo") :width 80)
       (declare (ignore editor))

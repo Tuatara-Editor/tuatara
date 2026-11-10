@@ -40,10 +40,10 @@
     ("tr"    "Turkish"               "turkish"      "turkish"      "tr"      "hyphen-turkish"    "Tablo"    "Şekil"   "İçindekiler")
     ("ca"    "Catalan"               "catalan"      "catalan"      "ca"      "hyphen-catalan"    "Taula"    "Figura"  "Taula de continguts"))
   "The languages a note's #+LANGUAGE: may name, each (CODE NAME POLYGLOSSIA
-BABEL PATTERNS PACKAGE TABLE FIGURE CONTENTS): the ISO code, the language's
-name, its name for polyglossia and for babel (NIL where babel cannot set it
-with the fonts pdflatex has), the ending of the hyphenation patterns' file
-\(loadhyph-PATTERNS.tex) and the TeX Live package holding it, and the words
+BABEL PATTERNS PACKAGE TABLE FIGURE CONTENTS). CODE is the ISO code, the
+language's name, its name for polyglossia and for babel (NIL where babel cannot
+set it with the fonts pdflatex has), the ending of the hyphenation patterns'
+file \(loadhyph-PATTERNS.tex) and the TeX Live package holding it, and the words
 Word's export prints for a table, a picture and the contents.")
 
 (defun export-language (code)

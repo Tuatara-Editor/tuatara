@@ -22,9 +22,9 @@ QUICKLISP_SETUP="${QUICKLISP_SETUP:-}" tools/lisp-archives.sh check
 tools/grammars.sh
 tools/terminal-library.sh
 # The heap it is saved with: half this machine's memory, at most 16 GB and at
-# least 2 GB, so that a replacement across a file of many gigabytes has room
-# (TUATARA_HEAP_MB overrides). On another machine the executable decides again
-# when it starts, by the same rule.
+# least 2 GB, so that work held in memory has room (TUATARA_HEAP_MB overrides).
+# On another machine the executable decides again when it starts, by the same
+# rule.
 heap_mb=${TUATARA_HEAP_MB:-$(awk '/MemTotal/ { mb = int($2 / 2048); if (mb > 16384) mb = 16384; if (mb < 2048) mb = 2048; print mb }' /proc/meminfo)}
 # what it is built from, for M-x version: the commit, whether the tree has
 # changes not committed, and the day

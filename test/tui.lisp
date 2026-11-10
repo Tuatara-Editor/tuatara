@@ -1,4 +1,5 @@
-;;;; test/tui.lisp --- The terminal frontend and the program's start: names for shared pictures, the random numbers of each start.
+;;;; test/tui.lisp --- The terminal frontend and the program's start: names for shared pictures, the random numbers of
+;;;; each start.
 ;;;; Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
 
 (in-package #:tuatara.tests)
@@ -80,9 +81,15 @@
       (with-open-file (o cmdline :direction :output :element-type '(unsigned-byte 8))
         (write-sequence (concatenate '(vector (unsigned-byte 8))
                                      (sb-ext:string-to-octets "tuatara") #(0)
-                                     (sb-ext:string-to-octets "--dynamic-space-size") #(0) (sb-ext:string-to-octets "3GB") #(0)
+                                     (sb-ext:string-to-octets "--dynamic-space-size")
+                                     #(0)
+                                     (sb-ext:string-to-octets "3GB")
+                                     #(0)
                                      (sb-ext:string-to-octets "--gui") #(0)
-                                     (sb-ext:string-to-octets "bad") #(255 254) (sb-ext:string-to-octets "name.txt") #(0)
+                                     (sb-ext:string-to-octets "bad")
+                                     #(255 254)
+                                     (sb-ext:string-to-octets "name.txt")
+                                     #(0)
                                      (sb-ext:string-to-octets "a.txt") #(0))
                         o))
       (is equal (list "tuatara" "--gui" (format nil "bad~c~cname.txt" (code-char #xDCFF) (code-char #xDCFE)) "a.txt")
@@ -103,9 +110,15 @@
   ;; screen painted whole
   (let ((calls '()))
     (with-functions-replaced ((tuatara.frontend.tui::%endwin (lambda () (push :endwin calls)))
-                              (tuatara.frontend.tui::%clearok (lambda (window on) (declare (ignore window on)) (push :clearok calls)))
-                              (tuatara.frontend.tui::%wrefresh (lambda (window) (declare (ignore window)) (push :refresh calls)))
-                              (tuatara.frontend.tui::forget-images (lambda (f all) (declare (ignore f)) (push (list :forget all) calls))))
+                              (tuatara.frontend.tui::%clearok (lambda (window on)
+                                                                (declare (ignore window on))
+                                                                (push :clearok calls)))
+                              (tuatara.frontend.tui::%wrefresh (lambda (window)
+                                                                 (declare (ignore window))
+                                                                 (push :refresh calls)))
+                              (tuatara.frontend.tui::forget-images (lambda (f all)
+                                                                     (declare (ignore f))
+                                                                     (push (list :forget all) calls))))
       (flet ((sent (function)
                (let ((f (tuatara.frontend.tui:make-tui-frontend))
                      (tuatara.frontend.tui::*kitty-keyboard-on* t)
@@ -143,7 +156,8 @@
                               (tuatara.frontend.tui::%getmaxy (lambda (window) (declare (ignore window)) 50))
                               (tuatara.frontend.tui::%getcurx (lambda (window) (declare (ignore window)) 200))
                               (tuatara.frontend.tui::%wclrtoeol (lambda (window) (declare (ignore window)) 0))
-                              (tuatara.frontend.tui::attributes-on (lambda (window attrs) (declare (ignore window attrs))))
+                              (tuatara.frontend.tui::attributes-on (lambda (window attrs)
+                                                                     (declare (ignore window attrs))))
                               (tuatara.frontend.tui::attributes-off (lambda (window) (declare (ignore window))))
                               (tuatara.frontend.tui::spec-attributes (lambda (spec) (declare (ignore spec)) 1))
                               (tuatara.display:combine-faces (lambda (face base) (declare (ignore base)) face))
@@ -162,7 +176,9 @@
                      (/ (- (tuatara.bench::bytes-consed) before) 100)))))
           (tuatara.frontend:frontend-put-row f 0 text :face :mode-line :spans '((0 3 :bold)))
           ;; the row's text, then spaces to the edge
-          (is string= (concatenate 'string text (make-string 100 :initial-element #\Space)) (get-output-stream-string written))
+          (is string=
+              (concatenate 'string text (make-string 100 :initial-element #\Space))
+              (get-output-stream-string written))
           (setf recording nil)
           (let ((few (consed 2)) (many (consed 40)))
             (true (< (/ (- many few) 38) 48) "~d octets of garbage for a row of 40 spans, ~d for one of 2" many few)))))))

@@ -154,7 +154,9 @@ shown again."
     (when (and doc (member server (lsp-doc-servers doc)) (lsp-feature-allowed-p server "diagnostics"))
       (let ((found-in (doc-as-sent doc version)))
         (when found-in
-          (keep-diagnostics buffer (cons doc server) (diagnostic-entries found-in server (tuatara.text:json-items params "diagnostics")))
+          (keep-diagnostics buffer
+                            (cons doc server)
+                            (diagnostic-entries found-in server (tuatara.text:json-items params "diagnostics")))
           (note-heard doc server version)
           ;; the server has looked at the text: its hints too, when none came before
           (unless (tuatara.buffer:buffer-local buffer 'lsp-hints)
@@ -241,7 +243,8 @@ Complexity: O(log found + those there)."
          (size (tuatara.text:rope-octet-length rope))
          (vector (nth-value 1 (diagnostic-table buffer)))
          (lines '()))
-    (loop for i from (tuatara.runtime:bisect (mid 0 (length vector)) (< (min size (diagnostic-start (svref vector mid))) from))
+    (loop for i from (tuatara.runtime:bisect (mid 0 (length vector))
+                                             (< (min size (diagnostic-start (svref vector mid))) from))
             below (length vector)
           for d = (svref vector i)
           for start = (min size (diagnostic-start d))
@@ -295,7 +298,9 @@ from LINES, as DIAGNOSTIC-GUTTER-PREPARE gives them for the frame, when given."
 
 (defun diagnostics-in (buffer start end)
   "All that BUFFER's servers found from START to END, touching either, the worst first."
-  (stable-sort (remove-if-not (lambda (d) (and (<= (diagnostic-start d) end) (<= start (max (diagnostic-end d) (diagnostic-start d)))))
+  (stable-sort (remove-if-not (lambda (d)
+                                (and (<= (diagnostic-start d) end)
+                                     (<= start (max (diagnostic-end d) (diagnostic-start d)))))
                               (diagnostics-near buffer start end))
                #'< :key #'diagnostic-severity))
 
@@ -316,7 +321,9 @@ nothing else is said there. True when something was said."
       (ecase *lsp-diagnostics-display*
         (:box (show-note editor buffer (point)
                          (loop for d in here
-                               collect (list (format nil "~:(~a~) (~a)" (diagnostic-severity-words (diagnostic-severity d))
+                               collect (list (format nil
+                                                     "~:(~a~) (~a)"
+                                                     (diagnostic-severity-words (diagnostic-severity d))
                                                      (diagnostic-source d))
                                              (diagnostic-mark-face (diagnostic-severity d)))
                                collect (list (diagnostic-message d) nil))))
@@ -332,7 +339,8 @@ nothing else is said there. True when something was said."
   (buffer nil :read-only t))
 
 (setf (documentation 'diagnostic-places-p 'function) "True when OBJECT is a DIAGNOSTIC-PLACES."
-      (documentation 'diagnostic-places-buffer 'function) "The buffer whose diagnostics a DIAGNOSTIC-PLACES goes through.")
+      (documentation 'diagnostic-places-buffer 'function)
+      "The buffer whose diagnostics a DIAGNOSTIC-PLACES goes through.")
 
 (defmethod places-buffer ((places diagnostic-places))
   "The buffer whose diagnostics PLACES goes through."
@@ -363,7 +371,8 @@ then (USE-PLACES)."
          (d (if forward
                 (find-if (lambda (d) (> (diagnostic-start d) here)) all)
                 (find-if (lambda (d) (< (diagnostic-start d) here)) all :from-end t))))
-    (cond ((null all) (message "Nothing found wrong here~@[ (no language server)~]" (null (buffer-servers (current-buffer)))))
+    (cond ((null all) (message "Nothing found wrong here~@[ (no language server)~]"
+                               (null (buffer-servers (current-buffer)))))
           ((null d) (say-places-end *places-in-force* (if forward 1 -1)))
           (t (goto-shown (current-buffer) (diagnostic-start d))
              (unless (diagnostic-say *editor*)
@@ -379,8 +388,10 @@ then (USE-PLACES)."
 
 (define-major-mode diagnostics-mode special-mode
   "What the language servers found wrong in the open files and the files of
-their projects (\\[lsp-diagnostics]), a line each: where, how bad, what found it and what it says. \\<diagnostics-mode>\\[list-visit] goes there, in another window,
-\\[revert-buffer] lists them again (they are listed again as servers find more); \\[quit-window] closes."
+their projects (\\[lsp-diagnostics]), a line each: where, how bad, what found it
+and what it says. \\<diagnostics-mode>\\[list-visit] goes there, in another
+window, \\[revert-buffer] lists them again (they are listed again as servers
+find more); \\[quit-window] closes."
   :lighter "Diagnostics" :interactive nil)
 
 (defvar *diagnostics-keymap* (mode-keymap 'diagnostics-mode)
@@ -438,7 +449,8 @@ window always."
   (cond ((stringp (first entry))
          ;; a file not open: opened, and the place found as its server counts
          (destructuring-bind (path server d) entry
-           (multiple-value-bind (buffer at) (uri-place server (path-uri path) (tuatara.text:json-get d "range" "start") :visit t)
+           (multiple-value-bind (buffer at)
+               (uri-place server (path-uri path) (tuatara.text:json-get d "range" "start") :visit t)
              (if (null buffer)
                  (message "~a cannot be opened" (abbreviated-path path))
                  (progn (pop-to-buffer buffer :other t)
@@ -471,7 +483,8 @@ servers know of where the cursor rests shown in EDITOR, with code's keys
 under \\`C-c'."
   (install-format)
   (pushnew 'lsp-tick *tick-functions*)
-  (setf tuatara.buffer:*find-file-functions* (append (remove 'lsp-visit tuatara.buffer:*find-file-functions*) (list 'lsp-visit)))
+  (setf tuatara.buffer:*find-file-functions*
+        (append (remove 'lsp-visit tuatara.buffer:*find-file-functions*) (list 'lsp-visit)))
   (pushnew 'lsp-killed tuatara.buffer:*kill-buffer-functions*)
   (pushnew 'lsp-saved *after-save-functions*)
   (pushnew 'lsp-stop-all *exit-functions*)

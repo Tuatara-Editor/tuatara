@@ -23,7 +23,8 @@ forgets it: WITH-TEST-DIRECTORY)."
 
 (defun trust-test-repository (dir)
   "Trust the repository at DIR, as when asked (a test directory forgets it: WITH-TEST-DIRECTORY)."
-  (tuatara.defaults::state-list-put tuatara.defaults::*lsp-trusted* (list (tuatara.defaults::real-folder (namestring dir)))))
+  (tuatara.defaults::state-list-put tuatara.defaults::*lsp-trusted*
+                                    (list (tuatara.defaults::real-folder (namestring dir)))))
 
 (defmacro with-trusted-folders ((folders) &body body)
   "Run BODY with *LSP-TRUSTED-PROJECTS* FOLDERS for every thread, the git
@@ -67,19 +68,25 @@ jobs' too, set back after."
             (auto-save-session
              (list (format nil "C-x C-f C-a C-k ~a RET" (rimu-typed (namestring (merge-pathnames "a.txt" dir))))
                    "C-x g"
-                   (list :until (lambda () (and (status) (tuatara.buffer:buffer-local (status) 'tuatara.git::git-state))))
+                   (list :until
+                         (lambda () (and (status) (tuatara.buffer:buffer-local (status) 'tuatara.git::git-state))))
                    ;; a.txt's changes shown under it
-                   "C-s a . t x t RET TAB" (list :until (lambda () (search "+two" (tuatara.buffer:buffer-string (status)))))
+                   "C-s a . t x t RET TAB"
+                   (list :until (lambda () (search "+two" (tuatara.buffer:buffer-string (status)))))
                    ;; both staged, b.txt from its section's title
                    "M-< C-s U n t r a c k e d RET s" (list :until (lambda () (null (tuatara.git::git-state-untracked
                                                                                       (tuatara.buffer:buffer-local (status) 'tuatara.git::git-state)))))
                    "M-< C-s m o d i f i e d RET s"
                    (list :until (lambda () (= 2 (length (tuatara.git::git-state-staged
-                                                         (tuatara.buffer:buffer-local (status) 'tuatara.git::git-state))))))
+                                                         (tuatara.buffer:buffer-local (status)
+                                                                                      'tuatara.git::git-state))))))
                    (list :until (lambda () (setf staged (mapcar #'first (tuatara.git::git-state-staged
                                                                           (tuatara.buffer:buffer-local (status) 'tuatara.git::git-state))))))
                    ;; committed, its message written in a buffer of its own
-                   "c c" (list :until (lambda () (tuatara.git::git-buffer-of (tuatara.git:repository-top (namestring dir)) 'tuatara.defaults::git-commit-mode))) "S e c o n d C-c C-c"
+                   "c c" (list :until
+                               (lambda ()
+                                 (tuatara.git::git-buffer-of (tuatara.git:repository-top (namestring dir))
+                                                             'tuatara.defaults::git-commit-mode))) "S e c o n d C-c C-c"
                    (list :until (lambda () (search "Second" (git-output dir "log" "--format=%s"))))
                    (list :until (lambda () (null (tuatara.git::git-state-staged
                                                   (tuatara.buffer:buffer-local (status) 'tuatara.git::git-state))))))
@@ -100,11 +107,14 @@ jobs' too, set back after."
     (scratch-repository dir :trusted nil)
     (let ((tuatara.defaults::*modal-editing* nil)
           (tuatara-user:*lsp-trusted-projects* '()))
-      (let ((f (auto-save-session (list (format nil "C-x C-f C-a C-k ~a RET" (rimu-typed (namestring (merge-pathnames "a.txt" dir))))
+      (let ((f (auto-save-session (list (format nil
+                                                "C-x C-f C-a C-k ~a RET"
+                                                (rimu-typed (namestring (merge-pathnames "a.txt" dir))))
                                         "C-x g" (list :wait 0.1) "n" (list :wait 0.1))
                                   :width 160)))
         (true (tuatara.frontend.fake:fake-frame-showing-across-rows f "git runs the programs it names"))
-        (false (tuatara.git::git-buffer-of (tuatara.git:repository-top (namestring dir)) 'tuatara.git::git-status-mode))))))
+        (false (tuatara.git::git-buffer-of (tuatara.git:repository-top (namestring dir))
+                                           'tuatara.git::git-status-mode))))))
 
 (define-test (git status-read)
   ;; what git status --porcelain=v2 says, read: branch, upstream, files of each kind, a rename
@@ -139,7 +149,11 @@ jobs' too, set back after."
         (sb-posix:symlink (string-right-trim "/" (namestring elsewhere)) link)
         (true (tuatara.defaults::project-trusted-p (namestring inside)))
         (false (tuatara.defaults::project-trusted-p link))
-        (false (tuatara.defaults::project-trusted-p (concatenate 'string (namestring trusted) "../" (car (last (pathname-directory elsewhere))) "/")))
+        (false (tuatara.defaults::project-trusted-p (concatenate 'string
+                                                                 (namestring trusted)
+                                                                 "../"
+                                                                 (car (last (pathname-directory elsewhere)))
+                                                                 "/")))
         (false (tuatara.defaults::project-trusted-p (concatenate 'string (namestring trusted) "not-there/")))))))
 
 (define-test (git trust-looked-up-once)
@@ -180,7 +194,8 @@ jobs' too, set back after."
       (let ((f (git-session repo "a.txt" (list (list :wait 0.2)))))
         (true (tuatara.frontend.fake:fake-frame-showing f "Unpushed to origin/main (2)"))
         ;; the branch you are on lit up at the top
-        (let ((row (loop for r below 30 when (search "Head:     main" (tuatara.frontend.fake:fake-screen-line f r)) return r)))
+        (let ((row (loop for r below 30 when (search "Head:     main"
+                                                     (tuatara.frontend.fake:fake-screen-line f r)) return r)))
           (true row)
           (when row
             (true (covered-by-face (aref (tuatara.frontend.fake:fake-spans f) row) :git-status-branch 10 14))))
@@ -244,7 +259,8 @@ DIR is visited and its status read, the project trusted. Returns the frontend."
                                   (list :until (lambda () (staged)))
                                   "M-< C-s l o o s e RET x y e s RET" (list :until (gone "loose.txt"))
                                   "M-< C-s l i n e s RET x y e s RET" (list :until (gone (format nil "two~%lines.txt")))
-                                  (list :until (lambda () (null (tuatara.git::git-state-untracked (git-state-here)))))))))
+                                  (list :until
+                                        (lambda () (null (tuatara.git::git-state-untracked (git-state-here)))))))))
         (true (tuatara.frontend.fake:fake-frame-showing f "untracked  two^Jlines.txt"))
         (is equal '("*") (staged))
         (true (tuatara.io:path-kind (native-in dir "*")))
@@ -378,7 +394,9 @@ DIR is visited and its status read, the project trusted. Returns the frontend."
       (flet ((git-jobs () (remove-if-not #'tuatara.git::git-job-p tuatara.runtime:*jobs*)))
         (let ((f (git-session dir "a.txt"
                               (list "c c" (list :until (lambda () (tuatara.git::git-buffer-of (tuatara.git:repository-top (namestring dir)) 'tuatara.defaults::git-commit-mode))) "S e c o n d C-c C-c"
-                                    (list :until (lambda () (setf described (mapcar #'tuatara.runtime:job-description (git-jobs)))))
+                                    (list :until
+                                          (lambda ()
+                                            (setf described (mapcar #'tuatara.runtime:job-description (git-jobs)))))
                                     "M-x s t o p - j o b RET y e s RET"
                                     (list :until (lambda () (null (git-jobs))))))))
           (true (member "git: committing" described :test #'equal))
@@ -447,18 +465,22 @@ DIR is visited and its status read, the project trusted. Returns the frontend."
                                   ;; the hunk staged leaves the unstaged changes
                                   (list :until (shows "Staged changes"))
                                   ;; unstaged again from the staged section
-                                  "M-< C-s S t a g e d RET n TAB" (list :until (lambda () (let ((text (tuatara.buffer:buffer-string (git-status-here))))
-                                                                                    (search "+L2" text :start2 (search "Staged changes" text)))))
+                                  "M-< C-s S t a g e d RET n TAB"
+                                  (list :until (lambda () (let ((text (tuatara.buffer:buffer-string (git-status-here))))
+                                                    (search "+L2" text :start2 (search "Staged changes" text)))))
                                   "n u" (list :until (lambda () (zerop (length (staged)))))
                                   ;; the second hunk reversed, asked, which says it cannot be undone
-                                  "M-< C-s L 1 5 RET x y e s RET" (list :until (lambda () (not (search "L15" (unstaged)))))))))
+                                  "M-< C-s L 1 5 RET x y e s RET"
+                                  (list :until (lambda () (not (search "L15" (unstaged)))))))))
         (true (tuatara.frontend.fake:fake-frame-showing f "Reverse the hunk of a.txt? It cannot be undone"))
         (true (tuatara.frontend.fake:fake-frame-showing f "Reversed the hunk of a.txt"))
         (is equal (numbered-lines 20 2) (alexandria:read-file-into-string (merge-pathnames "a.txt" dir)))))
     ;; two lines added, one of them selected and staged
     (put-file (merge-pathnames "a.txt" dir) (format nil "l1~%new one~%new two~%~a" (subseq (numbered-lines 20) 3)))
     (let ((f (git-session dir "a.txt"
-                          (list "M-< n n TAB" (list :until (lambda () (search "+new two" (tuatara.buffer:buffer-string (git-status-here)))))
+                          (list "M-< n n TAB"
+                                (list :until
+                                      (lambda () (search "+new two" (tuatara.buffer:buffer-string (git-status-here)))))
                                 "M-< C-s n e w SPC o RET C-a C-SPC C-e s"
                                 (list :until (lambda () (search "new one" (git-output dir "diff" "--cached"))))
                                 ;; l on a hunk's line visits the file there
@@ -494,7 +516,10 @@ DIR is visited and its status read, the project trusted. Returns the frontend."
   (with-test-directory (dir)
     (scratch-repository dir)
     (flet ((text (first last)
-             (format nil "~a~%~{~a~%~}" (substitute #\Return #\| first) (append (loop for i from 2 to 11 collect (format nil "l~d" i)) (list last)))))
+             (format nil
+                     "~a~%~{~a~%~}"
+                     (substitute #\Return #\| first)
+                     (append (loop for i from 2 to 11 collect (format nil "l~d" i)) (list last)))))
       (put-file (merge-pathnames "a.txt" dir) (text "h|h|h|h|h|h|h|h" "l12"))
       (git-output dir "commit" "-q" "-am" "Lone returns")
       (put-file (merge-pathnames "a.txt" dir) (text "H|h|h|h|h|h|h|h" "L12")))
@@ -530,7 +555,9 @@ DIR is visited and its status read, the project trusted. Returns the frontend."
 
 (defun git-branch-names (dir)
   "The branches of the repository DIR, as git lists them."
-  (sort (remove "" (uiop:split-string (git-output dir "for-each-ref" "--format=%(refname:short)" "refs/heads") :separator '(#\Newline))
+  (sort (remove ""
+                (uiop:split-string (git-output dir "for-each-ref" "--format=%(refname:short)" "refs/heads")
+                                   :separator '(#\Newline))
                 :test #'string=)
         #'string<))
 
@@ -578,7 +605,9 @@ DIR is visited and its status read, the project trusted. Returns the frontend."
     (let ((tuatara-user:*git-slim-actions* (list (intern "GIT-BRANCH-RESET" :tuatara-user)))
           (tuatara.command::*current-buffer* (tuatara.buffer:make-buffer "*slim test*")))
       (true (tuatara.git::git-menu-shows-p
-             (find 'tuatara.git::git-branch-reset (tuatara.command::menu-entries (gethash 'tuatara.git::git-branch-menu tuatara.command::*menus*) :all t)
+             (find 'tuatara.git::git-branch-reset
+                   (tuatara.command::menu-entries (gethash 'tuatara.git::git-branch-menu tuatara.command::*menus*)
+                                                  :all t)
                    :key #'tuatara.command:menu-entry-command))))
     (false (tuatara.git::git-name-p "--force"))
     (false (tuatara.git::git-name-p "a b"))
@@ -623,30 +652,54 @@ DIR is visited and its status read, the project trusted. Returns the frontend."
     (scratch-repository dir)
     (flet ((change (name text) (put-file (merge-pathnames name dir) text))
            (committed-p (subject) (lambda () (equal subject (first (git-log-subjects dir)))))
-           (commit-buffer () (tuatara.git::git-buffer-of (tuatara.git:repository-top (namestring dir)) 'tuatara.defaults::git-commit-mode)))
+           (commit-buffer ()
+             (tuatara.git::git-buffer-of (tuatara.git:repository-top (namestring dir))
+                                         'tuatara.defaults::git-commit-mode)))
       (change "a.txt" (format nil "one~%two~%"))
       (let* ((first (string-trim '(#\Newline) (git-output dir "rev-parse" "--short" "HEAD")))
              (reworded nil)
              (f (git-session dir "a.txt"
                             (list ;; nothing staged: refused, then committed with -a
                                   "c c" (list :wait 0.4)
-                                  "c - a c" (list :until #'commit-buffer) "S e c o n d C-c C-c" (list :until (committed-p "Second"))
+                                  "c - a c"
+                                  (list :until #'commit-buffer)
+                                  "S e c o n d C-c C-c"
+                                  (list :until (committed-p "Second"))
                                   ;; amended: the message written again, the new change in it
-                                  (lambda () (change "a.txt" (format nil "one~%two~%three~%")) (git-output dir "add" "a.txt"))
-                                  "c a" (list :until #'commit-buffer) "C-k T w o RET" (list :wait 0.1) "C-c C-c" (list :until (committed-p "Two"))
+                                  (lambda ()
+                                    (change "a.txt" (format nil "one~%two~%three~%"))
+                                    (git-output dir "add" "a.txt"))
+                                  "c a"
+                                  (list :until #'commit-buffer)
+                                  "C-k T w o RET"
+                                  (list :wait 0.1)
+                                  "C-c C-c"
+                                  (list :until (committed-p "Two"))
                                   ;; reworded: what is staged left out
                                   (lambda () (change "b.txt" "b") (git-output dir "add" "b.txt"))
-                                  "c w" (list :until #'commit-buffer) "C-k D u e RET" (list :wait 0.1) "C-c C-c" (list :until (committed-p "Due"))
+                                  "c w"
+                                  (list :until #'commit-buffer)
+                                  "C-k D u e RET"
+                                  (list :wait 0.1)
+                                  "C-c C-c"
+                                  (list :until (committed-p "Due"))
                                   (lambda () (setf reworded (git-output dir "show" "--stat" "HEAD")))
                                   ;; extended with what is staged, the message kept
-                                  "c e" (list :until (lambda () (search "b.txt" (git-output dir "show" "--stat" "HEAD"))))
+                                  "c e"
+                                  (list :until (lambda () (search "b.txt" (git-output dir "show" "--stat" "HEAD"))))
                                   ;; a fixup of the first commit and a squash into it
                                   (lambda () (change "c.txt" "c") (git-output dir "add" "c.txt"))
                                   ;; left out of the slim menu: said so, the menu kept open, nothing else run
                                   "c f" (list :wait 0.2) "C-g"
-                                  "~ c f" (list :until (asking "Fix up commit")) (format nil "~a RET" (key-string first)) (list :until (committed-p "fixup! First"))
+                                  "~ c f"
+                                  (list :until (asking "Fix up commit"))
+                                  (format nil "~a RET" (key-string first))
+                                  (list :until (committed-p "fixup! First"))
                                   (lambda () (change "d.txt" "d") (git-output dir "add" "d.txt"))
-                                  "c s" (list :until (asking "Squash into commit")) (format nil "~a RET" (key-string first)) (list :until (committed-p "squash! First"))))))
+                                  "c s"
+                                  (list :until (asking "Squash into commit"))
+                                  (format nil "~a RET" (key-string first))
+                                  (list :until (committed-p "squash! First"))))))
         (true (tuatara.frontend.fake:fake-frame-showing f "Nothing staged: s stages a file"))
         (true (tuatara.frontend.fake:fake-frame-showing f "- a Every change (--all)"))
         (true (tuatara.frontend.fake:fake-frame-showing f "Fix up (f) is left out of this menu now; Slim menus:"))
@@ -666,7 +719,9 @@ DIR is visited and its status read, the project trusted. Returns the frontend."
     (let ((tuatara.defaults::*modal-editing* t)
           (tuatara-user:*lsp-trusted-projects* (list (namestring dir)))
           (states '()))
-      (flet ((commit-buffer () (tuatara.git::git-buffer-of (tuatara.git:repository-top (namestring dir)) 'tuatara.defaults::git-commit-mode))
+      (flet ((commit-buffer ()
+               (tuatara.git::git-buffer-of (tuatara.git:repository-top (namestring dir))
+                                           'tuatara.defaults::git-commit-mode))
              (committed-p (subject) (lambda () (equal subject (first (git-log-subjects dir))))))
         (auto-save-session (list (format nil "C-x C-f C-a C-k ~a RET" (rimu-typed (native-in dir "a.txt")))
                                  "C-x g" (list :until #'git-state-here)
@@ -721,8 +776,11 @@ DIR is visited and its status read, the project trusted. Returns the frontend."
       (let ((f (git-session dir "a.txt"
                             (list "z z" (list :until (asking "Stash message")) "P a r k e d RET"
                                   (list :until (lambda () (search "Parked" (stashes))))
-                                  (list :until (lambda () (search "Stashes (1)" (tuatara.buffer:buffer-string (git-status-here)))))
-                                  "M-< C-s s t a s h @ RET RET" (list :until (lambda () (git-buffer-named "*git stash@{0}*")))
+                                  (list :until
+                                        (lambda ()
+                                          (search "Stashes (1)" (tuatara.buffer:buffer-string (git-status-here)))))
+                                  "M-< C-s s t a s h @ RET RET"
+                                  (list :until (lambda () (git-buffer-named "*git stash@{0}*")))
                                   (list :wait 0.1) "C-x o"
                                   "z p" (list :until (asking "Pop stash")) "RET"
                                   (list :until (lambda () (zerop (length (stashes)))))
@@ -754,12 +812,14 @@ DIR is visited and its status read, the project trusted. Returns the frontend."
                                   "L - g L" (list :until (lambda () (search "* " (or (log-text) ""))))
                                   "h C-x g" (list :wait 0.2)
                                   "L r" (list :until (lambda () (search "commit (initial): First" (or (log-text) ""))))
-                                  "M-< C-s i n i t i a l RET RET" (list :until (lambda () (git-buffer-named "*git commit ")))
+                                  "M-< C-s i n i t i a l RET RET"
+                                  (list :until (lambda () (git-buffer-named "*git commit ")))
                                   "C-x 1 C-x g" (list :wait 0.2)
                                   "d d" (list :until (lambda () (tuatara.buffer:find-buffer "*git diff*")))
                                   "C-x 1 C-x g" (list :wait 0.2)
                                   "d s" (list :wait 0.4)
-                                  "d - s u" (list :until (lambda () (tuatara.buffer:find-buffer "*git diff unstaged*")))))))
+                                  "d - s u"
+                                  (list :until (lambda () (tuatara.buffer:find-buffer "*git diff unstaged*")))))))
         (let ((plain (getf (symbol-plist 'log-and-diff) :plain)))
           (true (search "Log of HEAD" plain))
           (true (search "First" plain))
@@ -767,7 +827,8 @@ DIR is visited and its status read, the project trusted. Returns the frontend."
         (true (search "commit (initial): First" (log-text)))
         (true (search "+three" (tuatara.buffer:buffer-string (tuatara.buffer:find-buffer "*git diff*"))))
         (true (tuatara.frontend.fake:fake-frame-showing f "Nothing staged"))
-        (true (search "a.txt | 1 +" (tuatara.buffer:buffer-string (tuatara.buffer:find-buffer "*git diff unstaged*"))))))))
+        (true (search "a.txt | 1 +"
+                      (tuatara.buffer:buffer-string (tuatara.buffer:find-buffer "*git diff unstaged*"))))))))
 
 (define-test (git fetch-pull-push-menus)
   ;; a remote in a folder: P p pushes, f u fetches what another clone pushed,
@@ -800,7 +861,9 @@ DIR is visited and its status read, the project trusted. Returns the frontend."
                             (git-output other "add" "b.txt")
                             (git-output other "commit" "-q" "-m" "Theirs")
                             (git-output other "push" "-q"))
-                          "f u" (list :until (lambda () (search "Theirs" (git-output repo "log" "--format=%s" "origin/main"))))
+                          "f u"
+                          (list :until
+                                (lambda () (search "Theirs" (git-output repo "log" "--format=%s" "origin/main"))))
                           (list :until (lambda () (notany #'tuatara.git::git-job-p tuatara.runtime:*jobs*)))
                           (list :wait 0.1)
                           "F u" (list :until (lambda () (equal "Theirs" (first (git-log-subjects repo)))))
@@ -857,7 +920,10 @@ DIR is visited and its status read, the project trusted. Returns the frontend."
                      (list "R e" (list :until (asking "Rebase on")) "m a i n RET"
                            (list :until (lambda () (search "Ours" (git-output dir "log" "--format=%s"))))
                            "A A" (list :until (asking "Cherry-pick commit")) (format nil "~a RET" (key-string pick))
-                           (list :until (lambda () (or (equal "Theirs" (first (subjects))) (search "Doing:    cherry" (status-text)))))))
+                           (list :until
+                                 (lambda ()
+                                   (or (equal "Theirs" (first (subjects)))
+                                       (search "Doing:    cherry" (status-text)))))))
         (true (search "Topic file" (git-output dir "log" "--format=%s")))
         ;; the pick clashed with Ours: stopped from its menu
         (git-session dir "a.txt"
@@ -968,25 +1034,59 @@ DIR is visited and its status read, the project trusted. Returns the frontend."
     (flet ((tags () (git-output dir "tag" "--list" "-n1"))
            (remotes () (git-output dir "remote" "-v")))
       (let ((f (git-session dir "a.txt"
-                            (list "t t" (list :until (asking "Tag name:")) "v 1 RET" (list :until (asking "Tag v1 at")) "RET"
+                            (list "t t"
+                                  (list :until (asking "Tag name:"))
+                                  "v 1 RET"
+                                  (list :until (asking "Tag v1 at"))
+                                  "RET"
                                   (list :until (lambda () (search "v1" (tags))))
-                                  "t - a t" (list :until (asking "Tag name:")) "v 2 RET" (list :until (asking "Tag v2 at")) "RET"
+                                  "t - a t"
+                                  (list :until (asking "Tag name:"))
+                                  "v 2 RET"
+                                  (list :until (asking "Tag v2 at"))
+                                  "RET"
                                   (list :until (asking "Message of v2:")) "S e c o n d SPC r e l e a s e RET"
                                   (list :until (lambda () (search "Second release" (tags))))
-                                  "~ t d" (list :until (asking "Delete tag:")) "v 1 RET" (list :until (asking "Delete the tag v1?")) "y e s RET"
+                                  "~ t d"
+                                  (list :until (asking "Delete tag:"))
+                                  "v 1 RET"
+                                  (list :until (asking "Delete the tag v1?"))
+                                  "y e s RET"
                                   (list :until (lambda () (not (search "v1 " (tags)))))
-                                  "M a" (list :until (asking "Remote name")) "RET" (list :until (asking "Address of origin:"))
+                                  "M a"
+                                  (list :until (asking "Remote name"))
+                                  "RET"
+                                  (list :until (asking "Address of origin:"))
                                   "e x t : : s h SPC - c SPC t o u c h SPC x RET" (list :wait 0.2)
-                                  "M a" (list :until (asking "Remote name")) "RET" (list :until (asking "Address of origin:"))
-                                  "/ t m p / o n e . g i t RET" (list :until (lambda () (search "/tmp/one.git" (remotes))))
-                                  "M r" (list :until (asking "Rename remote")) "RET" (list :until (asking "Rename origin to:")) "u p RET"
+                                  "M a"
+                                  (list :until (asking "Remote name"))
+                                  "RET"
+                                  (list :until (asking "Address of origin:"))
+                                  "/ t m p / o n e . g i t RET"
+                                  (list :until (lambda () (search "/tmp/one.git" (remotes))))
+                                  "M r"
+                                  (list :until (asking "Rename remote"))
+                                  "RET"
+                                  (list :until (asking "Rename origin to:"))
+                                  "u p RET"
                                   (list :until (lambda () (search "up	" (remotes))))
-                                  "M u" (list :until (asking "Address of remote")) "RET" (list :until (asking "Address of up:"))
-                                  "C-a C-k / t m p / t w o . g i t RET" (list :until (lambda () (search "/tmp/two.git" (remotes))))
+                                  "M u"
+                                  (list :until (asking "Address of remote"))
+                                  "RET"
+                                  (list :until (asking "Address of up:"))
+                                  "C-a C-k / t m p / t w o . g i t RET"
+                                  (list :until (lambda () (search "/tmp/two.git" (remotes))))
                                   ;; a folder written from ~/ is made whole
-                                  "M a" (list :until (asking "Remote name")) "h o m e RET" (list :until (asking "Address of home:"))
+                                  "M a"
+                                  (list :until (asking "Remote name"))
+                                  "h o m e RET"
+                                  (list :until (asking "Address of home:"))
                                   "~ / x . g i t RET" (list :until (lambda () (search "x.git" (remotes))))
-                                  "M d" (list :until (asking "Remove remote")) "u p RET" (list :until (asking "Remove the remote up")) "y e s RET"
+                                  "M d"
+                                  (list :until (asking "Remove remote"))
+                                  "u p RET"
+                                  (list :until (asking "Remove the remote up"))
+                                  "y e s RET"
                                   (list :until (lambda () (not (search "up	" (remotes))))))
                             :width 120 :height 30)))
         (true (tuatara.frontend.fake:fake-frame-showing f "Not an address git is given: ext::sh -c touch x"))
@@ -994,7 +1094,8 @@ DIR is visited and its status read, the project trusted. Returns the frontend."
           (true (char= #\/ (char url 0)))
           (true (uiop:string-suffix-p url "/x.git"))
           (is equal (truename (user-homedir-pathname)) (truename (tuatara.io:parent-path url))))
-        (is equal '("v2") (remove "" (uiop:split-string (git-output dir "tag" "--list") :separator '(#\Newline)) :test #'string=))
+        (is equal '("v2")
+          (remove "" (uiop:split-string (git-output dir "tag" "--list") :separator '(#\Newline)) :test #'string=))
         (is equal "tag" (string-trim '(#\Newline) (git-output dir "cat-file" "-t" "v2")))
         (false (probe-file (merge-pathnames "x" dir)))))))
 
@@ -1016,10 +1117,15 @@ DIR is visited and its status read, the project trusted. Returns the frontend."
         (true (tuatara.frontend.fake:fake-frame-showing f "Doing:    bisecting (B g, B b and B s say good, bad, skip; B r stops it)")))
       (loop repeat 4
             until (search "is the first" (messages))
-            do (git-session dir "a.txt" (list (if (bad-p) "B b" "B g") (list :until (lambda () (search "Bisecting" (messages)))) (list :wait 0.4))))
+            do (git-session dir
+                 "a.txt"
+                 (list (if (bad-p) "B b" "B g")
+                       (list :until (lambda () (search "Bisecting" (messages))))
+                       (list :wait 0.4))))
       (true (search "is the first" (messages)))
       (true (search "first 'bad' commit: [" (git-output dir "bisect" "log")))
-      (true (search "Change 4" (subseq (git-output dir "bisect" "log") (search "first 'bad' commit" (git-output dir "bisect" "log")))))
+      (true (search "Change 4"
+              (subseq (git-output dir "bisect" "log") (search "first 'bad' commit" (git-output dir "bisect" "log")))))
       (git-session dir "a.txt" (list "B r" (list :until (lambda () (not (search "Doing:" (status-text)))))))
       (true (search "bad 5" (alexandria:read-file-into-string (merge-pathnames "a.txt" dir)))))))
 
@@ -1035,7 +1141,8 @@ DIR is visited and its status read, the project trusted. Returns the frontend."
       (scratch-repository sub)
       ;; a submodule from a folder, which git refuses by default: allowed by a
       ;; global settings file of the test's own, never yours
-      (put-file (merge-pathnames "gitconfig" dir) (format nil "[protocol \"file\"]~%	allow = always~%[commit]~%	gpgsign = false~%"))
+      (put-file (merge-pathnames "gitconfig" dir)
+                (format nil "[protocol \"file\"]~%	allow = always~%[commit]~%	gpgsign = false~%"))
       (put-file (merge-pathnames "loose.log" repo) "x")
       (put-file (merge-pathnames "secret.txt" repo) "x")
       (let ((tuatara.defaults::*modal-editing* nil)
@@ -1047,22 +1154,30 @@ DIR is visited and its status read, the project trusted. Returns the frontend."
                (let ((f (auto-save-session
                          (list (format nil "C-x C-f C-a C-k ~a RET" (rimu-typed (native-in repo "a.txt")))
                                "C-x g" (list :until #'git-state-here)
-                               "o a" (list :until (asking "Address of the submodule:")) (format nil "~a RET" (rimu-typed (namestring sub)))
+                               "o a"
+                               (list :until (asking "Address of the submodule:"))
+                               (format nil "~a RET" (rimu-typed (namestring sub)))
                                (list :until (asking "Put")) "C-a C-k l i b RET"
                                (list :until (lambda () (search "Submodules (1)" (status-text))))
                                "M-< C-s l o o s e RET i t" (list :until (asking "Ignore:")) "RET"
                                (list :until (lambda () (not (search "loose.log" (status-text)))))
                                "M-< C-s s e c r e t RET i p" (list :until (asking "Ignore:")) "RET"
                                (list :until (lambda () (not (search "secret.txt" (status-text)))))
-                               "C-x b a . t x t RET M-x g i t - b l a m e RET" (list :until (lambda () (git-buffer-named "*git blame: a.txt*")))
-                               "C-x b a . t x t RET" (lambda () (put-file (merge-pathnames "a.txt" repo) (format nil "one~%two~%")))
+                               "C-x b a . t x t RET M-x g i t - b l a m e RET"
+                               (list :until (lambda () (git-buffer-named "*git blame: a.txt*")))
+                               "C-x b a . t x t RET"
+                               (lambda () (put-file (merge-pathnames "a.txt" repo) (format nil "one~%two~%")))
                                "M-x r e v e r t - b u f f e r RET" (list :wait 0.2)
-                               "M-x g i t - f i l e - m e n u RET s" (list :until (lambda () (search "a.txt" (git-output repo "diff" "--cached" "--name-only")))))
+                               "M-x g i t - f i l e - m e n u RET s"
+                               (list :until
+                                     (lambda () (search "a.txt" (git-output repo "diff" "--cached" "--name-only")))))
                          :width 120 :height 30)))
                  (true (tuatara.frontend.fake:fake-frame-showing f "as recorded"))
                  (true (search "/loose.log" (alexandria:read-file-into-string (merge-pathnames ".gitignore" repo))))
-                 (true (search "/secret.txt" (alexandria:read-file-into-string (merge-pathnames ".git/info/exclude" repo))))
-                 (true (search "Commit   Author" (tuatara.buffer:buffer-string (git-buffer-named "*git blame: a.txt*"))))
+                 (true (search "/secret.txt"
+                               (alexandria:read-file-into-string (merge-pathnames ".git/info/exclude" repo))))
+                 (true (search "Commit   Author"
+                               (tuatara.buffer:buffer-string (git-buffer-named "*git blame: a.txt*"))))
                  (true (search "one" (tuatara.buffer:buffer-string (git-buffer-named "*git blame: a.txt*"))))
                  (true (tuatara.frontend.fake:fake-frame-showing f "Staged a.txt"))
                  (true (probe-file (merge-pathnames "lib/a.txt" repo)))))
@@ -1091,11 +1206,17 @@ DIR is visited and its status read, the project trusted. Returns the frontend."
                     (list (format nil "C-x C-f C-a C-k ~a RET" (rimu-typed (native-in repo "a.txt")))
                           "C-x g" (list :until #'git-state-here)
                           ;; the changes saved as a patch, reversed, then applied again
-                          "W s" (list :until (asking "Save the changes as:")) (format nil "C-a C-k ~a RET" (rimu-typed (native-in dir "changes.patch")))
+                          "W s"
+                          (list :until (asking "Save the changes as:"))
+                          (format nil "C-a C-k ~a RET" (rimu-typed (native-in dir "changes.patch")))
                           (list :until (lambda () (probe-file (merge-pathnames "changes.patch" dir))))
                           (lambda () (git-output repo "checkout" "--" "a.txt"))
-                          "W a" (list :until (asking "Apply patch:")) (format nil "C-a C-k ~a RET" (rimu-typed (native-in dir "changes.patch")))
-                          (list :until (lambda () (search "two" (alexandria:read-file-into-string (merge-pathnames "a.txt" repo)))))
+                          "W a"
+                          (list :until (asking "Apply patch:"))
+                          (format nil "C-a C-k ~a RET" (rimu-typed (native-in dir "changes.patch")))
+                          (list :until
+                                (lambda ()
+                                  (search "two" (alexandria:read-file-into-string (merge-pathnames "a.txt" repo)))))
                           (lambda () (git-output repo "checkout" "--" "a.txt")))
                     :width 120 :height 30)))
             (declare (ignore f)))
@@ -1105,24 +1226,39 @@ DIR is visited and its status read, the project trusted. Returns the frontend."
                  (f (auto-save-session
                      (list (format nil "C-x C-f C-a C-k ~a RET" (rimu-typed (native-in repo "a.txt")))
                            "C-x g" (list :until #'git-state-here)
-                           "w w" (list :until (asking "Take in patch:")) (format nil "C-a C-k ~a RET" (rimu-typed patch))
+                           "w w"
+                           (list :until (asking "Take in patch:"))
+                           (format nil "C-a C-k ~a RET" (rimu-typed patch))
                            (list :until (lambda () (equal "Add the guide" (first (git-log-subjects repo)))))
                            "W c" (list :until (asking "Commits after")) "v 1 RET"
-                           (list :until (asking "Write the patches in:")) (format nil "C-a C-k ~a RET" (rimu-typed (native-in dir "out/")))
+                           (list :until (asking "Write the patches in:"))
+                           (format nil "C-a C-k ~a RET" (rimu-typed (native-in dir "out/")))
                            (list :until (lambda () (directory (merge-pathnames "out/*.patch" dir))))
-                           "T T" (list :until (asking "Note on")) "RET" (list :until (asking "Note on HEAD:")) "R e v i e w e d RET"
+                           "T T"
+                           (list :until (asking "Note on"))
+                           "RET"
+                           (list :until (asking "Note on HEAD:"))
+                           "R e v i e w e d RET"
                            (list :until (lambda () (search "Reviewed" (git-output repo "notes" "show" "HEAD"))))
                            "> s" (list :until (asking "Check out only the folders:")) "d o c s RET"
                            (list :until (lambda () (search "true" (git-output repo "config" "core.sparseCheckout"))))
-                           "> d" (list :until (lambda () (not (search "true" (git-output repo "config" "core.sparseCheckout")))))
+                           "> d"
+                           (list :until
+                                 (lambda () (not (search "true" (git-output repo "config" "core.sparseCheckout")))))
                            "y" (list :until (lambda () (git-buffer-named "*git refs:")))
                            "C-x 1 C-x g" (list :wait 0.2)
-                           "!" (list :until (asking "Run git:")) "r e v - p a r s e SPC - - a b b r e v - r e f SPC H E A D RET"
+                           "!"
+                           (list :until (asking "Run git:"))
+                           "r e v - p a r s e SPC - - a b b r e v - r e f SPC H E A D RET"
                            (list :until (lambda () (git-buffer-named "*git output*")))
                            "C-x 1 C-x g" (list :wait 0.2)
-                           "W b" (list :until (asking "Write the bundle as:")) (format nil "C-a C-k ~a RET" (rimu-typed (native-in dir "all.bundle")))
+                           "W b"
+                           (list :until (asking "Write the bundle as:"))
+                           (format nil "C-a C-k ~a RET" (rimu-typed (native-in dir "all.bundle")))
                            (list :until (lambda () (probe-file (merge-pathnames "all.bundle" dir))))
-                           "W v" (list :until (asking "Check bundle:")) (format nil "C-a C-k ~a RET" (rimu-typed (native-in dir "all.bundle")))
+                           "W v"
+                           (list :until (asking "Check bundle:"))
+                           (format nil "C-a C-k ~a RET" (rimu-typed (native-in dir "all.bundle")))
                            (list :until (lambda () (search "is good" (messages))))
                            "O s" (list :until (asking "Subtree folder to split:")) "d o c s RET" (list :wait 0.5))
                      :width 120 :height 30)))
@@ -1172,14 +1308,19 @@ DIR is visited and its status read, the project trusted. Returns the frontend."
       (git-session dir "a.txt"
                    (list (lambda () (setf (getf (symbol-plist 'untracked-folder) :first) (status-text)))
                          "M-< C-s b i g RET l" (list :until #'rimu)
-                         (lambda () (setf (getf (symbol-plist 'untracked-folder) :listed) (tuatara.defaults::rimu-list-directory (rimu))))
+                         (lambda ()
+                           (setf (getf (symbol-plist 'untracked-folder) :listed)
+                                 (tuatara.defaults::rimu-list-directory (rimu))))
                          "C-x g" (list :until (lambda () (eq (tuatara.command:current-buffer) (git-status-here))))
                          "M-< C-s b i g RET s" (list :until (lambda () (= 51 (length (staged)))))))
       (let ((first (getf (symbol-plist 'untracked-folder) :first)))
         (true (search "Untracked files (1)" first))
         (true (search "untracked  big/" first))
         (false (search "f1.txt" first)))
-      (true (uiop:string-suffix-p (getf (symbol-plist (quote untracked-folder)) :listed) "big/") "listed ~s; messages ~a" (getf (symbol-plist (quote untracked-folder)) :listed) (messages-text))
+      (true (uiop:string-suffix-p (getf (symbol-plist (quote untracked-folder)) :listed) "big/")
+            "listed ~s; messages ~a"
+            (getf (symbol-plist (quote untracked-folder)) :listed)
+            (messages-text))
       (is = 51 (length (staged))))))
 
 (define-test (git many-files-listed-in-part)
@@ -1216,7 +1357,8 @@ DIR is visited and its status read, the project trusted. Returns the frontend."
     (let ((tuatara-user:*git-watch-seconds* 0.2))
       (flet ((status-text () (tuatara.buffer:buffer-string (git-status-here))))
         (git-session dir "a.txt"
-                     (list (list :until (lambda () (tuatara.buffer:buffer-local (git-status-here) 'tuatara.git:git-stamps)))
+                     (list (list :until
+                                 (lambda () (tuatara.buffer:buffer-local (git-status-here) 'tuatara.git:git-stamps)))
                            (lambda () (git-commit-file dir "b.txt" "b" "Made in a terminal"))
                            (list :until (lambda () (search "Made in a terminal" (status-text))))))
         (true (search "Made in a terminal" (status-text)))))))
@@ -1228,7 +1370,8 @@ DIR is visited and its status read, the project trusted. Returns the frontend."
     (scratch-repository dir)
     (let ((tick :unset) (watched '()))
       (git-session dir "a.txt"
-                   (list (list :until (lambda () (tuatara.buffer:buffer-local (git-status-here) 'tuatara.git:git-stamps)))
+                   (list (list :until
+                               (lambda () (tuatara.buffer:buffer-local (git-status-here) 'tuatara.git:git-stamps)))
                          (list :wait 0.3)
                          (lambda ()
                            (setf tick (tuatara.git::git-watch-tick tuatara.command:*editor*)
@@ -1273,7 +1416,8 @@ DIR is visited and its status read, the project trusted. Returns the frontend."
       (let ((f (git-session dir "a.txt"
                             (list (list :until (lambda () (search "▸ Ignored files" (status-text))))
                                   (lambda () (setf (getf (symbol-plist 'ignored-folded) :folded) (status-text)))
-                                  "M-< C-s I g n o r e d SPC f RET TAB" (list :until (lambda () (search "build/" (status-text))))
+                                  "M-< C-s I g n o r e d SPC f RET TAB"
+                                  (list :until (lambda () (search "build/" (status-text))))
                                   (lambda () (setf (getf (symbol-plist 'ignored-folded) :open) (status-text)))
                                   "C-s d e b u g RET s" (list :wait 0.2)
                                   "TAB" (list :until (lambda () (not (search "debug.log" (status-text)))))))))
@@ -1297,12 +1441,14 @@ DIR is visited and its status read, the project trusted. Returns the frontend."
     (put-file (merge-pathnames "b.txt" dir) "new")
     (let ((seen '()))
       (flet ((status-text () (tuatara.buffer:buffer-string (git-status-here)))
-             (refs-text () (let ((refs (git-buffer-named "*git refs: "))) (if refs (tuatara.buffer:buffer-string refs) "")))
+             (refs-text ()
+               (let ((refs (git-buffer-named "*git refs: "))) (if refs (tuatara.buffer:buffer-string refs) "")))
              (keep (name text) (lambda () (push (cons name (funcall text)) seen))))
         (git-session dir "a.txt"
                      (list (list :until (lambda () (search "▾ Recent commits (1)" (status-text))))
                            (keep :open #'status-text)
-                           "M-< C-s R e c e n t RET TAB" (list :until (lambda () (search "▸ Recent commits (1)" (status-text))))
+                           "M-< C-s R e c e n t RET TAB"
+                       (list :until (lambda () (search "▸ Recent commits (1)" (status-text))))
                            (keep :recent-folded #'status-text)
                            "S-TAB" (list :until (lambda () (search "▸ Untracked files (1)" (status-text))))
                            (keep :all-folded #'status-text)
@@ -1333,12 +1479,18 @@ DIR is visited and its status read, the project trusted. Returns the frontend."
   ;; message and a rebase's list run there alone, and M-x offers them nowhere else
   (loop for (mode . commands) in '((tuatara.git::git-status-mode tuatara.git::git-stage tuatara.git::git-unstage
                                     tuatara.git::git-reverse tuatara.git::git-toggle-diff tuatara.git::git-next-section
-                                    tuatara.git::git-previous-section tuatara.git::git-visit tuatara.git::git-toggle-full-menus)
+                                    tuatara.git::git-previous-section
+                                    tuatara.git::git-visit
+                                    tuatara.git::git-toggle-full-menus)
                                    (tuatara.git::git-log-mode tuatara.git::git-log-show)
                                    (tuatara.git::git-blame-mode tuatara.git::git-blame-show)
                                    (tuatara.git::git-refs-mode tuatara.git::git-refs-log)
-                                   (tuatara.defaults::git-commit-mode tuatara.git::git-commit-finish tuatara.git::git-commit-cancel)
-                                   (tuatara.defaults::git-rebase-mode tuatara.git::git-rebase-todo-finish tuatara.git::git-rebase-todo-cancel))
+                                   (tuatara.defaults::git-commit-mode
+                                    tuatara.git::git-commit-finish
+                                    tuatara.git::git-commit-cancel)
+                                   (tuatara.defaults::git-rebase-mode
+                                    tuatara.git::git-rebase-todo-finish
+                                    tuatara.git::git-rebase-todo-cancel))
         do (dolist (command commands)
              (true (assoc mode (gethash command tuatara.defaults::*mode-commands*)) "~a only in ~a" command mode)))
   (let ((refusal nil) (offered :unset))
@@ -1413,9 +1565,13 @@ DIR is visited and its status read, the project trusted. Returns the frontend."
     (git-output dir "mv" "a.txt" "a moved.txt")
     (git-output dir "mv" "b.txt" "b moved.txt")
     (let ((f (git-session dir "a moved.txt"
-                          (list (list :until (lambda () (search "a.txt -> a moved.txt" (tuatara.buffer:buffer-string (git-status-here)))))
+                          (list (list :until
+                                      (lambda ()
+                                        (search "a.txt -> a moved.txt"
+                                                (tuatara.buffer:buffer-string (git-status-here)))))
                                 "M-< C-s b SPC m o v e d RET u"
-                                (list :until (lambda () (search "?? \"b moved.txt\"" (git-output dir "status" "--short"))))
+                                (list :until
+                                      (lambda () (search "?? \"b moved.txt\"" (git-output dir "status" "--short"))))
                                 "M-< C-s a SPC m o v e d RET x" (list :until (asking "It cannot be undone")) "y e s RET"
                                 (list :until (lambda () (probe-file (merge-pathnames "a.txt" dir))))
                                 (list :wait 0.3))
@@ -1446,10 +1602,13 @@ DIR is visited and its status read, the project trusted. Returns the frontend."
       (tuatara.git::git-add-ignore-pattern (native-in dir ".git/info/exclude") "/x" (tuatara.io:native dir))
       (is equal (format nil "/x~%") (alexandria:read-file-into-string (merge-pathnames ".git/info/exclude" dir)))
       ;; a name holding \\ and * offered from its folder as written, not as a Lisp pathname reads it
-      (sb-int:encapsulate 'tuatara.git::git-file-here 'ignore-test (lambda (f top) (declare (ignore f top)) "sub/a*\\b.txt"))
+      (sb-int:encapsulate 'tuatara.git::git-file-here 'ignore-test (lambda (f top)
+                                                                     (declare (ignore f top))
+                                                                     "sub/a*\\b.txt"))
       (unwind-protect
            (is equal "/a\\*\\\\b.txt"
-               (tuatara.git::git-ignore-pattern (tuatara.io:native dir) (concatenate 'string (tuatara.io:native dir) "sub/")))
+               (tuatara.git::git-ignore-pattern (tuatara.io:native dir)
+                                                (concatenate 'string (tuatara.io:native dir) "sub/")))
         (sb-int:unencapsulate 'tuatara.git::git-file-here 'ignore-test)))))
 
 (define-test (git conflict-staged-whole)
@@ -1464,11 +1623,33 @@ DIR is visited and its status read, the project trusted. Returns the frontend."
     (git-output dir "merge" "-q" "side")
     (let ((f (git-session dir "a.txt"
                           (list "M-< C-s b o t h SPC c h RET TAB"
-                                (list :until (lambda () (search "@@@" (tuatara.buffer:buffer-string (git-status-here)))))
+                                (list :until
+                                      (lambda () (search "@@@" (tuatara.buffer:buffer-string (git-status-here)))))
                                 "C-s @ @ @ RET s" (list :wait 0.3))
                           :width 140)))
       (true (tuatara.frontend.fake:fake-frame-showing f "a.txt is in conflict: put it right"))
       (false (tuatara.frontend.fake:fake-frame-showing f "git apply")))))
+
+(define-test (git conflict-visited-as-on-disk)
+  ;; a file open already into which a merge wrote its conflicts: RET on it in
+  ;; the status shows it as it is on disk now
+  (with-test-directory (dir)
+    (scratch-repository dir)
+    (git-output dir "checkout" "-q" "-b" "side")
+    (git-commit-file dir "a.txt" (format nil "side~%") "Side")
+    (git-output dir "checkout" "-q" "main")
+    (git-commit-file dir "a.txt" (format nil "mainline~%") "Main")
+    (let ((merged nil))
+      (git-session dir "a.txt"
+                   (list (list :until (lambda () (or merged (progn (git-output dir "merge" "-q" "side")
+                                                                   (setf merged t)))))
+                         "C-x g"
+                         (list :until (lambda () (tuatara.git::git-state-unmerged (git-state-here))))
+                         "M-< C-s b o t h SPC c h RET RET"
+                         (list :until (lambda () (search "<<<<<<<" (tuatara.buffer:buffer-string
+                                                                   (tuatara.command:current-buffer)))))))
+      (true merged))
+    (kill-buffers-visiting dir)))
 
 (define-test (git buffers-stand-at-the-top)
   ;; a git buffer stands in its repository's top: files are asked for from there
@@ -1485,7 +1666,9 @@ DIR is visited and its status read, the project trusted. Returns the frontend."
     (trust-test-repository dir)
     (put-file (merge-pathnames "f.txt" dir) (format nil "first~%"))
     (git-output dir "add" "f.txt")
-    (let ((f (git-session dir "f.txt" (list "d d" (list :until (lambda () (tuatara.buffer:find-buffer "*git diff*")))))))
+    (let ((f (git-session dir
+                          "f.txt"
+                          (list "d d" (list :until (lambda () (tuatara.buffer:find-buffer "*git diff*")))))))
       (false (tuatara.frontend.fake:fake-frame-showing f "bad revision"))
       (true (search "+first" (tuatara.buffer:buffer-string (tuatara.buffer:find-buffer "*git diff*")))))))
 
@@ -1561,7 +1744,8 @@ DIR is visited and its status read, the project trusted. Returns the frontend."
     (put-file (merge-pathnames "a.txt" dir) (format nil "one~%TWO~%"))
     (let ((f (git-session dir "a.txt"
                           (list "M-< C-s m o d i f i e d RET TAB"
-                                (list :until (lambda () (search "+TWO" (tuatara.buffer:buffer-string (git-status-here)))))
+                                (list :until
+                                      (lambda () (search "+TWO" (tuatara.buffer:buffer-string (git-status-here)))))
                                 "M-< C-s - t w o RET C-p C-a C-SPC C-n C-n C-e s"
                                 (list :until (lambda () (plusp (length (git-output dir "diff" "--cached"))))))
                           :width 140)))
@@ -1584,10 +1768,13 @@ DIR is visited and its status read, the project trusted. Returns the frontend."
                              (list :until (lambda () (tuatara.git::git-state-staged (git-state-here))))
                              (list :wait 0.2)
                              (lambda ()
-                               (let ((window (find (git-status-here) (tuatara.command:editor-windows tuatara.command:*editor*)
+                               (let ((window (find (git-status-here)
+                                                   (tuatara.command:editor-windows tuatara.command:*editor*)
                                                    :key #'tuatara.display:window-buffer)))
-                                 (setf entry (list (tuatara.defaults::list-entry-at (git-status-here) (tuatara.display:window-point window))
-                                                   (tuatara.display:window-start window))))))
+                                 (setf entry
+                                       (list (tuatara.defaults::list-entry-at (git-status-here)
+                                                                              (tuatara.display:window-point window))
+                                             (tuatara.display:window-start window))))))
                        :height 40)
         (is equal '(:file :staged "a.txt") (first entry))
         (is = 0 (second entry))))))
@@ -1597,9 +1784,13 @@ DIR is visited and its status read, the project trusted. Returns the frontend."
   (let ((buffer (tuatara.modes:find-or-make-buffer "*git list test*")))
     (unwind-protect
          (progn
-           (tuatara.defaults::render-pieces buffer (list (format nil "a~%b~%c~%")) :entries (vector (list :x "a") (list :x "b") (list :x "c")))
+           (tuatara.defaults::render-pieces buffer
+                                            (list (format nil "a~%b~%c~%"))
+                                            :entries (vector (list :x "a") (list :x "b") (list :x "c")))
            (setf (tuatara.buffer:buffer-point buffer) (tuatara.buffer:buffer-goto-line buffer 2))
-           (tuatara.defaults::render-pieces buffer (list (format nil "b~%c~%")) :entries (vector (list :x "b") (list :x "c")))
+           (tuatara.defaults::render-pieces buffer
+                                            (list (format nil "b~%c~%"))
+                                            :entries (vector (list :x "b") (list :x "c")))
            (is equal '(:x "c") (tuatara.defaults::list-entry-at buffer)))
       (tuatara.buffer:kill-buffer buffer))))
 
@@ -1624,7 +1815,8 @@ DIR is visited and its status read, the project trusted. Returns the frontend."
     (flet ((git (&rest arguments) (apply #'git-output dir arguments))
            (put (name text) (alexandria:write-string-into-file text (merge-pathnames name dir) :if-exists :supersede))
            (rewind () (git-buffer-named "*git rewind: b.txt*"))
-           (rewind-text () (let ((b (git-buffer-named "*git rewind: b.txt*"))) (and b (tuatara.buffer:buffer-string b)))))
+           (rewind-text ()
+             (let ((b (git-buffer-named "*git rewind: b.txt*"))) (and b (tuatara.buffer:buffer-string b)))))
       (put "a.txt" (format nil "one~%two~%"))
       (git "commit" "-q" "-am" "Second")
       (git "mv" "a.txt" "b.txt")
@@ -1641,13 +1833,17 @@ DIR is visited and its status read, the project trusted. Returns the frontend."
              (list (format nil "C-x C-f C-a C-k ~a RET" (rimu-typed (native-in dir "b.txt")))
                    "j j M-x g i t - r e w i n d RET"
                    (list :until (lambda () (equal (rewind-text) (format nil "one~%two~%three~%four~%"))))
-                   (lambda () (push (tuatara.buffer:buffer-line-number (rewind) (tuatara.buffer:buffer-point (rewind))) seen))
+                   (lambda ()
+                     (push (tuatara.buffer:buffer-line-number (rewind) (tuatara.buffer:buffer-point (rewind))) seen))
                    "p" (list :until (lambda () (equal (rewind-text) (format nil "one~%two~%"))))
                    "p p" (list :until (lambda () (equal (rewind-text) (format nil "one~%"))))
                    "p" (list :wait 0.2)
-                   (lambda () (push (search "first commit of the file" (tuatara.buffer:buffer-string (tuatara.buffer:find-buffer "*Messages*"))) seen))
+                   (lambda ()
+                     (push (search "first commit of the file"
+                                   (tuatara.buffer:buffer-string (tuatara.buffer:find-buffer "*Messages*"))) seen))
                    "n" (list :until (lambda () (equal (rewind-text) (format nil "one~%two~%"))))
-                   (lambda () (push (tuatara.buffer:buffer-line-number (rewind) (tuatara.buffer:buffer-point (rewind))) seen))
+                   (lambda ()
+                     (push (tuatara.buffer:buffer-line-number (rewind) (tuatara.buffer:buffer-point (rewind))) seen))
                    "r" (list :until (asking "Rewind to:")) "F o u r t h RET"
                    (list :until (lambda () (equal (rewind-text) (format nil "one~%two~%three~%four~%"))))
                    "C-c w" (list :wait 0.1)
@@ -1712,7 +1908,8 @@ DIR is visited and its status read, the project trusted. Returns the frontend."
                "g g C-s s u b RET l" (list :until (lambda () (search "s.txt" (or (text (rewound)) ""))))
                "h" (list :until (lambda () (search "a.txt" (or (text (rewound)) ""))))
                "g g C-s a . t x t RET RET"
-               (list :until (lambda () (equal (text (git-buffer-named "*git rewind: a.txt*")) (format nil "one~%two~%"))))
+               (list :until
+                     (lambda () (equal (text (git-buffer-named "*git rewind: a.txt*")) (format nil "one~%two~%"))))
                "q" (list :wait 0.2)
                (lambda () (push (eq (tuatara.command:current-buffer) (rewound)) seen))
                "M-x g i t - r e w i n d RET" (list :until (lambda () (null (rewound))))
@@ -1743,7 +1940,10 @@ DIR is visited and its status read, the project trusted. Returns the frontend."
            (hash (string-trim '(#\Newline) (git-output dir "rev-parse" "HEAD")))
            (listing (tuatara.git::rimu-read-at-commit top hash top))
            (names (map 'list #'tuatara.io:listed-name (tuatara.defaults::rimu-listing-entries listing)))
-           (a (find "a.txt" (tuatara.defaults::rimu-listing-entries listing) :key #'tuatara.io:listed-name :test #'string=))
+           (a (find "a.txt"
+                    (tuatara.defaults::rimu-listing-entries listing)
+                    :key #'tuatara.io:listed-name
+                    :test #'string=))
            (read nil))
       (is equal '("." ".." "a.txt" "l") names)
       ;; where a link leads, read from git
@@ -1783,7 +1983,11 @@ DIR is visited and its status read, the project trusted. Returns the frontend."
     ;; a subject holding git's separators makes no commit of its own, whose hash would go to git
     (let ((revisions (tuatara.git::git-file-history
                       (record (make-string 40 :initial-element #\d) "s4" "2026-10-12" "Eve"
-                              (format nil "Hi~c--output=/tmp/x~cs~cd~ca~cb~cc~cd" (code-char #x1e) (code-char #x1f) (code-char #x1f)
+                              (format nil
+                                      "Hi~c--output=/tmp/x~cs~cd~ca~cb~cc~cd"
+                                      (code-char #x1e)
+                                      (code-char #x1f)
+                                      (code-char #x1f)
                                       (code-char #x1f) (code-char #x1f) (code-char #x1f) (code-char #x1f))
                               "c.txt"))))
       (true (every (lambda (revision) (tuatara.git:git-hash-p (tuatara.git::git-commit-hash revision))) revisions))
@@ -1935,10 +2139,13 @@ DIR is visited and its status read, the project trusted. Returns the frontend."
            (shown () (shown-lines (tuatara.buffer:find-buffer "*git log*"))))
       (when (log-buffer) (tuatara.buffer:kill-buffer (log-buffer)))
       (git-session dir "a.txt"
-                   (list "~ L L" (list :until (lambda () (and (log-buffer) (search "Second" (tuatara.buffer:buffer-string (log-buffer))))))
+                   (list "~ L L"
+                     (list :until
+                           (lambda () (and (log-buffer) (search "Second" (tuatara.buffer:buffer-string (log-buffer))))))
                          "C-x / f S u b j e c t RET ^ F i r s t RET"
                          (list :until (lambda () (notany (lambda (line) (search "Second" line)) (shown))))))
-      (is equal '("Commit" "Date" "Author" "Subject") (mapcar #'first (tuatara.defaults::list-table-columns (log-buffer))))
+      (is equal '("Commit" "Date" "Author" "Subject")
+          (mapcar #'first (tuatara.defaults::list-table-columns (log-buffer))))
       (true (find-if (lambda (line) (search "First" line)) (shown)))
       (false (find-if (lambda (line) (search "Second" line)) (shown))))))
 
@@ -1973,7 +2180,8 @@ DIR is visited and its status read, the project trusted. Returns the frontend."
         (is = 0 tuatara.command:*exit-code*)
         ;; the keys after it never ran
         (is string= (format nil "First commit~%# Please enter the commit message.~%") (file-text file)))
-      (alexandria:write-string-into-file (format nil "~%# Please enter the commit message.~%") file :if-exists :supersede)
+      (alexandria:write-string-into-file (format nil
+                                                 "~%# Please enter the commit message.~%") file :if-exists :supersede)
       (forget-file-buffers)
       (let ((editor (nth-value 1 (run-keys "N o p e C-c C-k" :file file :width 80 :height 10))))
         (false (tuatara.command:editor-running editor))

@@ -38,12 +38,12 @@ it lasts; after, a new one is made.")
 *FORMATTED-FILE-TYPE*.")
 
 (defvar *journal-file-name* nil
-  "How journal entries are named: NIL, as standard, for formatted names
-(20260320T133958--friday-20-march-2026__journal.org), with the header of
-their kind; or, for plain names, the entry's date in a pattern of the %
+  "How journal entries are named. NIL, as standard, is for formatted names
+\(20260320T133958--friday-20-march-2026__journal.org), with the header of
+their kind. For plain names it is the entry's date in a pattern of the %
 specifiers of FORMAT-TIME, such as \"%Y-%m-%d.org\" (2026-03-20.org)
 or \"%G/week-%V.md\" (%G the year the week counts in, so that no week is
-split at New Year), the file then begun with its title alone (#+title: in
+split at New Year). The file is then begun with its title alone (#+title: in
 Org, # in Markdown).")
 
 (defvar *journal-org-header* "#+title:      {title}
@@ -144,13 +144,18 @@ visited as it is."
                          (setf (tuatara.buffer:buffer-point buffer) (tuatara.buffer:buffer-size buffer)))
                        (show-buffer buffer)
                        buffer)
-                     (let ((type (or (find (or *journal-file-type* *formatted-file-type*) *formatted-file-types* :key #'first)
+                     (let ((type (or (find (or *journal-file-type* *formatted-file-type*)
+                                           *formatted-file-types*
+                                           :key #'first)
                                      (first *formatted-file-types*))))
                        (tuatara.io:ensure-directories directory)
                        (let ((*formatted-file-types*
                                (if *journal-org-header*
                                    (mapcar (lambda (kind) (if (eq (first kind) :org)
-                                                              (list (first kind) (second kind) (third kind) *journal-org-header*)
+                                                              (list (first kind)
+                                                                    (second kind)
+                                                                    (third kind)
+                                                                    *journal-org-header*)
                                                               kind))
                                            *formatted-file-types*)
                                    *formatted-file-types*)))
@@ -168,7 +173,8 @@ names, a day has one entry only)."
     (cond ((null paths) (journal-make-entry day))
           ((null (rest paths)) (visit-path (first paths)))
           (t (let* ((root (journal-directory))
-                    (relative (mapcar (lambda (path) (if (uiop:string-prefix-p root path) (subseq path (length root)) path)) paths))
+                    (relative (mapcar (lambda (path)
+                                        (if (uiop:string-prefix-p root path) (subseq path (length root)) path)) paths))
                     (chosen (completing-read "Journal entry: " relative :require-match t)))
                (when (member chosen relative :test #'string=)
                  (visit-path (concatenate 'string root chosen))))))))

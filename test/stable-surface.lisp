@@ -60,7 +60,8 @@ more, the rest still taken."
 (defun library-name (symbol)
   "SYMBOL, a name of a library packages may use, written as a package writes
 it: UIOP:GETENV, CL-PPCRE:SCAN."
-  (format nil "~a:~a" (if (eq symbol (find-symbol (symbol-name symbol) "UIOP")) "UIOP" (package-name (symbol-package symbol)))
+  (format nil "~a:~a"
+          (if (eq symbol (find-symbol (symbol-name symbol) "UIOP")) "UIOP" (package-name (symbol-package symbol)))
           (symbol-name symbol)))
 
 (defun api-row (symbol &optional (name (symbol-name symbol)) (part :api))
@@ -177,7 +178,8 @@ keyword no longer taken."
       (true (row :setting "*BOOKMARKS-KEPT*"))
       (is equal (sort (mapcar #'symbol-name tuatara.packages::*load-package-keywords*) #'string<)
           (third (row :keywords "LOAD-PACKAGE")))))
-  (let ((pinned '((:init "BIND-KEY" :function (2 ("MAP") () nil nil)) (:init "GONE-FUNCTION" :function (0 () () nil nil))
+  (let ((pinned '((:init "BIND-KEY" :function (2 ("MAP") () nil nil))
+                  (:init "GONE-FUNCTION" :function (0 () () nil nil))
                   (:init "TURNED" :function (1 () () nil nil)) (:init "WIDENED" :macro (1 () () t nil))
                   (:keywords "LOAD-PACKAGE" ("CONFIG" "SOURCE" "VERSION"))))
         (now '((:init "BIND-KEY" :function (3 ("MAP") () nil nil)) (:init "TURNED" :macro (1 () () nil nil))
@@ -190,7 +192,8 @@ keyword no longer taken."
     (declare (ignore version))
     (true (find '(:init "LOAD-PACKAGE") pinned :key #'row-name :test #'equal) "the pin holds load-package")
     (true (find '(:init "BIND-KEY") pinned :key #'row-name :test #'equal) "the pin holds bind-key")
-    (true (find '(:keywords "LOAD-PACKAGE") pinned :key #'row-name :test #'equal) "the pin holds load-package's keywords")))
+    (true (find '(:keywords "LOAD-PACKAGE") pinned :key #'row-name :test #'equal)
+          "the pin holds load-package's keywords")))
 
 (define-test (stable-surface kept-within-a-major-version)
   ;; from 1.0.0 on, the surface pinned at the last release is kept until the major version goes up

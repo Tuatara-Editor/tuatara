@@ -31,10 +31,11 @@ LaTeX, those of *LATEX-REDACTION-COMMANDS*."
     (ecase kind
       (:org
        (let ((hidden (org-hidden-kinds text directory)))
-         (cl-ppcre:do-scans (start end rs re *org-hiding-call-re* text)
-           (let ((name (org-hiding-kind (subseq text (aref rs 0) (aref re 0)))))
-             (when (member name hidden :test #'string=)
-               (push (list start end (subseq text (aref rs 1) (aref re 1)) name) found))))))
+         (map-org-hiding-calls (lambda (start end written from to)
+                                 (let ((name (org-hiding-kind written)))
+                                   (when (member name hidden :test #'string=)
+                                     (push (list start end (subseq text from to) name) found))))
+                               text)))
       (:latex
        (let ((names (format nil "~{~a~^|~}" (mapcar #'cl-ppcre:quote-meta-chars *latex-redaction-commands*))))
          (when (plusp (length names))
@@ -179,8 +180,11 @@ shows it in another window, \\[list-visit-other] the list staying selected;
                             (funcall put (format nil "    | ~a" (string-trim " 	" (aref lines (1- line)))) nil entry))))))))
       (let ((list (set-search-filtering (buffer-in-mode "*Redactions*" 'redactions-mode)
                                         :nouns "places" :heading (lambda (entry) (eq (first entry) :hidden)))))
-        (render-pieces list (cons (format nil "Text hidden in ~a, found shown elsewhere in it:~%" (tuatara.buffer:buffer-name buffer))
-                                  pieces)
+        (render-pieces list
+                       (cons (format nil
+                                     "Text hidden in ~a, found shown elsewhere in it:~%"
+                                     (tuatara.buffer:buffer-name buffer))
+                             pieces)
                        :entries entries :first-line 1 :point :start)
         (display-buffer list)))))
 
@@ -202,9 +206,12 @@ say what was found, and with QUIET nothing when there is nothing to say."
          (spans (and kind (hidden-spans text kind directory)))
          (findings (and spans (redaction-findings text kind directory spans))))
     (cond ((null kind)
-           (message "~a is neither an Org nor a LaTeX file: nothing hidden to look for" (tuatara.buffer:buffer-name buffer)))
+           (message "~a is neither an Org nor a LaTeX file: nothing hidden to look for"
+                    (tuatara.buffer:buffer-name buffer)))
           ((null spans)
-           (unless quiet (message "Nothing in ~a is hidden (redact unless redact:nil, protect with protect:t)" (tuatara.buffer:buffer-name buffer))))
+           (unless quiet
+             (message "Nothing in ~a is hidden (redact unless redact:nil, protect with protect:t)"
+                      (tuatara.buffer:buffer-name buffer))))
           ((null findings)
            (unless quiet
              (message "None of the ~d text~:p hidden in ~a shows anywhere else in it" (length spans) (tuatara.buffer:buffer-name buffer))))
@@ -274,7 +281,8 @@ hidden texts go: none shows elsewhere, or you say to go on when *Redactions*
 lists where they do."
   (let ((count (check-buffer-redactions buffer :quiet t :text text)))
     (or (zerop count)
-        (yes-or-no-p* (format nil "~d place~:p show~:[~;s~] text hidden elsewhere (see *Redactions*); make the PDF anyway?"
+        (yes-or-no-p* (format nil
+                              "~d place~:p show~:[~;s~] text hidden elsewhere (see *Redactions*); make the PDF anyway?"
                               count (= 1 count))))))
 
 ;;; Wrapping text in a macro: R and P to hide it, or any the note declares
@@ -318,8 +326,9 @@ text is in, a last choice taking the call away (its value :NONE)."
                   (make-candidate "P" :annotation "hidden in the PDF only with #+options: protect:t (protect)"))
             (loop for (name . body) in declared
                   collect (make-candidate name :annotation (format nil "declared: ~a" body)))
-            (and call (list (make-candidate "none" :annotation (format nil "the text alone, the call of ~a taken away" call)
-                                                   :value :none))))))
+            (and call
+                 (list (make-candidate "none" :annotation (format nil "the text alone, the call of ~a taken away" call)
+                                       :value :none))))))
 
 (defvar *org-last-macro* "R"
   "The macro \\[org-macro-wrap] wrapped text in last, offered first the next time.")
@@ -343,7 +352,8 @@ text alone again. While reading, a call shows as its text, in green.
                       call))))
     (if call
         (destructuring-bind (start end name inside) call
-          (let ((chosen (completing-read (format nil "Change {{{~a(...)}}} to: " name) (org-macro-choices buffer :call name)
+          (let ((chosen (completing-read (format nil "Change {{{~a(...)}}} to: " name)
+                                         (org-macro-choices buffer :call name)
                                          :require-match t :keep-order t)))
             (tuatara.buffer:buffer-replace buffer start end (if (eq chosen :none) inside (format nil "{{{~a(~a)}}}" chosen inside)))
             (drop-selection)

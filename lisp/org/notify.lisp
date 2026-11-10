@@ -46,13 +46,12 @@ property, a whole number, else *ORG-NOTIFY-BEFORE*; 0 for none."
 
 (defun org-notify-due (items now)
   "The notifications due at the universal time NOW of ITEMS, today's agenda
-lines, each (KEY TITLE WORDS) (KEY as **ORG-NOTIFY-SENT** keeps them): for a
-line of an entry tagged *ORG-NOTIFY-TAG*, not done, scheduled, a deadline
-today, a timestamp or a range of days, or a repeating task past due, with
-a time of day, from
-ORG-NOTIFY-MINUTES-BEFORE minutes before it until it comes, and for five
-minutes from when it comes; with none, from *ORG-NOTIFY-DAY-TIME* on that
-day. Those told already are left out."
+lines, each (KEY TITLE WORDS) (KEY as **ORG-NOTIFY-SENT** keeps them). They are
+those for a line of an entry tagged *ORG-NOTIFY-TAG*, not done, scheduled, a
+deadline today, a timestamp or a range of days, or a repeating task past due,
+with a time of day, from ORG-NOTIFY-MINUTES-BEFORE minutes before it until it
+comes, and for five minutes from when it comes. With none, from
+*ORG-NOTIFY-DAY-TIME* on that day. Those told already are left out."
   (let ((today (org-today now)) (due '()))
     (dolist (item items (nreverse due))
       (let ((entry (org-item-entry item)))
@@ -103,7 +102,9 @@ at the universal time NOW, and each notification due (ORG-NOTIFY-DUE) told
          (due (org-notify-due (org-agenda-day (org-today now) :files files :log nil) now)))
     ;; those of days gone are no longer needed
     (let ((today (org-today now)))
-      (maphash (lambda (key value) (declare (ignore value)) (when (< (third key) today) (remhash key **org-notify-sent**)))
+      (maphash (lambda (key value)
+                 (declare (ignore value))
+                 (when (< (third key) today) (remhash key **org-notify-sent**)))
                **org-notify-sent**))
     (dolist (notification due)
       (destructuring-bind (key title words) notification

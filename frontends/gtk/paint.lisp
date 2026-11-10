@@ -30,10 +30,10 @@ the desktop's colours change.")
 
 (defun face-colours (spec)
   "Five values for the face SPEC (a face name, a list of them, or NIL) as the
-window paints it: the text's colour and the ground's, each three numbers from
-0 to 1, its flags (:bold :italic :underline and the rest), the name of the
-font it asks for, or NIL for the window's, and its underline's colour, or NIL
-for the text's."
+window paints it. They are the text's colour and the ground's, each three
+numbers from 0 to 1; its flags (:bold :italic :underline and the rest); the
+name of the font it asks for, or NIL for the window's; and its underline's
+colour, or NIL for the text's."
   (let ((table (tuatara.display:face-cache-table *face-colours*
                                                  (and *window-colours-from-desktop* *desktop-colours*))))
     (values-list
@@ -355,12 +355,12 @@ letters, which join: each (START . END), from the SPANS whose face holds
                    (nreverse runs))))
 
 (defun paint-joined-run (f cr layouts string faces face start end column y)
-  "Paint the characters of STRING from START below END, a run of right-to-left
-text holding Arabic letters, from COLUMN on the row whose top is at Y: the
-run handed to Pango in the order it is written, so that its letters are
-joined as they are written, drawn as wide as its cells, its ends on theirs;
-each stretch of one face of FACES (FACE where none) in its own colours, kept
-to its cells. Returns the column after them."
+  "Paint the characters of STRING from START below END, from COLUMN on the row
+whose top is at Y. They are a run of right-to-left text holding Arabic
+letters. The run is handed to Pango in the order it is written, so that its
+letters are joined as they are written, drawn as wide as its cells, its ends
+on theirs. Each stretch of one face of FACES (FACE where none) is in its own
+colours, kept to its cells. Returns the column after them."
   (let* ((cw (cell-width f)) (ch (cell-height f))
          (columns (tuatara.display:string-columns string :start start :end end))
          ;; in an embedding of its own, so that Pango lays it out from right to left whatever the run's first letter
@@ -415,14 +415,14 @@ and is passed at once."
 
 (defun paint-row (f cr layouts row y width &key (pass :grid) (from 0) (to most-positive-fixnum))
   "Paint ROW, (STRING FACE SPANS SCALES OVER), on the row whose top is at Y,
-WIDTH pixels wide, in three passes over all rows, as PASS says. :grid, the row
-in its own cells but for the parts SCALES names, each (START END SCALE SHIFT
-HEIGHT) in columns and rows, only its runs of characters that reach the columns
-from FROM below TO; :large, those parts alone, the text from START on
-drawn SCALE times as tall and wide, SHIFT rows lower, over the cells from
-START below END of the HEIGHT rows it reaches (SCALE 0: nothing); :over, the
-parts of OVER, each (LEFT TEXT SPANS), in the row's own cells over everything,
-the first on top."
+WIDTH pixels wide, in three passes over all rows, as PASS says. :grid paints
+the row in its own cells but for the parts SCALES names, each (START END SCALE
+SHIFT HEIGHT) in columns and rows, only its runs of characters that reach the
+columns from FROM below TO. :large paints those parts alone, the text from
+START on drawn SCALE times as tall and wide, SHIFT rows lower, over the cells
+from START below END of the HEIGHT rows it reaches (SCALE 0: nothing). :over
+paints the parts of OVER, each (LEFT TEXT SPANS), in the row's own cells over
+everything, the first on top."
   (destructuring-bind (string face spans &optional scales over parts) row
     (declare (ignore parts))
     (let* ((string (tuatara.display:displayable string))
@@ -464,7 +464,8 @@ the first on top."
            (when face (fill-ground cr face 0 y width ch))
            (let ((i 0))
              (loop for (from below) in (append (sort (loop for (start end) in scales
-                                                           collect (list (char-index-at string start) (char-index-at string end)))
+                                                           collect (list (char-index-at string start)
+                                                                         (char-index-at string end)))
                                                      #'< :key #'first)
                                                (list (list n n)))
                    do (when (< i from)
@@ -643,7 +644,9 @@ of the row drawn large or moved down, where its characters are and as large."
   "A cairo surface holding IMAGE's pixels, its alpha applied as cairo keeps it:
 copied by GDK from IMAGE's texture (IMAGE-TEXTURE), which writes them as
 cairo does, 32 bits a pixel, blue first, each colour multiplied by the alpha."
-  (let ((surface (cairo-image-surface-create 0 (tuatara.frontend:image-width image) (tuatara.frontend:image-height image)))
+  (let ((surface (cairo-image-surface-create 0
+                                             (tuatara.frontend:image-width image)
+                                             (tuatara.frontend:image-height image)))
         (texture (image-texture image)))
     (cairo-surface-flush surface)
     (gdk-texture-download texture (cairo-image-surface-get-data surface) (cairo-image-surface-get-stride surface))
@@ -665,7 +668,9 @@ surfaces of pictures no longer shown are let go of."
                     (display (gtk-display-scale f))
                     (scale (if offset
                                (/ 1d0 display)
-                               (tuatara.frontend:image-fit-scale image (* columns (cell-width f)) (* rows (cell-height f))
+                               (tuatara.frontend:image-fit-scale image
+                                                                 (* columns (cell-width f))
+                                                                 (* rows (cell-height f))
                                                                  (/ 1d0 display)))))
                (push image shown)
                (cairo-save cr)
@@ -704,13 +709,13 @@ their width in pixels."
 
 (defstruct (kept-rows (:constructor make-kept-rows (key)) (:copier nil))
   "The rows of the window as last painted, kept from one frame to the next so
-that only what changed is painted again (KEEP-ROWS). PIECES, for each row
-down the window, its parts as painted, each (FROM BELOW STRIP SHOWS
-TEXTURE): a picture in memory, STRIP, of the row's cells from column FROM below
-BELOW, without what is drawn over the rows (the cursor, pictures, what the
-input method composes), showing SHOWS (PIECE-CONTENT), NIL for a strip yet to
-be painted, and TEXTURE, the strip as the graphics card is given it
-\(STRIP-TEXTURE), or NIL until it is; KEY what they were painted for
+that only what changed is painted again (KEEP-ROWS). PIECES holds, for each row
+down the window, its parts as painted, each (FROM BELOW STRIP SHOWS TEXTURE).
+STRIP is a picture in memory of the row's cells from column FROM below BELOW,
+without what is drawn over the rows (the cursor, pictures, what the input
+method composes). SHOWS is what it shows (PIECE-CONTENT), NIL for a strip yet
+to be painted. TEXTURE is the strip as the graphics card is given it
+\(STRIP-TEXTURE), or NIL until it is. KEY is what they were painted for
 \(ROWS-PAINTED-FOR)."
   key (pieces #()))
 
@@ -783,11 +788,11 @@ and what lies over all."
 
 (defun changed-columns (old new)
   "The columns where NEW, a row as frames hold it, shows otherwise than OLD, the
-row painted there before, as two values, from and below: from its first
-character changed to its last, or to its end when what follows moved to
-other columns; NIL when the whole row is to be painted again (its face or
-the faces of its characters changed, or there was none). A column more each
-side, for a letter leaning into the next cell."
+row painted there before, as two values, from and below. They run from its
+first character changed to its last, or to its end when what follows moved to
+other columns. The result is NIL when the whole row is to be painted again
+(its face or the faces of its characters changed, or there was none). A column
+more each side, for a letter leaning into the next cell."
   (when (and old new (equal (second old) (second new)) (equal (third old) (third new)))
     (let* ((a (first old)) (b (first new))
            (start (mismatch a b)))
@@ -844,7 +849,8 @@ else all of it, its cells in the ground's colour first."
         (unwind-protect
              (when (< left right)
                (cairo-translate cr (float (- (* from cw)) 1d0) 0d0)
-               (cairo-rectangle cr (float (* left cw) 1d0) 0d0 (float (* (- right left) cw) 1d0) (float (cell-height f) 1d0))
+               (cairo-rectangle cr (float (* left cw)
+                                          1d0) 0d0 (float (* (- right left) cw) 1d0) (float (cell-height f) 1d0))
                (cairo-clip cr)
                (set-colour cr (nth-value 1 (face-colours nil)))
                (cairo-paint cr)
@@ -854,11 +860,12 @@ else all of it, its cells in the ground's colour first."
 (defun keep-rows (f width rows layouts)
   "The parts of ROWS, the rows of a frame, painted for F's window, whose grid
 is WIDTH pixels wide (KEPT-ROWS), as a vector with each row's list of (FROM
-BELOW STRIP SHOWS TEXTURE): the last part of each row, a window's text, taken from
-the row that showed its line in the frame before, as the window scrolled
-\(ROW-SHIFT), the others from the same row, as a gutter's numbers stay there;
-only what changed in each painted again; all painted the first time, and when
-what they are painted for changes (ROWS-PAINTED-FOR)."
+BELOW STRIP SHOWS TEXTURE). The last part of each row, a window's text, is
+taken from the row that showed its line in the frame before, as the window
+scrolled (ROW-SHIFT). The others are taken from the same row, as a gutter's
+numbers stay there. Only what changed in each is painted again. All is
+painted the first time, and when what they are painted for changes
+\(ROWS-PAINTED-FOR)."
   (let* ((columns (max 1 (floor width (cell-width f))))
          (key (rows-painted-for f width (length rows)))
          (kept (gtk-kept-rows f)))
@@ -871,7 +878,9 @@ what they are painted for changes (ROWS-PAINTED-FOR)."
            (cw (cell-width f))
            (bounds (map 'vector (lambda (row) (row-bounds row columns)) rows))
            ;; what each row's last part shows now and showed before, for the shift
-           (lasts (map 'vector (lambda (row b) (let ((last (car (last b)))) (and row (piece-content row (car last) (cdr last)))))
+           (lasts (map 'vector
+                       (lambda (row b)
+                         (let ((last (car (last b)))) (and row (piece-content row (car last) (cdr last)))))
                        rows bounds))
            (old-lasts (map 'vector (lambda (pieces) (fourth (car (last pieces)))) old))
            (shift (row-shift old-lasts lasts))
@@ -1115,7 +1124,8 @@ cursor over those."
               do (dolist (piece row-pieces)
                    (destructuring-bind (from below strip shows texture) piece
                      (declare (ignore shows))
-                     (place-picture f slot (or texture (setf (fifth piece) (strip-texture f strip (* (- below from) cw))))
+                     (place-picture f slot (or texture
+                                               (setf (fifth piece) (strip-texture f strip (* (- below from) cw))))
                                     (+ left (* from cw)) y (* (- below from) cw) ch)
                      (incf slot))))
         (hide-pictures-from f slot)
@@ -1171,11 +1181,12 @@ from an offset, cut to its cells, painted whole by the drawing area."
             (gtk-widget-queue-draw (gtk-area f)))))))
 
 (defun paint-frame (f cr width height frame focused)
-  "Paint FRAME on CR, WIDTH by HEIGHT pixels: the ground, all of it, then inside
-the room round the grid (GTK-PADDING), and no further than its whole cells,
-every row (as kept painted from the frame before, KEEP-ROWS, unless one is
-drawn large or over others, which reaches into the rows round it), the
-pictures, what the input method is composing, the cursor."
+  "Paint FRAME on CR, WIDTH by HEIGHT pixels. First the ground, all of it. Then,
+inside the room round the grid (GTK-PADDING) and no further than its whole
+cells, every row. A row is kept painted from the frame before (KEEP-ROWS),
+unless one is drawn large or over others, which reaches into the rows round
+it. Last come the pictures, what the input method is composing, and the
+cursor."
   (let ((layouts (frame-layouts f)))
     (fill-ground cr nil 0 0 width height)
     (when frame
@@ -1212,8 +1223,9 @@ pictures, what the input method is composing, the cursor."
         (when frame
           (multiple-value-bind (x y w h) (frame-cursor-pixels f frame)
             (gtk-im-context-set-cursor-location (gtk-im f)
-                                                (round (+ (fourth (gtk-padding f)) x)) (round (+ (first (gtk-padding f)) y))
-                                                (round w) (round h))))))))
+                                                (round (+ (fourth (gtk-padding f))
+                                                          x)) (round (+ (first (gtk-padding f)) y))
+                                                          (round w) (round h))))))))
 
 (defun call-with-painted-frame (function frame &key (columns 80) (rows 24) (font (font-name)) (focused t) preedit
                                                     (padding 0))

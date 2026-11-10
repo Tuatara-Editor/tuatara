@@ -42,7 +42,8 @@ each time a thread began it, and SLOW, the seconds one stoppable call of it
 may take, or NIL."
   (threads '()) slow)
 
-(setf (documentation 'make-stop-entry 'function) "Return a stop entry for work whose calls may take SLOW seconds, or NIL for no limit."
+(setf (documentation 'make-stop-entry 'function) "Return a stop entry for work whose calls may take
+SLOW seconds, or NIL for no limit."
       (documentation 'stop-entry-p 'function) "True when OBJECT is a STOP-ENTRY."
       (documentation 'stop-entry-threads 'function) "The threads doing a cancel's work."
       (documentation 'stop-entry-slow 'function) "Seconds one stoppable call of a cancel's work may take, or NIL.")
@@ -230,11 +231,11 @@ internal real time, kept for the next look in **CALLS-SEEN**."
            (values (sb-thread:symbol-value-in-thread '*stop-cells* thread nil))))
 
 (defun watch-stoppable-work ()
-  "What the watching thread does, for as long as the editor runs: every few
-milliseconds while a stoppable call runs (less often while there is work
-to watch but none does), stop as slow the innermost work given seconds whose
-stoppable call on some thread has been seen to run longer, and interrupt
-again a thread still in a stoppable call of work asked to stop; asleep while
+  "What the watching thread does, for as long as the editor runs. Every few
+milliseconds while a stoppable call runs (less often while there is work to
+watch but none does), it stops as slow the innermost work given seconds whose
+stoppable call on some thread has been seen to run longer. It interrupts again
+a thread still in a stoppable call of work asked to stop. It is asleep while
 there is none."
   (loop
     (let ((slow '()) (stopped '()) (watching nil) (calling nil) (looked '()) (now (get-internal-real-time)))

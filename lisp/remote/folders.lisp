@@ -121,7 +121,8 @@ REMOTE-RIMU-SOURCE, is told when the folder is evidence."
 (defvar *remote-preview-size-limit* (* 20 1000 1000)
   "The most octets a file on another machine may hold to be shown in the
 preview of its list (\\<rimu-mode>\\[list-toggle-preview]), 20 MB by default: all
-of it has to come from the server first. The preview of a larger one says so.")
+of it has to come from the server first. The preview of a larger one says so.
+Raise it on a fast link to preview larger files; lower it on a slow one.")
 
 (defmethod rimu-source-listing ((source remote-rimu-source) directory)
   "The folder as the server lists it (REMOTE-RIMU-LISTING)."
@@ -146,7 +147,8 @@ and one larger than *REMOTE-PREVIEW-SIZE-LIMIT*."
                       (remote-too-large (condition)
                         (refuse "Too large to preview: ~a, the limit is ~a (*remote-preview-size-limit*). ~
                                  RET opens all of it"
-                                (octets-words (remote-too-large-size condition)) (octets-words *remote-preview-size-limit*))))
+                                (octets-words (remote-too-large-size condition))
+                                (octets-words *remote-preview-size-limit*))))
                  (sb-posix:close fd))
                (tuatara.io:call-with-file copy function))
           (delete-private-folder folder))))))
@@ -226,7 +228,8 @@ left out; refused when the server lists more than *SFTP-MOST-LISTED*, or a
 name no entry can have (REMOTE-ENTRY-NAME-P)."
   (if (remote-name-p folder)
       (multiple-value-bind (host path) (remote-name-parts folder)
-        (multiple-value-bind (entries cut) (remote-listing host (if (string= path "") "." (tuatara.io:slash-ended path)))
+        (multiple-value-bind (entries cut)
+            (remote-listing host (if (string= path "") "." (tuatara.io:slash-ended path)))
           (when cut (refuse "~a holds more than ~:d entries" folder *sftp-most-listed*))
           (dolist (entry entries)
             (unless (remote-entry-name-p (car entry))
@@ -301,12 +304,12 @@ refused.")
   "Signal TUATARA.IO:WRITING-REFUSED for OPERATION on NAME, on another
 machine, when it is evidence (REMOTE-EVIDENCE), told by its name and where it
 really is there (REMOTE-PLACE-NAMES, refused when that is needed and cannot
-be found); with TREE, NAME being a folder, also when any folder within it
-is, links in it not followed, as TUATARA.IO:CHECK-TREE-WRITING does here: a
-folder holding evidence is not deleted, moved or renamed as a whole, nor
-one whose folders cannot all be looked through (a listing cut short, more
-than *REMOTE-TREE-DEPTH* levels). Looks within only while *EVIDENCE-FOLDERS*
-names some folder."
+be found). With TREE, NAME being a folder, it is also signalled when any
+folder within it is evidence, links in it not followed, as
+TUATARA.IO:CHECK-TREE-WRITING does here. A folder holding evidence is not
+deleted, moved or renamed as a whole, nor one whose folders cannot all be
+looked through (a listing cut short, more than *REMOTE-TREE-DEPTH* levels).
+Looks within only while *EVIDENCE-FOLDERS* names some folder."
   (when (evidence-rules)
     (multiple-value-bind (host path) (remote-name-parts name)
       (labels ((check (names)

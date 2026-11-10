@@ -56,7 +56,9 @@ are rewritten at once."
     (is string= (lines-text "cherry 007 0x0 f" "apple 1 0x3 e" "Banana 12 0x1 d" "fig 7 0xff c" "apple 12 0x2 a" "pear 3 0x10 b")
         (sorted-text "M-x r e v e r s e - r e g i o n RET" *sort-sample* :on-disk on-disk))
     ;; a last line without a newline: the line ends stay where they were
-    (is string= (format nil "a~%b~%c") (sorted-text "M-x s o r t - l i n e s RET" (format nil "c~%b~%a") :on-disk on-disk))))
+    (is string=
+        (format nil "a~%b~%c")
+        (sorted-text "M-x s o r t - l i n e s RET" (format nil "c~%b~%a") :on-disk on-disk))))
 
 (define-test (sorting ignoring-case-and-selections)
   (let ((tuatara.defaults::*sort-fold-case* t))
@@ -86,13 +88,18 @@ are rewritten at once."
     ;; with C-u C-u only those next to one like them
     (dolist (on-disk '(nil t))
       (is string= (lines-text "a" "b" "a" "c")
-          (sorted-text "C-u C-u M-x d e l e t e - d u p l i c a t e - l i n e s RET" (lines-text "a" "a" "b" "b" "b" "a" "c" "c")
+          (sorted-text "C-u C-u M-x d e l e t e - d u p l i c a t e - l i n e s RET"
+                       (lines-text "a" "a" "b" "b" "b" "a" "c" "c")
                        :on-disk on-disk)))
     ;; lines longer than a piece on disk: each its own piece, compared with the one before all the same
     (let ((x (make-string 20 :initial-element #\x)) (y (make-string 20 :initial-element #\y)))
       (is string= (lines-text x y x)
-          (sorted-text "C-u C-u M-x d e l e t e - d u p l i c a t e - l i n e s RET" (lines-text x x x y y x) :on-disk t)))
-    (multiple-value-bind (f editor) (run-keys "C-x h M-x d e l e t e - d u p l i c a t e - l i n e s RET" :text text :width 100)
+          (sorted-text "C-u C-u M-x d e l e t e - d u p l i c a t e - l i n e s RET"
+                       (lines-text x x x y y x)
+                       :on-disk t)))
+    (multiple-value-bind (f editor) (run-keys "C-x h M-x d e l e t e - d u p l i c a t e - l i n e s RET"
+                                              :text text
+                                              :width 100)
       (declare (ignore editor))
       (true (tuatara.frontend.fake:fake-frame-showing f "Deleted 4 duplicate lines")))))
 
@@ -100,7 +107,8 @@ are rewritten at once."
   ;; work on lines on disk in hundreds of pieces holds a file a worker, not one a piece:
   ;; a window's limit of 1024 open files was passed by a file of gigabytes
   (flet ((open-files () (length (uiop:directory-files "/proc/self/fd/"))))
-    (let* ((text (format nil "~{~a~%~}" (loop for i below 3000 collect (format nil "line ~d ~:[odd~;even~]" i (evenp i)))))
+    (let* ((text (format nil "~{~a~%~}"
+                         (loop for i below 3000 collect (format nil "line ~d ~:[odd~;even~]" i (evenp i)))))
            (before (open-files)))
       ;; keep-lines, a job over lines
       (let ((kept (let ((tuatara.defaults::*rewrite-piece* 64))
@@ -135,7 +143,8 @@ are rewritten at once."
                  (sorted-text "M-x k e e p - l i n e s RET E R R O R RET" text :on-disk on-disk :here here))
              ;; a last line without a newline
              (is string= (format nil "INFO start~%info again")
-                 (sorted-text "M-x k e e p - l i n e s RET i n f o RET" (format nil "INFO start~%ERROR disk~%info again")
+                 (sorted-text "M-x k e e p - l i n e s RET i n f o RET"
+                              (format nil "INFO start~%ERROR disk~%info again")
                               :on-disk on-disk :here here)))
     ;; in a CSV, on the column asked for, by name or number from 0, its value unquoted; the header stays
     (let ((csv (lines-text "id,name,city" "1,\"ann\",Oslo" "2,bob,\"Bergen, \"\"west\"\"\"" "3,annette,Oslo")))
@@ -175,7 +184,8 @@ are rewritten at once."
       (is string= text (session-text editor)))
     ;; the pattern typed is kept for the next question, M-p bringing it back
     (is string= (lines-text "ERROR disk" "ERROR net")
-        (sorted-text "M-x k e e p - l i n e s RET E R R O R RET u C-x h M-x k e e p - l i n e s RET M-p RET" text :here t))))
+        (sorted-text "M-x k e e p - l i n e s RET E R R O R RET u C-x h M-x k e e p - l i n e s RET M-p RET" text
+                     :here t))))
 
 ;; the count before keep-lines' prompt is how many lines the filter leaves, LF and CRLF,
 ;; for every construct of the patterns
@@ -186,21 +196,27 @@ are rewritten at once."
         (destructuring-bind (written means pattern &optional text finds &rest more) row
           (declare (ignore means more))
           (unless (or (eq written :replace) (eq (first finds) :refused))
-            (let* ((text (if crlf (cl-ppcre:regex-replace-all (string #\Newline) text (format nil "~c~%" #\Return)) text))
+            (let* ((text (if crlf
+                             (cl-ppcre:regex-replace-all (string #\Newline) text (format nil "~c~%" #\Return)) text))
                    (buffer (tuatara.buffer:make-buffer (tuatara.buffer:unique-buffer-name "count") :text text))
                    (rope (tuatara.buffer:buffer-text buffer))
                    (filter (tuatara.defaults::make-search-filter pattern :crlf crlf)))
               (when crlf (setf (tuatara.buffer:buffer-local buffer :line-ending) :crlf))
               (unwind-protect
                    ;; a pattern no filter can use is counted by none
-                   (is eql (and filter (length (scan-kept-starts rope (tuatara.defaults::search-filter-matcher filter) crlf)))
+                   (is eql
+                       (and filter
+                            (length (scan-kept-starts rope (tuatara.defaults::search-filter-matcher filter) crlf)))
                        (and filter (tuatara.defaults::stretch-count buffer (list (cons 0 (tuatara.text:rope-octet-length rope))) filter))
                        "~a: ~a on ~s~:[~;, CRLF~]" written pattern (subseq text 0 (min 60 (length text))) crlf)
                 (tuatara.buffer:kill-buffer buffer))))))))
   (let ((buffer (tuatara.buffer:make-buffer (tuatara.buffer:unique-buffer-name "count")
                                             :text (format nil "foo~c~%bar~c~%foo~c~%" #\Return #\Return #\Return))))
     (setf (tuatara.buffer:buffer-local buffer :line-ending) :crlf)
-    (unwind-protect (is = 2 (tuatara.defaults::stretch-count buffer (list (cons 0 15)) (tuatara.defaults::make-search-filter "foo$" :crlf t)))
+    (unwind-protect (is = 2
+                        (tuatara.defaults::stretch-count buffer
+                                                         (list (cons 0 15))
+                                                         (tuatara.defaults::make-search-filter "foo$" :crlf t)))
       (tuatara.buffer:kill-buffer buffer))))
 
 (define-test (sorting sort-stands-where-begun)
@@ -244,7 +260,11 @@ are rewritten at once."
               :text (lines-text "zz" "b" "a") :width 100 :height 8)
     (let ((steps (list (tuatara.buffer:buffer-string b))))
       (loop repeat 3 do (tuatara.buffer:buffer-undo b) (push (tuatara.buffer:buffer-string b) steps))
-      (is equal (list (lines-text "Xyy" "a" "b") (lines-text "yy" "a" "b") (lines-text "yy" "b" "a") (lines-text "zz" "b" "a"))
+      (is equal
+          (list (lines-text "Xyy" "a" "b")
+                (lines-text "yy" "a" "b")
+                (lines-text "yy" "b" "a")
+                (lines-text "zz" "b" "a"))
           (nreverse steps)))))
 
 (define-test (sorting filter-keeps-edits)
@@ -268,7 +288,9 @@ are rewritten at once."
       (declare (ignore f))
       (is string= (lines-text "keep" "keep too" "end") (session-text editor)))
     (multiple-value-bind (f editor)
-        (run-keys-in-turns '("C-x h M-x f l u s h - l i n e s RET d r o p RET M-< i x C-g" "C-/ C-/") :text text :width 120)
+        (run-keys-in-turns '("C-x h M-x f l u s h - l i n e s RET d r o p RET M-< i x C-g" "C-/ C-/")
+                           :text text
+                           :width 120)
       (declare (ignore f))
       (is string= text (session-text editor)))))
 
@@ -284,7 +306,8 @@ are rewritten at once."
            (run-keys "C-x h M-x f l u s h - l i n e s RET d r o p RET" :text text :width 120)
            "Deleted 2 matching lines in"))
     (true (tuatara.frontend.fake:fake-frame-showing
-           (run-keys (list (lambda () (setf (tuatara.buffer:buffer-local (tuatara.buffer:find-buffer "*scratch*") :plaintext) t))
+           (run-keys (list (lambda ()
+                             (setf (tuatara.buffer:buffer-local (tuatara.buffer:find-buffer "*scratch*") :plaintext) t))
                            "C-x h M-x f l u s h - l i n e s RET d r o p RET")
                      :text text :width 120)
            "Deleted 2 matching lines")))
@@ -298,7 +321,8 @@ are rewritten at once."
   (is string= (format nil "alpha~%one~%~%beta~%~%gamma~%two~%")
       (sorted-text "M-x s o r t - p a r a g r a p h s RET" (format nil "gamma~%two~%~%beta~%~%alpha~%one~%")))
   ;; records and keys by regular expression: words sorted by the number after them
-  (is string= "a1 b2 c3" (sorted-text "M-x s o r t - r e g e x p - f i e l d s RET [ a - z ] \\ d RET C-a C-k [ 0 - 9 ] RET" "c3 a1 b2"))
+  (is string= "a1 b2 c3"
+      (sorted-text "M-x s o r t - r e g e x p - f i e l d s RET [ a - z ] \\ d RET C-a C-k [ 0 - 9 ] RET" "c3 a1 b2"))
   ;; columns: the text between the columns of the selection's ends
   (is string= (lines-text "x a 9" "z b 1" "y c 5")
       (session-text (nth-value 1 (run-keys "C-f C-f C-SPC C-n C-n C-f M-x s o r t - c o l u m n s RET"
@@ -311,11 +335,13 @@ are rewritten at once."
         (sorted-text "M-x s o r t - l i n e s - r e v e r s e RET" *sort-sample* :on-disk on-disk))
     ;; the fields ones, whose prefix argument names the field: largest number first, ties reversed too
     (is string= (lines-text "Banana 12 0x1 d" "apple 12 0x2 a" "cherry 007 0x0 f" "fig 7 0xff c" "pear 3 0x10 b" "apple 1 0x3 e")
-        (sorted-text "C-u 2 M-x s o r t - n u m e r i c - f i e l d s - r e v e r s e RET" *sort-sample* :on-disk on-disk))
+        (sorted-text "C-u 2 M-x s o r t - n u m e r i c - f i e l d s - r e v e r s e RET" *sort-sample*
+                     :on-disk on-disk))
     (is string= (lines-text "cherry 007 0x0 f" "apple 1 0x3 e" "Banana 12 0x1 d" "fig 7 0xff c" "pear 3 0x10 b" "apple 12 0x2 a")
         (sorted-text "C-u - 1 M-x s o r t - f i e l d s - r e v e r s e RET" *sort-sample* :on-disk on-disk)))
   (is string= (format nil "gamma~%two~%~%beta~%~%alpha~%one~%")
-      (sorted-text "M-x s o r t - p a r a g r a p h s - r e v e r s e RET" (format nil "beta~%~%gamma~%two~%~%alpha~%one~%")))
+      (sorted-text "M-x s o r t - p a r a g r a p h s - r e v e r s e RET"
+                   (format nil "beta~%~%gamma~%two~%~%alpha~%one~%")))
   (let ((pages (format nil "b~%~c~%c~%~c~%a~%" (code-char 12) (code-char 12))))
     (is string= (sorted-text "C-u M-x s o r t - p a g e s RET" pages)
         (sorted-text "M-x s o r t - p a g e s - r e v e r s e RET" pages)))
@@ -331,7 +357,8 @@ are rewritten at once."
 (define-test (sorting large-in-background)
   ;; a region over the limit goes to disk and the background; edits elsewhere
   ;; are kept, and one undo takes the sort back
-  (let* ((lines (loop for i below 3000 collect (format nil "~5,'0d ~a" (- 3000 i) (make-string 20 :initial-element #\x))))
+  (let* ((lines (loop for i below 3000
+                      collect (format nil "~5,'0d ~a" (- 3000 i) (make-string 20 :initial-element #\x))))
          (text (format nil "top~%~{~a~%~}" lines))
          (tuatara.defaults::*sort-in-memory-limit* 1000)
          (tuatara.defaults::*sort-piece* 7000))
@@ -473,7 +500,9 @@ are rewritten at once."
                           (when (equal pattern "a(b") (incf calls))
                           (apply function pattern more)))
     (unwind-protect
-         (run-keys (append (list "C-x h M-x k e e p - l i n e s RET a ( b") (make-list 16 :initial-element :tick) (list "C-g"))
+         (run-keys (append (list "C-x h M-x k e e p - l i n e s RET a ( b")
+                           (make-list 16 :initial-element :tick)
+                           (list "C-g"))
                    :text (format nil "a(b~%x~%") :width 100)
       (sb-int:unencapsulate 'tuatara.defaults::make-pattern-matcher 'counted))
     ;; once for the prompt, once for the count, however often the prompt is drawn
@@ -486,7 +515,8 @@ are rewritten at once."
                         (let ((b (tuatara.command:current-buffer)))
                           (tuatara.defaults::rewrite-lines b 0 (tuatara.buffer:buffer-size b) "Upcasing"
                                                            (lambda (text length) (and (plusp length) (string-upcase (subseq text 0 length))))
-                                                           (lambda (gone changed) (format nil "~d gone, ~d changed" gone changed))))))
+                                                           (lambda (gone changed)
+                                                             (format nil "~d gone, ~d changed" gone changed))))))
                 :text (lines-text "ab" "" "cd") :width 100)
     (true (tuatara.frontend.fake:fake-frame-showing f "1 gone, 2 changed"))
     (is string= (lines-text "AB" "CD") (session-text editor))))
@@ -495,7 +525,8 @@ are rewritten at once."
   ;; delete-duplicate-lines compares lines as the octets they are: nothing is made for a
   ;; line but its place among those seen, none at all for lines next to each other
   (let* ((octets (tuatara.text:string-octets
-                  (with-output-to-string (o) (dotimes (i 20000) (format o "a line of the log, number ~d, said twice~%" (floor i 2))))))
+                  (with-output-to-string (o)
+                    (dotimes (i 20000) (format o "a line of the log, number ~d, said twice~%" (floor i 2))))))
          (lines (multiple-value-list (tuatara.defaults::scan-lines octets nil)))
          (starts (first lines)) (ends (second lines)))
     (is = 10000 (nth-value 1 (tuatara.defaults::duplicate-marks octets starts ends nil nil nil)))

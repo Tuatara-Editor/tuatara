@@ -1,4 +1,5 @@
-;;;; lisp/lsp/hints.lisp --- Inlay hints: what a language server shows within the code, the types and the parameters' names.
+;;;; lisp/lsp/hints.lisp --- Inlay hints: what a language server shows within the code, the types and the parameters'
+;;;; names.
 ;;;; Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
 ;;;;
 ;;;; A server that gives inlay hints shows, faint within a line, what the code
@@ -26,7 +27,9 @@ spaces it asks for either side."
   (format nil "~:[~; ~]~a~:[~; ~]"
           (tuatara.text:json-true-p (tuatara.text:json-get hint "paddingLeft"))
           (or (tuatara.text:json-text hint "label")
-              (format nil "~{~a~}" (map 'list (lambda (part) (or (tuatara.text:json-text part "value") "")) (tuatara.text:json-items hint "label"))))
+              (format nil "~{~a~}" (map 'list
+                                        (lambda (part) (or (tuatara.text:json-text part "value") ""))
+                                        (tuatara.text:json-items hint "label"))))
           (tuatara.text:json-true-p (tuatara.text:json-get hint "paddingRight"))))
 
 (defun lsp-ask-hints (doc)
@@ -48,7 +51,9 @@ to be shown once they come while its buffer's text is still as asked of."
                                             for at = (doc-byte doc server (tuatara.text:json-get hint "position"))
                                             when at
                                               collect (list at at (hint-label hint)))))
-                           (keep-placed buffer 'lsp-hints doc (and hints (coerce (stable-sort hints #'< :key #'car) 'simple-vector)))
+                           (keep-placed buffer 'lsp-hints doc (and hints
+                                                                   (coerce (stable-sort hints #'< :key #'car)
+                                                                           'simple-vector)))
                            (show-hints-in buffer)))))))))
 
 (defun buffer-hints (buffer)
@@ -95,7 +100,8 @@ otherwise (TUATARA.DISPLAY:BUFFER-REPLACEMENTS-FUNCTION, kept)."
 its display as its mode has it once none are left."
   (setf (tuatara.buffer:buffer-local buffer 'lsp-hints)
         (and doc (remove doc (tuatara.buffer:buffer-local buffer 'lsp-hints) :key #'hints-doc)))
-  (when (and (tuatara.buffer:buffer-local buffer 'lsp-hints-shown) (null (tuatara.buffer:buffer-local buffer 'lsp-hints)))
+  (when (and (tuatara.buffer:buffer-local buffer 'lsp-hints-shown)
+             (null (tuatara.buffer:buffer-local buffer 'lsp-hints)))
     (setf (tuatara.display:buffer-replacements-function buffer)
           (tuatara.buffer:buffer-local buffer 'lsp-replacements-before)
           (tuatara.buffer:buffer-local buffer 'lsp-hints-shown) nil)))
@@ -169,8 +175,11 @@ their title asked for it, shown as it comes."
                                (unless (lens-title lens)
                                  (lsp-request server "codeLens/resolve" lens
                                               (lambda (resolved error)
-                                                (when (and (null error) (hash-table-p resolved) (doc-unchanged-p doc version))
-                                                  (setf (gethash "command" lens) (tuatara.text:json-get resolved "command"))
+                                                (when (and (null error)
+                                                           (hash-table-p resolved)
+                                                           (doc-unchanged-p doc version))
+                                                  (setf (gethash "command" lens)
+                                                        (tuatara.text:json-get resolved "command"))
                                                   (show-lenses buffer doc server lenses)))))))))))))))
 
 (defun forget-lenses (buffer)
@@ -200,7 +209,8 @@ command."
     (cond ((null shown) (message "No code lenses shown here (~a)" (substitute-command-keys "\\[lsp-code-lenses-mode]")))
           ((null here) (message "No code lens on this line"))
           (t (let ((lens (if (rest here)
-                             (completing-read-value "Run: " (mapcar (lambda (l) (make-candidate (lens-title l) :value l)) here)
+                             (completing-read-value "Run: "
+                                                    (mapcar (lambda (l) (make-candidate (lens-title l) :value l)) here)
                                                     :require-match t :keep-order t)
                              (first here))))
                (when (hash-table-p lens)

@@ -50,10 +50,12 @@ NIL; one whose time is none (25:00, a range ending 10:00-24:30) is none."
             (let ((ts (make-org-ts :active (char= (char text 0) #\<)
                                    :year (int 1) :month (int 2) :day (int 3)
                                    :hour hour :minute minute :end-hour end-hour :end-minute end-minute)))
-              (cl-ppcre:do-register-groups (mark value unit) ("(\\.\\+|\\+\\+|\\+|--|-)(\\d+)([hdwmy])" text nil :start (aref starts 8) :end (aref ends 8))
+              (cl-ppcre:do-register-groups (mark value unit)
+                ("(\\.\\+|\\+\\+|\\+|--|-)(\\d+)([hdwmy])" text nil :start (aref starts 8) :end (aref ends 8))
                 (let ((value (parse-integer value)) (unit (char unit 0)))
                   (cond ((member mark '("+" "++" ".+") :test #'string=)
-                         (setf (org-ts-repeater ts) (cond ((string= mark "+") :cumulate) ((string= mark "++") :catch-up) (t :restart))
+                         (setf (org-ts-repeater ts)
+                               (cond ((string= mark "+") :cumulate) ((string= mark "++") :catch-up) (t :restart))
                                (org-ts-repeat-value ts) value (org-ts-repeat-unit ts) unit))
                         (t (setf (org-ts-warning ts) (if (string= mark "--") :first :all)
                                  (org-ts-warning-value ts) value (org-ts-warning-unit ts) unit)))))
@@ -87,7 +89,8 @@ that is not (2026-02-31, 25:00)."
   "Make TS's date (and its time, when it has one) that of the universal TIME, its time range kept as long."
   (multiple-value-bind (day hour minute) (time-day time)
     (when (and (org-ts-hour ts) (org-ts-end-hour ts))
-      (let ((length (- (+ (* 60 (org-ts-end-hour ts)) (org-ts-end-minute ts)) (+ (* 60 (org-ts-hour ts)) (org-ts-minute ts)))))
+      (let ((length (- (+ (* 60 (org-ts-end-hour ts)) (org-ts-end-minute ts))
+                       (+ (* 60 (org-ts-hour ts)) (org-ts-minute ts)))))
         (multiple-value-bind (h m) (floor (+ (* 60 hour) minute length) 60)
           (setf (org-ts-end-hour ts) (mod h 24) (org-ts-end-minute ts) m))))
     (org-ts-set-day ts day)
@@ -116,7 +119,11 @@ the day of the month, a date past the month's end counted on into the next:
   "TS written as a note writes a timestamp: <2026-10-05 Mon 09:00-10:00 +1w -3d>."
   (format nil "~:[[~;<~]~a~@[ ~a~]~@[ ~a~]~:[]~;>~]"
           (org-ts-active ts)
-          (date-time-text (org-ts-day-number ts) (org-ts-hour ts) (org-ts-minute ts) (org-ts-end-hour ts) (org-ts-end-minute ts))
+          (date-time-text (org-ts-day-number ts)
+                          (org-ts-hour ts)
+                          (org-ts-minute ts)
+                          (org-ts-end-hour ts)
+                          (org-ts-end-minute ts))
           (and (org-ts-repeater ts)
                (format nil "~a~d~c" (ecase (org-ts-repeater ts) (:cumulate "+") (:catch-up "++") (:restart ".+"))
                        (org-ts-repeat-value ts) (org-ts-repeat-unit ts)))
@@ -139,9 +146,9 @@ alone, [2026-10-01 Thu]."
 
 (defun org-ts-repeat (ts now)
   "Move TS, a timestamp with a repeater, to its next time after it is done at
-the universal time NOW: +1w and ++1w a week on until it is past NOW (a time
-missed is not owed: one done late goes on to its first time to come, where
-Emacs Org moves +1w one week only), .+1w a week on from NOW; one repeating
+the universal time NOW. +1w and ++1w go a week on until the time is past NOW. A
+time missed is not owed: one done late goes on to its first time to come, where
+Emacs Org moves +1w one week only. .+1w goes a week on from NOW. One repeating
 every 0 stays."
   (let ((value (org-ts-repeat-value ts)) (unit (org-ts-repeat-unit ts)))
     (unless (and value (plusp value)) (return-from org-ts-repeat ts))
@@ -184,8 +191,15 @@ were moved, as a second value. A repeater of 0 (+0d) repeats nothing."
                                                 (progn
                                                   (incf count)
                                                   (org-ts-repeat ts now)
-                                                  (org-step-past ts (lambda (ts) (org-ts-shift ts (org-ts-repeat-value ts) (org-ts-repeat-unit ts)))
-                                                                 (lambda (ts) (org-cancelled-p cancelled (org-ts-day-number ts) (org-ts-time-of-day ts))))
+                                                  (org-step-past ts
+                                                                 (lambda (ts)
+                                                                   (org-ts-shift ts
+                                                                                 (org-ts-repeat-value ts)
+                                                                                 (org-ts-repeat-unit ts)))
+                                                                 (lambda (ts)
+                                                                   (org-cancelled-p cancelled
+                                                                                    (org-ts-day-number ts)
+                                                                                    (org-ts-time-of-day ts))))
                                                   (org-ts-text ts))
                                                 match)))
                                         :simple-calls t)
@@ -301,14 +315,14 @@ OCCURRENCE when it was not moved."
 ;;; diary rules that say which days, and never run.
 
 (defstruct (org-rule (:conc-name org-rule-))
-  "A date by rule, read from a timestamp <%%(...)>: KIND, one of :FLOAT
-\(the Nth or last weekday of a month), :CYCLIC (every N days), :BLOCK (every
-day from one date to another), :ANNIVERSARY (a day each year), :DATE (the
-days whose year, month and day are as given), :WEEKDAYS (the days of the
-week listed, 0 for Sunday to 6 for Saturday), :ALL (the days all its rules
-take, from one date to another say) or :ANY (the days any of them takes); ARGUMENTS, what its form says,
-as ORG-READ-RULE reads them; and HOUR, MINUTE, END-HOUR and END-MINUTE of
-the time written after it, or NIL."
+  "A date by rule, read from a timestamp <%%(...)>: KIND, one of :FLOAT \(the
+Nth or last weekday of a month), :CYCLIC (every N days), :BLOCK (every day from
+one date to another), :ANNIVERSARY (a day each year), :DATE (the days whose
+year, month and day are as given). KIND may also be :WEEKDAYS (the days of the
+week listed, 0 for Sunday to 6 for Saturday), :ALL (the days all its rules take,
+from one date to another say) or :ANY (the days any of them takes). ARGUMENTS,
+what its form says, as ORG-READ-RULE reads them. And HOUR, MINUTE, END-HOUR and
+END-MINUTE of the time written after it, or NIL."
   kind arguments hour minute end-hour end-minute)
 
 (defparameter *org-rule-scanner* (cl-ppcre:create-scanner (format nil "^<~a>$" (org-rule-timestamp-body t)))
@@ -359,8 +373,8 @@ any, or a list of numbers."
   "DATA, a rule's form as ORG-READ-RULE-DATA reads it, as an ORG-RULE with no
 time, or NIL when it is not one of those known: diary-float, diary-cyclic,
 diary-block, diary-anniversary and diary-date, with numbers, t and lists of
-numbers as their arguments; (memq (calendar-day-of-week date) '(1 2 3 4 5)),
-the days of the week listed; (and FORM ...), the days all its forms take,
+numbers as their arguments. Also (memq (calendar-day-of-week date) '(1 2 3 4
+5)), the days of the week listed; (and FORM ...), the days all its forms take,
 and (or FORM ...), the days any of them takes, of these."
   (let ((name (first data)) (args (rest data)))
     (flet ((date (a b c)
@@ -371,7 +385,8 @@ and (or FORM ...), the days any of them takes, of these."
              (destructuring-bind (&optional month dayname n day &rest more) args
                (and (null more) (org-rule-part-p month) (org-rule-part-p dayname)
                     (integerp n) (<= 1 (abs n) 5) (or (null day) (and (integerp day) (<= 1 day 31)))
-                    (every (lambda (d) (<= 0 d 6)) (if (integerp dayname) (list dayname) (if (consp dayname) dayname '())))
+                    (every (lambda (d) (<= 0 d 6))
+                           (if (integerp dayname) (list dayname) (if (consp dayname) dayname '())))
                     (make-org-rule :kind :float :arguments (list month dayname n day)))))
             ((string= name "diary-cyclic")
              (destructuring-bind (&optional n a b c &rest more) args
@@ -619,7 +634,8 @@ RULE takes no day near."
          (day (org-rule-done-day rule last (org-today now) cancelled)))
     (and day (org-day-timestamp-text day :hour (org-rule-hour rule) :minute (org-rule-minute rule)))))
 
-(setf (documentation 'make-org-ts 'function) "An ORG-TS of the parts given by their keywords, each as ORG-TS says; ORG-TS-TEXT writes it."
+(setf (documentation 'make-org-ts 'function)
+      "An ORG-TS of the parts given by their keywords, each as ORG-TS says; ORG-TS-TEXT writes it."
       (documentation 'org-ts-active 'function) "True when a timestamp is active, <> rather than []."
       (documentation 'org-ts-year 'function) "The year of a timestamp."
       (documentation 'org-ts-month 'function) "The month of a timestamp, 1 to 12."
@@ -628,12 +644,17 @@ RULE takes no day near."
       (documentation 'org-ts-minute 'function) "The minute a timestamp begins at, or NIL when it has no time."
       (documentation 'org-ts-end-hour 'function) "The hour a timestamp's range of times ends at, or NIL."
       (documentation 'org-ts-end-minute 'function) "The minute a timestamp's range of times ends at, or NIL."
-      (documentation 'org-ts-repeater 'function) "A timestamp's repeater: :CUMULATE (+), :CATCH-UP (++), :RESTART (.+), or NIL."
+      (documentation 'org-ts-repeater 'function)
+      "A timestamp's repeater: :CUMULATE (+), :CATCH-UP (++), :RESTART (.+), or NIL."
       (documentation 'org-ts-repeat-value 'function) "How many units a timestamp repeats every, or NIL."
-      (documentation 'org-ts-repeat-unit 'function) "The unit a timestamp repeats by: #\\h #\\d #\\w #\\m or #\\y, or NIL."
-      (documentation 'org-rule-kind 'function) "A date by rule's kind: :FLOAT, :CYCLIC, :BLOCK, :ANNIVERSARY, :DATE, :WEEKDAYS, :ALL or :ANY."
-      (documentation 'org-rule-arguments 'function) "What a date by rule's form says, as ORG-RULE-FROM-DATA reads it for its kind."
+      (documentation 'org-ts-repeat-unit 'function)
+      "The unit a timestamp repeats by: #\\h #\\d #\\w #\\m or #\\y, or NIL."
+      (documentation 'org-rule-kind 'function)
+      "A date by rule's kind: :FLOAT, :CYCLIC, :BLOCK, :ANNIVERSARY, :DATE, :WEEKDAYS, :ALL or :ANY."
+      (documentation 'org-rule-arguments 'function)
+      "What a date by rule's form says, as ORG-RULE-FROM-DATA reads it for its kind."
       (documentation 'org-rule-hour 'function) "The hour of the time written after a date by rule, or NIL."
       (documentation 'org-rule-minute 'function) "The minute of the time written after a date by rule, or NIL."
       (documentation 'org-rule-end-hour 'function) "The hour the range of times after a date by rule ends at, or NIL."
-      (documentation 'org-rule-end-minute 'function) "The minute the range of times after a date by rule ends at, or NIL.")
+      (documentation 'org-rule-end-minute 'function)
+      "The minute the range of times after a date by rule ends at, or NIL.")

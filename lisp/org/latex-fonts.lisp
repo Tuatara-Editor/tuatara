@@ -78,7 +78,10 @@ each, FAMILY the first of its own names (OWN-FAMILY); with CHARSETS, each
 \(FAMILY FILE RANGES), RANGES the characters it has as FONT-CHARACTERS gives
 them."
   (loop for line in (uiop:split-string (or (apply #'fontconfig-output "fc-list"
-                                                  (append pattern (list (if charsets "%{family}|%{familylang}|%{file}|%{charset}\\n" "%{family}|%{familylang}|%{file}\\n"))))
+                                                  (append pattern
+                                                          (list (if charsets
+                                                                    "%{family}|%{familylang}|%{file}|%{charset}\\n"
+                                                                    "%{family}|%{familylang}|%{file}\\n"))))
                                            "")
                                        :separator '(#\Newline))
         for bar = (position #\| line)

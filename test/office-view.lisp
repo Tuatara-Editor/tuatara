@@ -37,7 +37,8 @@ are, and in rimu's preview.")
              (format nil "<p:sp><p:nvSpPr><p:cNvPr id='~d' name='Shape ~:*~d'/><p:cNvSpPr/><p:nvPr>~@[<p:ph type='~a'/>~]</p:nvPr></p:nvSpPr><p:spPr/><p:txBody><a:bodyPr/>~{~a~}</p:txBody></p:sp>"
                      id placeholder
                      (mapcar (lambda (paragraph)
-                               (destructuring-bind (text &optional level) (if (listp paragraph) paragraph (list paragraph))
+                               (destructuring-bind (text &optional level)
+                                   (if (listp paragraph) paragraph (list paragraph))
                                  (format nil "<a:p>~@[<a:pPr lvl='~d'/>~]<a:r><a:t>~a</a:t></a:r></a:p>" level text)))
                              paragraphs)))
            (slide (show &rest shapes)
@@ -60,7 +61,8 @@ are, and in rimu's preview.")
        (cons "ppt/notesSlides/notesSlide1.xml"
              (format nil "<?xml version='1.0' encoding='UTF-8'?><p:notes ~a><p:cSld><p:spTree><p:nvGrpSpPr><p:cNvPr id='1' name=''/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr/>~a~a~a</p:spTree></p:cSld></p:notes>"
                      p (shape 2 "sldImg") (shape 3 "body" "Say the count slowly.") (shape 4 "sldNum" "99")))
-       (cons "ppt/slides/slide2.xml" (slide "0" (shape 2 "title" "Hidden findings") (shape 3 "body" "Not for the meeting")))
+       (cons "ppt/slides/slide2.xml"
+         (slide "0" (shape 2 "title" "Hidden findings") (shape 3 "body" "Not for the meeting")))
        (cons "ppt/slides/slide5.xml" (slide nil (shape 2 "title" "Leftover") (shape 3 "body" "Left behind"))))))
   "The parts of a small PowerPoint presentation made for the tests.")
 
@@ -85,7 +87,8 @@ are, and in rimu's preview.")
       (note-has note "- Values :: as last saved with the file; no formula is worked out here")
       (note-has note "- Macros :: yes (xl/vbaProject.bin), never run")
       (note-has note "- Links outside it :: https://example.org/kea (none followed)")
-      (note-has note (format nil "* Sheet 1: Birds~%|  | A | B | C (hidden) | D |~%|-~%| 1 | Bird | Count |  | Seen |~%"))
+      (note-has note
+                (format nil "* Sheet 1: Birds~%|  | A | B | C (hidden) | D |~%|-~%| 1 | Bird | Count |  | Seen |~%"))
       ;; shared strings, a | kept in its cell, a number as written, a date by its format
       (note-has note "| 2 | Kea \\vert{} alpine | 12 | x | 2024-03-01 |")
       ;; a hidden row; a string of runs, its reading aid left out
@@ -156,7 +159,8 @@ are, and in rimu's preview.")
                           do (format s "<row r='~d'><c r='~a~d' t='inlineStr'><is><t>v~d</t></is></c>~:[~;<c r='A1' t='inlineStr'><is><t>again</t></is></c>~]</row>"
                                      (* i 1000) (tuatara.defaults::sheet-column-letters (* i 1600)) (* i 1000) i (= i 1)))))
            (sheet (format nil "<worksheet xmlns='http://schemas.openxmlformats.org/spreadsheetml/2006/main'><cols><col min='5' max='2' hidden='1'/><col min='1599' max='99999999' hidden='1'/></cols><sheetData>~a</sheetData></worksheet>" cells))
-           (parts (cons (cons "xl/worksheets/sheet1.xml" sheet) (remove "xl/worksheets/sheet1.xml" *xlsx-test-parts* :key #'car :test #'string=)))
+           (parts (cons (cons "xl/worksheets/sheet1.xml" sheet)
+                        (remove "xl/worksheets/sheet1.xml" *xlsx-test-parts* :key #'car :test #'string=)))
            (path (write-office-test-file (merge-pathnames "sparse.xlsx" dir) parts))
            (note (let ((tuatara.defaults::*sheet-most-cells* 11)) (tuatara.defaults::xlsx-read-note path))))
       (note-has note "Its cells, too far apart for a table:")
@@ -166,7 +170,8 @@ are, and in rimu's preview.")
       (false (search "|  | " (subseq note 0 (search "* Sheet 2" note)))))
     ;; a cell given twice in a row: once in the table
     (let* ((sheet "<worksheet xmlns='http://schemas.openxmlformats.org/spreadsheetml/2006/main'><sheetData><row r='1'><c r='B1'><v>2</v></c><c r='A1'><v>1</v></c><c r='B1'><v>3</v></c></row></sheetData></worksheet>")
-           (parts (cons (cons "xl/worksheets/sheet1.xml" sheet) (remove "xl/worksheets/sheet1.xml" *xlsx-test-parts* :key #'car :test #'string=)))
+           (parts (cons (cons "xl/worksheets/sheet1.xml" sheet)
+                        (remove "xl/worksheets/sheet1.xml" *xlsx-test-parts* :key #'car :test #'string=)))
            (note (tuatara.defaults::xlsx-read-note (write-office-test-file (merge-pathnames "twice.xlsx" dir) parts))))
       (note-has note (format nil "|  | A | B |~%|-~%| 1 | 1 | 2 |~%")))))
 
@@ -197,7 +202,8 @@ are, and in rimu's preview.")
           (old (namestring (merge-pathnames "old.xls" dir)))
           (named (namestring (merge-pathnames "fake.xls" dir))))
       (with-open-file (out old :direction :output :element-type '(unsigned-byte 8))
-        (write-sequence (coerce (append '(#xD0 #xCF #x11 #xE0 #xA1 #xB1 #x1A #xE1) (make-list 504 :initial-element 0)) '(vector (unsigned-byte 8))) out))
+        (write-sequence (coerce (append '(#xD0 #xCF #x11 #xE0 #xA1 #xB1 #x1A #xE1) (make-list 504 :initial-element 0))
+                                '(vector (unsigned-byte 8))) out))
       (alexandria:write-string-into-file "PK but a zip archive" named)
       (is eq :xlsx (getf (tuatara.defaults::office-file-format xlsx) :kind))
       (is eq :pptx (getf (tuatara.defaults::office-file-format pptx) :kind))
@@ -209,11 +215,13 @@ are, and in rimu's preview.")
       (is eq :ppt (getf (tuatara.defaults::office-preview-format :ole "talk.PPT") :kind))
       (false (tuatara.defaults::office-preview-format :ole "message.msg"))
       ;; LibreOffice given the kind's own ending, never the file's name
-      (is string= "xlsx" (tuatara.defaults::office-ending (tuatara.defaults::office-file-format xlsx) "x; rm -rf ~.xlsx"))
+      (is string= "xlsx"
+          (tuatara.defaults::office-ending (tuatara.defaults::office-file-format xlsx) "x; rm -rf ~.xlsx"))
       (is string= "ppsx" (tuatara.defaults::office-ending (tuatara.defaults::office-file-format pptx) "kea.ppsx"))
       ;; opened outside after asking (*open-externally-kinds*), with their own type
       (is string= "application/vnd.ms-excel" (tuatara.defaults::file-mime-type :ole "old.xls"))
-      (is string= "application/vnd.openxmlformats-officedocument.presentationml.slideshow" (tuatara.defaults::file-mime-type :pptx "kea.ppsx"))
+      (is string= "application/vnd.openxmlformats-officedocument.presentationml.slideshow"
+          (tuatara.defaults::file-mime-type :pptx "kea.ppsx"))
       (false (tuatara.defaults::open-externally-refusal xlsx))
       (false (tuatara.defaults::open-externally-refusal pptx)))))
 
@@ -221,7 +229,8 @@ are, and in rimu's preview.")
   "True while an Office document is being read or drawn."
   (or (some #'tuatara.defaults::office-read-job-p tuatara.runtime:*jobs*)
       (some (lambda (b) (let ((view (tuatara.defaults::pdf-view-of b)))
-                          (and view (or (tuatara.defaults::pdf-view-job view) (tuatara.defaults::pdf-view-text-job view)))))
+                          (and view
+                               (or (tuatara.defaults::pdf-view-job view) (tuatara.defaults::pdf-view-text-job view)))))
             tuatara.defaults::*pdf-views*)))
 
 (define-test (office-view office-visited-as-text)
@@ -229,7 +238,8 @@ are, and in rimu's preview.")
   (with-test-directory (dir)
     (let ((xlsx (write-office-test-file (merge-pathnames "birds.xlsx" dir) *xlsx-test-parts*))
           (pptx (write-office-test-file (merge-pathnames "kea.pptx" dir) *pptx-test-parts*)))
-      (dolist (case (list (list xlsx "birds.xlsx (text)" "* Sheet 1: Birds") (list pptx "kea.pptx (text)" "* Slide 1: Kea survey")))
+      (dolist (case (list (list xlsx "birds.xlsx (text)" "* Sheet 1: Birds")
+                          (list pptx "kea.pptx (text)" "* Slide 1: Kea survey")))
         (destructuring-bind (path name text) case
           (multiple-value-bind (f editor) (docx-session path '())
             (declare (ignore f))
@@ -257,8 +267,12 @@ workbook, Impress for a presentation)."
 
 (define-test (office-view office-pages)
   (with-test-directory (dir)
-    (dolist (case `((,*xlsx-test-parts* "birds.xlsx" "Excel workbook, its pages drawn by LibreOffice" "About this workbook")
-                    (,*pptx-test-parts* "kea.pptx" "PowerPoint presentation, its pages drawn by LibreOffice" "About this presentation")))
+    (dolist (case `((,*xlsx-test-parts* "birds.xlsx"
+                                        "Excel workbook, its pages drawn by LibreOffice"
+                                        "About this workbook")
+                    (,*pptx-test-parts* "kea.pptx"
+                                        "PowerPoint presentation, its pages drawn by LibreOffice"
+                                        "About this presentation")))
       (destructuring-bind (parts name kind about) case
         (let ((path (write-office-test-file (merge-pathnames name dir) parts)))
           (if (not (office-pages-made-p path))
@@ -296,7 +310,8 @@ workbook, Impress for a presentation)."
           (tuatara.buffer:kill-buffer (tuatara.display:window-buffer (tuatara.command:editor-window editor)))))
       (let ((old (namestring (merge-pathnames "old.xls" dir))))
         (with-open-file (out old :direction :output :element-type '(unsigned-byte 8))
-          (write-sequence (coerce (append '(#xD0 #xCF #x11 #xE0 #xA1 #xB1 #x1A #xE1) (make-list 504 :initial-element 0)) '(vector (unsigned-byte 8))) out))
+          (write-sequence (coerce (append '(#xD0 #xCF #x11 #xE0 #xA1 #xB1 #x1A #xE1) (make-list 504 :initial-element 0))
+                                  '(vector (unsigned-byte 8))) out))
         (let ((tuatara.defaults::*office-view-pages* nil))
           (multiple-value-bind (f editor) (docx-session old '() :cell-pixels '(10 20))
             (true (tuatara.frontend.fake:fake-frame-showing f "its pages are not shown here (*office-view-pages*)"))
@@ -319,7 +334,11 @@ workbook, Impress for a presentation)."
       (true (tuatara.frontend.fake:fake-frame-showing f "Slide 1: Kea survey")))
     ;; its first page, drawn from the PDF LibreOffice makes in the sandbox
     (when (office-pages-made-p (namestring (merge-pathnames "kea.pptx" dir)))
-      (let ((f (rimu-session dir (format nil "g f ~a RET" (rimu-typed "kea.pptx")) :preview t :width 250 :cell-pixels '(10 20))))
+      (let ((f (rimu-session dir
+                             (format nil "g f ~a RET" (rimu-typed "kea.pptx"))
+                             :preview t
+                             :width 250
+                             :cell-pixels '(10 20))))
         ;; its hidden slide not among its pages
         (true (tuatara.frontend.fake:fake-frame-showing f "PowerPoint presentation (OOXML), 1 page"))
         (true (last-images f))))
@@ -340,10 +359,15 @@ workbook, Impress for a presentation)."
               (true (tuatara.frontend.fake:fake-frame-showing f "Word document of before 2007, its pages drawn by LibreOffice"))
               (true (last-images f))
               (true (tuatara.frontend.fake:fake-frame-showing f "Text, page 1"))
-              (is string= "survey.doc" (tuatara.buffer:buffer-name (tuatara.display:window-buffer (tuatara.command:editor-window editor)))))
+              (is string= "survey.doc"
+                  (tuatara.buffer:buffer-name (tuatara.display:window-buffer (tuatara.command:editor-window editor)))))
             (pdf-forget)
             ;; in rimu's preview: its first page over its octets
-            (let ((f (rimu-session dir (format nil "g f ~a RET" (rimu-typed "survey.doc")) :preview t :width 250 :cell-pixels '(10 20))))
+            (let ((f (rimu-session dir
+                                   (format nil "g f ~a RET" (rimu-typed "survey.doc"))
+                                   :preview t
+                                   :width 250
+                                   :cell-pixels '(10 20))))
               (true (tuatara.frontend.fake:fake-frame-showing f "Microsoft compound file (an Office document of before 2007, a mail, an installer), 1 page"))
               (true (last-images f)))
             (rimu-forget))))))
@@ -502,12 +526,19 @@ manifest's entries for its text when given."
           (empty (write-office-test-file (merge-pathnames "empty.odt" dir)
                                          (remove "content.xml" (odf-test-parts "text" "") :key #'car :test #'string=)))
           (deep (write-office-test-file (merge-pathnames "deep.odt" dir)
-                                        (odf-test-parts "text" (format nil "~{~a~}<text:p>deep</text:p>" (make-list 2000 :initial-element "<text:section>"))))))
-      (note-has (handler-case (progn (tuatara.defaults::odf-read-note locked) "") (error (e) (princ-to-string e))) "locked with a password")
-      (note-has (handler-case (progn (tuatara.defaults::odf-read-note empty) "") (error (e) (princ-to-string e))) "holds no OpenDocument")
-      (note-has (handler-case (progn (tuatara.defaults::odf-read-note deep) "") (error (e) (princ-to-string e))) "nested deeper")
+                                        (odf-test-parts "text"
+                                                        (format nil
+                                                                "~{~a~}<text:p>deep</text:p>"
+                                                                (make-list 2000 :initial-element "<text:section>"))))))
+      (note-has (handler-case (progn (tuatara.defaults::odf-read-note locked) "") (error (e) (princ-to-string e)))
+                "locked with a password")
+      (note-has (handler-case (progn (tuatara.defaults::odf-read-note empty) "") (error (e) (princ-to-string e)))
+                "holds no OpenDocument")
+      (note-has (handler-case (progn (tuatara.defaults::odf-read-note deep) "") (error (e) (princ-to-string e)))
+                "nested deeper")
       (let ((tuatara.defaults::*docx-largest-xml* 300))
-        (fail (tuatara.defaults::odf-read-note (write-office-test-file (merge-pathnames "kea.odt" dir) *odt-test-parts*)))))))
+        (fail (tuatara.defaults::odf-read-note (write-office-test-file (merge-pathnames "kea.odt" dir)
+                                                                       *odt-test-parts*)))))))
 
 (define-test (office-view odf-opened)
   ;; told by contents, read as text where pages are not drawn, in rimu's preview too, opened outside after asking
@@ -612,13 +643,19 @@ manifest's entries for its text when given."
     (let* ((row "<table:table-row table:number-rows-repeated='64'><table:table-cell><text:p>x</text:p></table:table-cell><table:covered-table-cell table:number-columns-repeated='64'/></table:table-row>")
            (odt (write-office-test-file
                  (merge-pathnames "covered.odt" dir)
-                 (odf-test-parts "text" (format nil "<table:table table:name='Wide'>~{~a~}</table:table>" (make-list 300 :initial-element row)))))
+                 (odf-test-parts "text"
+                                 (format nil
+                                         "<table:table table:name='Wide'>~{~a~}</table:table>"
+                                         (make-list 300 :initial-element row)))))
            (note (let ((tuatara.defaults::*office-note-size-limit* 100000)) (tuatara.defaults::odf-read-note odt))))
       (note-has note "The rest is left out: the note reached 100,000 characters")
       (true (< (length note) 300000) "~:d characters" (length note)))
     (let* ((odt (write-office-test-file
                  (merge-pathnames "spaces.odt" dir)
-                 (odf-test-parts "text" (format nil "<text:p>a~{~a~}b</text:p>" (make-list 4000 :initial-element "<text:s text:c='1000'/>")))))
+                 (odf-test-parts "text"
+                                 (format nil
+                                         "<text:p>a~{~a~}b</text:p>"
+                                         (make-list 4000 :initial-element "<text:s text:c='1000'/>")))))
            (before (sb-ext:get-bytes-consed))
            (note (let ((tuatara.defaults::*office-note-size-limit* 100000)) (tuatara.defaults::odf-read-note odt)))
            (consed (- (sb-ext:get-bytes-consed) before)))

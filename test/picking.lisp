@@ -5,8 +5,8 @@
 
 (define-test picking
   :description "Every question for a directory asks as C-x C-f does (any part of a name matches, // and ~/
-start again, RET goes into a directory and takes the line typed); a question's default and kept
-order; every question for a buffer offers the same and previews the same; a list that fills in
+start again, RET goes into a directory and takes the line typed). A question's default and kept
+order; every question for a buffer offers the same and previews the same. A list that fills in
 the background says how far it has got in the same words everywhere.")
 
 (defun shown-candidates ()
@@ -42,9 +42,12 @@ was afterwards (unset when it was)."
       (put-file (merge-pathnames "top.txt" dir) (format nil "top~%"))
       (flet ((searched-in (keys)
                (let ((prompt nil))
-                 (run-keys (list (format nil "C-x C-f ~a RET C-u M-s g ~a" (key-string (concatenate 'string root "top.txt")) keys)
+                 (run-keys (list (format nil
+                                         "C-x C-f ~a RET C-u M-s g ~a"
+                                         (key-string (concatenate 'string root "top.txt")) keys)
                                  :wait
-                                 (lambda () (setf prompt (tuatara.command:editor-minibuffer-prompt tuatara.command:*editor*))))
+                                 (lambda ()
+                                   (setf prompt (tuatara.command:editor-minibuffer-prompt tuatara.command:*editor*))))
                            :width 250 :height 20)
                  prompt)))
         ;; any part of a name: apj is alpha-project/; RET goes into it, RET then takes the line typed
@@ -73,15 +76,19 @@ was afterwards (unset when it was)."
         (true (tuatara.frontend.fake:fake-frame-showing f "Copied 1 file to"))
         (is string= "beta" (alexandria:read-file-into-string (here there "b.txt"))))
       ;; a whole path typed after the one offered: from its // on
-      (let ((f (ops-session dir (format nil "g f a . t x t RET C C-u ~a RET" (rimu-typed (concatenate 'string root "sub/" root "there-place/"))))))
+      (let ((f (ops-session dir
+                            (format nil
+                                    "g f a . t x t RET C C-u ~a RET"
+                                    (rimu-typed (concatenate 'string root "sub/" root "there-place/"))))))
         (true (tuatara.frontend.fake:fake-frame-showing f "Copied 1 file to"))
         (is string= "alpha" (alexandria:read-file-into-string (here there "a.txt"))))
       ;; ~/ starts again from the home directory: its directories offered
       (with-test-home (home)
         (let ((offered :none))
-          (ops-session dir (list (format nil "g f a . t x t RET C C-u ~a" (rimu-typed (concatenate 'string root "sub/~/")))
-                                 (lambda () (setf offered (sort (shown-candidates) #'string<)))
-                                 "C-g"))
+          (ops-session dir
+                       (list (format nil "g f a . t x t RET C C-u ~a" (rimu-typed (concatenate 'string root "sub/~/")))
+                             (lambda () (setf offered (sort (shown-candidates) #'string<)))
+                             "C-g"))
           (is equal '("Documents/" "notes/") offered))))))
 
 (defvar *picked* nil
@@ -106,7 +113,8 @@ was afterwards (unset when it was)."
 (define-test (picking default-and-kept-order)
   ;; the default: named in the prompt, offered first, taken by RET alone
   (let ((*picked* nil) (offered nil))
-    (let ((f (run-keys (list "M-x t e s t - p i c k - d e f a u l t RET" (lambda () (setf offered (shown-candidates))) "RET")
+    (let ((f (run-keys (list "M-x t e s t - p i c k - d e f a u l t RET"
+                             (lambda () (setf offered (shown-candidates))) "RET")
                        :width 80 :height 12)))
       (true (tuatara.frontend.fake:fake-frame-showing f "Pick (default gamma): "))
       (is equal "gamma" (first offered))
@@ -136,7 +144,9 @@ was afterwards (unset when it was)."
               :width 80 :height 12)
     (is equal "alpha" (first offered)))
   ;; C-h f in a Lisp buffer: the symbol at point the default, named in the prompt
-  (multiple-value-bind (f editor) (run-keys-in-turns '("C-h f RET") :text "mapcar #'1+ list" :mode 'tuatara.defaults::lisp-mode)
+  (multiple-value-bind (f editor) (run-keys-in-turns '("C-h f RET")
+                                                     :text "mapcar #'1+ list"
+                                                     :mode 'tuatara.defaults::lisp-mode)
     (true (tuatara.frontend.fake:fake-frame-showing f "Describe function (default mapcar): "))
     (true (search "mapcar is a function" (help-text editor)))))
 
@@ -156,7 +166,8 @@ was afterwards (unset when it was)."
                (let ((windows (tuatara.command:editor-windows editor)))
                  (is = 2 (length windows))
                  (is string= "picking-other" (tuatara.buffer:buffer-name (tuatara.display:window-buffer (tuatara.command:editor-window editor))))
-                 (true (find "*scratch*" windows :key (lambda (w) (tuatara.buffer:buffer-name (tuatara.display:window-buffer w)))
+                 (true (find "*scratch*" windows
+                             :key (lambda (w) (tuatara.buffer:buffer-name (tuatara.display:window-buffer w)))
                                                  :test #'string=)))))
            ;; previews off: nothing shown until chosen
            (let ((tuatara-user:*preview-buffers* nil))
@@ -166,10 +177,11 @@ was afterwards (unset when it was)."
            (flet ((offered (keys)
                     (let ((seen nil))
                       (run-keys (list keys (lambda ()
-                                             (setf seen (map 'list (lambda (c) (list (tuatara.command:candidate-string c)
-                                                                                     (tuatara.command:candidate-annotation c)))
-                                                             (tuatara.command::completion-candidates
-                                                              (tuatara.command:editor-completion tuatara.command:*editor*))))))
+                                             (setf seen
+                                                   (map 'list (lambda (c) (list (tuatara.command:candidate-string c)
+                                                                                (tuatara.command:candidate-annotation c)))
+                                                        (tuatara.command::completion-candidates
+                                                         (tuatara.command:editor-completion tuatara.command:*editor*))))))
                                 :width 80 :height 12)
                       seen)))
              (let ((switching (offered "C-x b"))
@@ -217,7 +229,9 @@ was afterwards (unset when it was)."
   (let ((tuatara-user:*formatted-file-keywords* '("garden")))
     (let ((*held-gathering* nil))
       (true (tuatara.frontend.fake:fake-frame-showing
-             (run-keys (list "M-x t e s t - p i c k - s u b d i r e c t o r y RET" #'wait-for-held-gathering :tick "C-g")
+             (run-keys (list "M-x t e s t - p i c k - s u b d i r e c t o r y RET"
+                             #'wait-for-held-gathering
+                             :tick "C-g")
                        :width 120 :height 12)
              "Select SUBDIRECTORY (listing, 3 so far): ")))
     (let ((*held-gathering* nil))
@@ -291,7 +305,9 @@ was afterwards (unset when it was)."
         (flet ((latest () (first (tuatara.defaults::chosen-paths))))
           (tuatara.defaults::note-chosen-path work)
           ;; find-file-safely (C-u C-x C-f)
-          (run-keys (format nil "C-u C-x C-f C-a C-k ~a RET" (key-string (concatenate 'string root "evidence/disk.img")))
+          (run-keys (format nil
+                            "C-u C-x C-f C-a C-k ~a RET"
+                            (key-string (concatenate 'string root "evidence/disk.img")))
                     :width 200 :height 20)
           (is string= work (latest))
           ;; a file in one of *safe-directories*, found as usual

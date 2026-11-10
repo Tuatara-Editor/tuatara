@@ -59,7 +59,9 @@ digits, with its first)."
                            (if (< end to) (tuatara.text:rope-octets rope :start end :end to) #()))))
     (let ((tuatara.buffer:*hex-view-resizing* t))
       (if group
-          (tuatara.buffer:buffer-edit b (vector (tuatara.text:make-edit from to (coerce new 'tuatara.text:octets))) :group t)
+          (tuatara.buffer:buffer-edit b
+                                      (vector (tuatara.text:make-edit from to (coerce new 'tuatara.text:octets)))
+                                      :group t)
           (tuatara.buffer:buffer-replace b from to (coerce new 'tuatara.text:octets))))
     (setf (tuatara.display:hex-point b) end)))
 
@@ -108,7 +110,8 @@ octet so typed one step to undo. Refused in a buffer that may not be written
                            ;; the low half: the octet done, one step to undo with its high half, on to the next
                            (hex-overwrite (coerce (list (logior (logand old #xf0) digit)) 'tuatara.text:octets) :group t)
                            ;; the high half: the cursor stays, on the low half
-                           (progn (hex-overwrite (coerce (list (logior (ash digit 4) (logand old #x0f))) 'tuatara.text:octets))
+                           (progn (hex-overwrite (coerce (list (logior (ash digit 4) (logand old #x0f)))
+                                                         'tuatara.text:octets))
                                   (setf (tuatara.display:hex-point b) p
                                         (tuatara.buffer:buffer-local b :hex-nibble)
                                         (tuatara.text:make-anchor (tuatara.buffer:buffer-version b) p))))))))))
@@ -127,7 +130,8 @@ octets as raw bytes' characters, which encode back to the same octets."
   (map 'string (lambda (b) (code-char (if (< b #x80) b (+ #xDC00 b)))) octets))
 
 (defun parse-offset (text)
-  "The offset TEXT gives: hexadecimal after 0x, else decimal with digits grouped as the mode line shows them; NIL when it is neither."
+  "The offset TEXT gives: hexadecimal after 0x, else decimal with digits grouped
+as the mode line shows them; NIL when it is neither."
   (let ((text (string-trim " " text)))
     (cond ((and (> (length text) 2) (string-equal "0x" text :end2 2))
            (whole-number text :start 2 :radix 16))
@@ -167,7 +171,9 @@ in hex, every octet of it being shown there: \\[widen] first."
 in hex (41 is A), and move on to the next."
   (if (not (hex-view-here-p))
       (message "Not in the hex view: hex-set-byte was not run")
-      (let ((octets (parse-octets (read-string (format nil "Octet at 0x~(~x~) (hex): " (tuatara.display:hex-point (current-buffer)))))))
+      (let ((octets (parse-octets (read-string (format nil
+                                                       "Octet at 0x~(~x~) (hex): "
+                                                       (tuatara.display:hex-point (current-buffer)))))))
         (if (and octets (= (length octets) 1))
             (hex-overwrite octets)
             (message "Not one octet in hex, such as 41: nothing written")))))

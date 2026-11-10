@@ -36,10 +36,10 @@ as this.")
 
 (defparameter *client-nursery-octets* (* 32 1024 1024)
   "How many octets of new data a client showing a daemon (tuatara --client)
-makes between two collections of garbage: few, as it keeps little but makes
-new data for each frame it paints, so that the memory it uses stays small and
-in use rather than spreading over a large part of the heap, idle between
-collections, for the system to move out to swap.")
+makes between two collections of garbage. The number is small, as the client
+keeps little but makes new data for each frame it paints. The memory it uses so
+stays small and in use, rather than spreading over a large part of the heap,
+idle between collections, for the system to move out to swap.")
 
 (defun set-collection-policy (&optional (nursery *nursery-octets*))
   "Have garbage collected as Tuatara wants it, after NURSERY octets of new
@@ -77,7 +77,10 @@ to be answered."
   "Seconds you leave the editor alone, no key typed, after which the garbage
 made since the last collection is collected, when it is at least half of
 what makes one (*NURSERY-OCTETS*): the pause comes while you think, not
-between two keys. NIL to leave every collection to come when it comes.")
+between two keys. NIL to leave every collection to come when it comes. A
+shorter time collects sooner, in shorter pauses of thought; NIL, or a longer
+time, leaves more collections to fall between keys. A collection stands still
+for about 0.1 s with a few hundred megabytes in use and 1.6 s with 1.1 GB.")
 
 (defvar *consed-at-gc* 0
   "The octets of data made in all (SB-EXT:GET-BYTES-CONSED) when garbage was

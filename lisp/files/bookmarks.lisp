@@ -73,7 +73,8 @@ The bookmark manager (\\[bookmark-manager]) sets them too.")
 
 (defun bookmark-category-names ()
   "Every category a bookmark is in, each once, in the order of their names."
-  (sort (remove-duplicates (loop for b in (state-list-entries *bookmarks*) append (bookmark-categories b)) :test #'string=)
+  (sort (remove-duplicates (loop for b in (state-list-entries *bookmarks*) append (bookmark-categories b))
+                           :test #'string=)
         #'string-lessp))
 
 (defun read-bookmark-categories (prompt &optional current)
@@ -84,13 +85,13 @@ offered and new ones typed (READ-SEVERAL), CURRENT, a list, written in first."
                                                        :none "no category" :more "no more categories"))))
 
 (define-command bookmark-set ()
-  "Keep where point is in the current file (or the folder a directory list
-shows and the entry the cursor is on) under a name you give, the file's name
-offered, then in the categories you choose, those used already offered, new
-ones typed (*BOOKMARK-SET-ASKS-CATEGORIES*): \\[bookmark-jump] goes back there,
-in later sessions too, and \\[bookmark-manager] lists it under each of its
-categories. A name already given is moved here, its categories kept when none
-are chosen."
+  "Keep where point is in the current file (or the folder a directory list shows
+and the entry the cursor is on) under a name you give, the file's name offered,
+then in the categories you choose, those used already offered, new ones typed
+\(*BOOKMARK-SET-ASKS-CATEGORIES*). After that, \\[bookmark-jump] goes back
+there, in later sessions too, and \\[bookmark-manager] lists it under each of
+its categories. A name already given is moved here, its categories kept when
+none are chosen."
   (let* ((buffer (current-buffer))
          (place (file-place-here buffer)))
     (if (null place)
@@ -126,7 +127,10 @@ It becomes the latest."
     (if (null all)
         (progn (message "No bookmarks (~a sets one)" (substitute-command-keys "\\[bookmark-set]")) nil)
         (let ((chosen (completing-read prompt
-                                       (mapcar (lambda (b) (make-candidate (first b) :value b :annotation (abbreviated-path (second b))))
+                                       (mapcar (lambda (b)
+                                                 (make-candidate (first b)
+                                                                 :value b
+                                                                 :annotation (abbreviated-path (second b))))
                                                all)
                                        :require-match t)))
           (if (stringp chosen) (find-bookmark chosen) chosen)))))
@@ -147,21 +151,23 @@ visited, point where it was set, found again when the text above it changed."
 ;;; The bookmark manager
 
 (define-major-mode bookmarks-mode sectioned-list-mode
-  "The bookmark manager (\\[bookmark-manager]): a section for each category, then
-one for the bookmarks in none, a line each bookmark in it, the latest set or
-gone to first, as the buffer list (\\[buffers]) has its buffers.
-\\<support>\\[next-line] and \\[previous-line] move, \\<bookmarks-mode>\\[list-visit] or \\`RET' goes to the
-bookmark on the line (on a heading, folds or unfolds its section),
-\\[list-visit-other] in another window, \\[quit-window] or \\`h' returns;
-\\[list-toggle-fold] folds or unfolds the section, \\[list-toggle-all-folds] all of them;
-\\[list-mark-entry] marks a bookmark (>), \\[list-mark-for-deletion] marks it for deletion (D),
-\\[list-unmark-entry] unmarks it, \\[list-unmark-all] unmarks them all, \\[list-toggle-marks] swaps marked and unmarked; \\[list-delete-marked]
-deletes the marked bookmarks (the one on the line when none is) from their
-sections after asking, \\[list-execute] those marked for deletion, the sections
-holding them unfolded first; a bookmark in another category stays there.
-\\[bookmark-set-categories] says which categories the marked bookmarks or the one on the line
-are in, \\[bookmark-rename] renames one; \\[revert-buffer] lists them again, marks kept, as
-the list does by itself while it is shown."
+  "The bookmark manager (\\[bookmark-manager]): a section for each category,
+then one for the bookmarks in none, a line each bookmark in it, the latest set
+or gone to first, as the buffer list (\\[buffers]) has its buffers.
+\\<support>\\[next-line] and \\[previous-line] move,
+\\<bookmarks-mode>\\[list-visit] or \\`RET' goes to the bookmark on the line (on
+a heading, folds or unfolds its section), \\[list-visit-other] in another
+window, \\[quit-window] or \\`h' returns. \\[list-toggle-fold] folds or unfolds
+the section, \\[list-toggle-all-folds] all of them. \\[list-mark-entry] marks a
+bookmark (>), \\[list-mark-for-deletion] marks it for deletion (D),
+\\[list-unmark-entry] unmarks it, \\[list-unmark-all] unmarks them all,
+\\[list-toggle-marks] swaps marked and unmarked. \\[list-delete-marked] deletes
+the marked bookmarks (the one on the line when none is) from their sections
+after asking, \\[list-execute] those marked for deletion, the sections holding
+them unfolded first; a bookmark in another category stays there.
+\\[bookmark-set-categories] says which categories the marked bookmarks or the
+one on the line are in, \\[bookmark-rename] renames one; \\[revert-buffer] lists
+them again, marks kept, as the list does by itself while it is shown."
   :lighter "Bookmarks" :interactive nil)
 
 (defvar *bookmarks-keymap* (mode-keymap 'bookmarks-mode)
@@ -250,19 +256,22 @@ order; another key means the list is out of date (KEEP-SHOWN-CURRENT)."
 (define-command bookmark-manager ()
   "Manage the bookmarks in a list, as the buffer list (\\[buffers]) manages
 buffers, in sections: one for each category (\\[bookmark-set] asks for them,
-\\<bookmarks-mode>\\[bookmark-set-categories] here sets them), its heading saying how many it holds, then
-one for the bookmarks in none; a bookmark in two categories is in both. Each
-line: its mark (> marked, D marked for deletion), name, whether it keeps a
-place in a file or a folder (a rimu list's, the entry the cursor was on), and
-the file or folder; the names of folders, of bookmarks whose file or folder
-is gone and of those marked each set apart in a face of their own.
-\\[list-toggle-fold] or \\`RET' on a heading folds or unfolds a section,
-\\[list-toggle-all-folds] all of them. \\[list-visit] or \\`RET' goes to the bookmark on the line,
-\\[list-visit-other] in another window; \\[list-mark-entry] marks it, \\[list-mark-for-deletion] marks it for deletion,
-\\[list-unmark-entry] and \\[list-unmark-all] unmark, \\[list-toggle-marks] swaps marked and unmarked, a count marking as many; \\[list-delete-marked] deletes the
-marked ones after asking, \\[list-execute] those marked for deletion, each from its
-section only: deleted from category a, a bookmark stays in category b, and
-goes only when it is in no other. \\[bookmark-rename] renames one."
+\\<bookmarks-mode>\\[bookmark-set-categories] here sets them), its heading
+saying how many it holds, then one for the bookmarks in none; a bookmark in two
+categories is in both. Each line: its mark (> marked, D marked for deletion),
+name, whether it keeps a place in a file or a folder (a rimu list's, the entry
+the cursor was on), and the file or folder. The names of folders, of bookmarks
+whose file or folder is gone and of those marked each set apart in a face of
+their own. \\[list-toggle-fold] or \\`RET' on a heading folds or unfolds a
+section, \\[list-toggle-all-folds] all of them. \\[list-visit] or \\`RET' goes
+to the bookmark on the line, \\[list-visit-other] in another window.
+\\[list-mark-entry] marks it, \\[list-mark-for-deletion] marks it for deletion,
+\\[list-unmark-entry] and \\[list-unmark-all] unmark, \\[list-toggle-marks]
+swaps marked and unmarked, a count marking as many. \\[list-delete-marked]
+deletes the marked ones after asking, \\[list-execute] those marked for
+deletion, each from its section only. Deleted from category a, a bookmark stays
+in category b, and goes only when it is in no other. \\[bookmark-rename] renames
+one."
   (let ((list (buffer-in-mode "*Bookmarks*" 'bookmarks-mode)))
     (show-buffer list)
     (bookmarks-render list 3)))
@@ -320,9 +329,14 @@ in first, to change. Each is then listed under each of its categories."
         (message "No bookmark on this line")
         (let ((categories (progn (unfold-list-sections list (mapcar #'cdr places))
                                  (read-bookmark-categories (if (rest bookmarks)
-                                                               (format nil "Categories of ~d bookmarks: " (length bookmarks))
-                                                               (format nil "Categories of ~a: " (first (first bookmarks))))
-                                                           (and (null (rest bookmarks)) (bookmark-categories (first bookmarks)))))))
+                                                               (format nil
+                                                                       "Categories of ~d bookmarks: "
+                                                                       (length bookmarks))
+                                                               (format nil
+                                                                       "Categories of ~a: "
+                                                                       (first (first bookmarks))))
+                                                           (and (null (rest bookmarks))
+                                                                (bookmark-categories (first bookmarks)))))))
           (dolist (bookmark bookmarks)
             (set-bookmark-categories bookmark categories))
           (unmark-list list)

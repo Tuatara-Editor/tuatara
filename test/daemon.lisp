@@ -24,7 +24,8 @@ daemon, the thread, and its name."
                   (lambda ()
                     (call-without-grammar-questions
                      (lambda ()
-                       (tuatara.defaults::run-daemon-editor daemon :ready (lambda () (sb-thread:signal-semaphore ready))))))
+                       (tuatara.defaults::run-daemon-editor daemon
+                                                            :ready (lambda () (sb-thread:signal-semaphore ready))))))
                   :name "test daemon")))
     (unless (sb-thread:wait-on-semaphore ready :timeout 60)
       (error "The test daemon did not start"))
@@ -60,13 +61,13 @@ on and DAEMON to the daemon, stopped after."
 (defun attach-test-client (name &key (directory "/tmp/") files safe merge diff stop terminal environment standard-input
                                      (width 70) (height 14) window joins another (frames 1) far)
   "A client of the daemon NAME on a fake screen of WIDTH by HEIGHT, a window
-when WINDOW, asking for what a client started so asks for (FILES, each a
+when WINDOW. It asks for what a client started so asks for (FILES, each a
 path or (PATH LINE COLUMN), SAFE, MERGE, DIFF, STOP, TERMINAL, ENVIRONMENT,
 STANDARD-INPUT, a descriptor passed, JOINS, the word of a window the daemon
-asked for, FRAMES, FAR as a client on another machine), ANOTHER opening a
-window the daemon asks for; three values: the
-fake screen, the thread running the client, which returns its exit code and
-words as a list, and the client."
+asked for, FRAMES, FAR as a client on another machine). ANOTHER opens a
+window the daemon asks for. Returns three values: the fake screen, the
+thread running the client, which returns its exit code and words as a list,
+and the client."
   (let ((local (make-instance 'queued-fake-frontend :width width :height height :font-steps (and window 0)))
         (fd (tuatara.io:connect-to (tuatara.defaults::daemon-path name "socket"))))
     (tuatara.frontend:frontend-start local)
@@ -74,7 +75,8 @@ words as a list, and the client."
                    fd local
                    :request (tuatara.frontend:make-request
                              :directory (namestring directory) :terminal terminal :environment environment
-                             :files (mapcar (lambda (file) (if (consp file) file (list (namestring file) nil nil))) files)
+                             :files (mapcar (lambda (file)
+                                              (if (consp file) file (list (namestring file) nil nil))) files)
                              :safe safe :merge merge :diff diff :stop stop :wait t
                              :standard-input (and standard-input t) :joins joins :frames frames :far far)
                    :standard-input standard-input :another another)))
@@ -104,11 +106,11 @@ list, waiting SECONDS at most; :LATE when it has not ended."
   (sb-thread:join-thread runner :timeout seconds :default :late))
 
 (defun window-opener (name &key (after 0))
-  "Two values: a function of a client and a word that opens another window of
-a test client of the daemon NAME, attached with that word AFTER seconds, as
-a client in a window does when the daemon asks it for one; and a cell whose
-car is the list of the windows it opened, newest first, each (FAKE-SCREEN
-RUNNER CLIENT) as ATTACH-TEST-CLIENT gives them."
+  "Two values. The first is a function of a client and a word that opens
+another window of a test client of the daemon NAME, attached with that word
+AFTER seconds, as a client in a window does when the daemon asks it for one.
+The second is a cell whose car is the list of the windows it opened, newest
+first, each (FAKE-SCREEN RUNNER CLIENT) as ATTACH-TEST-CLIENT gives them."
   (let ((opened (list '())))
     (values (lambda (client word)
               (declare (ignore client))
@@ -649,7 +651,8 @@ ended have: the frames shown, the one with no screen left out."
                        (let* ((editor (daemon-editor))
                               (buffer (tuatara.defaults::buffer-visiting file))
                               (frame (find buffer (tuatara.command:editor-frames editor)
-                                           :key (lambda (f) (tuatara.display:window-buffer (tuatara.command:frame-window f))))))
+                                           :key (lambda (f)
+                                                  (tuatara.display:window-buffer (tuatara.command:frame-window f))))))
                          (setf (tuatara.buffer:buffer-local buffer :encrypted) (list :symmetric t)
                                (tuatara.io:buffer-plaintext-p buffer) t
                                (tuatara.buffer:buffer-mark buffer) 0
@@ -1064,6 +1067,65 @@ after, as it does by itself."
           "woken")
     (true (not (eq :late (sb-thread:join-thread thread :timeout 30 :default :late))))))
 
+(defun hold-with-words (words semaphore)
+  "Wait for SEMAPHORE on this thread, WORDS among what the call was given;
+return WORDS."
+  (sb-thread:wait-on-semaphore semaphore)
+  words)
+
+(define-test (daemon stuck-words-name-calls-only)
+  ;; the log says where the editor's thread waits, and nothing of what the calls were given
+  (let* ((release (sb-thread:make-semaphore))
+         (thread (sb-thread:make-thread #'hold-with-words :arguments (list "Kākāpō" release) :name "held")))
+    (unwind-protect
+         (progn
+           (sleep 0.3)
+           (let ((words (tuatara.defaults::stuck-daemon-words thread)))
+             (true (search "HOLD-WITH-WORDS" words) "the call")
+             (true (search "held" words) "the thread's name")
+             (false (search "Kākāpō" words) "nothing it was given")))
+      (sb-thread:signal-semaphore release)
+      (sb-thread:join-thread thread))))
+
+(defun stop-test-daemon-guarded (seconds exit-function)
+  "Stop a test daemon, its process given SECONDS to end and EXIT-FUNCTION among
+the work of its stopping when not NIL, while the process is not really ended:
+returns true when it would have been. The function is left out again after."
+  (let ((ended (sb-thread:make-semaphore))
+        (given-seconds tuatara.defaults::*leaving-seconds*)
+        (given-end tuatara.defaults::*end-stuck-daemon*))
+    (unwind-protect
+         (with-test-daemon (name thread)
+           (setf tuatara.defaults::*leaving-seconds* seconds
+                 tuatara.defaults::*end-stuck-daemon* (lambda () (sb-thread:signal-semaphore ended)))
+           (when exit-function (push exit-function tuatara.command:*exit-functions*))
+           ;; the editor, stopped, may end before the call that held it is told it is done
+           (handler-case (in-daemon (lambda () (tuatara.defaults::stop-daemon (daemon-editor) :here nil)))
+             (tuatara.runtime:refusal () nil))
+           ;; polled: the end stopped by force interrupts this thread, which stopped it, and that ends a wait
+           (prog1 (loop repeat 100
+                        thereis (sb-thread:try-semaphore ended)
+                        do (sleep 1/20))
+             (sb-thread:join-thread thread :timeout 30 :default nil)))
+      (setf tuatara.defaults::*leaving-seconds* given-seconds
+            tuatara.defaults::*end-stuck-daemon* given-end
+            tuatara.command:*exit-functions* (remove exit-function tuatara.command:*exit-functions*)))))
+
+(define-test (daemon stopping-cannot-stay)
+  ;; work that never ends as the daemon stops: its process is ended all the same, in the time given
+  (let* ((release (sb-thread:make-semaphore))
+         (ended nil)
+         (never (lambda (editor)
+                  (declare (ignore editor))
+                  (setf ended t)
+                  (sb-thread:wait-on-semaphore release :timeout 3))))
+    (true (stop-test-daemon-guarded 1/2 never) "ended by force")
+    (true ended "the work was reached")))
+
+(define-test (daemon stopping-in-time-is-left-alone)
+  ;; a daemon that ends in its time is not ended by force after
+  (false (stop-test-daemon-guarded 1 nil)))
+
 (define-test (daemon terminated-with-auto-saving-off)
   ;; SIGTERM cannot be refused as tuatara --stop is: with auto-saving off, nothing is written and the daemon
   ;; ends, every client exiting 1
@@ -1421,7 +1483,8 @@ after, as it does by itself."
   "The client of the test daemon that came as NUMBER, one on a screen of its own."
   (in-daemon (lambda ()
                (find-if (lambda (client)
-                          (and (tuatara.command:client-remote client) (eql (tuatara.command:client-number client) number)))
+                          (and (tuatara.command:client-remote client)
+                               (eql (tuatara.command:client-number client) number)))
                         (tuatara.command:editor-clients (daemon-editor))))))
 
 (defun client-in-daemon-p (client)
@@ -1581,8 +1644,10 @@ thread, no client chosen to keep before or after."
                 value
                 (lambda ()
                   (with-test-daemon (name)
-                    (multiple-value-bind (one one-runner) (attach-test-client name :directory dir :files (list alpha) :width 200)
-                      (multiple-value-bind (two two-runner) (attach-test-client name :directory dir :files (list beta) :width 200)
+                    (multiple-value-bind (one one-runner)
+                        (attach-test-client name :directory dir :files (list alpha) :width 200)
+                      (multiple-value-bind (two two-runner)
+                          (attach-test-client name :directory dir :files (list beta) :width 200)
                         (true (shows one "alpha text"))
                         (true (shows two "beta text"))
                         (funcall check one one-runner two two-runner))))))))

@@ -1,11 +1,15 @@
-;;;; test/org-view.lisp --- Org's view and outline: folding, the indented view, editing the outline, lists and checkboxes.
+;;;; test/org-view.lisp --- Org's view and outline: folding, the indented view, editing the outline, lists and
+;;;; checkboxes.
 ;;;; Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
 
 (in-package #:tuatara.tests)
 
 (define-test (org folding)
   ;; the view as written, no signs, the indented one turned on by hand
-  (let ((tuatara-user:*org-startup-indented* nil) (tuatara-user:*org-bullets* nil) (tuatara-user:*org-list-bullets* nil) (tuatara-user:*org-checkbox-signs* nil))
+  (let ((tuatara-user:*org-startup-indented* nil)
+        (tuatara-user:*org-bullets* nil)
+        (tuatara-user:*org-list-bullets* nil)
+        (tuatara-user:*org-checkbox-signs* nil))
     ;; TAB on a headline folds its subtree: the headline alone, an ellipsis after it
     (let ((lines (org-screen "TAB")))
       (is equal '("* One..." "* Two" "Text of two." "") (subseq lines 0 4)))
@@ -25,7 +29,8 @@
     (flet ((line-at-point (editor)
              (let* ((buffer (session-buffer editor)) (rope (tuatara.buffer:buffer-text buffer))
                     (point (tuatara.buffer:buffer-point buffer)))
-               (tuatara.text:octets-string (tuatara.text:rope-octets rope :start (tuatara.text:rope-line-start rope point)
+               (tuatara.text:octets-string (tuatara.text:rope-octets rope
+                                                                     :start (tuatara.text:rope-line-start rope point)
                                                                            :end (tuatara.text:rope-line-end rope point))))))
       (is string= "* Two" (line-at-point (nth-value 1 (org-screen "TAB j"))))
       (is string= "* One" (line-at-point (nth-value 1 (org-screen "TAB j k"))))
@@ -47,7 +52,10 @@
 
 (define-test (org stale-fold-opens)
   ;; a folded heading whose stars are deleted is a heading no more: what it hid is shown again
-  (let ((tuatara-user:*org-startup-indented* nil) (tuatara-user:*org-bullets* nil) (tuatara-user:*org-list-bullets* nil) (tuatara-user:*org-checkbox-signs* nil))
+  (let ((tuatara-user:*org-startup-indented* nil)
+        (tuatara-user:*org-bullets* nil)
+        (tuatara-user:*org-list-bullets* nil)
+        (tuatara-user:*org-checkbox-signs* nil))
     (flet ((shown (keys) (subseq (org-screen (format nil "S-TAB ~a" keys) :text *org-two-folded* :height 8) 0 4)))
       (is equal '(" One" "body one" "* Two..." "") (shown "d"))
       (is equal '("One" "body one" "* Two..." "") (shown "d d"))
@@ -61,7 +69,10 @@
       (is equal '("* One..." "* Two..." "" "") (shown "d u TAB")))))
 
 (define-test (org folded-text-edited-seen)
-  (let ((tuatara-user:*org-startup-indented* nil) (tuatara-user:*org-bullets* nil) (tuatara-user:*org-list-bullets* nil) (tuatara-user:*org-checkbox-signs* nil))
+  (let ((tuatara-user:*org-startup-indented* nil)
+        (tuatara-user:*org-bullets* nil)
+        (tuatara-user:*org-list-bullets* nil)
+        (tuatara-user:*org-checkbox-signs* nil))
     (flet ((after (keys &optional (text *org-two-folded*))
              (multiple-value-bind (lines editor) (org-screen (format nil "S-TAB ~a" keys) :text text :height 8)
                (values (session-text editor) lines editor))))
@@ -70,7 +81,9 @@
       (is string= "" (after "V J d"))
       (is string= "" (after "j V K d"))
       (is string= (format nil "* Three~%") (after "V J d" (format nil "* One~%body one~%* Two~%body two~%* Three~%")))
-      (is string= (format nil "* Three~%") (after "C-u 2 V d" (format nil "* One~%body one~%* Two~%body two~%* Three~%")))
+      (is string=
+          (format nil "* Three~%")
+          (after "C-u 2 V d" (format nil "* One~%body one~%* Two~%body two~%* Three~%")))
       (is string= (format nil "* One~%body one~%") (after "j V d"))
       ;; one undo brings it all back
       (is string= *org-two-folded* (after "C-u 2 V d u"))
@@ -99,7 +112,10 @@
         (is equal '("* OneX..." "* Two...") (subseq lines 0 2))))))
 
 (define-test (org folded-text-kept-at-many-places)
-  (let ((tuatara-user:*org-startup-indented* nil) (tuatara-user:*org-bullets* nil) (tuatara-user:*org-list-bullets* nil) (tuatara-user:*org-checkbox-signs* nil))
+  (let ((tuatara-user:*org-startup-indented* nil)
+        (tuatara-user:*org-bullets* nil)
+        (tuatara-user:*org-list-bullets* nil)
+        (tuatara-user:*org-checkbox-signs* nil))
     (flet ((after (keys)
              (multiple-value-bind (lines editor) (org-screen keys :text *org-two-folded* :height 8)
                (values (session-text editor) lines))))
@@ -125,7 +141,10 @@
   ;; f acts only on what is shown, whatever is searched, % too; r r and r q
   ;; act on matches hidden too, the folds kept; asking at
   ;; each, a match in folded text has its fold opened first
-  (let ((tuatara-user:*org-startup-indented* nil) (tuatara-user:*org-bullets* nil) (tuatara-user:*org-list-bullets* nil) (tuatara-user:*org-checkbox-signs* nil))
+  (let ((tuatara-user:*org-startup-indented* nil)
+        (tuatara-user:*org-bullets* nil)
+        (tuatara-user:*org-list-bullets* nil)
+        (tuatara-user:*org-checkbox-signs* nil))
     (flet ((after (keys &optional (text *org-two-folded*))
              (multiple-value-bind (f editor)
                  (run-keys (format nil "M-x o r g - m o d e RET S-TAB ~a" keys) :text text :width 100 :height 8)
@@ -134,7 +153,9 @@
                        f)))
            (in-turns (turns)
              (multiple-value-bind (f editor)
-                 (run-keys-in-turns (append (list (format nil "M-x o r g - m o d e RET S-TAB ~a" (first turns))) (rest turns) '(""))
+                 (run-keys-in-turns (append (list (format nil "M-x o r g - m o d e RET S-TAB ~a" (first turns)))
+                                            (rest turns)
+                                            '(""))
                                     :text *org-two-folded* :width 100)
                (values (session-text editor) f
                        (loop for i below 2 collect (string-right-trim " " (tuatara.frontend.fake:fake-screen-line f i)))))))
@@ -208,7 +229,8 @@
                    (is string= (format nil text) (session-text editor) "~a ~a" keys answer)
                    (is equal seen (subseq asking 0 3) "~a shows the hidden match" keys)
                    (true (find-if (lambda (line) (search "Query replacing" line)) asking) "~a asks" keys)
-                   (is equal shown (loop for i below 3 collect (string-right-trim " " (tuatara.frontend.fake:fake-screen-line f i)))
+                   (is equal shown
+                       (loop for i below 3 collect (string-right-trim " " (tuatara.frontend.fake:fake-screen-line f i)))
                        "~a ~a leaves the fold shown" keys answer))))
       ;; past the limit, out of sight in the background: the same
       (let ((tuatara-user:*split-limit* 1))
@@ -233,12 +255,18 @@
 
 (define-test (org indented-view-and-bullets)
   ;; the view as written, no signs, the indented one turned on by hand
-  (let ((tuatara-user:*org-startup-indented* nil) (tuatara-user:*org-bullets* nil) (tuatara-user:*org-list-bullets* nil) (tuatara-user:*org-checkbox-signs* nil))
+  (let ((tuatara-user:*org-startup-indented* nil)
+        (tuatara-user:*org-bullets* nil)
+        (tuatara-user:*org-list-bullets* nil)
+        (tuatara-user:*org-checkbox-signs* nil))
     ;; M-x org-indent-mode: each line indented by its headline's level, the stars but the last hidden
     (is equal '("* One" "  Text of one." " ** One A" "    Text of one A." " ** One B" "    Text of one B." "* Two" "  Text of two.")
         (subseq (org-screen "M-x o r g - i n d e n t - m o d e RET") 0 8))
     ;; the hidden stars in :org-hide, the text unchanged
-    (multiple-value-bind (f editor) (run-keys "M-x o r g - m o d e RET M-x o r g - i n d e n t - m o d e RET j" :text *org-folding* :width 60 :height 12)
+    (multiple-value-bind (f editor) (run-keys "M-x o r g - m o d e RET M-x o r g - i n d e n t - m o d e RET j"
+                                              :text *org-folding*
+                                              :width 60
+                                              :height 12)
       (true (org-faces-include f 2 "*" :org-hide))
       (is string= *org-folding* (session-text editor))
       ;; the cursor after the indentation, on the line's first character
@@ -261,14 +289,18 @@
 window draws them with (set-face :org-level-1 :height 2)."
   (let ((face (tuatara.display:find-face :org-level-1))
         (tuatara.display:*row-scaling* t)
-        (tuatara.display::*user-face-settings* (append tuatara.display::*user-face-settings* `((:org-level-1 :height ,height)))))
+        (tuatara.display::*user-face-settings* (append tuatara.display::*user-face-settings*
+                                                       `((:org-level-1 :height ,height)))))
     (let ((old (tuatara.display::face-height face)))
       (unwind-protect (progn (tuatara.display:set-face-attributes :org-level-1 :height height)
                              (funcall function))
         (setf (tuatara.display::face-height face) old)))))
 
 (define-test (org headlines-drawn-large)
-  (let ((tuatara-user:*org-startup-indented* nil) (tuatara-user:*org-bullets* nil) (tuatara-user:*org-list-bullets* nil) (tuatara-user:*org-checkbox-signs* nil))
+  (let ((tuatara-user:*org-startup-indented* nil)
+        (tuatara-user:*org-bullets* nil)
+        (tuatara-user:*org-list-bullets* nil)
+        (tuatara-user:*org-checkbox-signs* nil))
     (call-with-large-level-one
      (lambda ()
        ;; a first-level headline two rows tall, the rows under it moved down a row; a second-level one as it is
@@ -282,38 +314,68 @@ window draws them with (set-face :org-level-1 :height 2)."
          (is equal '((0 60 0 0 0)) (aref (tuatara.frontend.fake:fake-row-scales f) 9))
          ;; the cursor as wide as the characters
          (is equal '(0 . 4) (tuatara.frontend.fake:fake-cursor f)))
-       (is equal '(1 . 0) (tuatara.frontend.fake:fake-cursor (run-keys "M-x o r g - m o d e RET j" :text *org-folding* :width 60 :height 12)))
+       (is equal
+           '(1 . 0)
+           (tuatara.frontend.fake:fake-cursor (run-keys "M-x o r g - m o d e RET j"
+                                                        :text *org-folding*
+                                                        :width 60
+                                                        :height 12)))
        ;; the mouse on the large row, on the character drawn there
-       (is = 2 (session-point (nth-value 1 (run-events '("M-x o r g - m o d e RET" (:down-mouse-1 4 0)) :text *org-folding* :width 60 :height 12))))
-       (is = 3 (session-point (nth-value 1 (run-events '("M-x o r g - m o d e RET" (:down-mouse-1 7 0)) :text *org-folding* :width 60 :height 12))))
-       (is = 12 (session-point (nth-value 1 (run-events '("M-x o r g - m o d e RET" (:down-mouse-1 6 1)) :text *org-folding* :width 60 :height 12))))
-       ;; in truncate mode, point past the columns a large row holds scrolls the row sideways, never the window to the end
-       (let ((f (run-keys "M-x o r g - m o d e RET C-e" :text (format nil "* ~a~%second~%" (make-string 50 :initial-element #\x))
+       (is = 2
+           (session-point (nth-value 1
+                                     (run-events '("M-x o r g - m o d e RET" (:down-mouse-1 4 0))
+                                                 :text *org-folding*
+                                                 :width 60
+                                                 :height 12))))
+       (is = 3
+           (session-point (nth-value 1
+                                     (run-events '("M-x o r g - m o d e RET" (:down-mouse-1 7 0))
+                                                 :text *org-folding*
+                                                 :width 60
+                                                 :height 12))))
+       (is = 12
+           (session-point (nth-value 1
+                                     (run-events '("M-x o r g - m o d e RET" (:down-mouse-1 6 1))
+                                                 :text *org-folding*
+                                                 :width 60
+                                                 :height 12))))
+       ;; in truncate mode, point past the columns a large row holds scrolls the row sideways, never the window to the
+       ;; end
+       (let ((f (run-keys "M-x o r g - m o d e RET C-e"
+                          :text (format nil "* ~a~%second~%" (make-string 50 :initial-element #\x))
                                                        :width 40 :height 8)))
          (is = 0 (car (tuatara.frontend.fake:fake-cursor f)))
          (true (< (cdr (tuatara.frontend.fake:fake-cursor f)) 40))
          ;; the window still at the top, the headline's end scrolled into sight
          (true (search "xxx" (tuatara.frontend.fake:fake-screen-line f 0))))
        ;; with line numbers, the gutter of a large row is a part of its own, as tall as the row's band
-       (let ((f (run-keys "M-x o r g - m o d e RET M-x d i s p l a y - l i n e - n u m b e r s - m o d e RET" :text *org-folding* :width 60 :height 12)))
+       (let ((f (run-keys "M-x o r g - m o d e RET M-x d i s p l a y - l i n e - n u m b e r s - m o d e RET"
+                          :text *org-folding*
+                          :width 60
+                          :height 12)))
          (let ((parts (aref (tuatara.frontend.fake:fake-row-scales f) 0)))
            (is = 2 (length parts))
            (is equal '(1 0 2) (cddr (first parts)))
            (is equal '(2 0 2) (cddr (second parts)))
            (is = (second (first parts)) (first (second parts)))))
        ;; recentring counts the heights of the large rows above point
-       (let ((f (run-keys "M-x o r g - m o d e RET C-u 2 0 j C-l" :text (format nil "~{* Headline ~d~%~}end" (loop for i from 1 to 30 collect i))
+       (let ((f (run-keys "M-x o r g - m o d e RET C-u 2 0 j C-l"
+                          :text (format nil "~{* Headline ~d~%~}end" (loop for i from 1 to 30 collect i))
                                                                   :width 60 :height 8)))
          (true (<= 1 (car (tuatara.frontend.fake:fake-cursor f)) 4)))
        ;; going down to the last of many large headlines: in sight, the window scrolled past the rest
-       (let ((f (run-keys "M-x o r g - m o d e RET g e" :text (format nil "~{* Headline ~d~%~}end" (loop for i from 1 to 30 collect i))
+       (let ((f (run-keys "M-x o r g - m o d e RET g e"
+                          :text (format nil "~{* Headline ~d~%~}end" (loop for i from 1 to 30 collect i))
                                                       :width 60 :height 8)))
          (is equal '(2 . 3) (tuatara.frontend.fake:fake-cursor f))
          (is string= "end" (string-right-trim " " (tuatara.frontend.fake:fake-screen-line f 2))))))
     ;; a quarter as large again: the rows under it moved down a quarter of a row
     (call-with-large-level-one
      (lambda ()
-       (multiple-value-bind (f editor) (run-keys "M-x o r g - m o d e RET l l l" :text *org-folding* :width 60 :height 12)
+       (multiple-value-bind (f editor) (run-keys "M-x o r g - m o d e RET l l l"
+                                                 :text *org-folding*
+                                                 :width 60
+                                                 :height 12)
          (declare (ignore editor))
          (is equal '((0 60 5/4 0 5/4)) (aref (tuatara.frontend.fake:fake-row-scales f) 0))
          (is equal '((0 60 1 1/4 1)) (aref (tuatara.frontend.fake:fake-row-scales f) 1))
@@ -337,22 +399,31 @@ window draws them with (set-face :org-level-1 :height 2)."
 
 (define-test (org structure-editing)
   ;; the view as written, no signs, the indented one turned on by hand
-  (let ((tuatara-user:*org-startup-indented* nil) (tuatara-user:*org-bullets* nil) (tuatara-user:*org-list-bullets* nil) (tuatara-user:*org-checkbox-signs* nil))
+  (let ((tuatara-user:*org-startup-indented* nil)
+        (tuatara-user:*org-bullets* nil)
+        (tuatara-user:*org-list-bullets* nil)
+        (tuatara-user:*org-checkbox-signs* nil))
     ;; M-j and M-k move the subtree point is in past its sibling, children with it
-    (is string= (format nil "* Two~%Text of two.~%* One~%Text of one.~%** One A~%Text of one A.~%** One B~%Text of one B.~%")
+    (is string=
+        (format nil "* Two~%Text of two.~%* One~%Text of one.~%** One A~%Text of one A.~%** One B~%Text of one B.~%")
         (org-text-after "M-j"))
-    (is string= (format nil "* Two~%Text of two.~%* One~%Text of one.~%** One A~%Text of one A.~%** One B~%Text of one B.~%")
+    (is string=
+        (format nil "* Two~%Text of two.~%* One~%Text of one.~%** One A~%Text of one A.~%** One B~%Text of one B.~%")
         (org-text-after "g e M-k"))
-    (is string= (format nil "* One~%Text of one.~%** One B~%Text of one B.~%** One A~%Text of one A.~%* Two~%Text of two.~%")
+    (is string=
+        (format nil "* One~%Text of one.~%** One B~%Text of one B.~%** One A~%Text of one A.~%* Two~%Text of two.~%")
         (org-text-after "j j M-j"))
     ;; not past the parent's end
     (is string= *org-folding* (org-text-after "j j j j M-j"))
     ;; M-h and M-l promote and demote the headline alone; M-H and M-L its subtree too
-    (is string= (format nil "* One~%Text of one.~%* One A~%Text of one A.~%** One B~%Text of one B.~%* Two~%Text of two.~%")
+    (is string=
+        (format nil "* One~%Text of one.~%* One A~%Text of one A.~%** One B~%Text of one B.~%* Two~%Text of two.~%")
         (org-text-after "j j M-h"))
-    (is string= (format nil "** One~%Text of one.~%** One A~%Text of one A.~%** One B~%Text of one B.~%* Two~%Text of two.~%")
+    (is string=
+        (format nil "** One~%Text of one.~%** One A~%Text of one A.~%** One B~%Text of one B.~%* Two~%Text of two.~%")
         (org-text-after "M-l"))
-    (is string= (format nil "** One~%Text of one.~%*** One A~%Text of one A.~%*** One B~%Text of one B.~%* Two~%Text of two.~%")
+    (is string=
+        (format nil "** One~%Text of one.~%*** One A~%Text of one A.~%*** One B~%Text of one B.~%* Two~%Text of two.~%")
         (org-text-after "M-L"))
     (is string= *org-folding* (org-text-after "M-h"))
     ;; C-c C-t: TODO, WAIT, then DONE noted with CLOSED: (with *org-log-done*), then none, the note gone
@@ -367,7 +438,10 @@ window draws them with (set-face :org-level-1 :height 2)."
     (let ((text (format nil "#+TODO: TODO NEXT | DONE~%* Task~%")))
       (is string= (format nil "#+TODO: TODO NEXT | DONE~%* NEXT Task~%") (org-text-after "j C-c C-t C-c C-t" text)))
     ;; M-RET: a headline of this level after this subtree, point after its stars
-    (multiple-value-bind (f editor) (run-keys "M-x o r g - m o d e RET j M-RET i N e w ESC" :text *org-folding* :width 60 :height 12)
+    (multiple-value-bind (f editor) (run-keys "M-x o r g - m o d e RET j M-RET i N e w ESC"
+                                              :text *org-folding*
+                                              :width 60
+                                              :height 12)
       (declare (ignore f))
       (is string= (format nil "* One~%Text of one.~%** One A~%Text of one A.~%** One B~%Text of one B.~%* New~%* Two~%Text of two.~%")
           (session-text editor)))
@@ -428,7 +502,10 @@ window draws them with (set-face :org-level-1 :height 2)."
   ;; the view Org gave the text goes with the mode: no indentation, signs, folds or large headlines in text mode
   (call-with-large-level-one
    (lambda ()
-     (multiple-value-bind (f editor) (run-keys "M-x o r g - m o d e RET j j TAB g g M-x t e x t - m o d e RET" :text *org-folding* :width 60 :height 12)
+     (multiple-value-bind (f editor) (run-keys "M-x o r g - m o d e RET j j TAB g g M-x t e x t - m o d e RET"
+                                               :text *org-folding*
+                                               :width 60
+                                               :height 12)
        (let ((buffer (session-buffer editor)))
          (false (tuatara.buffer:buffer-local buffer :line-scale-function))
          (false (tuatara.buffer:buffer-local buffer :line-prefix-function))
@@ -448,8 +525,9 @@ window draws them with (set-face :org-level-1 :height 2)."
     (dolist (crlf '(nil t))
       (let* ((text (if crlf (cl-ppcre:regex-replace-all (string #\Newline) text (format nil "~c~%" #\Return)) text))
              (f (tuatara.frontend.fake:make-fake-frontend :width 80 :height 10))
-             (b (progn (let ((old (tuatara.buffer:find-buffer "cycle.org"))) (when old (tuatara.buffer:kill-buffer old)))
-                       (tuatara.buffer:make-buffer "cycle.org" :text text)))
+             (b (progn
+                  (let ((old (tuatara.buffer:find-buffer "cycle.org"))) (when old (tuatara.buffer:kill-buffer old)))
+                  (tuatara.buffer:make-buffer "cycle.org" :text text)))
              (differences '()) (compared 0))
         (when crlf (setf (tuatara.buffer:buffer-local b :line-ending) :crlf))
         (tuatara.defaults::set-major-mode b 'tuatara.defaults::org-mode)
@@ -465,7 +543,8 @@ window draws them with (set-face :org-level-1 :height 2)."
                             (let ((parsed (steps (lambda ()
                                                    (let* ((parse (tuatara.defaults::org-parse-now b))
                                                           (headline (tuatara.defaults::org-headline-on-line
-                                                                     (tuatara.defaults::org-parse-tree parse) (tuatara.defaults::org-parse-text parse)
+                                                                     (tuatara.defaults::org-parse-tree parse)
+                                                                     (tuatara.defaults::org-parse-text parse)
                                                                      (tuatara.defaults::org-parse-char parse line))))
                                                      (tuatara.defaults::org-cycle-headline parse headline)))))
                                   (read (steps (lambda () (tuatara.defaults::org-cycle-headline-at b line)))))
@@ -532,7 +611,9 @@ window draws them with (set-face :org-level-1 :height 2)."
         (is string= "- [ ] x" (session-text editor) "pairs ~a" pairs)
         (is string= "- [ ] x" (first lines)))
       (is string= "1. [ ] y" (session-text (nth-value 1 (org-screen "i 1 . SPC [ y ESC" :text ""))))
-      (is string= (format nil "* A~%  * [ ] z") (session-text (nth-value 1 (org-screen "g e A RET SPC SPC * SPC [ z ESC" :text (format nil "* A")))))
+      (is string=
+          (format nil "* A~%  * [ ] z")
+          (session-text (nth-value 1 (org-screen "g e A RET SPC SPC * SPC [ z ESC" :text (format nil "* A")))))
       ;; elsewhere, [ as typed
       (is string= (if pairs "a []" "a [") (session-text (nth-value 1 (org-screen "i a SPC [ ESC" :text ""))))
       (is string= (if pairs "- x[]" "- x[") (session-text (nth-value 1 (org-screen "i - SPC x [ ESC" :text ""))))
@@ -572,7 +653,9 @@ window draws them with (set-face :org-level-1 :height 2)."
       (is string= (format nil "#+TODO: TODO WAIT | DONE~%* TODO Call back~%")
           (after "j RET RET RET" (format nil "#+TODO: TODO WAIT | DONE~%* TODO Call back~%")))
       ;; the heading above counts it: [1/1]
-      (is string= (format nil "* Jobs [1/1]~%** DONE Mow~%") (after "j RET RET" (format nil "* Jobs [0/1]~%** TODO Mow~%")))
+      (is string=
+          (format nil "* Jobs [1/1]~%** DONE Mow~%")
+          (after "j RET RET" (format nil "* Jobs [0/1]~%** TODO Mow~%")))
       ;; with a checkbox under it not ticked: TODO to WAIT and back, DONE passed over
       (is string= (format nil "* WAIT Pack [1/2]~%- [X] tent~%- [ ] stove~%")
           (after "RET" (format nil "* TODO Pack [1/2]~%- [X] tent~%- [ ] stove~%")))
@@ -648,7 +731,9 @@ window draws them with (set-face :org-level-1 :height 2)."
       ;; a file's own CANCELLED passed over the same way, its own keywords still in force
       (let ((head (format nil "#+TODO: TODO NEXT | DONE CANCELLED~%")))
         (is string= (format nil "~a* DONE Gate~%" head) (after "j C-c C-t C-c C-t" (format nil "~a* TODO Gate~%" head)))
-        (is string= (format nil "~a* Gate~%" head) (after "j C-c C-t C-c C-t C-c C-t" (format nil "~a* TODO Gate~%" head))))
+        (is string=
+            (format nil "~a* Gate~%" head)
+            (after "j C-c C-t C-c C-t C-c C-t" (format nil "~a* TODO Gate~%" head))))
       ;; with none passed over, CANCELLED takes its turn after DONE
       (let ((tuatara-user:*org-todo-keywords-not-cycled* nil))
         (is string= (format nil "* CANCELLED Gate~%") (after "C-c C-t C-c C-t C-c C-t" (format nil "* TODO Gate~%")))))))
@@ -684,7 +769,8 @@ window draws them with (set-face :org-level-1 :height 2)."
   (is string= (format nil "* H~%- a~%~%text~%** Sub~%* ~%* Next~%")
       (org-text-after "j j j M-RET" (format nil "* H~%- a~%~%text~%** Sub~%* Next~%")))
   ;; C-RET is free in Org, for a key of your own
-  (false (tuatara.command:lookup-key (tuatara.defaults::mode-keymap 'tuatara.defaults::org-mode) (tuatara.frontend:parse-key-sequence "C-RET")))
+  (false (tuatara.command:lookup-key (tuatara.defaults::mode-keymap 'tuatara.defaults::org-mode)
+                                     (tuatara.frontend:parse-key-sequence "C-RET")))
   ;; C-c -: the list's next kind of bullet, every item, numbered from 1; * passed over at the margin
   (let ((text (format nil "- a~%- [ ] b~%")))
     (is string= (format nil "+ a~%+ [ ] b~%") (org-text-after "C-c -" text))
@@ -702,14 +788,17 @@ window draws them with (set-face :org-level-1 :height 2)."
     ;; cleared a minute later: logged on top
     (is string= (format nil "* Errands~%- [ ] call Anna~%  :LOGBOOK:~%  - State \"TODO\"       from \"DONE\"       [2026-10-02 Fri 14:06]~%  - State \"DONE\"       from \"TODO\"       [2026-10-02 Fri 14:05]~%  :END:~%- [ ] buy milk~%")
         (session-text (nth-value 1 (run-keys (list "M-x o r g - m o d e RET j C-c C-t"
-                                                   (lambda () (setf tuatara.defaults::*org-now* (encode-universal-time 0 6 14 2 10 2026)))
+                                                   (lambda ()
+                                                     (setf tuatara.defaults::*org-now*
+                                                           (encode-universal-time 0 6 14 2 10 2026)))
                                                    "C-c C-t")
                                              :text text :width 60 :height 12))))
     (setf tuatara.defaults::*org-now* (encode-universal-time 0 5 14 2 10 2026))
     ;; taken back the same minute: its note goes, and the drawer with it when nothing else is there
     (is string= text (org-text-after "j C-c C-t C-c C-t" text))
     (is string= (format nil "* Errands~%- [ ] call Anna~%  :LOGBOOK:~%  - Note~%  :END:~%- [ ] buy milk~%")
-        (org-text-after "j C-c C-t C-c C-t" (format nil "* Errands~%- [ ] call Anna~%  :LOGBOOK:~%  - Note~%  :END:~%- [ ] buy milk~%")))
+        (org-text-after "j C-c C-t C-c C-t"
+                        (format nil "* Errands~%- [ ] call Anna~%  :LOGBOOK:~%  - Note~%  :END:~%- [ ] buy milk~%")))
     ;; RET in NORMAL state logs as it reaches [X], and cycled round leaves no note
     (true (search "- State \"DONE\"" (org-text-after "j RET RET" text)))
     (is string= text (org-text-after "j RET RET RET" text))
@@ -725,15 +814,22 @@ window draws them with (set-face :org-level-1 :height 2)."
     ;; the agenda reads each item as an entry of its own, its drawer its own, not the headline's
     (let* ((done (format nil "* Errands~%:LOGBOOK:~%CLOCK: [2026-10-01 Thu 09:00]--[2026-10-01 Thu 10:00] =>  1:00~%:END:~%- [X] call Anna~%  :LOGBOOK:~%  - State \"DONE\"       from \"TODO\"       [2026-10-02 Fri 14:05]~%  CLOCK: [2026-10-02 Fri 13:40]--[2026-10-02 Fri 14:05] =>  0:25~%  :END:~%- [ ] buy milk~%  - [-] sub task~%"))
            (entries (tuatara.defaults::org-agenda-file-entries "/x/errands.org" done)))
-      (is equal '((:headline nil "Errands") (:checkbox "DONE" "call Anna") (:checkbox "TODO" "buy milk") (:checkbox "TODO" "sub task"))
+      (is equal
+          '((:headline nil "Errands")
+            (:checkbox "DONE" "call Anna")
+            (:checkbox "TODO" "buy milk")
+            (:checkbox "TODO" "sub task"))
           (mapcar (lambda (e) (list (tuatara.defaults::agenda-entry-kind e) (tuatara.defaults::agenda-entry-todo e)
                                     (tuatara.defaults::agenda-entry-title e)))
                   entries))
       (is = 1 (count :clock (tuatara.defaults::agenda-entry-logs (first entries)) :key #'first))
-      (is equal '(:clock :closed) (sort (mapcar #'first (tuatara.defaults::agenda-entry-logs (second entries))) #'string<)))))
+      (is equal
+          '(:clock :closed)
+          (sort (mapcar #'first (tuatara.defaults::agenda-entry-logs (second entries))) #'string<)))))
 
 (define-test (org todo-follows-checkboxes)
-  ;; a TODO headline with a cookie is done once all it counts are, with CLOSED: whatever *org-log-done* says; reopened, CLOSED: goes
+  ;; a TODO headline with a cookie is done once all it counts are, with CLOSED: whatever *org-log-done* says; reopened,
+  ;; CLOSED: goes
   ;; with Org's own TODO and DONE alone
   (let ((tuatara.defaults::*org-now* (encode-universal-time 0 17 14 2 10 2026))
         (tuatara-user:*org-standard-todo-keywords* '(("TODO") . ("DONE")))
@@ -744,7 +840,9 @@ window draws them with (set-face :org-level-1 :height 2)."
         (org-text-after "j j C-c C-c" text))
     (is string= text (org-text-after "j j C-c C-c C-c C-c" text))
     ;; a headline with no TODO keyword stays as it is; turned off, so does a TODO one
-    (is string= (format nil "** Plain [2/2]~%- [X] a~%- [X] b~%") (org-text-after "j j C-c C-c" (format nil "** Plain [1/2]~%- [X] a~%- [ ] b~%")))
+    (is string=
+        (format nil "** Plain [2/2]~%- [X] a~%- [X] b~%")
+        (org-text-after "j j C-c C-c" (format nil "** Plain [1/2]~%- [X] a~%- [ ] b~%")))
     (let ((tuatara-user:*org-todo-follows-checkboxes* nil))
       (true (search "** TODO Second test [2/2] [100%]" (org-text-after "j j C-c C-c" text))))
     ;; TODO sub-headlines: their parent's cookie kept up, the parent done once all are, and so up the tree
@@ -762,12 +860,16 @@ window draws them with (set-face :org-level-1 :height 2)."
   (let ((text (format nil "* A~%:LOGBOOK:~%CLOCK: [2026-10-01 Thu 09:00]--[2026-10-01 Thu 10:00] =>  1:00~%:END:~%body~%* B~%- [ ] x~%  :LOGBOOK:~%  - State \"DONE\" [2026-10-02 Fri 14:05]~%  :END:~%  more~%"))
         (tuatara-user:*org-startup-indented* nil) (tuatara-user:*org-bullets* nil))
     (is equal '("* A" ":LOGBOOK:..." "body" "* B") (subseq (org-screen "j TAB" :text text) 0 4))
-    (is equal '("* A" ":LOGBOOK:" "CLOCK: [2026") (mapcar (lambda (l) (subseq l 0 (min 12 (length l)))) (subseq (org-screen "j TAB TAB" :text text) 0 3)))
+    (is equal
+        '("* A" ":LOGBOOK:" "CLOCK: [2026")
+        (mapcar (lambda (l) (subseq l 0 (min 12 (length l)))) (subseq (org-screen "j TAB TAB" :text text) 0 3)))
     (is equal '("* A..." "* B") (subseq (org-screen "TAB" :text text) 0 2))
     (is equal '("* A" ":LOGBOOK:..." "body") (subseq (org-screen "TAB TAB" :text text) 0 3))
     (is equal '("- [ ] x" "  :LOGBOOK:..." "  more") (subseq (org-screen "C-u 6 j TAB TAB" :text text) 6 9))
     (let ((tuatara-user:*org-cycle-hide-drawers* nil))
-      (is equal '("* A" ":LOGBOOK:" "CLOCK: [2026") (mapcar (lambda (l) (subseq l 0 (min 12 (length l)))) (subseq (org-screen "TAB TAB" :text text) 0 3))))))
+      (is equal
+          '("* A" ":LOGBOOK:" "CLOCK: [2026")
+          (mapcar (lambda (l) (subseq l 0 (min 12 (length l)))) (subseq (org-screen "TAB TAB" :text text) 0 3))))))
 
 (define-test (org metadata-folded-on-opening)
   ;; an Org file opens with each task's drawers and notes folded to one line, its planning shown;
@@ -817,7 +919,6 @@ window draws them with (set-face :org-level-1 :height 2)."
     (is string= text (org-text-after "S-TAB M-z x" text))
     (is string= text (org-text-after "S-TAB C-M-k C-M-k C-M-k" text))))
 
-
 (define-test (org folded-blocks-not-coloured)
   ;; the source blocks a fold hides between two headlines shown are not coloured at each frame
   (let ((path (records-file (with-output-to-string (o)
@@ -838,3 +939,24 @@ window draws them with (set-face :org-level-1 :height 2)."
                    :file path :width 60 :height 10)
       (kill-records b path))
     (true (< 0 lit 30) "~d ranges lit" lit)))
+
+(define-test (org cookies-follow-checkbox-items)
+  (let ((text (format nil "* Tasks [1/2]~%- [X] one~%- [ ] two~%")))
+    ;; a new checkbox item counts at once, in the one step to undo
+    (is string= (format nil "* Tasks [1/3]~%- [X] one~%- [ ] ~%- [ ] two~%") (org-text-after "j M-RET" text))
+    (is string= text (org-text-after "j M-RET M-j u" text))
+    ;; an item line killed leaves the count without it
+    (is string= (format nil "* Tasks [1/1]~%- [X] one~%~%") (org-text-after "j j C-k" text))
+    ;; the last box of a headline gone: nothing left to count
+    (is string= (format nil "* Tasks [0/0]~%~%") (org-text-after "j C-k" (format nil "* Tasks [0/1]~%- [ ] one~%")))))
+
+(define-test (org cookies-follow-killed-items)
+  ;; the cookies above the item killed count again, not those where point lands
+  (let ((text (format nil "* A [1/2]~%- [X] a~%- [ ] b~%* B [0/0]~%")))
+    (is string= (format nil "* A [1/1]~%- [X] a~%* B [0/0]~%") (org-text-after "j j C-k C-k" text))
+    ;; each kill one step to undo, its count with it
+    (is string= (format nil "* A [1/2]~%- [X] a~%- [ ] b~%* B [0/0]~%") (org-text-after "j j C-k u" text))
+    (is string= text (org-text-after "j j C-k C-k u u" text)))
+  ;; a sub-item killed: the item above it counts again, the headline as before
+  (is string= (format nil "* T [0/1]~%- [ ] p [0/0]~%~%")
+      (org-text-after "j j C-k" (format nil "* T [0/1]~%- [ ] p [0/1]~%  - [ ] c~%"))))

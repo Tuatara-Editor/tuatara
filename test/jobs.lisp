@@ -92,7 +92,10 @@ the jobs and drops those marked.")
         (true (tuatara.frontend.fake:fake-frame-showing f "Dropped 1 waiting job"))
         (is string= "b b b" (session-text editor)))
       ;; nothing in the background: the list says so
-      (true (tuatara.frontend.fake:fake-frame-showing (run-keys "M-x l i s t - j o b s RET" :text "x" :width 150 :height 12)
+      (true (tuatara.frontend.fake:fake-frame-showing (run-keys "M-x l i s t - j o b s RET"
+                                                                :text "x"
+                                                                :width 150
+                                                                :height 12)
                                                       "No jobs in the background")))))
 
 (define-test (jobs reports-say-alike)

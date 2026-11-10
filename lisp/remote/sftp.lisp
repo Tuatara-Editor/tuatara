@@ -20,7 +20,9 @@
   "Seconds a server reached for its files (/ssh:HOST:/path) has to answer
 each request, and ssh to connect: past them the connection is closed and the
 work in hand fails, saying so. The work itself runs in the background, so
-that the editor never waits on a server.")
+that the editor never waits on a server. Raise it for a slow link or a busy
+server, at the price of waiting that long before a dead connection is
+noticed; lower it to learn of one sooner.")
 
 (defparameter *sftp-types*
   '((:init 1) (:version 2) (:open 3) (:close 4) (:read 5) (:write 6) (:lstat 7) (:fstat 8) (:setstat 9)
@@ -221,17 +223,17 @@ of them."
 
 (defstruct (sftp-link (:constructor make-sftp-link (host)) (:copier nil))
   "The connection to the SFTP server of HOST, as ssh takes it, used by one
-thread at a time, holding LOCK: PROCESS, the ssh reaching it; FD, this end
-of the local socket ssh reads and writes; INBOX and OUTBOX, what the server
-said and not yet read, and what is to be sent; FOLDER, a private folder
-holding what ssh said on its error output; NEXT-ID, the number of the last
-request; WAITING, how many requests sent have no answer yet; WANTING, how
-many threads wait for the connection, for which whoever holds it gives it
-up between its pieces (SFTP-LET-OTHERS-IN); GENERATION, counted up as the connection is closed, so
-that a handle of one connection is never used on the next; EXTENSIONS,
-the names of the extensions the server offers; REAL-PATHS, where paths lead
-there as asked once for this connection (REMOTE-KEPT-REAL-PATH). FD is NIL
-while no connection is open."
+thread at a time, holding LOCK. PROCESS is the ssh reaching it. FD is this end
+of the local socket ssh reads and writes. INBOX and OUTBOX are what the server
+said and not yet read, and what is to be sent. FOLDER is a private folder
+holding what ssh said on its error output. NEXT-ID is the number of the last
+request. WAITING is how many requests sent have no answer yet. WANTING is how
+many threads wait for the connection, for which whoever holds it gives it up
+between its pieces (SFTP-LET-OTHERS-IN). GENERATION is counted up as the
+connection is closed, so that a handle of one connection is never used on the
+next. EXTENSIONS is the names of the extensions the server offers. REAL-PATHS
+is where paths lead there as asked once for this connection
+\(REMOTE-KEPT-REAL-PATH). FD is NIL while no connection is open."
   (host "" :type string :read-only t)
   (lock (sb-thread:make-mutex :name "sftp connection") :read-only t)
   (process nil)
@@ -795,16 +797,16 @@ and the file holds more."
     size))
 
 (defun remote-download (host path fd &key arrival on-piece most)
-  "Read the file at PATH on HOST into the file open as FD, each piece where
-it belongs, +SFTP-PIECE+ octets at a time, +SFTP-PIECES-AHEAD+ asked for
-before their answers come, as many octets as the server said the file holds
-as it was opened, its connection given up to other work between these when
-some waits for it; stopped between pieces when the job doing it is asked to
-stop. With ARRIVAL, an ARRIVAL of that file, the pieces are read as it says
+  "Read the file at PATH on HOST into the file open as FD, each piece where it
+belongs, +SFTP-PIECE+ octets at a time, +SFTP-PIECES-AHEAD+ asked for before
+their answers come. As many octets are read as the server said the file holds
+as it was opened. Its connection is given up to other work between these when
+some waits for it. The work stops between pieces when the job doing it is asked
+to stop. With ARRIVAL, an ARRIVAL of that file, the pieces are read as it says
 \(ARRIVAL-NEXT) until it has all that is asked of it, ON-PIECE, a function of
 none, called as each lot comes, and the file is refused when it is not as
-ARRIVAL has it. With MOST, a file the server says holds more octets is
-refused before any is read; the work stops, as a job asked to stop does, once
+ARRIVAL has it. With MOST, a file the server says holds more octets is refused
+before any is read; the work stops, as a job asked to stop does, once
 *REMOTE-CANCEL* says so. Its attributes then, as SFTP-TAKE-ATTRIBUTES gives
 them."
   (call-with-sftp
@@ -989,16 +991,16 @@ to it were still to come."
           (sftp-done link :remove (list temporary) temporary "remove"))))))
 
 (defun sftp-write-in-place (link path fd size check partly)
-  "Write the SIZE octets of the file open as FD over the file at PATH on
-LINK's server itself, once CHECK, a function of no arguments that signals
-when the file there may not be written over and else gives its attributes,
-signals nothing: opened, found the very file CHECK found (its kind,
-permissions, owner, group, size and time), written from its start and cut
-to SIZE, so that it keeps its owner, group, permissions and other names.
-PARTLY, a cons, has true put in its car when the work fails once writing
-has begun: the file there is then left partly written. A server that will
-not cut it to SIZE leaves the end of the old file after the new text, and
-that is said."
+  "Write the SIZE octets of the file open as FD over the file at PATH on LINK's
+server itself, once CHECK has passed. CHECK is a function of no arguments that
+signals when the file there may not be written over and else gives its
+attributes, signalling nothing. The file is then opened and found to be the
+very file CHECK found (its kind, permissions, owner, group, size and time). It
+is written from its start and cut to SIZE, so that it keeps its owner, group,
+permissions and other names. PARTLY, a cons, has true put in its car when the
+work fails once writing has begun: the file there is then left partly written.
+A server that will not cut it to SIZE leaves the end of the old file after the
+new text, and that is said."
   (let ((found (funcall check)))
     (sftp-with-handle
      link :open (list path #x02 '(:attributes ())) path "write"
@@ -1020,20 +1022,20 @@ that is said."
   "Write the SIZE octets of the file open as FD as the file at PATH on HOST,
 only when the file there is as EXPECTED says, a function of its attributes
 \(NIL when it is not there) that gives NIL when it may be written over, else
-words saying why not; checked again just before the file is replaced. As a
-rule into a new file beside it, with PERMISSIONS (else the server's own),
-renamed over it (SFTP-REPLACE). LIKE, the attributes of the file there as
-last read, makes the new file like it: its owner and group, and exactly
-PERMISSIONS. When the server will not give it those, or the file there has
-more than one name (hard links, as the server's long name of it says), the
-file itself is written over in place (SFTP-WRITE-IN-PLACE), keeping its
-owner, group, permissions, other names and the rest SFTP cannot copy; a
-write that fails half-way then leaves it part written, and true is put in
-the car of PARTLY, a cons. LINKED-REFUSAL, words or NIL: when given, a file
-with more than one name is refused, saying them, not written in place. The
-attributes of the file written, and as a second value why it was written in
-place, in words, or NIL when it was replaced. With VET (SFTP-REPLACE), a
-file that cannot be replaced is refused, never written in place."
+words saying why not; checked again just before the file is replaced. As a rule
+into a new file beside it, with PERMISSIONS (else the server's own), renamed
+over it (SFTP-REPLACE). LIKE, the attributes of the file there as last read,
+makes the new file like it: its owner and group, and exactly PERMISSIONS. When
+the server will not give it those, or the file there has more than one name
+\(hard links, as the server's long name of it says), the file itself is written
+over in place (SFTP-WRITE-IN-PLACE). That keeps its owner, group, permissions,
+other names and the rest SFTP cannot copy. A write that fails half-way then
+leaves it part written, and true is put in the car of PARTLY, a cons.
+LINKED-REFUSAL, words or NIL: when given, a file with more than one name is
+refused, saying them, not written in place. The attributes of the file written,
+and as a second value why it was written in place, in words, or NIL when it was
+replaced. With VET (SFTP-REPLACE), a file that cannot be replaced is refused,
+never written in place."
   (call-with-sftp
    host path "write"
    (lambda (link)

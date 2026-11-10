@@ -14,7 +14,8 @@
 
 (define-major-mode git-blame-mode special-mode
   "A file a line each (\\[git-blame]): the commit that last changed the line,
-its author and date, then the line. \\<git-blame-mode>\\[git-blame-show] shows the commit on the line; \\[quit-window] closes."
+its author and date, then the line. \\<git-blame-mode>\\[git-blame-show] shows
+the commit on the line; \\[quit-window] closes."
   :lighter "Git blame" :interactive nil)
 
 (defmethod mode-wraps-p ((mode git-blame-mode))
@@ -59,7 +60,8 @@ on a line shows its commit."
     (call-with-git-file top "No file here to blame"
                         (lambda (path)
                           (git-show-table "Reading who changed each line" top (list "blame" "--porcelain" "--" path)
-                                          (format nil "*git blame: ~a*" (tuatara.io:native-file-name path)) 'git-blame-mode
+                                          (format nil "*git blame: ~a*" (tuatara.io:native-file-name path))
+                                          'git-blame-mode
                                           #'parse-git-blame *git-blame-columns*
                                           (lambda (row)
                                             (destructuring-bind (hash author date line) row
@@ -102,7 +104,9 @@ repository with no commit yet too."
   (with-git-repository (top switches)
     (call-with-git-file top "No file here"
                         (lambda (path)
-                          (git-show-diff top (format nil "*git diff ~a*" (tuatara.io:native-file-name path)) (list switches (list path))
+                          (git-show-diff top
+                                         (format nil "*git diff ~a*" (tuatara.io:native-file-name path))
+                                         (list switches (list path))
                                          :against-head t)))))
 
 (define-command git-delete-file ()
@@ -124,18 +128,24 @@ one); the rename is staged, and the buffers visiting the file follow it."
   (with-git-repository (top)
     (call-with-git-file top "No file here"
                         (lambda (path)
-                          (let ((to (string-trim '(#\Space) (read-string (format nil "Rename ~a to: " (escape-controls path)) :initial path))))
+                          (let ((to (string-trim '(#\Space)
+                                                 (read-string (format nil "Rename ~a to: " (escape-controls path))
+                                                              :initial path))))
                             (if (git-inside-path-p to)
                                 (let* ((from (concatenate 'string top path))
                                        (there (concatenate 'string top to))
                                        (there (if (eq :directory (tuatara.io:path-kind there))
-                                                  (tuatara.io:path-join (tuatara.io:slash-ended there) (tuatara.io:native-file-name from))
+                                                  (tuatara.io:path-join (tuatara.io:slash-ended there)
+                                                                        (tuatara.io:native-file-name from))
                                                   there)))
                                   (handler-case
                                       (reporting-errors ("renaming ~a" path)
                                         (check-not-saving (list from))
                                         (git-run "Renaming a file" top (list "mv" "--" path to)
-                                                 (format nil "Renamed ~a to ~a" (escape-controls path) (escape-controls to))
+                                                 (format nil
+                                                         "Renamed ~a to ~a"
+                                                         (escape-controls path)
+                                                         (escape-controls to))
                                                  :then (lambda (text)
                                                          (declare (ignore text))
                                                          (rename-path-following from there :on-disk nil))))

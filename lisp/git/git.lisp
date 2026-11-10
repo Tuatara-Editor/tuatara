@@ -54,7 +54,12 @@ in a status switches between them for that status.")
     git-log git-log-other git-log-file git-diff git-diff-staged git-diff-commit
     git-fetch git-fetch-all git-pull git-push git-push-elsewhere
     git-merge git-merge-continue git-merge-abort git-rebase-upstream git-rebase-onto
-    git-rebase-interactive git-rebase-continue git-rebase-abort git-cherry-pick git-cherry-pick-continue git-cherry-pick-abort
+    git-rebase-interactive
+    git-rebase-continue
+    git-rebase-abort
+    git-cherry-pick
+    git-cherry-pick-continue
+    git-cherry-pick-abort
     git-revert git-revert-continue git-revert-abort git-reset-mixed git-reset-hard git-reset-file
     git-tag-create git-tag-delete git-remote-add git-remote-set-address
     git-bisect-start git-bisect-good git-bisect-bad git-bisect-skip git-bisect-reset
@@ -67,7 +72,9 @@ show it too, or take one away.")
 
 ;;; Git in the background
 
-(defstruct (git-job (:include tuatara.runtime:job) (:constructor make-git-job (buffer doing then after quiet)) (:copier nil))
+(defstruct (git-job (:include tuatara.runtime:job)
+                    (:constructor make-git-job (buffer doing then after quiet))
+                    (:copier nil))
   "Git at work for BUFFER (a status, a log, a commit's message), a job: DOING
 says what it does (Pushing); THEN is called on the editor's thread with what
 its work gave once it is done, AFTER, when given, however it ended. QUIET
@@ -316,7 +323,8 @@ when nothing is typed; NIL, said so, when the name could not be given to git
                   (completing-read prompt names :require-match require-match))))
     (if (git-name-p name)
         name
-        (progn (message "~:[No name given~;Not a name git takes: ~:*~a~]" (and (plusp (length name)) (escape-controls name))) nil))))
+        (progn (message "~:[No name given~;Not a name git takes: ~:*~a~]"
+                        (and (plusp (length name)) (escape-controls name))) nil))))
 
 ;;; Menus, slim and full
 
@@ -350,7 +358,8 @@ most used again (*GIT-MENUS*, *GIT-SLIM-ACTIONS*)."
 separator, then its hash, short hash, date, author, how long ago it was
 made, the names at it and its subject, a unit separator between each.")
 
-(defstruct (git-commit (:constructor make-git-commit (&key hash short date author ago names subject path (graph ""))) (:copier nil))
+(defstruct (git-commit (:constructor make-git-commit (&key hash short date author ago names subject path (graph "")))
+                       (:copier nil))
   "A commit as git log wrote it (PARSE-GIT-COMMITS): its HASH and SHORT hash,
 its DATE, AUTHOR, how long AGO it was made (2 days ago), the NAMES at it
 \(branches, tags) and its SUBJECT, as git writes them; PATH, what the file
@@ -410,23 +419,23 @@ line of the graph alone a GIT-COMMIT of its own."
 ;;; What the repository holds
 
 (defstruct (git-state (:constructor make-git-state ()) (:copier nil))
-  "A repository as \\[git] shows it, its HEAD (the branch, or NIL when
-detached, and the commit, (initial) before the first), the UPSTREAM and how
-many commits AHEAD and BEHIND it is, and its files, UNMERGED (in conflict,
-git having joined two changes to them only in part, KIND saying how each
-side changed it, see GIT-UNMERGED-WORD), UNTRACKED, UNSTAGED and
-STAGED, each a list of (PATH KIND), KIND a word, a rename staged (PATH KIND
-ORIGINAL), ORIGINAL its name before, a folder none of whose files is
-tracked one entry of UNTRACKED ending in /; the STASHES, each (NAME
-SUBJECT), the latest first; the RECENT commits, each (HASH SUBJECT); the
-commits not pushed, UNPUSHED, each (HASH SUBJECT), the latest first, at most
-*GIT-RECENT-COMMITS* of UNPUSHED-COUNT, and UNPUSHED-TO, the upstream they
-are not in, or NIL for those on no remote at all, a branch with none; and
-DOING, what git is in the middle of: :AM, :MERGE, :REBASE, :CHERRY-PICK, :REVERT,
-:BISECT, or NIL; its SUBMODULES, each (PATH STATE); the files it IGNORES,
-each (PATH KIND), KIND the word ignored, a folder ignored whole one entry
-ending in /; and STASH-STAMP, the stamp of git's list of stashes when they
-were read, NIL when there was none."
+  "A repository as \\[git] shows it. HEAD is the branch (NIL when detached) and
+the commit ((initial) before the first). UPSTREAM is its upstream, and AHEAD and
+BEHIND are how many commits it is ahead of and behind the upstream. Its files
+are UNMERGED (in conflict, git having joined two changes to them only in part,
+KIND saying how each side changed it, see GIT-UNMERGED-WORD), UNTRACKED,
+UNSTAGED and STAGED. Each is a list of (PATH KIND), KIND a word, and a rename
+staged is (PATH KIND ORIGINAL), ORIGINAL its name before. A folder none of whose
+files is tracked is one entry of UNTRACKED ending in /. STASHES are each (NAME
+SUBJECT), the latest first. RECENT are the recent commits, each (HASH SUBJECT).
+UNPUSHED are the commits not pushed, each (HASH SUBJECT), the latest first, at
+most *GIT-RECENT-COMMITS* of UNPUSHED-COUNT. UNPUSHED-TO is the upstream they
+are not in, or NIL for those on no remote at all, a branch with none. DOING is
+what git is in the middle of: :AM, :MERGE, :REBASE, :CHERRY-PICK, :REVERT,
+:BISECT, or NIL. SUBMODULES are each (PATH STATE). IGNORES are the files it
+ignores, each (PATH KIND), KIND the word ignored, a folder ignored whole being
+one entry ending in /. STASH-STAMP is the stamp of git's list of stashes when
+they were read, NIL when there was none."
   branch commit upstream (ahead 0) (behind 0)
   (unmerged '()) (untracked '()) (unstaged '()) (staged '()) (stashes '()) (recent '()) (unpushed '()) (unpushed-count 0) unpushed-to
   doing (submodules '()) (ignored '()) stash-stamp)
@@ -472,12 +481,15 @@ file in conflict's, how both sides changed it (GIT-UNMERGED-WORD)."
                      ((uiop:string-prefix-p "# branch.ab " entry)
                       (let ((counts (uiop:split-string (subseq entry 12) :separator '(#\Space))))
                         (setf (git-state-ahead state) (abs (or (parse-integer (first counts) :junk-allowed t) 0))
-                              (git-state-behind state) (abs (or (parse-integer (or (second counts) "0") :junk-allowed t) 0)))))
+                              (git-state-behind state)
+                              (abs (or (parse-integer (or (second counts) "0") :junk-allowed t) 0)))))
                      ((uiop:string-prefix-p "? " entry)
                       (push (list (subseq entry 2) "untracked") (git-state-untracked state)))
                      ((uiop:string-prefix-p "! " entry)
                       (push (list (subseq entry 2) "ignored") (git-state-ignored state)))
-                     ((or (uiop:string-prefix-p "1 " entry) (uiop:string-prefix-p "2 " entry) (uiop:string-prefix-p "u " entry))
+                     ((or (uiop:string-prefix-p "1 " entry)
+                          (uiop:string-prefix-p "2 " entry)
+                          (uiop:string-prefix-p "u " entry))
                       ;; the path is the last field; a rename's original comes after, on its own
                       (let* ((parts (uiop:split-string entry :separator '(#\Space)))
                              (xy (second parts))
@@ -489,8 +501,10 @@ file in conflict's, how both sides changed it (GIT-UNMERGED-WORD)."
                                 (push (list path (git-unmerged-word xy)) (git-state-unmerged state))
                                 (progn
                                   (unless (char= (char xy 0) #\.)
-                                    (push (list* path (kind (char xy 0)) (and original (list original))) (git-state-staged state)))
-                                  (unless (char= (char xy 1) #\.) (push (list path (kind (char xy 1))) (git-state-unstaged state))))))))))))
+                                    (push (list* path (kind (char xy 0)) (and original (list original)))
+                                          (git-state-staged state)))
+                                  (unless (char= (char xy 1) #\.)
+                                    (push (list path (kind (char xy 1))) (git-state-unstaged state))))))))))))
     (setf (git-state-untracked state) (nreverse (git-state-untracked state))
           (git-state-ignored state) (nreverse (git-state-ignored state))
           (git-state-unmerged state) (nreverse (git-state-unmerged state))
@@ -520,7 +534,9 @@ no stash."
                                      (uiop:split-string text :separator '(#\Newline)))))
 
 (defparameter *git-operations*
-  '((:am "rebase-apply/applying") (:rebase "rebase-merge/" "rebase-apply/") (:merge "MERGE_HEAD") (:cherry-pick "CHERRY_PICK_HEAD")
+  '((:am "rebase-apply/applying") (:rebase "rebase-merge/" "rebase-apply/")
+    (:merge "MERGE_HEAD")
+    (:cherry-pick "CHERRY_PICK_HEAD")
     (:revert "REVERT_HEAD") (:bisect "BISECT_LOG"))
   "What git can be in the middle of, each with the files in its own folder
 that say so, in the order they are looked for.")
@@ -531,7 +547,8 @@ ending in /, as git says for one you trust; for one not trusted, read
 without git (GIT-REAL-FOLDER), for git there reads a shadow of it."
   (if (not (git-reads-only-p top))
       (tuatara.io:slash-ended (string-right-trim "/" (git-output-line job top (list "rev-parse" "--absolute-git-dir"))))
-      (or (git-real-folder top) (throw 'git-failed (format nil "~a has no folder of git's own git could read" (abbreviated-path top))))))
+      (or (git-real-folder top)
+          (throw 'git-failed (format nil "~a has no folder of git's own git could read" (abbreviated-path top))))))
 
 (defun git-operation (folder)
   "What git is in the middle of (*GIT-OPERATIONS*), its own FOLDER tells, or NIL."
@@ -540,12 +557,12 @@ without git (GIT-REAL-FOLDER), for git there reads a shadow of it."
           return operation))
 
 (defun git-read-state (job top folder &key previous)
-  "On JOB's thread: the repository at TOP, git's own FOLDER, as a GIT-STATE,
-read by git status (taking no lock that git run elsewhere would meet), the
-files it ignores found in the same walk of its tree, a folder ignored whole
-one entry; its latest commits by git log, and its stashes by git stash list
-when it has any, kept from PREVIOUS, the state read before, while their list
-is as it was then."
+  "On JOB's thread, read the repository at TOP, git's own FOLDER, as a
+GIT-STATE. The state is read by git status (taking no lock that git run
+elsewhere would meet). The files it ignores are found in the same walk of its
+tree, a folder ignored whole being one entry. Its latest commits are read by git
+log, and its stashes by git stash list when it has any, kept from PREVIOUS, the
+state read before, while their list is as it was then."
   (let ((state (parse-git-status (git-job-output job top (list "status" "--porcelain=v2" "--branch" "-z" "--untracked-files=normal"
                                                                "--ignored=traditional")
                                                  :environment (list "GIT_OPTIONAL_LOCKS=0"))))
@@ -560,7 +577,8 @@ is as it was then."
                 (git-stashes job top))))
     (unless (git-state-unborn-p state)
       (setf (git-state-recent state)
-            (mapcar #'git-commit-line (parse-git-commits (git-job-output job top (git-log-arguments *git-recent-commits*)))))
+            (mapcar #'git-commit-line
+                    (parse-git-commits (git-job-output job top (git-log-arguments *git-recent-commits*)))))
       (git-read-unpushed job top state))
     state))
 
@@ -576,7 +594,8 @@ repository has a remote, those on no remote at all."
             (git-state-unpushed-count state)
             (if (git-state-upstream state)
                 (git-state-ahead state)
-                (or (parse-integer (or (git-job-try job top (append (list "rev-list" "--count") range)) "") :junk-allowed t) 0))
+                (or (parse-integer (or (git-job-try job top (append (list "rev-list" "--count") range)) "")
+                                   :junk-allowed t) 0))
             (git-state-unpushed state)
             (and (plusp (git-state-unpushed-count state))
                  (mapcar #'git-commit-line
@@ -669,17 +688,25 @@ a change of its own. NIL when none of LINES is a change."
               do (loop while (and wanted (< (first wanted) i)) do (pop wanted))
                  (cond ((char= kind #\\) (when kept (push l body)))
                        ((char= kind #\Space) (push l body) (incf old) (incf new) (setf kept t))
-                       ((eql (first wanted) i) (push l body) (incf changes) (if (char= kind #\+) (incf new) (incf old)) (setf kept t))
+                       ((eql (first wanted) i) (push l body)
+                        (incf changes)
+                        (if (char= kind #\+) (incf new) (incf old))
+                        (setf kept t))
                        ((char= kind (if reverse #\+ #\-))
                         (if (and (uiop:string-prefix-p "\\" next) (< i last-chosen))
                             ;; the line, last of its text, and the same line ended by a newline
                             (progn
                               (if reverse
                                   (progn (push (concatenate 'string "-" (subseq l 1)) body) (push l body) (setf kept t))
-                                  (progn (push l body) (push next body) (push (concatenate 'string "+" (subseq l 1)) body)
+                                  (progn (push l body)
+                                         (push next body)
+                                         (push (concatenate 'string "+" (subseq l 1)) body)
                                          (setf kept nil)))
                               (incf old) (incf new) (incf changes))
-                            (progn (push (concatenate 'string " " (subseq l 1)) body) (incf old) (incf new) (setf kept t))))
+                            (progn (push (concatenate 'string " " (subseq l 1)) body)
+                                   (incf old)
+                                   (incf new)
+                                   (setf kept t))))
                        (t (setf kept nil))))
         (when (plusp changes)
           (multiple-value-bind (old-start old-count new-start) (git-hunk-range hunk)
@@ -705,16 +732,20 @@ staged and the files both (:REVERSE-STAGED)."
 
 (define-major-mode git-status-mode special-mode
   "The state of a repository (\\[git]): its branch, its files in conflict
-\(unmerged), not tracked, changed and staged, and its latest commits. \\<git-status-mode>\\[git-stage] stages the file on the line (on a
-section's title, all of its files; on a hunk, the hunk; the lines selected in
-hunks alone), \\[git-unstage] unstages, \\[git-reverse] reverses changes (asked), \\[git-toggle-diff] shows a
-file's changes under it, and on a section's heading folds the section or
-unfolds it, as in every list in sections (▸ before a folded one, the files
-ignored folded at first), \\[list-toggle-all-folds] every section;
-\\[git-next-section] and \\[git-previous-section] go to the next and the previous file or hunk,
-\\[git-visit] visits the file (at the hunk's line) or shows the commit, \\[git-commit-menu] opens the commit
-menu, \\[git-push-menu] the push menu, \\[git-pull-menu] the pull menu, \\[git-log-menu] the log menu, \\[git-diff-menu] the diff
-menu, \\[revert-buffer] looks again, \\[quit-window] closes. j and k move by lines, as everywhere."
+\(unmerged), not tracked, changed and staged, and its latest commits.
+\\<git-status-mode>\\[git-stage] stages the file on the line (on a section's
+title, all of its files; on a hunk, the hunk; the lines selected in hunks
+alone). \\[git-unstage] unstages. \\[git-reverse] reverses changes (asked).
+\\[git-toggle-diff] shows a file's changes under it, and on a section's heading
+folds the section or unfolds it, as in every list in sections (▸ before a folded
+one, the files ignored folded at first). \\[list-toggle-all-folds] does the same
+to every section. \\[git-next-section] and \\[git-previous-section] go to the
+next and the previous file or hunk. \\[git-visit] visits the file (at the hunk's
+line) or shows the commit. \\[git-commit-menu] opens the commit menu,
+\\[git-push-menu] the push menu, \\[git-pull-menu] the pull menu,
+\\[git-log-menu] the log menu, \\[git-diff-menu] the diff menu.
+\\[revert-buffer] looks again, \\[quit-window] closes. j and k move by lines, as
+everywhere."
   :lighter "Git" :interactive nil)
 
 (defvar *git-status-keymap* (mode-keymap 'git-status-mode)
@@ -734,7 +765,9 @@ subject. \\<git-log-mode>\\[git-log-show] shows the commit on the line; \\[quit-
   "Keys of a repository's log (git-log-mode's keymap).")
 
 (defparameter *git-sections*
-  '((:unmerged "Unmerged files") (:untracked "Untracked files") (:unstaged "Unstaged changes") (:staged "Staged changes"))
+  '((:unmerged "Unmerged files") (:untracked "Untracked files")
+    (:unstaged "Unstaged changes")
+    (:staged "Staged changes"))
   "The sections of files in a status, in order, and their titles.")
 
 (defun git-section-files (state section)
@@ -753,7 +786,8 @@ subject. \\<git-log-mode>\\[git-log-show] shows the commit on the line; \\[quit-
         ((uiop:string-prefix-p "@@" line) :diff.delta)))
 
 (defparameter *git-operation-words*
-  '((:am "taking in patches" "\\<git-status-mode>\\[git-am-menu] c goes on, \\[git-am-menu] s skips this patch, \\[git-am-menu] a stops it")
+  '((:am "taking in patches"
+     "\\<git-status-mode>\\[git-am-menu] c goes on, \\[git-am-menu] s skips this patch, \\[git-am-menu] a stops it")
     (:rebase "rebasing" "\\<git-status-mode>\\[git-rebase-menu] c goes on, \\[git-rebase-menu] s skips this commit, \\[git-rebase-menu] a stops it")
     (:merge "merging" "\\<git-status-mode>\\[git-commit-menu] c commits once the files are put right and staged, \\[git-merge-menu] a stops it")
     (:cherry-pick "cherry-picking" "\\<git-status-mode>\\[git-cherry-pick-menu] c goes on, \\[git-cherry-pick-menu] s skips this commit, \\[git-cherry-pick-menu] a stops it")
@@ -768,7 +802,8 @@ of its own (:git-status-branch), then its upstream and
 how far ahead and behind it is, when it has one, then what git is in the
 middle of and the keys going on with it, when it is."
   (append (list (list "Head:     "
-                      (cons (if (git-state-branch state) (escape-controls (git-state-branch state)) "(detached)") :git-status-branch)
+                      (cons (if (git-state-branch state) (escape-controls (git-state-branch state)) "(detached)")
+                            :git-status-branch)
                       (format nil "  ~a" (if (git-state-unborn-p state)
                                              "(no commit yet)"
                                              (escape-controls (or (second (first (git-state-recent state))) ""))))))
@@ -785,9 +820,9 @@ middle of and the keys going on with it, when it is."
 
 (defun git-more-line (line left step what entry)
   "Give LINE, a function of a line's text, face and entry (ENTRY-LINES), the
-line after a part of a status cut short: that LEFT more of WHAT (a format
-given LEFT, its first part the indent) are not shown, and that
-\\[git-toggle-diff] on it shows as many more as STEP, at most LEFT; ENTRY is its
+line after a part of a status cut short. It says that LEFT more of WHAT (a
+format given LEFT, its first part the indent) are not shown, and that
+\\[git-toggle-diff] on it shows as many more as STEP, at most LEFT. ENTRY is its
 entry, (:MORE SECTION) after a section's files, (:MORE SECTION PATH) after a
 file's changes."
   (funcall line (format nil "~@?: TAB here shows ~:d more" what left (min step left))
@@ -821,7 +856,9 @@ ignores."
   (case section
     (:submodules "Submodules")
     (:stashes "Stashes")
-    (:unpushed (if (git-state-unpushed-to state) (format nil "Unpushed to ~a" (git-state-unpushed-to state)) "Unpushed, on no remote"))
+    (:unpushed (if (git-state-unpushed-to state)
+                   (format nil "Unpushed to ~a" (git-state-unpushed-to state))
+                   "Unpushed, on no remote"))
     (:recent "Recent commits")
     (:ignored "Ignored files")
     (t (second (assoc section *git-sections*)))))
@@ -836,25 +873,37 @@ its files, all its commits not pushed."
 
 (defun git-status-row (member section shown limits)
   "The lines of MEMBER of SECTION of a status, as pieces and entries
-\(ENTRY-LINES): a file (staged ones in GIT-STAGED-FACE's face), its changes
-under it when SHOWN has them, as many lines of them as LIMITS has for the
-file (*GIT-DIFF-LINES* when it has none) then a line saying how many more
-there are; an ignored file; a submodule, a stash, or a commit."
+\(ENTRY-LINES). For a file they are the file (staged ones in GIT-STAGED-FACE's
+face), its changes under it when SHOWN has them, as many lines of them as LIMITS
+has for the file (*GIT-DIFF-LINES* when it has none), then a line saying how
+many more there are. The other kinds are an ignored file, a submodule, a stash,
+or a commit."
   (entry-lines
    (lambda (line)
      (case section
        (:submodules (destructuring-bind (path kind) member
                       (funcall line (format nil "  ~a ~a" (column-text kind 16 :elide nil) (escape-controls path)) nil (list :submodule path))))
        (:stashes (destructuring-bind (name subject) member
-                   (funcall line (format nil "  ~a ~a" name (escape-controls subject)) :git-status-commit (list :stash name))))
+                   (funcall line
+                            (format nil "  ~a ~a" name (escape-controls subject))
+                            :git-status-commit (list :stash name))))
        ((:unpushed :recent) (destructuring-bind (hash subject) member
-                              (funcall line (format nil "  ~a ~a" hash (escape-controls subject)) :git-status-commit (list :commit hash))))
+                              (funcall line
+                                       (format nil "  ~a ~a" hash (escape-controls subject))
+                                       :git-status-commit (list :commit hash))))
        (:ignored (destructuring-bind (path kind) member
-                   (funcall line (format nil "  ~a ~a" (column-text kind 10 :elide nil) (escape-controls path)) :list-dim (list :file :ignored path))))
+                   (funcall line
+                            (format nil "  ~a ~a" (column-text kind 10 :elide nil) (escape-controls path))
+                            :list-dim (list :file :ignored path))))
        (t (destructuring-bind (path kind &optional original) member
             (let* ((key (cons section path))
                    (diff (gethash key shown)))
-              (funcall line (format nil "  ~a ~@[~a -> ~]~a" (column-text kind (if (eq section :unmerged) 15 10) :elide nil) (and original (escape-controls original)) (escape-controls path))
+              (funcall line
+                       (format nil
+                               "  ~a ~@[~a -> ~]~a"
+                               (column-text kind (if (eq section :unmerged) 15 10) :elide nil)
+                               (and original (escape-controls original))
+                               (escape-controls path))
                        (and (eq section :staged) (git-staged-face kind))
                        (list :file section path))
               (when diff
@@ -894,8 +943,9 @@ entries (ENTRY-LINES), when it shows only some of them: how many more files
 
 (defun git-status-render (buffer &optional (point :keep))
   "Fill BUFFER, a status, with its repository's state as last read: why it
-is looked at only, when it is (GIT-LOOK-ONLY-LINE), its head, then its sections (GIT-STATUS-SECTIONS), each under a heading saying how many
-it holds and folded as in any list in sections (SECTIONED-PIECES)."
+is looked at only, when it is (GIT-LOOK-ONLY-LINE), its head, then its sections (GIT-STATUS-SECTIONS),
+each under a heading saying how many it holds and folded as in any list in
+sections (SECTIONED-PIECES)."
   (let ((state (tuatara.buffer:buffer-local buffer 'git-state))
         (shown (tuatara.buffer:buffer-local buffer 'git-shown))
         (limits (or (tuatara.buffer:buffer-local buffer 'git-shown-limits)
@@ -984,13 +1034,16 @@ changes."
                              (tuatara.buffer:buffer-local buffer 'git-watched) watched
                              (tuatara.buffer:buffer-local buffer 'git-elsewhere) elsewhere)
                        (git-status-render buffer)))
-                   :after (lambda () (when (live-buffer-p buffer) (setf (tuatara.buffer:buffer-local buffer 'git-reading) nil)))
+                   :after (lambda ()
+                            (when (live-buffer-p buffer) (setf (tuatara.buffer:buffer-local buffer 'git-reading) nil)))
                    :quiet t :buffer buffer)))
 
 (defvar *git-watch-seconds* 2
   "The least time, in seconds, between two readings of a status on the screen
 when git changes its repository, from a terminal too (GIT-WATCH-TICK), or NIL
-for a status never to follow it: then \\<git-status-mode>\\[revert-buffer] reads it again.")
+for a status never to follow it: then \\<git-status-mode>\\[revert-buffer] reads it again.
+A shorter time shows changes made elsewhere sooner and reads the status more
+often, which takes longer in a large repository; NIL reads it only when asked.")
 
 (defun git-statuses-shown ()
   "The statuses shown in the editor's windows, each once."
@@ -1038,7 +1091,8 @@ again is looked at once; one a waiting question is about, once it is answered
       (when (and (tuatara.buffer:buffer-local buffer 'git-disk-changed) (not (buffer-held-by-question-p buffer)))
         (let ((folder (tuatara.buffer:buffer-local buffer 'git-folder))
               (left (if *git-watch-seconds*
-                        (- *git-watch-seconds* (tuatara.runtime:seconds-since (or (tuatara.buffer:buffer-local buffer 'git-read-at) 0)))
+                        (- *git-watch-seconds*
+                           (tuatara.runtime:seconds-since (or (tuatara.buffer:buffer-local buffer 'git-read-at) 0)))
                         0)))
           (cond ((tuatara.buffer:buffer-local buffer 'git-reading) (setf soonest t))
                 ((and folder (equalp (git-stamps folder) (tuatara.buffer:buffer-local buffer 'git-stamps)))
@@ -1230,7 +1284,11 @@ file git could not join is refused: it is staged whole once put right."
                     (escape-controls conflicted)))
           ((null patch) (message "No change among the lines selected"))
           (t (when (git-lines-selected-p (current-buffer)) (drop-selection))
-             (git-run doing (git-here) (git-apply-arguments how) (format nil done (git-hunks-words chosen section)) :input patch)))))
+             (git-run doing
+                      (git-here)
+                      (git-apply-arguments how)
+                      (format nil done (git-hunks-words chosen section))
+                      :input patch)))))
 
 (define-command git-stage ()
   "Stage the file on the line of the status, or on a section's title all of
@@ -1258,7 +1316,9 @@ background: back to HEAD, or out of the index altogether in a repository
 with no commit yet; say DONE once done."
   (start-git-job "Unstaging"
                  (lambda (job)
-                   (git-job-output job top (append (if (git-unborn-p job top) '("rm" "--cached" "-r" "-q") '("restore" "--staged"))
+                   (git-job-output job top (append (if (git-unborn-p job top)
+                                                       '("rm" "--cached" "-r" "-q")
+                                                       '("restore" "--staged"))
                                                    *git-paths-from-input*)
                                    :input (git-paths-input paths)))
                  (lambda (text) (declare (ignore text)) (message "~a" done))
@@ -1276,7 +1336,9 @@ selected in hunks, those lines."
         (multiple-value-bind (files section) (git-files (list-entry-at))
           (cond ((null files) (message "No file on this line"))
                 ((not (eq section :staged)) (message "Not staged"))
-                (t (git-unstage-paths (git-here) (mapcan #'git-entry-paths files) (format nil "Unstaged ~d file~:p" (length files)))))))))
+                (t (git-unstage-paths (git-here)
+                                      (mapcan #'git-entry-paths files)
+                                      (format nil "Unstaged ~d file~:p" (length files)))))))))
 
 (defun git-file-inside-p (top path &optional (real-top (real-folder top)))
   "True when the file PATH, relative to TOP, the top of its repository, is
@@ -1318,14 +1380,14 @@ and those left as they are, each (PATH WHY)."
     (values (nreverse moved) (nreverse left))))
 
 (defun git-reverse-work (top files section unborn)
-  "The work, a function of the job, reversing the changes of FILES, each
-\(PATH KIND), of SECTION of the status of the repository at TOP, UNBORN when
-it has no commit yet: files git does not track, and new files staged once
-taken out of the index, are moved to the trash (GIT-TRASH-UNTRACKED); the
-changes of the others are undone in the file, and for those staged in the
-index too, a rename under both its names; a submodule is left as it is. It
-gives the paths whose changes were undone, those moved to the trash, and
-those left as they are, each (PATH WHY)."
+  "The work, a function of the job, reversing the changes of FILES, each (PATH
+KIND), of SECTION of the status of the repository at TOP, UNBORN when it has no
+commit yet. Files git does not track, and new files staged once taken out of the
+index, are moved to the trash (GIT-TRASH-UNTRACKED). The changes of the others
+are undone in the file, and for those staged in the index too, a rename under
+both its names. A submodule is left as it is. It gives the paths whose changes
+were undone, those moved to the trash, and those left as they are, each (PATH
+WHY)."
   (lambda (job)
     (let* ((submodules (remove "submodule" files :key #'second :test-not #'string=))
            (files (remove "submodule" files :key #'second :test #'string=))
@@ -1356,7 +1418,8 @@ were undone (CHANGED), how many were moved to the trash (MOVED), and each
 file left as it is and why (LEFT, each (PATH WHY))."
   (let ((parts (append (and changed (list (format nil "reversed the changes of ~d file~:p" (length changed))))
                        (and moved (list (format nil "moved ~d file~:p to the trash" (length moved))))
-                       (mapcar (lambda (file) (format nil "left ~a as it is: ~a" (escape-controls (first file)) (second file)))
+                       (mapcar (lambda (file)
+                                 (format nil "left ~a as it is: ~a" (escape-controls (first file)) (second file)))
                                left))))
     (if parts
         (let ((words (format nil "~{~a~^; ~}" parts)))
@@ -1373,7 +1436,10 @@ names; a submodule is left as it is. On a hunk, its changes alone; with
 lines selected in hunks, those lines."
   (multiple-value-bind (chosen section) (git-hunks-chosen)
     (if chosen
-        (when (yes-or-no-p* (format nil "Reverse ~a~:[~;, staged and in the file~]? It cannot be undone" (git-hunks-words chosen section) (eq section :staged)))
+        (when (yes-or-no-p* (format nil
+                                    "Reverse ~a~:[~;, staged and in the file~]? It cannot be undone"
+                                    (git-hunks-words chosen section)
+                                    (eq section :staged)))
           (git-apply-hunks chosen section (if (eq section :staged) :reverse-staged :reverse) "Reversing changes" "Reversed ~a"))
         (git-reverse-files))))
 
@@ -1386,7 +1452,10 @@ files of the section whose title it is, after asking, as \\[git-reverse] does."
                              (format nil "Move to the trash ~:[~*~a~;~d files~*~]?"
                                      (rest files) (length files) (escape-controls (first (first files))))
                              (format nil "Reverse the changes of ~:[~*~a~;~d files~*~]~:[~;, staged and in the file~]? It cannot be undone"
-                                     (rest files) (length files) (escape-controls (first (first files))) (eq section :staged))))
+                                     (rest files)
+                                     (length files)
+                                     (escape-controls (first (first files)))
+                                     (eq section :staged))))
            (let ((top (git-here)))
              (start-git-job "Reversing changes" (git-reverse-work top files section (git-unborn-here-p))
                             (lambda (changed moved left)
@@ -1396,11 +1465,11 @@ files of the section whose title it is, after asking, as \\[git-reverse] does."
 
 (define-command git-toggle-diff ()
   "Show the changes of the file on the line of the status under it, in hunks,
-the first *GIT-DIFF-LINES* of them, or no longer; on the line saying more
-lines or files are not shown, show more of them; on a section's heading, or
-another line of it (a commit, a stash, a file ignored), fold the section or
-unfold it, as in every list in sections (\\[list-toggle-fold]); the files
-ignored are folded at first, and read once opened."
+the first *GIT-DIFF-LINES* of them, or no longer. On the line saying more lines
+or files are not shown, show more of them. On a section's heading, or another
+line of it (a commit, a stash, a file ignored), fold the section or unfold it,
+as in every list in sections (\\[list-toggle-fold]). The files ignored are
+folded at first, and read once opened."
   (let* ((entry (list-entry-at))
          (status (current-buffer))
          (shown (tuatara.buffer:buffer-local status 'git-shown))
@@ -1424,7 +1493,8 @@ ignored are folded at first, and read once opened."
                                 (when (live-buffer-p status)
                                   (cond ((rest diff) (setf (gethash key shown) diff) (git-status-render status))
                                         ((git-diff-binary-p diff)
-                                         (message "~a is binary: its changes are not shown as lines" (escape-controls (cdr key))))
+                                         (message "~a is binary: its changes are not shown as lines"
+                                                  (escape-controls (cdr key))))
                                         (t (message "No changes to show")))))
                               :quiet t))))))
 
@@ -1507,7 +1577,9 @@ point, as git has the file on disk, in the background."
                           (lambda (done)
                             (message (if done
                                          (if (eq how :stage) "Staged the hunk at line ~d" "Unstaged the hunk at line ~d")
-                                         (if (eq how :stage) "No change at line ~d left to stage" "No change staged at line ~d"))
+                                         (if (eq how :stage)
+                                             "No change at line ~d left to stage"
+                                             "No change staged at line ~d"))
                                      line)
                             (git-refresh-repository top))
                           :buffer buffer)))))

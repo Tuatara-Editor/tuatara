@@ -180,30 +180,38 @@ them back."
 
 (defun resize-selected-window (delta arrangement)
   "Make the selected window DELTA rows (ARRANGEMENT :STACKED) or columns
-larger, or smaller when negative, and say so when there is no room."
+larger, or smaller when negative. The echo area then says the share of the
+room each window of that split has, in per cent, or that there is no room."
   (fit-windows *editor*)
-  (when (zerop (tuatara.display:resize-area (current-window) delta arrangement))
-    (message "The window cannot be made ~:[smaller~;larger~]" (plusp delta)))
-  (fit-windows *editor*))
+  (let ((changed (tuatara.display:resize-area (current-window) delta arrangement)))
+    (fit-windows *editor*)
+    (if (zerop changed)
+        (message "The window cannot be made ~:[smaller~;larger~]" (plusp delta))
+        (echo "~:[Heights, top to bottom~;Widths, left to right~]: ~{~d%~^, ~}. ~a"
+              (eq arrangement :side-by-side)
+              (tuatara.display:split-percentages (current-window) arrangement)
+              (repeat-hint 'enlarge-window)))))
 
 (define-command enlarge-window ()
   "Make the selected window a row taller, or the prefix argument's rows; they
-come from the windows below it, then above."
+come from the windows below it, then above. Each window's share is said in per cent."
   (resize-selected-window (prefix) :stacked))
 
 (define-command shrink-window ()
   "Make the selected window a row shorter, or the prefix argument's rows; they
-go to the window below it, or above."
+go to the window below it, or above. Each window's share is said in per cent."
   (resize-selected-window (- (prefix)) :stacked))
 
 (define-command enlarge-window-horizontally ()
   "Make the selected window a column wider, or the prefix argument's columns;
-they come from the windows to its right, then its left."
+they come from the windows to its right, then its left. Each window's share
+is said in per cent."
   (resize-selected-window (prefix) :side-by-side))
 
 (define-command shrink-window-horizontally ()
   "Make the selected window a column narrower, or the prefix argument's
-columns; they go to the window to its right, or its left."
+columns; they go to the window to its right, or its left. Each window's
+share is said in per cent."
   (resize-selected-window (- (prefix)) :side-by-side))
 
 (define-command balance-windows ()
@@ -218,7 +226,9 @@ columns; they go to the window to its right, or its left."
          (need (max tuatara.display:*window-min-height*
                     ;; lines still being counted: a large text, as tall as the window at least
                     (if (tuatara.buffer:buffer-indexed-p (current-buffer))
-                        (+ 1 (tuatara.display:window-header-rows window) (tuatara.buffer:buffer-line-count (current-buffer)))
+                        (+ 1
+                           (tuatara.display:window-header-rows window)
+                           (tuatara.buffer:buffer-line-count (current-buffer)))
                         (tuatara.display:area-height window))))
          (extra (- (tuatara.display:area-height window) need)))
     (when (plusp extra)

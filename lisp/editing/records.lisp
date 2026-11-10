@@ -62,12 +62,14 @@ return there when its lines end in carriage return and line feed (CRLF)."
   "What DECIDE, a function of a string and how many of its first characters
 are the text, says of the record of ROPE from START, the text of its last
 line ending at TEXT-END (its line ends carriage return and line feed (CRLF)
-when CRLF is true): its text read up to LIMIT octets and decoded into the
-string in HOLDER's car \(DECODE-INTO), true or NIL. Decided once a record:
-MEMO, LINE-RECORD's for that record, keeps it for its other lines."
+when CRLF is true), true or NIL. The record's text is read up to LIMIT octets
+and decoded into the string in HOLDER's car (DECODE-INTO). Decided once a
+record: MEMO, LINE-RECORD's for that record, keeps it for its other lines."
   (if (eq (svref memo 4) :unknown)
       (setf (svref memo 4)
-            (let ((octets (tuatara.text:rope-octets rope :start start :end (min (record-text-end rope text-end crlf) (+ start limit)))))
+            (let ((octets (tuatara.text:rope-octets rope
+                                                    :start start
+                                                    :end (min (record-text-end rope text-end crlf) (+ start limit)))))
               (and (funcall decide (car holder) (decode-into octets 0 (length octets) holder)) t)))
       (svref memo 4)))
 
@@ -134,7 +136,8 @@ record\" or $*); :UNKNOWN for anything else."
           (t (let ((number (whole-number (string-left-trim "$" answer))))
                (if (and number (>= number 0)) number :unknown))))))
 
-(defun read-offered-field (offered keyed prompt &key (words (lambda (field) (if (integerp field) (format nil "$~d" field) field))))
+(defun read-offered-field
+    (offered keyed prompt &key (words (lambda (field) (if (integerp field) (format nil "$~d" field) field))))
   "Ask with PROMPT for one of OFFERED, fields as OFFERED-FIELDS gives them,
 offering the whole record first, then each by its name, or by its number
 from 0 when it has none, the first record's value beside it; with KEYED, any
@@ -166,7 +169,8 @@ by its title (READ-OFFERED-FIELD): two values, its number from 0, NIL for
 the whole line, and its title."
   (let ((offered (list-table-columns list)))
     (read-offered-field offered nil prompt
-                        :words (lambda (column) (or (first (find column offered :key #'second)) (format nil "$~d" column))))))
+                        :words (lambda (column)
+                                 (or (first (find column offered :key #'second)) (format nil "$~d" column))))))
 
 (defun filter-line-matcher (buffer)
   "What a filter of BUFFER's lines tries its pattern on: in a file of records
@@ -284,7 +288,8 @@ of its key:value tags.")
   "True when TEXT holds a date, 2026-10-19, from START, a space or the end
 after it."
   (and (<= (+ start 10) length)
-       (every (lambda (i) (if (member i '(4 7)) (char= (char text (+ start i)) #\-) (digit-char-p (char text (+ start i)))))
+       (every (lambda (i)
+                (if (member i '(4 7)) (char= (char text (+ start i)) #\-) (digit-char-p (char text (+ start i)))))
               '(0 1 2 3 4 5 6 7 8 9))
        (or (= (+ start 10) length) (space-or-tab-char-p (char text (+ start 10))))))
 
@@ -298,7 +303,10 @@ each value of the tag."
       (when (and (< (1+ p) length) (char= (char text 0) #\x) (space-or-tab-char-p (char text 1)))
         (setf done (cons 0 1) p 1) (skip)
         (when (todotxt-date-p text p length) (setf completed (cons p (+ p 10)) p (+ p 10)) (skip)))
-      (when (and (<= (+ p 3) length) (char= (char text p) #\() (upper-case-p (char text (1+ p))) (char= (char text (+ p 2)) #\))
+      (when (and (<= (+ p 3) length)
+                 (char= (char text p) #\()
+                 (upper-case-p (char text (1+ p)))
+                 (char= (char text (+ p 2)) #\))
                  (or (= (+ p 3) length) (space-or-tab-char-p (char text (+ p 3)))))
         (setf priority (cons (1+ p) (+ p 2)) p (+ p 3)) (skip))
       (when (todotxt-date-p text p length) (setf created (cons p (+ p 10)) p (+ p 10)) (skip)))

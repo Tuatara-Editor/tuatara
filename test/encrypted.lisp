@@ -31,13 +31,16 @@ scratch file, given to the clipboard unasked, nor exported unasked; no core dump
 (defun gpg-test-plain (path &key passphrase)
   "The text of the encrypted file at PATH, decrypted with the tests' key or PASSPHRASE."
   (let ((tuatara-user:*gpg-passphrase-from* :minibuffer))
-    (let ((octets (tuatara.defaults::gpg-decrypt (alexandria:read-file-into-byte-vector path) :passphrase (and passphrase (copy-seq passphrase)))))
+    (let ((octets (tuatara.defaults::gpg-decrypt (alexandria:read-file-into-byte-vector path)
+                                                 :passphrase (and passphrase (copy-seq passphrase)))))
       (and octets (sb-ext:octets-to-string octets :external-format :utf-8)))))
 
 (defun dumpable-p ()
   "True when the system would keep a core dump of this process (PR_GET_DUMPABLE)."
   (= 1 (sb-alien:alien-funcall (sb-alien:extern-alien "prctl" (function sb-alien:int sb-alien:int sb-alien:unsigned-long
-                                                                        sb-alien:unsigned-long sb-alien:unsigned-long sb-alien:unsigned-long))
+                                                                        sb-alien:unsigned-long
+                                                                        sb-alien:unsigned-long
+                                                                        sb-alien:unsigned-long))
                                3 0 0 0 0)))
 
 (defun decrypting-p ()
@@ -49,7 +52,9 @@ scratch file, given to the clipboard unasked, nor exported unasked; no core dump
       (skip "gpg is not installed here" (true nil))
       (with-test-directory (dir)
         (let* ((key (gpg-test-key))
-               (file (gpg-test-file (merge-pathnames "notes.org.gpg" dir) (format nil "* Secret plans~%secret words~%") :key key))
+               (file (gpg-test-file (merge-pathnames "notes.org.gpg" dir)
+                                    (format nil "* Secret plans~%secret words~%")
+                                    :key key))
                (tuatara.defaults::*modal-editing* nil)
                (tuatara-user:*auto-save* t)
                (tuatara-user:*auto-save-idle* 0.1)
@@ -58,7 +63,8 @@ scratch file, given to the clipboard unasked, nor exported unasked; no core dump
           (true key)
           (false (search "secret words" (alexandria:read-file-into-string file :external-format :latin-1)))
           (multiple-value-bind (f editor)
-              (auto-save-session (list (format nil "C-x C-f C-a C-k ~a RET" (rimu-typed file)) (list :until (lambda () (not (decrypting-p))))
+              (auto-save-session (list (format nil "C-x C-f C-a C-k ~a RET" (rimu-typed file))
+                                       (list :until (lambda () (not (decrypting-p))))
                                        "M-> m o r e SPC w o r d s" (list :wait 0.4)
                                        "C-x C-s" (list :until (lambda () (not (decrypting-p))))))
             (declare (ignore editor))
@@ -71,7 +77,8 @@ scratch file, given to the clipboard unasked, nor exported unasked; no core dump
                 (true (getf (tuatara.buffer:buffer-local buffer :encrypted) :keys))
                 (false (tuatara.buffer:buffer-modified-p buffer))
                 ;; kept from the disk: no auto-saved copy, no session entry, no scratch file, no core dump
-                (false (and (probe-file (merge-pathnames "copies/" dir)) (uiop:directory-files (merge-pathnames "copies/" dir))))
+                (false (and (probe-file (merge-pathnames "copies/" dir))
+                            (uiop:directory-files (merge-pathnames "copies/" dir))))
                 (false (tuatara.defaults::session-entry buffer))
                 (false (tuatara.io:buffer-scratch-directory buffer))
                 (fail (tuatara.io:open-scratch-file nil))
@@ -128,8 +135,14 @@ scratch file, given to the clipboard unasked, nor exported unasked; no core dump
                (tuatara-user:*gpg-passphrase-from* :minibuffer))
           ;; a new one: asked in the minibuffer how to encrypt it; nothing chosen does not save it, a key chosen does
           (multiple-value-bind (f editor)
-              (auto-save-session (list (format nil "C-x C-f C-a C-k ~a RET" (rimu-typed file)) "f i r s t SPC n o t e" "C-x C-s"
-                                       (list :wait 0.2) "RET" "C-x C-s" "C-n C-n RET RET" (list :until (lambda () (not (decrypting-p)))))
+              (auto-save-session (list (format nil "C-x C-f C-a C-k ~a RET" (rimu-typed file))
+                                       "f i r s t SPC n o t e"
+                                       "C-x C-s"
+                                       (list :wait 0.2)
+                                       "RET"
+                                       "C-x C-s"
+                                       "C-n C-n RET RET"
+                                       (list :until (lambda () (not (decrypting-p)))))
                                  :width 140)
             (declare (ignore editor))
             (true (tuatara.frontend.fake:fake-frame-showing f "Encrypt fresh.md.gpg to (keys, a passphrase; commas between):"))
@@ -205,7 +218,8 @@ scratch file, given to the clipboard unasked, nor exported unasked; no core dump
           (true key)
           (alexandria:write-string-into-file "the findings" plain)
           (flet ((typed (command) (format nil "M-x ~{~a~^ ~} RET" (map 'list #'string command)))
-                 (settle () (list :until (lambda () (not (some #'tuatara.defaults::gpg-job-p tuatara.runtime:*jobs*))))))
+                 (settle ()
+                   (list :until (lambda () (not (some #'tuatara.defaults::gpg-job-p tuatara.runtime:*jobs*))))))
             ;; a file encrypted (to the key marked), signed (detached) and verified; the original untouched
             (multiple-value-bind (f editor)
                 (auto-save-session (list (format nil "C-x C-f C-a C-k ~a RET" (rimu-typed plain))
@@ -218,25 +232,36 @@ scratch file, given to the clipboard unasked, nor exported unasked; no core dump
             (let ((buffer (tuatara.buffer:find-buffer "report.txt"))) (when buffer (tuatara.buffer:kill-buffer buffer)))
             (let ((sig (namestring (concatenate 'string plain ".sig"))))
               (multiple-value-bind (f editor)
-                  (auto-save-session (list (format nil "C-x C-f C-a C-k ~a RET" (rimu-typed sig)) (typed "gpg-verify-file") (settle)))
+                  (auto-save-session (list (format nil "C-x C-f C-a C-k ~a RET" (rimu-typed sig))
+                                           (typed "gpg-verify-file")
+                                           (settle)))
                 (declare (ignore editor))
                 (true (tuatara.frontend.fake:fake-frame-showing f "Good signature by Kea Taranaki"))
-                (let ((buffer (tuatara.buffer:find-buffer "report.txt.sig"))) (when buffer (tuatara.buffer:kill-buffer buffer))))
+                (let ((buffer (tuatara.buffer:find-buffer "report.txt.sig")))
+                  (when buffer (tuatara.buffer:kill-buffer buffer))))
               ;; the file changed after it was signed: said
               (alexandria:write-string-into-file "the findings, changed" plain :if-exists :supersede)
               (multiple-value-bind (f editor)
-                  (auto-save-session (list (format nil "C-x C-f C-a C-k ~a RET" (rimu-typed sig)) (typed "gpg-verify-file") (settle)))
+                  (auto-save-session (list (format nil "C-x C-f C-a C-k ~a RET" (rimu-typed sig))
+                                           (typed "gpg-verify-file")
+                                           (settle)))
                 (declare (ignore editor))
                 (true (tuatara.frontend.fake:fake-frame-showing f "BAD signature"))
-                (let ((buffer (tuatara.buffer:find-buffer "report.txt.sig"))) (when buffer (tuatara.buffer:kill-buffer buffer)))))
+                (let ((buffer (tuatara.buffer:find-buffer "report.txt.sig")))
+                  (when buffer (tuatara.buffer:kill-buffer buffer)))))
             ;; decrypted to a file of its own, for you alone, after asking
             (let ((back (namestring (merge-pathnames "back.txt" dir))))
-              (auto-save-session (list (format nil "C-x C-f C-a C-k ~a RET" (rimu-typed (concatenate 'string plain ".gpg")))
+              (auto-save-session (list (format nil
+                                               "C-x C-f C-a C-k ~a RET"
+                                               (rimu-typed (concatenate 'string plain ".gpg")))
                                        (list :until (lambda () (not (decrypting-p))))
-                                       (typed "gpg-decrypt-file") (format nil "C-a C-k ~a RET y RET" (rimu-typed back)) (settle)))
+                                       (typed "gpg-decrypt-file")
+                                       (format nil "C-a C-k ~a RET y RET" (rimu-typed back))
+                                       (settle)))
               (is string= "the findings" (alexandria:read-file-into-string back))
               (is = #o600 (logand #o777 (sb-posix:stat-mode (sb-posix:stat back))))
-              (let ((buffer (tuatara.buffer:find-buffer "report.txt.gpg"))) (when buffer (tuatara.buffer:kill-buffer buffer))))
+              (let ((buffer (tuatara.buffer:find-buffer "report.txt.gpg")))
+                (when buffer (tuatara.buffer:kill-buffer buffer))))
             ;; the region: encrypted in place as an armoured block, decrypted back, the buffer then kept from the disk
             (multiple-value-bind (f editor)
                 (auto-save-session (list "C-x b s c r a t c h - r e g i o n RET" "s e c r e t SPC l i n e" "C-x h"
@@ -245,7 +270,10 @@ scratch file, given to the clipboard unasked, nor exported unasked; no core dump
               (let ((buffer (tuatara.buffer:find-buffer "scratch-region")))
                 (true (and buffer (search "-----BEGIN PGP MESSAGE-----" (tuatara.buffer:buffer-string buffer))))
                 (false (and buffer (search "secret line" (tuatara.buffer:buffer-string buffer))))))
-            (auto-save-session (list "C-x b s c r a t c h - r e g i o n RET" (typed "gpg-decrypt-region") "RET" (settle)))
+            (auto-save-session (list "C-x b s c r a t c h - r e g i o n RET"
+                                 (typed "gpg-decrypt-region")
+                                 "RET"
+                                 (settle)))
             (let ((buffer (tuatara.buffer:find-buffer "scratch-region")))
               (is string= "secret line" (and buffer (tuatara.buffer:buffer-string buffer)))
               (true (and buffer (tuatara.buffer:buffer-local buffer :plaintext)))
@@ -259,14 +287,22 @@ scratch file, given to the clipboard unasked, nor exported unasked; no core dump
               (let ((buffer (tuatara.buffer:find-buffer "scratch-region")))
                 (false (tuatara.buffer:buffer-mark-active-p buffer))
                 (false (search "after" (tuatara.buffer:buffer-string buffer))))
-              (auto-save-session (list "C-x b s c r a t c h - r e g i o n RET" "g g" (typed "gpg-decrypt-region") "RET" (settle)))
+              (auto-save-session (list "C-x b s c r a t c h - r e g i o n RET"
+                                       "g g"
+                                       (typed "gpg-decrypt-region")
+                                       "RET"
+                                       (settle)))
               (let ((buffer (tuatara.buffer:find-buffer "scratch-region")))
                 (is string= (format nil "before~%secret~%after~%") (and buffer (tuatara.buffer:buffer-string buffer)))
                 (when buffer (tuatara.buffer:kill-buffer buffer))))
             ;; the keys listed, yours marked as such; exported to a file
             (let ((exported (namestring (merge-pathnames "kea.asc" dir))))
               (multiple-value-bind (f editor)
-                  (auto-save-session (list (typed "gpg-list-keys") (settle) "x" (format nil "C-a C-k ~a C-j" (rimu-typed exported)) (settle)) :width 140)
+                  (auto-save-session (list (typed "gpg-list-keys")
+                                           (settle)
+                                           "x"
+                                           (format nil "C-a C-k ~a C-j" (rimu-typed exported))
+                                           (settle)) :width 140)
                 (declare (ignore editor))
                 (true (tuatara.frontend.fake:fake-frame-showing f "Kea Taranaki <kea@example.org>"))
                 (true (tuatara.frontend.fake:fake-frame-showing f "yours")))
@@ -274,8 +310,11 @@ scratch file, given to the clipboard unasked, nor exported unasked; no core dump
               ;; m marks the key on the line, u takes the mark off
               (true (find-if (lambda (line) (uiop:string-prefix-p ">" line))
                                              (uiop:split-string (tuatara.buffer:buffer-string
-                                                                 (progn (auto-save-session (list (typed "gpg-list-keys") (settle) "m") :width 140)
-                                                                        (tuatara.buffer:find-buffer "*GnuPG keys*")))
+                                                                 (progn
+                                                                   (auto-save-session (list (typed "gpg-list-keys")
+                                                                                            (settle)
+                                                                                            "m") :width 140)
+                                                                   (tuatara.buffer:find-buffer "*GnuPG keys*")))
                                                                 :separator '(#\Newline))))
               (auto-save-session (list (typed "gpg-list-keys") (settle) "u") :width 140)
               (false (find-if (lambda (line) (uiop:string-prefix-p ">" line))
@@ -286,7 +325,8 @@ scratch file, given to the clipboard unasked, nor exported unasked; no core dump
               (let ((help (tuatara.buffer:find-buffer "*Help*")))
                 (true (and help (search (format nil "Key ~a" key) (tuatara.buffer:buffer-string help))))
                 (true (and help (search "Kea Taranaki" (tuatara.buffer:buffer-string help)))))
-              (let ((buffer (tuatara.buffer:find-buffer "*GnuPG keys*"))) (when buffer (tuatara.buffer:kill-buffer buffer)))))))))
+              (let ((buffer (tuatara.buffer:find-buffer "*GnuPG keys*")))
+                (when buffer (tuatara.buffer:kill-buffer buffer)))))))))
 
 (define-test (encrypted decrypted-in-place-saved-after-asking)
   ;; a file holding text decrypted in place is written in clear only when the question is
@@ -301,7 +341,8 @@ scratch file, given to the clipboard unasked, nor exported unasked; no core dump
                                         "C-e SPC c l e a r"
                                         (list :until (lambda () (tuatara.defaults::keep-from-disk (tuatara.buffer:find-buffer "mail.txt")) t))
                                         "C-x C-s" (list :wait 0.2) (format nil "~a RET" answer)
-                                        (list :until (lambda () (notany #'tuatara.io::save-job-p tuatara.runtime:*jobs*))))
+                                        (list :until
+                                              (lambda () (notany #'tuatara.io::save-job-p tuatara.runtime:*jobs*))))
                                   :width 140)))
         (let ((f (save "n")))
           (true (tuatara.frontend.fake:fake-frame-showing f "holds text decrypted in place; save it unencrypted?"))
@@ -351,7 +392,8 @@ scratch file, given to the clipboard unasked, nor exported unasked; no core dump
               (tuatara-user:*gpg-passphrase-from* :minibuffer))
           (multiple-value-bind (f editor)
               (auto-save-session (list (format nil "C-x C-f C-a C-k ~a RET" (rimu-typed file)) "w SPC p a s s"
-                                       (list :wait 0.2) "RET" (list :until (lambda () (not (decrypting-p))))) :height 40)
+                                       (list :wait 0.2) "RET" (list :until (lambda () (not (decrypting-p)))))
+                                 :height 40)
             (true (tuatara.frontend.fake:fake-frame-showing f "Warning: this passphrase goes through Tuatara"))
             (true (tuatara.frontend.fake:fake-frame-showing f "the garbage collector may have copied it"))
             (true (tuatara.frontend.fake:fake-frame-showing f "you chose it (*gpg-passphrase-from* :minibuffer)"))
@@ -364,7 +406,8 @@ scratch file, given to the clipboard unasked, nor exported unasked; no core dump
           (let ((tuatara-user:*gpg-loopback-warning* nil))
             (multiple-value-bind (f editor)
                 (auto-save-session (list (format nil "C-x C-f C-a C-k ~a RET" (rimu-typed file)) "w SPC p a s s"
-                                         (list :wait 0.2) "RET" (list :until (lambda () (not (decrypting-p))))) :height 40)
+                                         (list :wait 0.2) "RET" (list :until (lambda () (not (decrypting-p)))))
+                                   :height 40)
               (declare (ignore editor))
               (true (tuatara.frontend.fake:fake-frame-showing f "Passphrase for w.txt.gpg: "))
               (false (tuatara.frontend.fake:fake-frame-showing f "Warning: this passphrase goes through Tuatara"))
@@ -377,7 +420,9 @@ scratch file, given to the clipboard unasked, nor exported unasked; no core dump
   (if (null (tuatara.defaults::gpg-path))
       (skip "gpg is not installed here" (true nil))
       (let* ((stored (tuatara.defaults::gpg-run (list "--store" "--compress-algo" "zlib" "--output" "-")
-                                                :input (make-array (* 4 1024 1024) :element-type '(unsigned-byte 8) :initial-element 0)
+                                                :input (make-array (* 4 1024 1024)
+                                                                   :element-type '(unsigned-byte 8)
+                                                                   :initial-element 0)
                                                 :asker :agent))
              (tuatara.defaults::*gpg-least-output-limit* (* 1024 1024)))
         (true (< (length stored) (* 64 1024)))
@@ -414,13 +459,19 @@ scratch file, given to the clipboard unasked, nor exported unasked; no core dump
               (tuatara-user:*gpg-passphrase-from* :minibuffer))
           (gpg-test-key)
           (alexandria:write-string-into-file "words" plain)
-          (auto-save-session (list (format nil "M-x g p g - e n c r y p t - f i l e RET C-a C-k ~a C-j" (rimu-typed plain)) (list :wait 0.2) "C-g"))
+          (auto-save-session (list (format nil
+                                           "M-x g p g - e n c r y p t - f i l e RET C-a C-k ~a C-j"
+                                           (rimu-typed plain)) (list :wait 0.2) "C-g"))
           (false (tuatara.buffer:find-buffer "*Encryption keys*"))
           (false (probe-file (concatenate 'string plain ".gpg")))
           ;; a passphrase and the key together
-          (auto-save-session (list (format nil "M-x g p g - e n c r y p t - f i l e RET C-a C-k ~a C-j" (rimu-typed plain)) (list :wait 0.2)
+          (auto-save-session (list (format nil
+                                           "M-x g p g - e n c r y p t - f i l e RET C-a C-k ~a C-j"
+                                           (rimu-typed plain)) (list :wait 0.2)
                                    "C-n TAB , SPC C-n RET RET" "b o t h RET b o t h RET"
-                                   (list :until (lambda () (not (some #'tuatara.defaults::gpg-job-p tuatara.runtime:*jobs*)))) "n RET")
+                                   (list :until
+                                         (lambda () (not (some #'tuatara.defaults::gpg-job-p tuatara.runtime:*jobs*))))
+                                   "n RET")
                              :width 140)
           (false (tuatara.buffer:find-buffer "*Encryption keys*"))
           (is string= "words" (gpg-test-plain (concatenate 'string plain ".gpg") :passphrase "both"))
@@ -457,7 +508,9 @@ scratch file, given to the clipboard unasked, nor exported unasked; no core dump
           (let ((consed (loop repeat 3
                               minimize (let ((before (sb-ext:get-bytes-consed)))
                                          (multiple-value-bind (output statuses ok)
-                                             (tuatara.defaults::gpg-run (list "--print-md" "SHA256") :input-path file :asker :agent)
+                                             (tuatara.defaults::gpg-run (list "--print-md" "SHA256")
+                                                                        :input-path file
+                                                                        :asker :agent)
                                            (declare (ignore statuses))
                                            (true ok)
                                            (true (plusp (length output))))
@@ -470,7 +523,9 @@ scratch file, given to the clipboard unasked, nor exported unasked; no core dump
   (if (null (tuatara.defaults::gpg-path))
       (skip "gpg is not installed here" (true nil))
       (with-test-directory (dir)
-        (let* ((file (gpg-test-file (merge-pathnames "secret.txt.gpg" dir) "plain kiwi words" :passphrase "kea secret pass"))
+        (let* ((file (gpg-test-file (merge-pathnames "secret.txt.gpg" dir)
+                                    "plain kiwi words"
+                                    :passphrase "kea secret pass"))
                (tuatara-user:*gpg-passphrase-from* :minibuffer)
                (octets (alexandria:read-file-into-byte-vector file)))
           (flet ((reported ()
@@ -481,7 +536,9 @@ scratch file, given to the clipboard unasked, nor exported unasked; no core dump
             (sb-int:encapsulate 'tuatara.defaults::gpg-status-p 'test-failing
                                 (lambda (function &rest arguments)
                                   (declare (ignore function arguments))
-                                  (error 'type-error :datum "kea secret pass plain kiwi words" :expected-type 'integer)))
+                                  (error 'type-error
+                                         :datum "kea secret pass plain kiwi words"
+                                         :expected-type 'integer)))
             (unwind-protect
                  (progn
                    (false (ignore-errors
@@ -518,7 +575,9 @@ scratch file, given to the clipboard unasked, nor exported unasked; no core dump
       (skip "gpg is not installed here" (true nil))
       (with-test-directory (dir)
         (let* ((key (gpg-test-key))
-               (file (gpg-test-file (merge-pathnames "kiwi.org.gpg" dir) (format nil "* Heading~%plain kiwi words~%") :key key))
+               (file (gpg-test-file (merge-pathnames "kiwi.org.gpg" dir)
+                                    (format nil "* Heading~%plain kiwi words~%")
+                                    :key key))
                (tuatara.defaults::*modal-editing* nil)
                (tuatara-user:*gpg-passphrase-from* :minibuffer)
                (kiwi (lambda (&rest arguments)
@@ -561,7 +620,9 @@ scratch file, given to the clipboard unasked, nor exported unasked; no core dump
                    (dolist (said '("finding the headings failed" "drawing a header line failed"))
                      (let* ((text (first texts)) (at (search said text))
                             (next (and at (position #\Newline text :start at))))
-                       (false (and next (search (format nil "~%    (") text :start2 next :end2 (min (length text) (+ next 6))))
+                       (false (and next
+                                   (search (format nil
+                                                   "~%    (") text :start2 next :end2 (min (length text) (+ next 6))))
                               "~a: ~s" said text)))))
             (sb-int:unencapsulate 'tuatara.defaults::outline-entries 'test-failing)
             (sb-int:unencapsulate 'tuatara.defaults::decrypted-in 'test-failing)
@@ -576,7 +637,9 @@ scratch file, given to the clipboard unasked, nor exported unasked; no core dump
       (skip "gpg is not installed here" (true nil))
       (with-test-directory (dir)
         (let* ((key (gpg-test-key))
-               (file (gpg-test-file (merge-pathnames "kea.org.gpg" dir) (format nil "* Heading~%plain kiwi words~%") :key key))
+               (file (gpg-test-file (merge-pathnames "kea.org.gpg" dir)
+                                    (format nil "* Heading~%plain kiwi words~%")
+                                    :key key))
                (tuatara.defaults::*modal-editing* nil)
                (tuatara-user:*gpg-passphrase-from* :minibuffer)
                (tuatara.command:*debug-on-error* t)
@@ -592,7 +655,8 @@ scratch file, given to the clipboard unasked, nor exported unasked; no core dump
           (sb-int:encapsulate 'tuatara.defaults::org-parse 'test-failing (lambda (f &rest a) (apply kiwi f a)))
           (sb-int:encapsulate 'tuatara.command::window-pieces 'test-failing
                               (lambda (f editor window &rest more)
-                                (if (and drawn-wrong (tuatara.io:buffer-plaintext-p (tuatara.display:window-buffer window)))
+                                (if (and drawn-wrong
+                                         (tuatara.io:buffer-plaintext-p (tuatara.display:window-buffer window)))
                                     (funcall kiwi)
                                     (apply f editor window more))))
           (unwind-protect
@@ -624,7 +688,8 @@ scratch file, given to the clipboard unasked, nor exported unasked; no core dump
                    (setf drawn-wrong t)
                    (when buffer
                      (multiple-value-bind (f2 editor2)
-                         (auto-save-session (list (format nil "C-x b ~a RET" (rimu-typed "kea.org.gpg")) (list :wait 0.2)))
+                         (auto-save-session (list (format nil "C-x b ~a RET" (rimu-typed "kea.org.gpg"))
+                                                  (list :wait 0.2)))
                        (declare (ignore editor2))
                        (true (tuatara.frontend.fake:fake-frame-showing f2 "This window cannot be shown: a type-error"))
                        (false (tuatara.frontend.fake:fake-frame-showing f2 "kiwi words"))))
@@ -632,7 +697,8 @@ scratch file, given to the clipboard unasked, nor exported unasked; no core dump
                    (let ((messages (tuatara.buffer:find-buffer "*Messages*")))
                      (when messages
                        (false (search "kiwi words" (tuatara.buffer:buffer-string messages)))))
-                   (let ((log (if (probe-file *test-debug-log*) (alexandria:read-file-into-string *test-debug-log*) "")))
+                   (let ((log (if (probe-file *test-debug-log*) (alexandria:read-file-into-string *test-debug-log*)
+                                "")))
                      (true (search "a type-error" log))
                      (false (search "kiwi words" log) "~a" log))
                    (when buffer (tuatara.buffer:kill-buffer buffer))))

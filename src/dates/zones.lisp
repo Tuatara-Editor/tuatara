@@ -1,4 +1,5 @@
-;;;; src/dates/zones.lisp --- Time zones by name: the system's zoneinfo files, their table of changes and the rule after it.
+;;;; src/dates/zones.lisp --- Time zones by name: the system's zoneinfo files, their table of changes and the rule after
+;;;; it.
 ;;;; Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
 ;;;;
 ;;;; A time zone is a table of changes, universal times at which the offset
@@ -132,7 +133,8 @@ each of letters, digits, _ + and -, none beginning with a dot or a -."
        (loop for part in (uiop:split-string name :separator "/")
              always (and (plusp (length part))
                          (not (char= (char part 0) #\-))
-                         (every (lambda (c) (or (char<= #\a c #\z) (char<= #\A c #\Z) (char<= #\0 c #\9) (find c "_+-")))
+                         (every (lambda (c)
+                                  (or (char<= #\a c #\z) (char<= #\A c #\Z) (char<= #\0 c #\9) (find c "_+-")))
                                 part)))))
 
 (defun read-zone-rule (text)
@@ -204,7 +206,8 @@ when it says none this reads."
                (tuatara.io:octets-signed (tuatara.io:octets-integer octets at count :big-endian t) (* 8 count)))
              (block-length (counts size)
                (destructuring-bind (utc-count std-count leap-count time-count type-count char-count) counts
-                 (+ (* time-count size) time-count (* type-count 6) char-count (* leap-count (+ size 4)) std-count utc-count))))
+                 (+ (* time-count
+                       size) time-count (* type-count 6) char-count (* leap-count (+ size 4)) std-count utc-count))))
       (let ((first (header-at 0)))
         (when first
           (let* ((version (aref octets 4))
@@ -218,7 +221,8 @@ when it says none this reads."
                 (when (plusp type-count)
                   (let* ((indices-at (+ data-at (* time-count size)))
                          (types-at (+ indices-at time-count))
-                         (type-offsets (coerce (loop for i below type-count collect (signed-at (+ types-at (* 6 i)) 4)) 'simple-vector))
+                         (type-offsets (coerce (loop for i below type-count collect (signed-at (+ types-at (* 6 i)) 4))
+                                               'simple-vector))
                          (changes (make-array time-count))
                          (offsets (make-array time-count)))
                     (dotimes (i time-count)
@@ -229,8 +233,11 @@ when it says none this reads."
                     (let* ((footer-at (+ data-at (block-length counts size)))
                            (rule (when (and two (< footer-at length) (= (aref octets footer-at) 10))
                                    (let ((close (position 10 octets :start (1+ footer-at))))
-                                     (when (and close (every (lambda (o) (< 31 o 127)) (subseq octets (1+ footer-at) close)))
-                                       (read-zone-rule (map 'string #'code-char (subseq octets (1+ footer-at) close))))))))
+                                     (when (and close
+                                                (every (lambda (o) (< 31 o 127)) (subseq octets (1+ footer-at) close)))
+                                       (read-zone-rule (map 'string
+                                                            #'code-char
+                                                            (subseq octets (1+ footer-at) close))))))))
                       (%make-time-zone name changes offsets (svref type-offsets 0) rule))))))))))))
 
 (defun zoneinfo-file-octets (path)
@@ -276,13 +283,24 @@ clock's offset now tells it."
         (and rule (%make-time-zone nil #() #() (zone-rule-standard-offset rule) rule)))
       (fixed-time-zone (local-offset (get-universal-time)))))
 
-(setf (documentation 'make-zone-rule 'function) "A ZONE-RULE of STANDARD-NAME and STANDARD-OFFSET, and when it has summer time, DAYLIGHT-NAME, DAYLIGHT-OFFSET and the days and times TO-DAYLIGHT and TO-STANDARD it begins and ends."
+(setf (documentation 'make-zone-rule 'function) "A ZONE-RULE of STANDARD-NAME and STANDARD-OFFSET,
+and when it has summer time, DAYLIGHT-NAME, DAYLIGHT-OFFSET and the days and
+times TO-DAYLIGHT and TO-STANDARD it begins and ends."
       (documentation 'zone-rule-standard-name 'function) "The name of a ZONE-RULE's standard time (CET, NZST)."
-      (documentation 'zone-rule-standard-offset 'function) "How many seconds a ZONE-RULE's standard time is ahead of UTC."
-      (documentation 'zone-rule-daylight-name 'function) "The name of a ZONE-RULE's summer time (CEST, NZDT), or NIL when it has none."
-      (documentation 'zone-rule-daylight-offset 'function) "How many seconds a ZONE-RULE's summer time is ahead of UTC, or NIL when it has none."
-      (documentation 'zone-rule-to-daylight 'function) "When a ZONE-RULE's summer time begins: (DAY TIME), DAY as ZONE-RULE says and TIME seconds into it on standard time; NIL when it has none."
-      (documentation 'zone-rule-to-standard 'function) "When a ZONE-RULE's summer time ends: (DAY TIME), DAY as ZONE-RULE says and TIME seconds into it on summer time; NIL when it has none."
+      (documentation 'zone-rule-standard-offset 'function) "How many seconds a ZONE-RULE's standard
+time is ahead of UTC."
+      (documentation 'zone-rule-daylight-name 'function) "The name of a ZONE-RULE's summer time
+(CEST, NZDT), or NIL when it has none."
+      (documentation 'zone-rule-daylight-offset 'function) "How many seconds a ZONE-RULE's summer
+time is ahead of UTC, or NIL when it has none."
+      (documentation 'zone-rule-to-daylight 'function) "When a ZONE-RULE's summer time begins: (DAY
+TIME), DAY as ZONE-RULE says and TIME seconds into it on standard time; NIL when
+it has none."
+      (documentation 'zone-rule-to-standard 'function) "When a ZONE-RULE's summer time ends: (DAY
+TIME), DAY as ZONE-RULE says and TIME seconds into it on summer time; NIL when
+it has none."
       (documentation 'time-zone-p 'function) "True when the object given is a TIME-ZONE."
-      (documentation 'time-zone-name 'function) "A time zone's name as the zoneinfo names it (Pacific/Auckland), or NIL."
-      (documentation 'time-zone-rule 'function) "A time zone's yearly rule after its table of changes, a ZONE-RULE, or NIL.")
+      (documentation 'time-zone-name 'function) "A time zone's name as the zoneinfo names it
+(Pacific/Auckland), or NIL."
+      (documentation 'time-zone-rule 'function) "A time zone's yearly rule after its table of
+changes, a ZONE-RULE, or NIL.")

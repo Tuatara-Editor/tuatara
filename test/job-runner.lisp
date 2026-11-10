@@ -22,9 +22,12 @@ asks before stopping it, and what is said once it has stopped."
               "Stop summing at 0%?" "Stopped: nothing summed")
         (list "count" (lambda (b) (tuatara.defaults::%make-count-job :buffer b :what "Buffer" :total 10))
               "Stop counting at 0%?" "Stopped: nothing counted")
-        (list "dynamic blocks" (lambda (b) (tuatara.defaults::make-dblock-job b '() "Making the dynamic blocks again" nil))
+        (list "dynamic blocks"
+              (lambda (b) (tuatara.defaults::make-dblock-job b '() "Making the dynamic blocks again" nil))
               "Stop making blocks at 0%?" "Stopped: the dynamic blocks are as they were")
-        (list "copy" (lambda (b) (tuatara.defaults::make-rimu-operation :copy (list (cons "/nonexistent/a" "/nonexistent/b")) b nil))
+        (list "copy"
+              (lambda (b)
+                (tuatara.defaults::make-rimu-operation :copy (list (cons "/nonexistent/a" "/nonexistent/b")) b nil))
               "Stop copying at 0%? The file under way is taken away" "Stopped: copied 0 files")
         (list "save" (lambda (b) (tuatara.io::%make-save-job :buffer b :path "/nonexistent/saved.txt" :total 10))
               "Stop saving at 0%? The file stays as it was" "Stopped: the file is as it was")
@@ -91,7 +94,8 @@ questions asked, the first first."
     (unwind-protect
          (loop for (name make) in (job-kinds)
                do (let ((job (funcall make b)))
-                    (tuatara.runtime:start-job-thread job (lambda (job) (declare (ignore job)) (error 'storage-condition)))
+                    (tuatara.runtime:start-job-thread job
+                                                      (lambda (job) (declare (ignore job)) (error 'storage-condition)))
                     (is eq :failed (wait-for-status (lambda () (tuatara.runtime:job-status job))) "~a" name)
                     (true (search "Could not " (tuatara.runtime:job-ending-words job)) "~a: ~a"
                           name (tuatara.runtime:job-ending-words job))
@@ -264,7 +268,8 @@ questions asked, the first first."
   (unwind-protect
        (progn
          (tuatara.runtime:set-debug t)
-         (let ((cell (tuatara.runtime:start-background-result (lambda () (error "No figures to add.")) "tuatara adding" nil)))
+         (let ((cell (tuatara.runtime:start-background-result (lambda ()
+                                                                (error "No figures to add.")) "tuatara adding" nil)))
            (loop repeat 1000 until (car cell) do (sleep 0.01))
            (is equal '(:error "No figures to add.") (car cell))
            (let ((texts (loop for report = (sb-concurrency:dequeue tuatara.runtime:*debug-reports*)

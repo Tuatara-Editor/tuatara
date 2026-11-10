@@ -1,4 +1,5 @@
-;;;; lisp/modes/more-languages-programming.lisp --- The programming languages Helix knows, in major modes named as Emacs's.
+;;;; lisp/modes/more-languages-programming.lisp --- The programming languages Helix knows, in major modes named as
+;;;; Emacs's.
 ;;;; Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
 ;;;;
 ;;;; Each language is parsed with the grammar and coloured, indented and
@@ -20,7 +21,12 @@
 
 (define-language javascript
   "JavaScript source, parsed with tree-sitter-javascript."
-  :grammar "javascript" :modes (js-mode) :indent 2 :queries "javascript" :injection-names "js|javascript" :definitions :textobjects)
+  :grammar "javascript"
+  :modes (js-mode)
+  :indent 2
+  :queries "javascript"
+  :injection-names "js|javascript"
+  :definitions :textobjects)
 
 (define-major-mode js-jsx-mode js-mode
   "JavaScript with JSX elements."
@@ -41,7 +47,12 @@
 
 (define-language typescript
   "TypeScript source, parsed with tree-sitter-typescript."
-  :grammar "typescript" :modes (typescript-mode) :indent 2 :queries "typescript" :injection-names "ts|typescript" :definitions :textobjects)
+  :grammar "typescript"
+  :modes (typescript-mode)
+  :indent 2
+  :queries "typescript"
+  :injection-names "ts|typescript"
+  :definitions :textobjects)
 
 (define-major-mode tsx-mode typescript-mode
   "TypeScript with JSX elements."
@@ -64,7 +75,12 @@
 
 (define-language python
   "Python source, parsed with tree-sitter-python."
-  :grammar "python" :modes (python-mode) :indent 4 :queries "python" :injection-names "py(thon)?" :definitions :textobjects)
+  :grammar "python"
+  :modes (python-mode)
+  :indent 4
+  :queries "python"
+  :injection-names "py(thon)?"
+  :definitions :textobjects)
 
 (define-major-mode go-mode prog-mode
   "Go source."
@@ -105,7 +121,12 @@
 
 (define-language c-sharp
   "C# source, parsed with tree-sitter-c-sharp."
-  :grammar "c-sharp" :modes (csharp-mode) :indent 4 :queries "c-sharp" :injection-names "c-?sharp" :definitions :textobjects)
+  :grammar "c-sharp"
+  :modes (csharp-mode)
+  :indent 4
+  :queries "c-sharp"
+  :injection-names "c-?sharp"
+  :definitions :textobjects)
 
 (define-major-mode lua-mode prog-mode
   "Lua source."
@@ -200,7 +221,12 @@
 
 (define-language haskell
   "Haskell source, parsed with tree-sitter-haskell."
-  :grammar "haskell" :modes (haskell-mode) :indent 2 :queries "haskell" :injection-names "hs|haskell" :definitions :textobjects)
+  :grammar "haskell"
+  :modes (haskell-mode)
+  :indent 2
+  :queries "haskell"
+  :injection-names "hs|haskell"
+  :definitions :textobjects)
 
 (define-major-mode kotlin-mode prog-mode
   "Kotlin source."
@@ -252,7 +278,12 @@
 
 (define-language elixir
   "Elixir source, parsed with tree-sitter-elixir."
-  :grammar "elixir" :modes (elixir-mode) :indent 2 :queries "elixir" :injection-names "elixir|ex" :definitions :textobjects)
+  :grammar "elixir"
+  :modes (elixir-mode)
+  :indent 2
+  :queries "elixir"
+  :injection-names "elixir|ex"
+  :definitions :textobjects)
 
 (define-major-mode erlang-mode prog-mode
   "Erlang source."
@@ -265,7 +296,12 @@
 
 (define-language erlang
   "Erlang source, parsed with tree-sitter-erlang."
-  :grammar "erlang" :modes (erlang-mode) :indent 4 :queries "erlang" :injection-names "erl(ang)?" :definitions :textobjects)
+  :grammar "erlang"
+  :modes (erlang-mode)
+  :indent 4
+  :queries "erlang"
+  :injection-names "erl(ang)?"
+  :definitions :textobjects)
 
 (define-major-mode ocaml-mode prog-mode
   "OCaml source."
@@ -332,7 +368,12 @@
 
 (define-language clojure
   "Clojure source, parsed with tree-sitter-clojure."
-  :grammar "clojure" :modes (clojure-mode) :indent 2 :queries "clojure" :injection-names "clojure|clj|edn|boot" :definitions :textobjects)
+  :grammar "clojure"
+  :modes (clojure-mode)
+  :indent 2
+  :queries "clojure"
+  :injection-names "clojure|clj|edn|boot"
+  :definitions :textobjects)
 
 (define-major-mode scheme-mode prog-mode
   "Scheme source. Only read and coloured here: nothing of it is evaluated."
@@ -492,7 +533,12 @@
 
 (define-language verilog
   "Verilog descriptions of hardware, parsed with tree-sitter-verilog."
-  :grammar "verilog" :modes (verilog-mode) :indent 2 :queries "verilog" :injection-names "verilog" :definitions :textobjects)
+  :grammar "verilog"
+  :modes (verilog-mode)
+  :indent 2
+  :queries "verilog"
+  :injection-names "verilog"
+  :definitions :textobjects)
 
 (define-major-mode v-mode prog-mode
   "V source."
@@ -533,7 +579,12 @@
 
 (define-language purescript
   "PureScript source, parsed with tree-sitter-purescript."
-  :grammar "purescript" :modes (purescript-mode) :indent 2 :queries "purescript" :injection-names "purescript" :definitions :textobjects)
+  :grammar "purescript"
+  :modes (purescript-mode)
+  :indent 2
+  :queries "purescript"
+  :injection-names "purescript"
+  :definitions :textobjects)
 
 (define-major-mode lean4-mode prog-mode
   "Lean 4 source."
@@ -616,7 +667,12 @@
 
 (define-language solidity
   "Solidity contracts, parsed with tree-sitter-solidity."
-  :grammar "solidity" :modes (solidity-mode) :indent 4 :queries "solidity" :injection-names "sol|solidity" :definitions :textobjects)
+  :grammar "solidity"
+  :modes (solidity-mode)
+  :indent 4
+  :queries "solidity"
+  :injection-names "sol|solidity"
+  :definitions :textobjects)
 
 (define-major-mode gdscript-mode prog-mode
   "GDScript, the scripting language of the Godot engine."
@@ -626,7 +682,12 @@
 
 (define-language gdscript
   "GDScript, the scripting language of the Godot engine, parsed with tree-sitter-gdscript."
-  :grammar "gdscript" :modes (gdscript-mode) :indent 4 :queries "gdscript" :injection-names "gdscript" :definitions :textobjects)
+  :grammar "gdscript"
+  :modes (gdscript-mode)
+  :indent 4
+  :queries "gdscript"
+  :injection-names "gdscript"
+  :definitions :textobjects)
 
 (define-major-mode haxe-mode prog-mode
   "Haxe source."
@@ -967,7 +1028,12 @@
 
 (define-language freebasic
   "FreeBASIC source, parsed with tree-sitter-freebasic."
-  :grammar "freebasic" :modes (freebasic-mode) :indent 4 :queries "freebasic" :injection-names "freebasic" :definitions :textobjects)
+  :grammar "freebasic"
+  :modes (freebasic-mode)
+  :indent 4
+  :queries "freebasic"
+  :injection-names "freebasic"
+  :definitions :textobjects)
 
 (define-major-mode glimmer-js-mode prog-mode
   "Glimmer components in JavaScript (Ember)."
@@ -1008,7 +1074,11 @@
 
 (define-language haskell-literate
   "Literate Haskell: prose with Haskell code in it, parsed with tree-sitter-haskell-literate."
-  :grammar "haskell-literate" :modes (literate-haskell-mode) :indent 2 :queries "haskell-literate" :injection-names "lhs")
+  :grammar "haskell-literate"
+  :modes (literate-haskell-mode)
+  :indent 2
+  :queries "haskell-literate"
+  :injection-names "lhs")
 
 (define-major-mode hdl-mode prog-mode
   "The hardware description language of Nand2Tetris."
@@ -1144,7 +1214,12 @@
 
 (define-language ponylang
   "Pony source, parsed with tree-sitter-ponylang."
-  :grammar "ponylang" :modes (ponylang-mode) :indent 2 :queries "ponylang" :injection-names "pony" :definitions :textobjects)
+  :grammar "ponylang"
+  :modes (ponylang-mode)
+  :indent 2
+  :queries "ponylang"
+  :injection-names "pony"
+  :definitions :textobjects)
 
 (define-major-mode proverif-mode prog-mode
   "ProVerif models of protocols."
@@ -1204,7 +1279,12 @@
 
 (define-language rescript
   "ReScript source, parsed with tree-sitter-rescript."
-  :grammar "rescript" :modes (rescript-mode) :indent 2 :queries "rescript" :injection-names "rescript" :definitions :textobjects)
+  :grammar "rescript"
+  :modes (rescript-mode)
+  :indent 2
+  :queries "rescript"
+  :injection-names "rescript"
+  :definitions :textobjects)
 
 (define-major-mode ripple-mode prog-mode
   "Ripple components: a TypeScript framework for user interfaces."
@@ -1334,7 +1414,12 @@
 
 (define-language tablegen
   "LLVM's TableGen records, parsed with tree-sitter-tablegen."
-  :grammar "tablegen" :modes (tablegen-mode) :indent 2 :queries "tablegen" :injection-names "tablegen" :definitions :textobjects)
+  :grammar "tablegen"
+  :modes (tablegen-mode)
+  :indent 2
+  :queries "tablegen"
+  :injection-names "tablegen"
+  :definitions :textobjects)
 
 (define-major-mode tact-mode prog-mode
   "Tact smart contracts, for TON."

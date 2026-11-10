@@ -90,14 +90,26 @@ the package's name and the reader's name in lower case."
   ;; first, which then never runs
   (let ((seen (make-hash-table :test 'equal)) (twice '()) (count 0))
     (dolist (file (directory (merge-pathnames "test/*.lisp" (asdf:system-source-directory "tuatara"))))
-      (cl-ppcre:do-register-groups (parent child top) ("(?m)^\\(define-test (?:\\(([^\\s()]+) ([^\\s()]+)\\)|([^\\s()]+))" (uiop:read-file-string file))
+      (cl-ppcre:do-register-groups (parent child top)
+                                   ("(?m)^\\(define-test (?:\\(([^\\s()]+) ([^\\s()]+)\\)|([^\\s()]+))"
+                                    (uiop:read-file-string file))
         (declare (ignore parent))
         (incf count)
         (let ((name (string-downcase (or child top))))
-          (when (gethash name seen) (push (format nil "~a in ~a and ~a" name (gethash name seen) (file-namestring file)) twice))
+          (when (gethash name seen)
+            (push (format nil "~a in ~a and ~a" name (gethash name seen) (file-namestring file)) twice))
           (setf (gethash name seen) (file-namestring file)))))
     (true (> count 300))
     (true (null twice) "Tests named twice: ~{~a~^; ~}" twice)))
+
+(define-test (definitions long-lines-listed)
+  ;; report only: the columns are targets, so a count never fails the suite
+  (let* ((root (namestring (asdf:system-source-directory "tuatara")))
+         (output (uiop:run-program (list "python3" (concatenate 'string root "tools/line-check.py") "--summary" root)
+                                   :output :string))
+         (total (car (last (uiop:split-string (string-trim '(#\Newline) output) :separator '(#\Newline))))))
+    (format t "~&~a~%List: tools/line-check.py ~a (without --summary, a line each)~%" total root)
+    (true (search "lines past the column" total))))
 
 (defparameter *mapped-octets-read-elsewhere*
   '(("files.lisp" "a save writes what the kernel did not copy of a stretch it noted read (NOTE-READ) first")

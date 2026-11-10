@@ -88,7 +88,8 @@ LENGTH, the octets up to the first zero."
 
 (defun physical-memory ()
   "The octets of memory the machine has, or 0 when the system does not say."
-  (flet ((conf (name) (sb-alien:alien-funcall (sb-alien:extern-alien "sysconf" (function sb-alien:long sb-alien:int)) name)))
+  (flet ((conf (name)
+           (sb-alien:alien-funcall (sb-alien:extern-alien "sysconf" (function sb-alien:long sb-alien:int)) name)))
     (let ((pages (conf 85)) (size (conf 30)))      ; _SC_PHYS_PAGES, _SC_PAGESIZE
       (if (and (plusp pages) (plusp size)) (* pages size) 0))))
 
@@ -154,17 +155,17 @@ for each parser it holds, and its own.")
 ;;; A helper
 
 (defstruct (helper (:constructor %make-helper (process fd directories kind)) (:copier nil))
-  "A program parsing for the editor: its PROCESS, file descriptor (FD) its
-first connection (over which the others are handed to it, and parses are
-stopped), the grammar DIRECTORIES it was given, and its KIND: :OWN, parsing
-one buffer's text, :SHARED, parsing the files of projects you trust, or
-:RULES, loading the grammars and compiling their rules, never given any
-text. FAULTED holds the names of the grammars that crashed in it, or in the
-helpers before it for the same buffer. IDLE holds its connections no call
-uses now, CONNECTIONS all it has; WRITE-LOCK is held while the first
-connection is written to, and while IDLE and CONNECTIONS change. QUERIES
-holds the numbers of the queries it has been given. ALIVE is set until it
-ends, ENDED says what ended it, USED when it was last asked something."
+  "A program parsing for the editor. It holds its PROCESS, file descriptor (FD)
+its first connection (over which the others are handed to it, and parses are
+stopped), the grammar DIRECTORIES it was given, and its KIND. :OWN parses one
+buffer's text, :SHARED parses the files of projects you trust, and :RULES
+loads the grammars and compiles their rules, never given any text.
+FAULTED holds the names of the grammars that crashed in it, or in the helpers
+before it for the same buffer. IDLE holds its connections no call uses now,
+CONNECTIONS all it has. WRITE-LOCK is held while the first connection is
+written to, and while IDLE and CONNECTIONS change. QUERIES holds the numbers
+of the queries it has been given. ALIVE is set until it ends, ENDED says what
+ended it, USED when it was last asked something."
   (process nil :read-only t)
   (fd -1 :type fixnum :read-only t)
   (directories '() :read-only t)
@@ -188,14 +189,19 @@ ends, ENDED says what ended it, USED when it was last asked something."
       (documentation 'helper-kind 'function) "What the helper is for: :OWN, :SHARED or :RULES."
       (documentation 'helper-parsing 'function) "How many parses run in the helper now, in a cons for atomic counting."
       (documentation 'helper-buffer 'function) "The buffer whose text the helper parses, for one of its own."
-      (documentation 'helper-kept 'function) "True while the helper is in use for work that must not lose it (an export), never ended for room."
-      (documentation 'helper-faulted 'function) "The names of the grammars that crashed in the helper, or in those before it for its buffer."
+      (documentation 'helper-kept 'function) "True while the helper is in use for work that must not
+lose it (an export), never ended for room."
+      (documentation 'helper-faulted 'function) "The names of the grammars that crashed in the
+helper, or in those before it for its buffer."
       (documentation 'helper-idle 'function) "The helper's connections no call uses now."
       (documentation 'helper-connections 'function) "Every connection to the helper."
-      (documentation 'helper-write-lock 'function) "Held while the first connection is written to, and the connections change."
+      (documentation 'helper-write-lock 'function) "Held while the first connection is written to,
+and the connections change."
       (documentation 'helper-queries 'function) "The numbers of the queries the helper has been given."
       (documentation 'helper-alive 'function) "True until the helper ends."
-      (documentation 'helper-ended 'function) "What ended the helper: :CRASHED, :HUNG, :SLOW (honest work past its time), :BROKEN (a reply that cannot be right) or :STOPPED; NIL while it runs."
+      (documentation 'helper-ended 'function) "What ended the helper: :CRASHED, :HUNG, :SLOW (honest
+work past its time), :BROKEN (a reply that cannot be right) or :STOPPED; NIL
+while it runs."
       (documentation 'helper-used 'function) "When the helper was last asked something, in internal time units.")
 
 (defun helper-shared (helper)
@@ -225,10 +231,10 @@ load from, as ((KIND . DIRECTORIES) . HELPER).")
 
 (defstruct (call (:constructor %make-call (helper fd)) (:copier nil))
   "A connection to HELPER over the socket open as file descriptor (FD), used
-by one call at a time: OUT, foreign memory the request is written in (its
-header first), OUT-SIZE octets of it used of OUT-ROOM; IN, where the
-reply's body is put, IN-SIZE octets of IN-ROOM; HEADER, where a message's
-header is read; TEXT, where the text a parse reads is given from; STATUS
+by one call at a time. OUT is foreign memory the request is written in (its
+header first), OUT-SIZE octets of it used of OUT-ROOM. IN is where the
+reply's body is put, IN-SIZE octets of IN-ROOM. HEADER is where a message's
+header is read. TEXT is where the text a parse reads is given from. STATUS is
 what the reply's header said, :DEAD when the helper ended first."
   (helper nil :read-only t)
   (fd -1 :type fixnum :read-only t)
@@ -285,12 +291,14 @@ first. FD may be one that does not wait (O_NONBLOCK)."
     (loop while (< done size)
           do (let ((moved (if (eq direction :read)
                               (sb-alien:alien-funcall
-                               (sb-alien:extern-alien "read" (function sb-alien:long sb-alien:int sb-sys:system-area-pointer
-                                                                       sb-alien:unsigned-long))
+                               (sb-alien:extern-alien "read"
+                                                      (function sb-alien:long sb-alien:int sb-sys:system-area-pointer
+                                                                sb-alien:unsigned-long))
                                fd (sb-sys:sap+ sap done) (- size done))
                               (sb-alien:alien-funcall
-                               (sb-alien:extern-alien "send" (function sb-alien:long sb-alien:int sb-sys:system-area-pointer
-                                                                       sb-alien:unsigned-long sb-alien:int))
+                               (sb-alien:extern-alien "send"
+                                                      (function sb-alien:long sb-alien:int sb-sys:system-area-pointer
+                                                                sb-alien:unsigned-long sb-alien:int))
                                fd (sb-sys:sap+ sap done) (- size done) 16384)))) ; MSG_NOSIGNAL
                (cond ((plusp moved) (incf done moved))
                      ((zerop moved) (return-from transfer :ended))
@@ -449,7 +457,8 @@ helper (REPLY-OVERRUN)."
   (reply-has call at length)
   (foreign-string (sb-sys:sap+ (call-in call) at) length))
 
-(defstruct (parse-input (:constructor make-parse-input (rope &optional (end (tuatara.text:rope-octet-length rope)) (number 0)
+(defstruct (parse-input (:constructor make-parse-input
+                                      (rope &optional (end (tuatara.text:rope-octet-length rope)) (number 0)
                                                                        (size end)))
                         (:copier nil))
   "The text a parse reads: ROPE, up to octet END (the end of the last range of
@@ -466,7 +475,8 @@ was given no more of it."
   (failed nil)
   (over nil))
 
-(setf (documentation 'make-parse-input 'function) "A PARSE-INPUT reading ROPE up to END (its end unless given) by the parser NUMBER."
+(setf (documentation 'make-parse-input 'function) "A PARSE-INPUT reading ROPE up to END (its end
+unless given) by the parser NUMBER."
       (documentation 'parse-input-end 'function) "The octet the parse reads no further than."
       (documentation 'parse-input-number 'function) "The number of the parser reading the text."
       (documentation 'parse-input-p 'function) "True when OBJECT is a PARSE-INPUT."
@@ -815,7 +825,8 @@ helper wanted in its place is started afresh."
           (tuatara.runtime:ignoring-errors-reported ("ending the syntax helper's process")
             (tuatara.io:end-sandbox process :wait wait))))
       (flet ((shut (fd)
-               (sb-alien:alien-funcall (sb-alien:extern-alien "shutdown" (function sb-alien:int sb-alien:int sb-alien:int))
+               (sb-alien:alien-funcall (sb-alien:extern-alien "shutdown"
+                                                              (function sb-alien:int sb-alien:int sb-alien:int))
                                        fd 2)))
         (shut (helper-fd helper))
         (tuatara.runtime:ignoring-errors-reported ("closing the syntax helper's connection")
@@ -823,7 +834,8 @@ helper wanted in its place is started afresh."
         ;; the connections in use end for their callers, closed when given back
         (let ((idle (sb-thread:with-mutex ((helper-write-lock helper))
                       (dolist (call (helper-connections helper)) (shut (call-fd call)))
-                      (setf (helper-connections helper) (set-difference (helper-connections helper) (helper-idle helper)))
+                      (setf (helper-connections helper)
+                            (set-difference (helper-connections helper) (helper-idle helper)))
                       (shiftf (helper-idle helper) '()))))
           (mapc #'close-call idle)))
       ;; one that stopped answering, or answered wrongly, while not parsing:
@@ -913,11 +925,11 @@ started in the background, the editor woken once it is."
 
 (defvar *helper* :none
   "The helper parsing the text being worked on (a buffer's, its syntax's),
-for the parsers made meanwhile, as of text in another language in it: a
-HELPER; :OWN for one of its own, started when first wanted
-\(WITH-OWN-HELPER); :SHARED for the text of projects you trust, parsed in
-the shared one; :NONE, as it is unless bound, when the text is not to be
-parsed; what parses text says which.")
+for the parsers made meanwhile, as of text in another language in it. It is a
+HELPER; or :OWN for one of its own, started when first wanted
+\(WITH-OWN-HELPER); or :SHARED for the text of projects you trust, parsed in
+the shared one; or :NONE, as it is unless bound, when the text is not to be
+parsed. What parses text says which.")
 
 (defun current-helper ()
   "The helper for what is parsed now (*HELPER*): NIL when there is none to be had."
@@ -1002,13 +1014,13 @@ the buffer (FAULTED-NAMES), whichever helper parses it."
           (t (start-own-helper :buffer buffer)))))
 
 (defun buffer-helper-soon (buffer)
-  "BUFFER's helper (BUFFER-HELPER) when it is had at once: its own running;
-on a thread that may wait (WAITING-ALLOWED-P), one started now; on one that
-may not, as the editor's own, one set going now when the sandbox is known
-and no other start holds it up, which waits for nothing, the program's
-readiness waited for by the first parse in the background. Else NIL, and
-it is started in the background, the editor woken (HOST-WAKE)
-once it is, the text shown uncoloured meanwhile."
+  "BUFFER's helper (BUFFER-HELPER) when it is had at once. That is its own
+running. On a thread that may wait (WAITING-ALLOWED-P), it is one started now.
+On one that may not, as the editor's own, it is one set going now when the
+sandbox is known and no other start holds it up. That waits for nothing, the
+program's readiness waited for by the first parse in the background. Else NIL,
+and it is started in the background, the editor woken (HOST-WAKE) once it is,
+the text shown uncoloured meanwhile."
   (let ((own (tuatara.buffer:buffer-local buffer :syntax-helper)))
     (cond ((and own (helper-alive own) (not (buffer-text-trusted-p buffer))) own)
           ((waiting-allowed-p) (buffer-helper buffer))

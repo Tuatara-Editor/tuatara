@@ -133,17 +133,17 @@ Complexity: O(1) for a text done before, else that of WRITE-COMMAND-KEYS."
               result)))))
 
 (defun write-command-keys (string &key keymap marks for-format)
-  "STRING with keys written in: \\=\\[COMMAND] becomes the keys that run
+  "STRING with keys written in. \\=\\[COMMAND] becomes the keys that run
 COMMAND, or M-x COMMAND where none do, looked for in the keymap \\=\\<KEYMAP>
-named last before it, then in the global keymap and the NORMAL state's keymap (a
-major mode's keys only where its keymap is named, as \\=\\<buffers-mode>);
-\\=\\{KEYMAP} becomes a list of KEYMAP's keys and the commands they run;
-\\=\\`KEYS' becomes KEYS; \\=\\= keeps the character after it as it is. KEYMAP,
-when given, is where to look before any \\=\\<KEYMAP>. With MARKS the keys come
-between marks for UNMARK-KEYS, which the places that show text take out,
-colouring the keys; without, the text comes plain, its keys' parts kept for it
-(TEXT-SPANS). With FOR-FORMAT a ~ in what is written in is doubled, STRING
-being a control string for FORMAT."
+named last before it, then in the global keymap and the NORMAL state's keymap
+\(a major mode's keys only where its keymap is named, as \\=\\<buffers-mode>).
+\\=\\{KEYMAP} becomes a list of KEYMAP's keys and the commands they run.
+\\=\\`KEYS' becomes KEYS. \\=\\= keeps the character after it as it is.
+KEYMAP, when given, is where to look before any \\=\\<KEYMAP>.
+With MARKS the keys come between marks for UNMARK-KEYS, which the places that
+show text take out, colouring the keys. Without it, the text comes plain, its
+keys' parts kept for it (TEXT-SPANS). With FOR-FORMAT a ~ in what is written
+in is doubled, STRING being a control string for FORMAT."
   (if (or (not (stringp string)) (not (find #\\ string)))
       string
       (let ((out (make-string-output-stream)) (i 0) (n (length string)) (map keymap))

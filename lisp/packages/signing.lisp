@@ -88,7 +88,9 @@ NIL when it has none."
           (when (and size (tuatara.io:octets-at-p octets "SSHSIG") (<= (+ 14 size) (length octets)))
             (let* ((blob (subseq octets 14 (+ 14 size)))
                    (type-size (tuatara.io:octets-integer blob 0 4 :big-endian t))
-                   (type (and type-size (<= (+ 4 type-size) (length blob)) (tuatara.io:octets-ascii blob 4 (+ 4 type-size)))))
+                   (type (and type-size
+                              (<= (+ 4 type-size) (length blob))
+                              (tuatara.io:octets-ascii blob 4 (+ 4 type-size)))))
               (and type (cl-ppcre:scan "^[a-z0-9@.-]{1,64}$" type)
                    (format nil "~a ~a" type (tuatara.io:base64-string blob))))))))))
 
@@ -153,11 +155,11 @@ verify-tag --raw said of it, and OBJECT, the tag's object."
               (t (list :status :error))))))
 
 (defun missing-key (said)
-  "The fingerprint of the key that made a GNU Privacy Guard (GPG) signature
-your keyring lacks, from SAID, gpg's status lines (ERRSIG's seventh field,
-the issuer's fingerprint, 40 or 64 hexadecimal digits): the signing key
-itself, a subkey or the primary key; NIL when gpg did not give it, as for
-an old signature naming only a 64-bit ID, which is too short to hold to."
+  "The fingerprint of the key that made a GNU Privacy Guard (GPG) signature your
+keyring lacks, from SAID, gpg's status lines. It is ERRSIG's seventh field, the
+issuer's fingerprint, 40 or 64 hexadecimal digits: the signing key itself, a
+subkey or the primary key. It is NIL when gpg did not give it, as for an old
+signature naming only a 64-bit ID, which is too short to hold to."
   (let ((fingerprint (seventh (gnupg-status said "ERRSIG"))))
     (and fingerprint (cl-ppcre:scan "^(?:[0-9A-Fa-f]{40}|[0-9A-Fa-f]{64})$" fingerprint)
          (signer-fingerprint fingerprint))))
@@ -174,17 +176,17 @@ line, before the blank line that ends the header), whatever its message says."
 with gpg or ssh-keygen, before it is ended and the version not taken.")
 
 (defun package-signature (folder commit tag where)
-  "Who signed COMMIT of the repository at WHERE, kept in FOLDER: the tag TAG
-it was fetched by now when that is signed (its object, FETCH_HEAD, naming
-TAG and COMMIT), else the commit. Checked by git, with gpg and your keyring
-for a GNU Privacy Guard (GPG) signature, with ssh-keygen and the allowed
-signers file of the key trusted for WHERE for a secure shell (SSH) one
-(WRITE-PACKAGE-SIGNERS-FILE); nothing of the repository is run. A list:
-:STATUS, :GOOD, :BAD (it does not hold, or its key is revoked), :UNCHECKED (by
+  "Who signed COMMIT of the repository at WHERE, kept in FOLDER: the tag TAG it
+was fetched by now when that is signed (its object, FETCH_HEAD, naming TAG and
+COMMIT), else the commit. Git does the check, with gpg and your keyring for a
+GNU Privacy Guard (GPG) signature, and with ssh-keygen and the allowed signers
+file of the key trusted for WHERE for a secure shell (SSH) one
+\(WRITE-PACKAGE-SIGNERS-FILE). Nothing of the repository is run. Returns a list.
+:STATUS is :GOOD, :BAD (it does not hold, or its key is revoked), :UNCHECKED (by
 a GPG key your keyring lacks, its fingerprint :KEY-ID), :NONE (unsigned) or
-:ERROR (signed, but git could not say by whom); :FINGERPRINT (the primary
-key's), :SUBKEY, :NAME and for an SSH key :KEY of a good one, the key seen to
-have made the signature."
+:ERROR (signed, but git could not say by whom). The list also has :FINGERPRINT
+\(the primary key's), :SUBKEY and :NAME. For an SSH key it has :KEY of a good
+one, the key seen to have made the signature."
   (labels ((git (allowed &rest arguments)
              (multiple-value-bind (octets ok too-large said)
                  (run-git-program (git-for-packages) folder arguments
@@ -205,7 +207,8 @@ have made the signature."
            (tag-object (and object (signature-block object :tag) object)))
       (when (and tag-object
                  (not (and (tag-object-names-p tag-object tag)
-                           (string= commit (trimmed (git allowed "rev-parse" "--verify" "--quiet" "FETCH_HEAD^{commit}"))))))
+                           (string= commit
+                                    (trimmed (git allowed "rev-parse" "--verify" "--quiet" "FETCH_HEAD^{commit}"))))))
         (return-from package-signature (list :status :error :why "its tag object names another tag or commit")))
       (let ((signature (check allowed tag-object)))
         (when (and (eq (getf signature :status) :unchecked) (not (getf signature :key-id)))
@@ -216,11 +219,14 @@ have made the signature."
           (let ((alone (format nil "~a-check-~a" (package-signers-file where) (tuatara.io:random-name))))
             (unwind-protect
                  (progn
-                   (tuatara.io:write-private-file alone (format nil "trusted namespaces=\"git\" ~a~%" (getf signature :key)))
+                   (tuatara.io:write-private-file alone
+                                                  (format nil "trusted namespaces=\"git\" ~a~%" (getf signature :key)))
                    (let ((again (check alone tag-object)))
-                     (unless (and (eq (getf again :status) :good) (equal (getf again :fingerprint) (getf signature :fingerprint))
+                     (unless (and (eq (getf again :status) :good)
+                                  (equal (getf again :fingerprint) (getf signature :fingerprint))
                                   (if tag-object
-                                      (search "signature for trusted with" (nth-value 1 (git alone "verify-tag" "--raw" "FETCH_HEAD")))
+                                      (search "signature for trusted with"
+                                              (nth-value 1 (git alone "verify-tag" "--raw" "FETCH_HEAD")))
                                       (string= "G" (trimmed (git alone "log" "-1" "--format=%G?" commit)))))
                        (setf (getf signature :key) nil))))
               (handler-case (delete-file alone) (file-error () nil)))))
@@ -250,21 +256,21 @@ have made the signature."
 
 (defun package-trust-verdict (where signature)
   "What becomes of a version of the source WHERE that SIGNATURE
-\(PACKAGE-SIGNATURE) says who signed, as three values: :TAKE, :ASK (its
-first version, whoever signed it is asked about, as the version is) or
-:REFUSE; who signed it in words, or why it is refused; and the entry of
-*PACKAGE-TRUST* to remember once it is taken (for one refused, to remember
-all the same), or NIL. With the signers the init file names (:signers),
-only a version one of them signed is taken. Else the signer of the first
-version taken is remembered: later ones signed by that key are taken, and
-others refused, unsigned ones too; a source whose first version was
-unsigned has its unsigned versions taken, and the first signed one taken
-makes its signer the one remembered. A GNU Privacy Guard (GPG) signature whose
-key your keyring lacks is refused until the key is imported, its fingerprint
-remembered for a source's first version so that only that key (or the key it
-is a subkey of) is taken then. A signature that does not hold, or one git
-could not check, is refused always. With *PACKAGE-CHECK-SIGNATURES* NIL every
-version is taken, whoever signed it, and nothing is remembered."
+\(PACKAGE-SIGNATURE) says who signed, as three values. The first is :TAKE, :ASK
+\(its first version, whoever signed it is asked about, as the version is) or
+:REFUSE. The second is who signed it in words, or why it is refused. The third
+is the entry of *PACKAGE-TRUST* to remember once it is taken (for one refused,
+to remember all the same), or NIL. With the signers the init file names
+\(:signers), only a version one of them signed is taken. Else the signer of the
+first version taken is remembered. Later ones signed by that key are taken, and
+others refused, unsigned ones too. A source whose first version was unsigned has
+its unsigned versions taken, and the first signed one taken makes its signer the
+one remembered. A GNU Privacy Guard (GPG) signature whose key your keyring lacks
+is refused until the key is imported. Its fingerprint is remembered for a
+source's first version, so that only that key (or the key it is a subkey of) is
+taken then. A signature that does not hold, or one git could not check, is
+refused always. With *PACKAGE-CHECK-SIGNATURES* NIL every version is taken,
+whoever signed it, and nothing is remembered."
   (when (not *package-check-signatures*)
     (return-from package-trust-verdict (values :take (signer-words signature) nil)))
   (let* ((status (getf signature :status))

@@ -113,7 +113,8 @@ a divider, it moves that instead, sizing the windows on either side."
                          (tuatara.display:window-scroll window -1))
                        (setf row top))
                       ((>= row bottom)
-                       (when (and (plusp (length rows)) (not (tuatara.display:row-last-p (aref rows (1- (length rows))))))
+                       (when (and (plusp (length rows))
+                                  (not (tuatara.display:row-last-p (aref rows (1- (length rows))))))
                          (tuatara.display:window-scroll window 1))
                        (setf row (1- bottom))))
                 (setf (tuatara.buffer:buffer-mark b) (min (third anchor) (tuatara.buffer:buffer-size b))
@@ -175,8 +176,9 @@ characters selected reaches.")
 
 (defun click-run (buffer position)
   "The run of characters of one CLICK-CLASS around POSITION in BUFFER, as two
-values, its start and end, within *CLICK-RUN-REACH* octets either side; on a bracket, the bracketed group, or the bracket
-alone when it has no partner. NIL at a line's end with nothing before it."
+values, its start and end, within *CLICK-RUN-REACH* octets either side; on a
+bracket, the bracketed group, or the bracket alone when it has no partner. NIL
+at a line's end with nothing before it."
   (let* ((char (tuatara.buffer:buffer-char-at buffer position))
          (before (and (plusp position)
                       (tuatara.buffer:buffer-char-at buffer (tuatara.buffer:buffer-forward-char buffer position -1))))

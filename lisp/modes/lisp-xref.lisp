@@ -240,7 +240,9 @@ window; the list stays."
   '((:variable . "defvar") (:constant . "defconstant") (:function . "defun") (:macro . "defmacro")
     (:generic-function . "defgeneric") (:method . "defmethod") (:class . "defclass") (:structure . "defstruct")
     (:condition . "define-condition") (:type . "deftype") (:compiler-macro . "define-compiler-macro")
-    (:setf-expander . "defsetf") (:symbol-macro . "define-symbol-macro") (:method-combination . "define-method-combination"))
+    (:setf-expander . "defsetf")
+    (:symbol-macro . "define-symbol-macro")
+    (:method-combination . "define-method-combination"))
   "The kinds of definition sb-introspect knows, and what the list of definitions calls each.")
 
 (defun definition-pattern (symbol)
@@ -248,7 +250,8 @@ window; the list stays."
 text: an open bracket, a word that defines (DEFINITION-HEAD-P), and SYMBOL's
 name, (setf name)'s too, or the name quoted ('name, as recorded keys are
 named), in any case."
-  (format nil "(?i)\\((?:[^\\s():]+::?)?(?:~{~a|~}define-[a-z0-9-]+)\\s+'?(?:\\(setf\\s+)?(?:[^\\s():]+::?)?~a(?=[\\s()])"
+  (format nil
+          "(?i)\\((?:[^\\s():]+::?)?(?:~{~a|~}define-[a-z0-9-]+)\\s+'?(?:\\(setf\\s+)?(?:[^\\s():]+::?)?~a(?=[\\s()])"
           (mapcar #'cl-ppcre:quote-meta-chars *definition-head-names*)
           (cl-ppcre:quote-meta-chars (symbol-name symbol))))
 
@@ -350,9 +353,11 @@ were evaluated from in this session."
                    (setf (gethash key seen) t)
                    (push (make-definition (if (eq type :method)
                                               (method-summary symbol description)
-                                              (format nil "(~a ~a)" (if (and (eq type :function) (gethash symbol *commands*))
-                                                                        "define-command"
-                                                                        head)
+                                              (format nil
+                                                      "(~a ~a)"
+                                                      (if (and (eq type :function) (gethash symbol *commands*))
+                                                          "define-command"
+                                                          head)
                                                       (lisp-name-text symbol)))
                                           file
                                           (let ((file file) (offset offset) (form (first form-path)))

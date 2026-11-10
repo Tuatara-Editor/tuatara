@@ -74,7 +74,8 @@ search filters (\\[search-filter-regex])."
                                   (end-line (second variant))))))
                           (end-line nil))))
                (group "Fonts with every character the same width, for the window" (remove-if-not #'second faces))
-               (group "Other fonts (letters of their own widths, which leave the window's grid)" (remove-if #'second faces))))))
+               (group "Other fonts (letters of their own widths, which leave the window's grid)"
+                      (remove-if #'second faces))))))
     (set-search-filtering buffer :nouns "fonts" :heading #'consp)
     (render-pieces buffer pieces :point point :entries lines :refill 'font-list-refill)))
 
@@ -102,7 +103,9 @@ it for good."
     (if (not (stringp font))
         (message "No font on this line")
         (let ((full (tuatara.frontend:frontend-set-font (editor-frontend *editor*) font)))
-          (message (if full "Font ~a; \\<font-list-mode>\\[font-list-copy] copies its line for the init file" "Font ~a is not to be had")
+          (message (if full
+                       "Font ~a; \\<font-list-mode>\\[font-list-copy] copies its line for the init file"
+                       "Font ~a is not to be had")
                    font)))))
 
 (define-command font-list-copy ()

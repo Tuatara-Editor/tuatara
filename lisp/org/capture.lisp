@@ -60,7 +60,8 @@ it goes under, with these filled in:
   "Tuatara's own capture templates, each (FILE-NAME TEXT): a TODO for the
 agenda (t), a note to the inbox (n), a journal entry (j), meeting notes (m).")
 
-(defstruct (capture-template (:constructor make-capture-template (key name target text &key clock-in clock-resume file own))
+(defstruct (capture-template (:constructor make-capture-template
+                                           (key name target text &key clock-in clock-resume file own))
                              (:copier nil))
   "A template \\[org-capture] offers: KEY, the character choosing it, as text;
 NAME, what it is; TARGET, where its text is filed, (:FILE-HEADLINE FILE
@@ -76,7 +77,8 @@ CLOCK-RESUME; FILE, its file's name; OWN, true for one of Tuatara's."
 of Tuatara's), from its head (*CAPTURE-TEMPLATE-DIRECTORIES*), or NIL when it
 has no key."
   (multiple-value-bind (head body) (template-head text)
-    (flet ((field (name) (let ((value (cdr (assoc name head :test #'string=)))) (and value (plusp (length value)) value)))
+    (flet ((field (name)
+             (let ((value (cdr (assoc name head :test #'string=)))) (and value (plusp (length value)) value)))
            (yes (name) (member (cdr (assoc name head :test #'string=)) '("t" "yes") :test #'string-equal)))
       (let ((key (field "key")) (file (field "file")))
         (when key
@@ -122,7 +124,9 @@ is."
                               for template = (read-capture-template file text t)
                               when template
                                 collect (make-candidate (capture-template-name template) :value (list nil file text)
-                                                        :annotation (format nil "~a  Tuatara's" (capture-template-key template))))
+                                                        :annotation (format nil
+                                                                            "~a  Tuatara's"
+                                                                            (capture-template-key template))))
                         (capture-template-directories)
                         "capture template"))
 
@@ -147,7 +151,8 @@ number that %t and %T give instead of today."
        (loop while (< i n)
              do (if (or (char/= (char template i) #\%) (= i (1- n)))
                     (progn (write-char (char template i) out) (incf i))
-                    (multiple-value-bind (text after) (org-capture-escape template (1+ i) now link selection target-buffer day)
+                    (multiple-value-bind (text after)
+                        (org-capture-escape template (1+ i) now link selection target-buffer day)
                       (if (eq text :point)
                           (setf point (file-position out))
                           (write-string text out))
@@ -178,11 +183,11 @@ capture; LINK, SELECTION, TARGET-BUFFER and DAY are as ORG-CAPTURE-FILL has them
 
 (defun org-capture-question (template at target-buffer)
   "What a %^ escape of TEMPLATE, the rest of it beginning at AT, is filled in
-with, asked for, and the index after it, as two values: for %^g tags, those
-used in TARGET-BUFFER and the agenda offered; for %^t and %^T a date, asked
-as \\[org-time-stamp] asks it, again till one is read, written as an active
-timestamp, several days chosen in the calendar one after another; for %^{Prompt} an
-answer; for %^{Prompt|one|two} one of those."
+with, asked for, and the index after it, as two values: for %^g tags, those used
+in TARGET-BUFFER and the agenda offered. For %^t and %^T a date, asked as
+\\[org-time-stamp] asks it, again till one is read, written as an active
+timestamp, several days chosen in the calendar one after another. For %^{Prompt}
+an answer. For %^{Prompt|one|two} one of those."
   (let ((letter (and (< at (length template)) (char template at)))
         (close (position #\} template :start at)))
     (cond ((eql letter #\g)
@@ -195,7 +200,8 @@ answer; for %^{Prompt|one|two} one of those."
                              when date return date)))
              (values (if (org-ts-p date) (org-ts-text date) date) (1+ at))))
           ((and (eql letter #\{) close)
-           (destructuring-bind (&optional prompt &rest choices) (uiop:split-string (subseq template (1+ at) close) :separator "|")
+           (destructuring-bind (&optional prompt &rest choices)
+               (uiop:split-string (subseq template (1+ at) close) :separator "|")
              (let ((question (format nil "~a: " (if (plusp (length prompt)) prompt "Answer"))))
                (values (if choices (completing-read question choices) (read-string question))
                        (1+ close)))))
@@ -347,7 +353,8 @@ the capture is for that day (ORG-CAPTURE-ON-DAY)."
         (set-major-mode buffer 'org-capture-mode)
         (setf (tuatara.buffer:buffer-local buffer 'org-capture)
               (list :description description :target target :started started :day day
-                    :clock-in (capture-template-clock-in template) :clock-resume (capture-template-clock-resume template))
+                    :clock-in (capture-template-clock-in template)
+                    :clock-resume (capture-template-clock-resume template))
               (tuatara.display:buffer-header-line buffer)
               (let ((line (substitute-command-keys
                            (format nil " \\<org-capture-mode>\\[org-capture-finalize] files it, \\[org-capture-refile] elsewhere, \\[org-capture-kill] throws it away: ~a, ~a"
@@ -390,10 +397,9 @@ calendar or the agenda captures for the day at point instead of today."
 (define-command org-capture-on-day ()
   "Capture, as \\[org-capture] does, for the day at point in the calendar or on
 the agenda (the day of its line, or of the date above it), so that the agenda
-lists the entry that day: the template's %t and %T are that day's date, and
-a template with neither gets that date on the line after its heading; a
-journal template files into that day's entry. %U and %u stay the time it is
-written."
+lists the entry that day: the template's %t and %T are that day's date, and a
+template with neither gets that date on the line after its heading. A journal
+template files into that day's entry. %U and %u stay the time it is written."
   (let ((day (cond ((typep (buffer-major-mode (current-buffer)) 'calendar-mode) (calendar-cursor-date))
                    ((org-agenda-here) (org-agenda-day-at-point (current-buffer))))))
     (if day

@@ -41,8 +41,10 @@ sub and to nowhere; a named pipe."
   (sb-posix:mkfifo (namestring (merge-pathnames "pipe" directory)) #o644)
   (rimu-at-raw-name directory (lambda (dirfd name)
                                 (let ((fd (sb-alien:alien-funcall
-                                           (sb-alien:extern-alien "openat" (function sb-alien:int sb-alien:int sb-sys:system-area-pointer
-                                                                                     sb-alien:int sb-alien:int))
+                                           (sb-alien:extern-alien "openat"
+                                                                  (function sb-alien:int sb-alien:int
+                                                                            sb-sys:system-area-pointer
+                                                                            sb-alien:int sb-alien:int))
                                            dirfd name (logior sb-posix:o-wronly sb-posix:o-creat) #o644)))
                                   (when (>= fd 0) (sb-posix:close fd))))))
 
@@ -55,7 +57,9 @@ RIMU-FILL-TREE filled."
        ;; a name that is not UTF-8 is taken away by its octets, which the removal of the tree cannot
        (rimu-at-raw-name ,directory (lambda (dirfd name)
                                       (sb-alien:alien-funcall
-                                       (sb-alien:extern-alien "unlinkat" (function sb-alien:int sb-alien:int sb-sys:system-area-pointer sb-alien:int))
+                                       (sb-alien:extern-alien "unlinkat"
+                                                              (function sb-alien:int sb-alien:int
+                                                                        sb-sys:system-area-pointer sb-alien:int))
                                        dirfd name 0))))))
 
 (defun rimu-typed (text)
@@ -70,11 +74,11 @@ RIMU-FILL-TREE filled."
 
 (defun rimu-session (directory keys &key (width 100) (height 20) preview (file nil) cell-pixels details)
   "Run an editor session that lists DIRECTORY with C-x d, then takes KEYS (a
-string, or a list as QUEUE-TEST-KEYS takes), with no rimu list left from
-earlier sessions, the settings as they are by default but the preview, on only with PREVIEW (and then shown at once), and the
-columns of sizes and dates, shown only with DETAILS; in a
-session on FILE, with KEYS only; CELL-PIXELS has the frontend show pictures
-(RUN-KEYS). Returns the frontend and the editor."
+string, or a list as QUEUE-TEST-KEYS takes). No rimu list is left from earlier
+sessions. The settings are as they are by default, but the preview is on only
+with PREVIEW (and then shown at once), and the columns of sizes and dates are
+shown only with DETAILS. In a session on FILE, with KEYS only. CELL-PIXELS has
+the frontend show pictures (RUN-KEYS). Returns the frontend and the editor."
   (rimu-forget)
   (let ((tuatara-user:*rimu-preview* preview)
         (tuatara-user:*rimu-preview-delay* 0)
@@ -160,10 +164,12 @@ shown at the end of a row after a space."
         (is = (search "bin.dat" bin) (search "pipe" pipe))
         ;; the set-user letter in its colour
         (let ((row (loop for row from 0 below (length (tuatara.frontend.fake:fake-screen f))
-                         when (uiop:string-suffix-p (tuatara.frontend.fake:fake-screen-line f row) " bin.dat") return row)))
+                         when (uiop:string-suffix-p (tuatara.frontend.fake:fake-screen-line f row) " bin.dat")
+                         return row)))
           (let ((letter (+ 3 (search "-rws" bin))))
             (true (find :rimu-set-id (aref (tuatara.frontend.fake:fake-spans f) row)
-                        :test (lambda (face span) (and (<= (first span) letter) (< letter (second span)) (eq face (third span))))))))))
+                        :test (lambda (face span)
+                                (and (<= (first span) letter) (< letter (second span)) (eq face (third span))))))))))
     ;; columns left out by the setting: no inode numbers, no groups
     (let ((tuatara-user:*rimu-hidden-columns* '(:inode :group)))
       (multiple-value-bind (f editor) (rimu-session dir "I")
@@ -179,7 +185,8 @@ shown at the end of a row after a space."
           (true (cl-ppcre:scan "^ +[0-9]+ -4755[.+]? 1 \\S+ \\S+ +6 " bin) "~s" bin)
           (true (cl-ppcre:scan "^ +[0-9]+ d[0-7]{3}[.+]? " sub) "~s" sub)
           (let ((row (loop for row from 0 below (length (tuatara.frontend.fake:fake-screen f))
-                           when (uiop:string-suffix-p (tuatara.frontend.fake:fake-screen-line f row) " bin.dat") return row))
+                           when (uiop:string-suffix-p (tuatara.frontend.fake:fake-screen-line f row) " bin.dat")
+                           return row))
                 (digit (1+ (search " -4755" bin))))
             (true (find :rimu-set-id (aref (tuatara.frontend.fake:fake-spans f) row)
                         :test (lambda (face span) (and (<= (first span) (1+ digit)) (< (1+ digit) (second span)) (eq face (third span))))))))))
@@ -194,7 +201,9 @@ shown at the end of a row after a space."
     ;; the setting shows them in new lists
     (let ((tuatara-user:*rimu-details* t))
       (rimu-forget)
-      (multiple-value-bind (f editor) (run-keys (format nil "C-x d C-a C-k ~a C-j" (rimu-typed (namestring dir))) :width 100 :height 20)
+      (multiple-value-bind (f editor) (run-keys (format nil "C-x d C-a C-k ~a C-j" (rimu-typed (namestring dir)))
+                                                :width 100
+                                                :height 20)
         (declare (ignore f))
         (true (uiop:string-prefix-p "  total used in directory " (second (rimu-lines editor))))))))
 
@@ -271,7 +280,9 @@ shown at the end of a row after a space."
         (let ((entry (find (rimu-raw-name) (tuatara.io:list-directory (namestring dir))
                            :key #'tuatara.io:listed-octets :test #'equalp)))
           (is = 2 (tuatara.io:stamp-size (tuatara.io:listed-stamp entry))))
-        (is = 1 (count-if (lambda (e) (search "raw" (tuatara.io:listed-name e))) (tuatara.io:list-directory (namestring dir)))))
+        (is = 1
+            (count-if (lambda (e) (search "raw" (tuatara.io:listed-name e)))
+                      (tuatara.io:list-directory (namestring dir)))))
       ;; NORMAL state's motions by word and expression and its other selections are free keys:
       ;; they say they are undefined and leave point where it is
       (dolist (key tuatara.defaults::*list-free-keys*)
@@ -290,7 +301,8 @@ shown at the end of a row after a space."
       (multiple-value-bind (f editor) (rimu-session dir "V J")
         (declare (ignore editor))
         (flet ((selected-p (row) (find :region (aref (tuatara.frontend.fake:fake-spans f) row)
-                                       :key (lambda (span) (let ((face (third span))) (if (listp face) (first face) face))))))
+                                       :key (lambda (span)
+                                              (let ((face (third span))) (if (listp face) (first face) face))))))
           (true (selected-p 1))
           (true (selected-p 2))
           (false (selected-p 3))))
@@ -366,7 +378,9 @@ shown at the end of a row after a space."
         (true (tuatara.frontend.fake:fake-frame-showing f (format nil "Find file: ~a"
                                                                   (tuatara.defaults::abbreviated-path (namestring dir)))))))
     ;; the directory prompt lists a directory with a name that is not UTF-8
-    (multiple-value-bind (f editor) (run-keys (format nil "C-x C-f C-a C-k ~a r a w" (rimu-typed (namestring dir))) :width 100 :height 20)
+    (multiple-value-bind (f editor) (run-keys (format nil "C-x C-f C-a C-k ~a r a w" (rimu-typed (namestring dir)))
+                                              :width 100
+                                              :height 20)
       (declare (ignore editor))
       (true (tuatara.frontend.fake:fake-frame-showing f "raw\\xFF\\xFEname"))
       (false (tuatara.frontend.fake:fake-frame-showing f "decoding error")))
@@ -377,7 +391,8 @@ shown at the end of a row after a space."
   ;; when no entry is left at point
   (with-rimu-tree (dir)
     (flet ((previews () (mapcar #'tuatara.buffer:buffer-name
-                                (remove-if-not (lambda (b) (search "(preview" (tuatara.buffer:buffer-name b))) tuatara.buffer:*buffers*))))
+                                (remove-if-not (lambda (b) (search "(preview" (tuatara.buffer:buffer-name b)))
+                                               tuatara.buffer:*buffers*))))
       (multiple-value-bind (f editor) (rimu-session-then dir "g f t e x t . t x t RET" "C-x / s z q z q RET")
         (declare (ignore editor))
         (true (tuatara.frontend.fake:fake-frame-showing f "text.txt (preview)"))
@@ -386,7 +401,8 @@ shown at the end of a row after a space."
 
 (define-test (rimu preview)
   (with-rimu-tree (dir)
-    (flet ((previews () (remove-if-not (lambda (b) (search "(preview" (tuatara.buffer:buffer-name b))) tuatara.buffer:*buffers*))
+    (flet ((previews ()
+             (remove-if-not (lambda (b) (search "(preview" (tuatara.buffer:buffer-name b))) tuatara.buffer:*buffers*))
            (windows (editor) (length (tuatara.command:editor-windows editor))))
       ;; the file on the line, beside the list
       (multiple-value-bind (f editor) (rimu-session dir "g f t e x t . t x t RET" :preview t)
@@ -449,7 +465,8 @@ shown at the end of a row after a space."
 
 (define-test (rimu preview-window-reused)
   (with-rimu-tree (dir)
-    (flet ((previews () (remove-if-not (lambda (b) (search "(preview" (tuatara.buffer:buffer-name b))) tuatara.buffer:*buffers*))
+    (flet ((previews ()
+             (remove-if-not (lambda (b) (search "(preview" (tuatara.buffer:buffer-name b))) tuatara.buffer:*buffers*))
            (shown (editor) (mapcar (lambda (w) (tuatara.buffer:buffer-name (tuatara.display:window-buffer w)))
                                    (tuatara.command:editor-windows editor))))
       (unwind-protect
@@ -480,7 +497,8 @@ shown at the end of a row after a space."
         (declare (ignore f editor))
         (is equal (list (if (search "s u b" keys) "sub/ (preview)" "text.txt (preview)"))
             (mapcar #'tuatara.buffer:buffer-name
-                    (remove-if-not (lambda (b) (search "(preview" (tuatara.buffer:buffer-name b))) tuatara.buffer:*buffers*)))))
+                    (remove-if-not (lambda (b) (search "(preview" (tuatara.buffer:buffer-name b)))
+                                   tuatara.buffer:*buffers*)))))
     (rimu-forget)))
 
 (define-test (rimu point-on-entries)
@@ -498,13 +516,16 @@ shown at the end of a row after a space."
   ;; g i shows the file's metadata in the list's place: C-x k and q both go back to the list, the preview with it
   (with-rimu-tree (dir)
     (flet ((read-p ()
-             (notany (lambda (job) (and (tuatara.defaults::metadata-job-p job) (eq (tuatara.runtime:job-status job) :running)))
+             (notany (lambda (job)
+                       (and (tuatara.defaults::metadata-job-p job) (eq (tuatara.runtime:job-status job) :running)))
                      tuatara.runtime:*jobs*)))
       (dolist (leave '("C-x k" "q"))
         (multiple-value-bind (f editor)
             ;; the metadata read first: killing its buffer then asks nothing of a job
-            (rimu-session dir (list "g f t e x t . t x t RET g i" (lambda () (loop repeat 250 until (read-p) do (sleep 0.02)))
-                                    :tick leave :tick)
+            (rimu-session dir
+                          (list "g f t e x t . t x t RET g i"
+                                (lambda () (loop repeat 250 until (read-p) do (sleep 0.02)))
+                                :tick leave :tick)
                           :preview t)
           (false (tuatara.frontend.fake:fake-frame-showing f "q is undefined"))
           (is string= (rimu-list-name dir) (current-name editor))
@@ -530,7 +551,8 @@ shown at the end of a row after a space."
     (let* ((path (tuatara.io:expand-path (merge-pathnames "text.txt" dir)))
            (name (rimu-list-name dir)))
       (flet ((visiting () (find path tuatara.buffer:*buffers* :key #'tuatara.buffer:buffer-file :test #'equal))
-             (previews () (remove-if-not (lambda (b) (search "(preview" (tuatara.buffer:buffer-name b))) tuatara.buffer:*buffers*))
+             (previews ()
+               (remove-if-not (lambda (b) (search "(preview" (tuatara.buffer:buffer-name b))) tuatara.buffer:*buffers*))
              (windows (editor) (length (tuatara.command:editor-windows editor)))
              (file () (uiop:read-file-string path)))
         (flet ((fresh () (let ((b (visiting))) (when b (tuatara.buffer:kill-buffer b)))))
@@ -656,7 +678,10 @@ shown at the end of a row after a space."
                                                         :preview t :width 200)
             (declare (ignore editor))
             (true (tuatara.frontend.fake:fake-frame-showing f "rimu-quick-edit-finish")))
-          (multiple-value-bind (f editor) (rimu-session dir "M-x r i m u - q u i c k - e d i t - d" :preview t :width 200)
+          (multiple-value-bind (f editor) (rimu-session dir
+                                                        "M-x r i m u - q u i c k - e d i t - d"
+                                                        :preview t
+                                                        :width 200)
             (declare (ignore editor))
             (false (tuatara.frontend.fake:fake-frame-showing f "rimu-quick-edit-finish")))
           ;; a named pipe is not opened
@@ -730,8 +755,12 @@ a Make tag naming it, its text after the directory."
       (is equal '("AVIF image, 8000 × 6000" :avif) (heif "avif" (ispe 320 240) (ispe 8000 6000)))
       (is equal '("HEIF image, 4032 × 3024" :heif) (heif "heic" (ispe 4032 3024) (ispe 512 384)))
       (is equal '(4032 3024) (multiple-value-list (tuatara.io:octets-picture-size
-                                                   (apply #'kind-octets (list 0 0 0 24) "ftypheic" (list 0 0 0 0) "mif1heic"
-                                                          (box "meta" (list 0 0 0 0) (box "iprp" (box "ipco" (ispe 4032 3024))))
+                                                   (apply #'kind-octets
+                                                          (list 0 0 0 24) "ftypheic"
+                                                          (list 0 0 0 0) "mif1heic"
+                                                          (box "meta"
+                                                               (list 0 0 0 0)
+                                                               (box "iprp" (box "ipco" (ispe 4032 3024))))
                                                           nil))))
       (is equal '("HEIF image" :heif) (kind (list 0 0 0 24) "ftypheic" (list 0 0 0 0) "mif1heic" (ispe 4032 3024))))
     ;; a JPEG with fill octets and a restart marker before its frame header still says its size
@@ -740,8 +769,12 @@ a Make tag naming it, its text after the directory."
               (list #xFF #xC0 0 17 8 1 #xE0 2 #x80 3 1 #x22 0 2 #x11 1 3 #x11 1)))
     ;; the size alone, as the words give it; none for what is no picture or a camera's raw
     (is equal '(640 480) (multiple-value-list (tuatara.io:octets-picture-size (png-octets 640 480))))
-    (is equal '(640 480) (multiple-value-list (tuatara.io:octets-picture-size (tiff-octets '((256 3 1 640) (257 3 1 480))))))
-    (is equal '(nil nil) (multiple-value-list (tuatara.io:octets-picture-size (tiff-octets '((256 3 1 256) (50706 1 4 1))))))
+    (is equal
+        '(640 480)
+        (multiple-value-list (tuatara.io:octets-picture-size (tiff-octets '((256 3 1 640) (257 3 1 480))))))
+    (is equal
+        '(nil nil)
+        (multiple-value-list (tuatara.io:octets-picture-size (tiff-octets '((256 3 1 256) (50706 1 4 1))))))
     (is equal '(nil nil) (multiple-value-list (tuatara.io:octets-picture-size (kind-octets "%PDF-1.4"))))
     (is equal '("Camera raw, Canon CRW" :raw) (kind (list 73 73 26 0 0 0) "HEAPCCDR"))
     (is equal '("Camera raw, Olympus ORF" :raw) (kind (list 73 73 82 79 8 0 0 0)))
@@ -751,8 +784,12 @@ a Make tag naming it, its text after the directory."
     (true (tuatara.io:kind-name-disagrees-p :raw "IMG_0001.jpg"))
     (is equal '("PDF document, version 1.4" :pdf) (kind "%PDF-1.4" (list 10)))
     (is equal '("ELF 64-bit executable, x86-64" :elf) (kind (list #x7F 69 76 70 2 1 1 0 0 0 0 0 0 0 0 0 2 0 62 0)))
-    (is equal '("gzip compressed data, was notes.txt" :gzip) (kind (list #x1F #x8B 8 8 0 0 0 0 0 3) "notes.txt" (list 0)))
-    (is equal '("Word document (OOXML)" :docx) (kind (coerce (tuatara.io:zip-octets '(("[Content_Types].xml" . "") ("word/document.xml" . ""))) 'list)))
+    (is equal
+        '("gzip compressed data, was notes.txt" :gzip)
+        (kind (list #x1F #x8B 8 8 0 0 0 0 0 3) "notes.txt" (list 0)))
+    (is equal
+        '("Word document (OOXML)" :docx)
+        (kind (coerce (tuatara.io:zip-octets '(("[Content_Types].xml" . "") ("word/document.xml" . ""))) 'list)))
     (is equal '("tar archive" :tar) (kind (make-list 257 :initial-element 0) "ustar"))
     (is equal '("SQLite database" :sqlite) (kind "SQLite format 3" (list 0)))
     (is equal '("script, run by /bin/sh" :script) (kind "#!/bin/sh" (list 10) "echo hi"))
@@ -793,7 +830,8 @@ with ATTACHMENTS, a list of such, each of them."
          (objects (append (list (format nil "<< /Type /Catalog /Pages 2 0 R~@[ /OpenAction ~d 0 R~]~@[~a~] >>"
                                         (and javascript (1+ font))
                                         (and attachments
-                                             (format nil " /Names << /EmbeddedFiles << /Names [~{(~a) ~d 0 R~^ ~}] >> >>"
+                                             (format nil
+                                                     " /Names << /EmbeddedFiles << /Names [~{(~a) ~d 0 R~^ ~}] >> >>"
                                                      (loop for (name) in attachments
                                                            for i from 0
                                                            append (list name (+ spec (* 2 i)))))))
@@ -801,15 +839,20 @@ with ATTACHMENTS, a list of such, each of them."
                                         (loop for i below n collect (+ 3 (* 2 i))) n))
                           (loop for text in pages
                                 for i from 0
-                                for stream = (if (string= text "") "" (format nil "BT /F1 18 Tf 20 100 Td (~a) Tj ET" text))
+                                for stream = (if (string= text "") ""
+                                                 (format nil "BT /F1 18 Tf 20 100 Td (~a) Tj ET" text))
                                 append (list (format nil "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 200] /Contents ~d 0 R /Resources << /Font << /F1 ~d 0 R >> >> >>"
                                                      (+ 4 (* 2 i)) font)
-                                             (format nil "<< /Length ~d >>~%stream~%~a~%endstream" (length stream) stream)))
+                                             (format nil
+                                                     "<< /Length ~d >>~%stream~%~a~%endstream"
+                                                     (length stream) stream)))
                           (list "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>")
                           (and javascript (list "<< /Type /Action /S /JavaScript /JS (app.alert\\(1\\)) >>"))
                           (loop for (name text) in attachments
                                 for i from 0
-                                append (list (format nil "<< /Type /Filespec /F (~a) /EF << /F ~d 0 R >> >>" name (+ spec (* 2 i) 1))
+                                append (list (format nil
+                                                     "<< /Type /Filespec /F (~a) /EF << /F ~d 0 R >> >>" name
+                                                     (+ spec (* 2 i) 1))
                                              (format nil "<< /Type /EmbeddedFile /Length ~d >>~%stream~%~a~%endstream"
                                                      (length text) text)))))
          (offsets '())
@@ -859,20 +902,44 @@ program writing as it goes makes them: each entry's sizes after its data."
     (is eq :zip (kind '(("res/AndroidManifest.xml" . ""))))
     ;; entries whose sizes come after their data are followed all the same
     (is eq :docx (nth-value 1 (tuatara.io:octets-kind
-                               (streamed-zip-octets '(("[Content_Types].xml" . "<Types/>") ("word/document.xml" . "<w:document/>"))))))
-    (is eq :zip (nth-value 1 (tuatara.io:octets-kind (streamed-zip-octets '(("password/x.txt" . "word/document.xml"))))))))
+                               (streamed-zip-octets '(("[Content_Types].xml" . "<Types/>")
+                                                      ("word/document.xml" . "<w:document/>"))))))
+    (is eq
+        :zip (nth-value 1 (tuatara.io:octets-kind (streamed-zip-octets '(("password/x.txt" . "word/document.xml"))))))))
 
 (define-test (rimu kinds-of-short-files)
   ;; each mark followed by any octets, cut short anywhere: told or not, never an error
-  (let ((marks (list (list 0 #x89 80 78 71 13 10 26 10) (list 0 #xFF #xD8 #xFF) (list 0 "GIF89a") (list 0 "RIFF" "????" "WEBPVP8X")
-                     (list 0 "RIFF" "????" "WEBPVP8L") (list 0 "RIFF" "????" "WEBPVP8 ") (list 0 "BM") (list 0 73 73 42 0)
+  (let ((marks (list (list 0 #x89 80 78 71 13 10 26 10)
+                     (list 0 #xFF #xD8 #xFF)
+                     (list 0 "GIF89a")
+                     (list 0 "RIFF" "????" "WEBPVP8X")
+                     (list 0 "RIFF" "????" "WEBPVP8L")
+                     (list 0 "RIFF" "????" "WEBPVP8 ")
+                     (list 0 "BM")
+                     (list 0 73 73 42 0)
                      (list 0 77 77 0 42) (list 0 0 0 1 0) (list 0 "8BPS") (list 0 "gimp xcf") (list 0 "%PDF-")
                      (list 0 80 75 3 4) (list 0 #x1F #x8B 8 8) (list 0 #x1F #x8B) (list 0 "BZh9") (list 257 "ustar")
                      (list 0 "070701") (list 0 #x7F 69 76 70) (list 0 #x7F 69 76 70 2 1) (list 0 "MZ")
-                     (list 0 #xCA #xFE #xBA #xBE) (list 4 "ftyp3") (list 4 "ftyp") (list 4 "ftypqt") (list 0 #x1A #x45 #xDF #xA3)
-                     (list 0 "RIFF" "????" "AVI ") (list 0 "RIFF" "????" "WAVE") (list 0 "FORM" "????" "AIFF") (list 0 "ID3")
-                     (list 0 "OggS") (list 0 "fLaC") (list 0 "MThd") (list 0 #xD4 #xC3 #xB2 #xA1) (list 0 76 0 0 0 1 20 2 0)
-                     (list 0 "regf") (list 0 "MDMP") (list 0 0 1 0 0 0) (list 0 "OTTO") (list 0 "wOFF") (list 0 #xFF #xFE)
+                     (list 0 #xCA #xFE #xBA #xBE)
+                     (list 4 "ftyp3")
+                     (list 4 "ftyp")
+                     (list 4 "ftypqt")
+                     (list 0 #x1A #x45 #xDF #xA3)
+                     (list 0 "RIFF" "????" "AVI ")
+                     (list 0 "RIFF" "????" "WAVE")
+                     (list 0 "FORM" "????" "AIFF")
+                     (list 0 "ID3")
+                     (list 0 "OggS")
+                     (list 0 "fLaC")
+                     (list 0 "MThd")
+                     (list 0 #xD4 #xC3 #xB2 #xA1)
+                     (list 0 76 0 0 0 1 20 2 0)
+                     (list 0 "regf")
+                     (list 0 "MDMP")
+                     (list 0 0 1 0 0 0)
+                     (list 0 "OTTO")
+                     (list 0 "wOFF")
+                     (list 0 #xFF #xFE)
                      (list 0 #xEF #xBB #xBF) (list 0 "<svg") (list 0 "<?xml") (list 0 "#!") (list 0 "{\rtf")))
         (failures '()))
     (dolist (mark marks)
@@ -988,10 +1055,13 @@ program writing as it goes makes them: each entry's sizes after its data."
       (is equal '(1 2 3 4 5 6) (pixels image)))
     ;; what says more pixels than it has, or pixels of another kind, is no picture
     (false (tuatara.defaults::decoded-image (octets (format nil "P6~%100 100~%255~%") (list 1 2 3))))
-    (false (tuatara.defaults::decoded-image (octets (format nil "P7~%WIDTH 1~%HEIGHT 1~%DEPTH 4~%MAXVAL 65535~%ENDHDR~%")
+    (false (tuatara.defaults::decoded-image (octets (format nil
+                                                            "P7~%WIDTH 1~%HEIGHT 1~%DEPTH 4~%MAXVAL 65535~%ENDHDR~%")
                                                     (make-list 8 :initial-element 0))))
     ;; grey and alpha (a black-and-white photo) made the three colours alike, the alpha kept
-    (let ((grey (tuatara.defaults::decoded-image (octets (format nil "P7~%WIDTH 1~%HEIGHT 1~%DEPTH 2~%MAXVAL 255~%ENDHDR~%") (list 90 200)))))
+    (let ((grey (tuatara.defaults::decoded-image (octets (format nil
+                                                                 "P7~%WIDTH 1~%HEIGHT 1~%DEPTH 2~%MAXVAL 255~%ENDHDR~%")
+                                                         (list 90 200)))))
       (true grey)
       (is equal '(90 90 90 200) (coerce (tuatara.frontend:image-pixels grey) 'list)))
     (false (tuatara.defaults::decoded-image (octets (format nil "P7~%WIDTH 99999~%HEIGHT 1~%DEPTH 3~%MAXVAL 255~%ENDHDR~%"))))
@@ -1007,11 +1077,16 @@ program writing as it goes makes them: each entry's sizes after its data."
     (is string= "" (b64 "")))
   ;; and read back as written, every octet of every length
   (dotimes (length 7)
-    (let ((o (make-array length :element-type '(unsigned-byte 8) :initial-contents (loop for k below length collect (- 255 (* 37 k))))))
-      (is equalp o (tuatara.io:base64-octets (map '(vector (unsigned-byte 8)) #'char-code (tuatara.io:base64-string o))))))
-  (is string= "YW4" (subseq (tuatara.io:base64-string (map '(vector (unsigned-byte 8)) #'char-code "xan") :start 1) 0 3))
+    (let ((o (make-array length
+                         :element-type '(unsigned-byte 8)
+                         :initial-contents (loop for k below length collect (- 255 (* 37 k))))))
+      (is equalp o
+          (tuatara.io:base64-octets (map '(vector (unsigned-byte 8)) #'char-code (tuatara.io:base64-string o))))))
+  (is string= "YW4"
+      (subseq (tuatara.io:base64-string (map '(vector (unsigned-byte 8)) #'char-code "xan") :start 1) 0 3))
   ;; a picture sent: its size and kind, in pieces of 4096 digits, the terminal to answer nothing
-  (let* ((image (tuatara.frontend:make-image 40 40 4 (make-array 6400 :element-type '(unsigned-byte 8) :initial-element 7)))
+  (let* ((image (tuatara.frontend:make-image 40 40 4
+                                             (make-array 6400 :element-type '(unsigned-byte 8) :initial-element 7)))
          (sent (with-output-to-string (*standard-output*) (tuatara.frontend.tui::send-image-written image 7)))
          (escape (string #\Escape)))
     (true (uiop:string-prefix-p (format nil "~a_Ga=t,f=32,s=40,v=40,i=7,q=2,m=1;" escape) sent))
@@ -1025,7 +1100,8 @@ program writing as it goes makes them: each entry's sizes after its data."
     (true (uiop:string-prefix-p (format nil "~c_Ga=t,f=24,s=2,v=2,i=9,q=2,m=0;" #\Escape)
                                 (with-output-to-string (*standard-output*) (tuatara.frontend.tui::send-image image 9)))))
   ;; one that said it does: through shared memory, its name alone sent, the pixels in /dev/shm for the terminal
-  (let* ((image (tuatara.frontend:make-image 40 40 4 (make-array 6400 :element-type '(unsigned-byte 8) :initial-element 7)))
+  (let* ((image (tuatara.frontend:make-image 40 40 4
+                                             (make-array 6400 :element-type '(unsigned-byte 8) :initial-element 7)))
          (sent (let ((tuatara.frontend.tui::*terminal-answers* '(:pictures t :shared t)))
                  (with-output-to-string (*standard-output*) (tuatara.frontend.tui::send-image image 8))))
          (escape (string #\Escape))
@@ -1114,7 +1190,11 @@ program writing as it goes makes them: each entry's sizes after its data."
   (with-rimu-tree (dir)
     (alexandria:write-byte-vector-into-file *tiny-png* (merge-pathnames "tiny.png" dir) :if-exists :supersede)
     ;; where the frontend shows pictures: the picture, over the text of the preview's window
-    (multiple-value-bind (f editor) (rimu-session dir "g f t i n y . p n g RET" :preview t :width 160 :cell-pixels '(10 20))
+    (multiple-value-bind (f editor) (rimu-session dir
+                                                  "g f t i n y . p n g RET"
+                                                  :preview t
+                                                  :width 160
+                                                  :cell-pixels '(10 20))
       (declare (ignore editor))
       (true (tuatara.frontend.fake:fake-frame-showing f "PNG image, 2 × 2"))
       (true (tuatara.frontend.fake:fake-frame-showing f "tiny.png (preview, image)"))
@@ -1146,7 +1226,10 @@ program writing as it goes makes them: each entry's sizes after its data."
         (true (tuatara.frontend.fake:fake-frame-showing f "Hex view on: the file's octets in place of the picture"))
         (false (tuatara.frontend.fake:fake-images f))))
     (multiple-value-bind (f editor)
-        (rimu-session-then dir "g f t i n y . p n g RET" '("C-x o" "M-x h e x - m o d e RET" "M-x h e x - m o d e RET") :cell-pixels '(10 20))
+        (rimu-session-then dir
+                           "g f t i n y . p n g RET"
+                           '("C-x o" "M-x h e x - m o d e RET" "M-x h e x - m o d e RET")
+                           :cell-pixels '(10 20))
       (declare (ignore editor))
       (true (tuatara.frontend.fake:fake-frame-showing f "The picture again"))
       (true (tuatara.frontend.fake:fake-images f)))
@@ -1154,7 +1237,11 @@ program writing as it goes makes them: each entry's sizes after its data."
     (alexandria:write-string-into-file
      "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"120\" height=\"80\"><rect width=\"120\" height=\"80\" fill=\"#2c5484\"/></svg>"
      (merge-pathnames "shape.svg" dir) :if-exists :supersede)
-    (multiple-value-bind (f editor) (rimu-session dir "g f s h a p e . s v g RET" :preview t :width 160 :cell-pixels '(10 20))
+    (multiple-value-bind (f editor) (rimu-session dir
+                                                  "g f s h a p e . s v g RET"
+                                                  :preview t
+                                                  :width 160
+                                                  :cell-pixels '(10 20))
       (declare (ignore editor))
       (true (tuatara.frontend.fake:fake-frame-showing f "SVG image"))
       (let ((put (first (tuatara.frontend.fake:fake-images f))))
@@ -1197,12 +1284,17 @@ program writing as it goes makes them: each entry's sizes after its data."
     (is equal "yes" (tuatara.defaults::info-field info "JavaScript"))
     (is equal '(300 400) (tuatara.defaults::page-pixels info 300 400)))
   (with-rimu-tree (dir)
-    (alexandria:write-byte-vector-into-file (pdf-octets '("Hello from page one" "And page two")) (merge-pathnames "report.pdf" dir)
+    (alexandria:write-byte-vector-into-file (pdf-octets '("Hello from page one" "And page two"))
+                                            (merge-pathnames "report.pdf" dir)
                                             :if-exists :supersede)
     (alexandria:write-byte-vector-into-file (pdf-octets '("Second file")) (merge-pathnames "second.pdf" dir)
                                             :if-exists :supersede)
     ;; where pictures show: the first page drawn, its proportions (300 by 200 points) kept
-    (multiple-value-bind (f editor) (rimu-session dir "g f r e p o r t . p d f RET" :preview t :width 160 :cell-pixels '(10 20))
+    (multiple-value-bind (f editor) (rimu-session dir
+                                                  "g f r e p o r t . p d f RET"
+                                                  :preview t
+                                                  :width 160
+                                                  :cell-pixels '(10 20))
       (declare (ignore editor))
       (true (tuatara.frontend.fake:fake-frame-showing f "PDF document, version 1.4, 2 pages"))
       (let ((image (first (first (tuatara.frontend.fake:fake-images f)))))
@@ -1211,16 +1303,28 @@ program writing as it goes makes them: each entry's sizes after its data."
         (true (> (tuatara.frontend:image-width image) 300)))
       (false (tuatara.frontend.fake:fake-frame-showing f "Hello from page one")))
     ;; T switches to the text, and the next file shows its text too; T again, pictures
-    (multiple-value-bind (f editor) (rimu-session dir "g f r e p o r t . p d f RET T" :preview t :width 160 :cell-pixels '(10 20))
+    (multiple-value-bind (f editor) (rimu-session dir
+                                                  "g f r e p o r t . p d f RET T"
+                                                  :preview t
+                                                  :width 160
+                                                  :cell-pixels '(10 20))
       (declare (ignore editor))
       (true (tuatara.frontend.fake:fake-frame-showing f "Preview: text"))
       (true (tuatara.frontend.fake:fake-frame-showing f "Hello from page one"))
       (false (tuatara.frontend.fake:fake-images f)))
-    (multiple-value-bind (f editor) (rimu-session dir "g f r e p o r t . p d f RET T g f s e c o n d . p d f RET" :preview t :width 160 :cell-pixels '(10 20))
+    (multiple-value-bind (f editor) (rimu-session dir
+                                                  "g f r e p o r t . p d f RET T g f s e c o n d . p d f RET"
+                                                  :preview t
+                                                  :width 160
+                                                  :cell-pixels '(10 20))
       (declare (ignore editor))
       (true (tuatara.frontend.fake:fake-frame-showing f "Second file"))
       (false (tuatara.frontend.fake:fake-images f)))
-    (multiple-value-bind (f editor) (rimu-session dir "g f r e p o r t . p d f RET T T" :preview t :width 160 :cell-pixels '(10 20))
+    (multiple-value-bind (f editor) (rimu-session dir
+                                                  "g f r e p o r t . p d f RET T T"
+                                                  :preview t
+                                                  :width 160
+                                                  :cell-pixels '(10 20))
       (declare (ignore editor))
       (true (tuatara.frontend.fake:fake-frame-showing f "Preview: pictures"))
       (true (tuatara.frontend.fake:fake-images f)))
@@ -1240,12 +1344,19 @@ and the editor."
         (tuatara-user:*rimu-sort* :name)
         (f (tuatara.frontend.fake:make-fake-frontend :width width :height height :cell-pixels cell-pixels))
         (start (get-internal-real-time)))
-    (tuatara.frontend.fake:fake-queue-keys f (format nil "C-x d C-a C-k ~a C-j ~a" (rimu-typed (namestring directory)) first))
+    (tuatara.frontend.fake:fake-queue-keys f
+                                           (format nil
+                                                   "C-x d C-a C-k ~a C-j ~a"
+                                                   (rimu-typed (namestring directory)) first))
     (labels ((busy ()
                (let ((state tuatara.defaults::*rimu-preview-state*))
-                 (or (null state) (tuatara.defaults::rimu-preview-job state) (null (tuatara.defaults::rimu-preview-buffer state))
+                 (or (null state)
+                     (tuatara.defaults::rimu-preview-job state)
+                     (null (tuatara.defaults::rimu-preview-buffer state))
                      (some (lambda (b) (let ((view (tuatara.defaults::pdf-view-of b)))
-                                         (and view (or (tuatara.defaults::pdf-view-job view) (tuatara.defaults::pdf-view-text-job view)))))
+                                         (and view
+                                              (or (tuatara.defaults::pdf-view-job view)
+                                                  (tuatara.defaults::pdf-view-text-job view)))))
                            tuatara.defaults::*pdf-views*))))
              (check ()
                (if (and (busy) (< (- (get-internal-real-time) start) (* 20 internal-time-units-per-second)))
@@ -1267,7 +1378,9 @@ and the editor."
   (with-rimu-tree (dir)
     (alexandria:write-byte-vector-into-file (pdf-octets '("One" "Two" "Three")) (merge-pathnames "report.pdf" dir)
                                             :if-exists :supersede)
-    (progn (tuatara.defaults::finish-state-writes) (uiop:delete-file-if-exists (tuatara.defaults::state-list-path tuatara.defaults::*pdf-places*)))
+    (progn
+      (tuatara.defaults::finish-state-writes)
+      (uiop:delete-file-if-exists (tuatara.defaults::state-list-path tuatara.defaults::*pdf-places*)))
     (multiple-value-bind (f editor)
         (rimu-session-then dir "g f r e p o r t . p d f RET" '("C-x o" "l") :cell-pixels '(10 20))
       (true (tuatara.frontend.fake:fake-frame-showing f "report.pdf, all of it"))
@@ -1278,7 +1391,9 @@ and the editor."
         (is eq 'tuatara.defaults::pdf-view-search
             (tuatara.command:lookup-key (tuatara.buffer:buffer-local buffer :override-keymap)
                                         (tuatara.frontend:parse-key-sequence "C-s")))))
-    (progn (tuatara.defaults::finish-state-writes) (uiop:delete-file-if-exists (tuatara.defaults::state-list-path tuatara.defaults::*pdf-places*)))
+    (progn
+      (tuatara.defaults::finish-state-writes)
+      (uiop:delete-file-if-exists (tuatara.defaults::state-list-path tuatara.defaults::*pdf-places*)))
     (multiple-value-bind (f editor)
         (rimu-session-then dir "g f r e p o r t . p d f RET" '("C-x o" "l" "C-x o") :cell-pixels '(10 20))
       (true (tuatara.frontend.fake:fake-frame-showing f "report.pdf (preview"))
@@ -1293,7 +1408,9 @@ and the editor."
           (false (tuatara.buffer:buffer-file buffer)))))
     (dolist (b (copy-list tuatara.defaults::*pdf-views*))
       (when (tuatara.buffer:live-buffer-p b) (tuatara.buffer:kill-buffer b)))
-    (progn (tuatara.defaults::finish-state-writes) (uiop:delete-file-if-exists (tuatara.defaults::state-list-path tuatara.defaults::*pdf-places*)))
+    (progn
+      (tuatara.defaults::finish-state-writes)
+      (uiop:delete-file-if-exists (tuatara.defaults::state-list-path tuatara.defaults::*pdf-places*)))
     (delete-file (merge-pathnames "report.pdf" dir))))
 
 (define-test (rimu columns)
@@ -1302,7 +1419,8 @@ and the editor."
          (with-rimu-tree (dir)
            ;; a column after the names, lined up after the longest
            (tuatara.defaults::rimu-set-column :test-note (tuatara.defaults::rimu-cells-by-entry
-                                                          (lambda (entry) (format nil "note-~a" (tuatara.io:listed-name entry))))
+                                                          (lambda (entry)
+                                                            (format nil "note-~a" (tuatara.io:listed-name entry))))
                                               :place :after :shown (constantly t))
            (multiple-value-bind (f editor) (rimu-session dir "")
              (declare (ignore f))
@@ -1319,13 +1437,16 @@ and the editor."
                                                    (sleep 0.1)
                                                    (tuatara.defaults::rimu-column-ready
                                                     :test-later entries
-                                                    (map 'simple-vector (lambda (entry) (format nil "later-~a" (tuatara.io:listed-name entry)))
+                                                    (map 'simple-vector
+                                                         (lambda (entry)
+                                                           (format nil "later-~a" (tuatara.io:listed-name entry)))
                                                          entries))))
                                                 :pending)
                                               :place :after :shown (constantly t))
            (multiple-value-bind (f editor) (rimu-session dir "")
              (declare (ignore f))
-             (true (find-if (lambda (line) (and (search "note-text.txt" line) (uiop:string-suffix-p line "later-text.txt")))
+             (true (find-if (lambda (line)
+                              (and (search "note-text.txt" line) (uiop:string-suffix-p line "later-text.txt")))
                             (rimu-lines editor)))))
       (setf tuatara.defaults::*rimu-columns* columns))))
 
@@ -1357,9 +1478,12 @@ and the editor."
   ;; the time within half a year, else the year
   (let* ((now (encode-universal-time 0 0 12 30 9 2026))
          (nanoseconds (lambda (universal) (* (- universal tuatara.dates:+unix-epoch+) 1000000000))))
-    (is string= "Sep 29 12:00" (tuatara.defaults::rimu-time-text (funcall nanoseconds (encode-universal-time 0 0 12 29 9 2026)) now))
-    (is string= "Sep  3  2025" (tuatara.defaults::rimu-time-text (funcall nanoseconds (encode-universal-time 0 0 12 3 9 2025)) now))
-    (is string= "Oct  1  2026" (tuatara.defaults::rimu-time-text (funcall nanoseconds (encode-universal-time 0 0 12 1 10 2026)) now)))
+    (is string= "Sep 29 12:00"
+        (tuatara.defaults::rimu-time-text (funcall nanoseconds (encode-universal-time 0 0 12 29 9 2026)) now))
+    (is string= "Sep  3  2025"
+        (tuatara.defaults::rimu-time-text (funcall nanoseconds (encode-universal-time 0 0 12 3 9 2025)) now))
+    (is string= "Oct  1  2026"
+        (tuatara.defaults::rimu-time-text (funcall nanoseconds (encode-universal-time 0 0 12 1 10 2026)) now)))
   ;; names octet by octet: capitals first, a name before those it starts
   (flet ((octets (text) (tuatara.text:string-octets text)))
     (true (tuatara.defaults::rimu-octets< (octets "Zebra") (octets "apple")))
@@ -1389,10 +1513,12 @@ and the editor."
       (is eq nil (tuatara.io:listed-device (funcall by-name "text.txt"))))
     ;; the start of a file, a link followed; what is not a file is refused unopened
     (let ((directory (namestring dir)))
-      (multiple-value-bind (octets size) (tuatara.io:read-entry-start directory (tuatara.text:string-octets "link-to-text") 3)
+      (multiple-value-bind (octets size) (tuatara.io:read-entry-start directory
+                                                                      (tuatara.text:string-octets "link-to-text") 3)
         (is equalp (tuatara.text:string-octets "hel") octets)
         (is = 6 size))
-      (fail (tuatara.io:read-entry-start directory (tuatara.text:string-octets "pipe") 10) 'tuatara.io:file-system-error)
+      (fail (tuatara.io:read-entry-start directory (tuatara.text:string-octets "pipe") 10)
+            'tuatara.io:file-system-error)
       (fail (tuatara.io:read-entry-start directory (tuatara.text:string-octets "sub") 10) 'tuatara.io:file-system-error)))
   ;; a directory not there
   (multiple-value-bind (entries reason) (tuatara.io:list-directory "/nonexistent-rimu/")
@@ -1402,9 +1528,12 @@ and the editor."
 (defun git-in (directory &rest arguments)
   "Run git in DIRECTORY with ARGUMENTS, as a test's author; true when it succeeded."
   (eql 0 (sb-ext:process-exit-code
-          (sb-ext:run-program "git" (append (list "-C" (namestring directory) "-c" "user.name=Test" "-c" "user.email=test@example.org"
-                                                  "-c" "commit.gpgSign=false")
-                                            arguments)
+          (sb-ext:run-program "git"
+                              (append (list "-C"
+                                            (namestring directory) "-c" "user.name=Test" "-c"
+                                            "user.email=test@example.org"
+                                            "-c" "commit.gpgSign=false")
+                                      arguments)
                               :search t :output nil :error nil))))
 
 (define-test (rimu git-column)
@@ -1444,9 +1573,11 @@ and the editor."
     (let* ((directory (concatenate 'string (tuatara.io:native dir) "repo [1]*/"))
            (git (lambda (&rest arguments)
                   (eql 0 (sb-ext:process-exit-code
-                          (sb-ext:run-program "git" (append (list "-C" directory "-c" "user.name=Test" "-c" "user.email=test@example.org"
-                                                                  "-c" "commit.gpgSign=false")
-                                                            arguments)
+                          (sb-ext:run-program "git"
+                                              (append (list "-C" directory "-c" "user.name=Test" "-c"
+                                                            "user.email=test@example.org"
+                                                            "-c" "commit.gpgSign=false")
+                                                      arguments)
                                               :search t :output nil :error nil))))))
       (sb-posix:mkdir directory #o700)
       (put-file (sb-ext:parse-native-namestring (concatenate 'string directory "a.txt")) (format nil "a~%"))
@@ -1464,7 +1595,8 @@ and the editor."
            (text (and help (tuatara.buffer:buffer-string help))))
       (true text)
       ;; a key the list takes away (w, a word's motion elsewhere) is said to do nothing here, in every keymap listing it
-      (let ((lines (remove-if-not (lambda (l) (cl-ppcre:scan "^  w +\\S" l)) (uiop:split-string text :separator '(#\Newline)))))
+      (let ((lines (remove-if-not (lambda (l) (cl-ppcre:scan "^  w +\\S" l))
+                                  (uiop:split-string text :separator '(#\Newline)))))
         (true lines)
         (true (every (lambda (l) (search "(none here)" l)) lines))))))
 
@@ -1475,7 +1607,8 @@ and the editor."
     (put-file (merge-pathnames "docs/b.txt" dir) (make-string 2000 :initial-element #\b))
     (put-file (merge-pathnames "docs/deep/.hidden" dir) (make-string 500 :initial-element #\c))
     ;; a second name for b.txt, and a link to a.txt: neither counted again
-    (sb-posix:link (namestring (merge-pathnames "docs/b.txt" dir)) (namestring (merge-pathnames "docs/b-again.txt" dir)))
+    (sb-posix:link (namestring (merge-pathnames "docs/b.txt" dir))
+                   (namestring (merge-pathnames "docs/b-again.txt" dir)))
     (sb-posix:symlink "../a.txt" (namestring (merge-pathnames "docs/link" dir)))
     ;; S: each entry's size, a directory's with all under it, hidden files too
     (multiple-value-bind (f editor) (rimu-session dir "S")
@@ -1593,20 +1726,27 @@ and the editor."
     (rimu-forget)
     (let ((tuatara-user:*rimu-preview* t) (tuatara-user:*rimu-preview-delay* 0))
       (multiple-value-bind (f editor)
-          (run-keys (list (format nil "M-x f i n d - f i l e - s a f e l y RET C-a C-k ~a C-j C-s c o d e RET" (rimu-typed (namestring dir)))
+          (run-keys (list (format nil
+                                  "M-x f i n d - f i l e - s a f e l y RET C-a C-k ~a C-j C-s c o d e RET"
+                                  (rimu-typed (namestring dir)))
                           :tick :tick)
                     :width 120 :height 20)
         (true (tuatara.defaults::rimu-previewing-p (session-buffer editor)))
         (true (tuatara.frontend.fake:fake-frame-showing f "(defun shown-in-preview ())"))
-        (let ((preview (find-if (lambda (b) (search "code.lisp (preview" (tuatara.buffer:buffer-name b))) tuatara.buffer:*buffers*)))
+        (let ((preview (find-if (lambda (b) (search "code.lisp (preview" (tuatara.buffer:buffer-name b)))
+                                tuatara.buffer:*buffers*)))
           (true preview)
           (false (search "lisp" (string-downcase (princ-to-string (type-of (tuatara.defaults::buffer-major-mode preview)))))))))
     (rimu-forget)
     (let ((tuatara-user:*rimu-preview* t) (tuatara-user:*rimu-preview-delay* 0))
-      (run-keys (list (format nil "M-x f i n d - f i l e - s a f e l y RET C-a C-k ~a C-j C-s s u b RET" (rimu-typed (namestring dir)))
+      (run-keys (list (format nil
+                              "M-x f i n d - f i l e - s a f e l y RET C-a C-k ~a C-j C-s s u b RET"
+                              (rimu-typed (namestring dir)))
                       :tick :tick)
                 :width 120 :height 20)
-      (let ((preview (find-if (lambda (b) (and (tuatara.defaults::rimu-list-p b) (tuatara.buffer:buffer-local b 'tuatara.defaults::rimu-preview-buffer)))
+      (let ((preview (find-if (lambda (b)
+                                (and (tuatara.defaults::rimu-list-p b)
+                                     (tuatara.buffer:buffer-local b 'tuatara.defaults::rimu-preview-buffer)))
                               tuatara.buffer:*buffers*)))
         (true preview)
         (true (and preview (tuatara.io:safe-visit-p preview)))))
@@ -1680,9 +1820,11 @@ and the editor."
            (reread 0))
       (flet ((list-buffer () (tuatara.buffer:find-buffer (rimu-list-name dir)))
              (read-again ()
-               (let ((now (tuatara.buffer:buffer-local (tuatara.buffer:find-buffer (rimu-list-name dir)) 'tuatara.defaults::rimu-generation)))
+               (let ((now (tuatara.buffer:buffer-local (tuatara.buffer:find-buffer (rimu-list-name dir))
+                                                       'tuatara.defaults::rimu-generation)))
                  (when (and (not (eql now generation))
-                            (null (tuatara.buffer:buffer-local (tuatara.buffer:find-buffer (rimu-list-name dir)) 'tuatara.defaults::rimu-job)))
+                            (null (tuatara.buffer:buffer-local (tuatara.buffer:find-buffer (rimu-list-name dir))
+                                                               'tuatara.defaults::rimu-job)))
                    (setf generation now)
                    (incf reread)))))
         (multiple-value-bind (f editor)
@@ -1690,7 +1832,8 @@ and the editor."
                                      (list :until (lambda () (list-buffer)))
                                      "g f m . t x t RET l"
                                      (list :until (lambda () (setf generation (tuatara.buffer:buffer-local (list-buffer) 'tuatara.defaults::rimu-generation))
-                                                    (alexandria:write-string-into-file "y" (merge-pathnames "n.txt" dir))
+                                                    (alexandria:write-string-into-file "y"
+                                                                                       (merge-pathnames "n.txt" dir))
                                                     t))
                                      (list :until #'read-again)
                                      (list :until (lambda () (delete-file (merge-pathnames "n.txt" dir)) t))
@@ -1715,7 +1858,8 @@ and the editor."
     (tuatara.git::install-rimu-git)
     (tuatara.defaults::install-rimu-sizes)
     (let* ((directory (namestring dir))
-           (columns (mapcar (lambda (name) (find name tuatara.defaults::*rimu-columns* :key #'tuatara.defaults::rimu-column-name))
+           (columns (mapcar (lambda (name)
+                              (find name tuatara.defaults::*rimu-columns* :key #'tuatara.defaults::rimu-column-name))
                             '(:git :sizes)))
            (view (tuatara.defaults::make-rimu-view nil nil :name nil nil columns nil nil nil))
            (old (tuatara.defaults::rimu-carry-cells nil (tuatara.defaults::rimu-read directory) view))
@@ -1728,7 +1872,9 @@ and the editor."
                           (lambda (function &rest arguments) (incf runs) (apply function arguments)))
       (unwind-protect
            (let ((again (tuatara.defaults::rimu-carry-cells old (tuatara.defaults::rimu-read directory) view)))
-             (is eq (gethash :git (tuatara.defaults::rimu-listing-cells old)) (gethash :git (tuatara.defaults::rimu-listing-cells again)))
+             (is eq
+                 (gethash :git (tuatara.defaults::rimu-listing-cells old))
+                 (gethash :git (tuatara.defaults::rimu-listing-cells again)))
              (is = 0 runs)
              (true (find "old" (gethash :sizes (tuatara.defaults::rimu-listing-cells again)) :test #'equal))
              ;; a commit made: the git column read again
@@ -1757,7 +1903,8 @@ and the editor."
         (let ((consed (loop repeat 3
                             minimize (let ((before (sb-ext:get-bytes-consed)))
                                        (dotimes (i 100000)
-                                         (loop for entry across entries do (tuatara.defaults::rimu-entry-mark buffer entry marks)))
+                                         (loop for entry across entries
+                                               do (tuatara.defaults::rimu-entry-mark buffer entry marks)))
                                        (- (sb-ext:get-bytes-consed) before)))))
           (true (< consed (* 100000 (length entries) 8)) "~:d octets for ~:d looks" consed (* 100000 (length entries))))))))
 

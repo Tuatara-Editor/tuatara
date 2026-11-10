@@ -64,9 +64,9 @@ is past the last line."
 (defun show-file-line (path line &key (offset 0) column other)
   "Visit the file at PATH as \\[find-file] does and put point on its line LINE
 \(from 1; its last line for one past it), OFFSET octets in, or with COLUMN
-that many characters in from 1, never past the line's end, the line in the
-middle of the window: in the selected window, or with OTHER in another; a
-buffer narrowed to a part not holding it widened first, and that said. A
+that many characters in from 1, never past the line's end. The line is put in
+the middle of the window, in the selected window or with OTHER in another. A
+buffer narrowed to a part not holding it is widened first, and that said. A
 file shown otherwise than as text (a PDF's pages) is shown as it is. A file no
 longer there is said, not made. Returns the buffer, or NIL then."
   (unless (tuatara.io:path-kind (tuatara.io:native (tuatara.io:expand-path path)))

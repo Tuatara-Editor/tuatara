@@ -69,12 +69,12 @@ Complexity: O(number of edits)."
 
 (defun rebuild-uncounted-span (node leaf-start edits i j scratch)
   "Apply EDITS[I..J) to NODE, a span whose counts are not known yet (its edges
-may fall inside a character), whose text starts at byte LEAF-START, and return
-the simple-vector of nodes that replace it: the octets before the first edit
-and after the last stay spans of the file, still uncounted, and only the
-stretch between, whose edges are the edits' own and so fall between
-characters, becomes in-memory leaves with their counts (REBUILD-LEAF).
-Complexity: O(the edited stretch + edit sizes)."
+may fall inside a character), whose text starts at byte LEAF-START. Returns
+the simple-vector of nodes that replace it. The octets before the first edit
+and after the last stay spans of the file, still uncounted. Only the stretch
+between, whose edges are the edits' own and so fall between characters,
+becomes in-memory leaves with their counts (REBUILD-LEAF). Complexity: O(the
+edited stretch + edit sizes)."
   (declare (type span node) (type fixnum leaf-start i j) (type simple-vector edits))
   (let* ((size (node-bytes node))
          (lo (loop for k from i below j minimize (max 0 (- (edit-start (aref edits k)) leaf-start))))
@@ -105,7 +105,8 @@ Complexity: O(leaf size + edit sizes)."
     (return-from rebuild-leaf (rebuild-uncounted-span node leaf-start edits i j scratch)))
   (let* ((old (if (leaf-p node)
                   (leaf-octets node)
-                  (piece-copy node 0 (node-bytes node) (or (car scratch) (setf (car scratch) (make-octets +span-size+))) 0)))
+                  (piece-copy node 0 (node-bytes node) (or (car scratch)
+                                                           (setf (car scratch) (make-octets +span-size+))) 0)))
          (base (if (leaf-p node) (leaf-start node) 0))
          (old-len (node-bytes node))
          (new-len old-len)
@@ -123,8 +124,9 @@ Complexity: O(leaf size + edit sizes)."
     (flet ((take-inserts ()
              ;; the counts of the insert used SAME times since it was summarised
              (incf dchars (* same ins-chars)) (incf dutf16 (* same ins-utf16)) (incf dlines (* same ins-lines))
-             (incf dinvalid (* same ins-invalid)) (incf dreturns (* same ins-returns)) (incf dnewlines (* same ins-newlines))
-             (setf same 0)))
+             (incf dinvalid
+                   (* same ins-invalid)) (incf dreturns (* same ins-returns)) (incf dnewlines (* same ins-newlines))
+                   (setf same 0)))
     ;; Pass 1: the new length, the count deltas, and the deleted octets for undo.
     (loop for k of-type fixnum from i below j
           for e of-type edit = (aref edits k)
@@ -138,8 +140,9 @@ Complexity: O(leaf size + edit sizes)."
                  (when indexed
                    (multiple-value-bind (c u l v r n) (summarise old (+ base s) (+ base en))
                      (declare (type fixnum c u l v r n))
-                     (decf dchars c) (decf dutf16 u) (decf dlines l) (decf dinvalid v) (decf dreturns r) (decf dnewlines n)
-                     (when (plusp r) (setf recount t))))
+                     (decf dchars
+                           c) (decf dutf16 u) (decf dlines l) (decf dinvalid v) (decf dreturns r) (decf dnewlines n)
+                           (when (plusp r) (setf recount t))))
                  (push (subseq old (+ base s) (+ base en)) (edit-deleted e)))
                (when (and (edit-insert e) (>= (edit-start e) leaf-start))
                  (let ((ins (edit-insert e)))
@@ -147,7 +150,8 @@ Complexity: O(leaf size + edit sizes)."
                    (when indexed
                      (unless (eq ins last-ins)
                        (take-inserts)
-                       (multiple-value-setq (ins-chars ins-utf16 ins-lines ins-invalid ins-returns ins-newlines) (summarise ins 0 (length ins)))
+                       (multiple-value-setq (ins-chars ins-utf16 ins-lines ins-invalid ins-returns ins-newlines)
+                         (summarise ins 0 (length ins)))
                        (setf last-ins ins)
                        (when (plusp ins-returns) (setf recount t)))
                      (incf same))
@@ -320,7 +324,8 @@ newline after it. True when it widened."
               (let* ((start (first group)) (end (second group))
                      (size (length octets))
                      (first-new (cond ((plusp size) (aref octets 0)) ((< end total) (rope-octet rope end))))
-                     (last-new (cond ((plusp size) (aref octets (1- size))) ((plusp start) (rope-octet rope (1- start))))))
+                     (last-new (cond ((plusp size) (aref octets (1- size)))
+                                     ((plusp start) (rope-octet rope (1- start))))))
                 (cond ((and (eql first-new 10) (plusp start) (= 13 (rope-octet rope (1- start))))
                        (setf (first group) (1- start) widened t))
                       ((and (eql last-new 13) (< end total) (= 10 (rope-octet rope end)))
@@ -374,18 +379,18 @@ them that take away all that stood between."
 
 (defun widen-edits (rope edits &optional (meeting t) (edges t))
   "EDITS (a sorted simple-vector) as they are; or, where octets they bring
-together could form one character across their edges (possible only where ROPE
-holds raw bytes, or where inserts of raw bytes meet), or a carriage return and
-a newline (JOINING-RETURNS-P), edits grouped and widened so that each group's
-octets are counted as the one run they become: edits within three octets of
-each other go together, and a group grows over the unfinished octets before
-it and the continuation octets after it, and over a carriage return before
-it or a newline after it that would meet one it brings. Returns
-the edits to apply and, when they differ, a vector giving for each of EDITS the
-index of the one that holds it and where its own range starts within that one's.
-MEETING false says no two edits that insert meet, and EDGES false that none
-inserts nothing or octets beginning with a newline or ending with a carriage
-return (CHECK-EDITS finds out both)."
+together could form one character across their edges, edits grouped and
+widened so that each group's octets are counted as the one run they become.
+The first case is possible only where ROPE holds raw bytes, or where inserts
+of raw bytes meet, or where a carriage return and a newline would meet
+\(JOINING-RETURNS-P). Edits within three octets of each other go together. A
+group grows over the unfinished octets before it and the continuation octets
+after it, and over a carriage return before it or a newline after it that
+would meet one it brings. Returns the edits to apply and, when they differ, a
+vector giving for each of EDITS the index of the one that holds it and where
+its own range starts within that one's. MEETING false says no two edits that
+insert meet, and EDGES false that none inserts nothing or octets beginning
+with a newline or ending with a carriage return (CHECK-EDITS finds out both)."
   (let ((n (length edits)))
     (if (or (zerop n)
             (and (zerop (node-invalid (rope-root rope))) (not (and meeting (joining-inserts-p edits)))

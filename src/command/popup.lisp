@@ -42,10 +42,12 @@ list closes.")
                        ("C-g" popup-quit) ("M-SPC" popup-insert-separator)))
     map)
   "The keys of the list of completions beside the cursor, before every other
-while it is shown: \\<popup>\\[popup-next] and \\[popup-previous] (and the arrows) choose, \\[popup-first] and \\[popup-last] the
-first and last, \\[popup-page-down] and \\[popup-page-up] a page on or back, \\[popup-insert] puts the chosen
-one in (the first, when none is chosen yet), and so does \\`RET' once one is
-chosen (*POPUP-CHOSEN-KEYMAP*), \\[popup-quit] closes the list, \\[popup-insert-separator] puts in a space the
+while it is shown. \\<popup>\\[popup-next] and \\[popup-previous] (and the
+arrows) choose. \\[popup-first] and \\[popup-last] choose the first and last.
+\\[popup-page-down] and \\[popup-page-up] go a page on or back.
+\\[popup-insert] puts the chosen one in (the first, when none is chosen yet),
+and so does \\`RET' once one is chosen (*POPUP-CHOSEN-KEYMAP*).
+\\[popup-quit] closes the list. \\[popup-insert-separator] puts in a space the
 word goes on past. Every other key does what it always does.")
 
 (defvar *popup-chosen-keymap*
@@ -144,12 +146,12 @@ nothing matches it."
   "Complete the word from START to END in TARGET, a buffer whose START and END
 are octet offsets, or :MINIBUFFER, where they are character indices of its
 text, from TABLE, a list of CANDIDATE, matched against the word as the
-minibuffer matches: when one candidate alone matches it goes in at once, when
-more do they are listed beside the cursor (see POPUP), and when none does the
-echo area says so. With AUTO, the list opens by itself as the word is typed:
-listed with none chosen whenever anything matches, a sole candidate too, unless
-that is the word itself, and nothing said otherwise. ANNOTATE, DOCUMENT,
-CONSTITUENT and KEEP-ORDER as POPUP has them."
+minibuffer matches. When one candidate alone matches it goes in at once. When
+more do they are listed beside the cursor (see POPUP). When none does the
+echo area says so. With AUTO, the list opens by itself as the word is typed.
+It is listed with none chosen whenever anything matches, a sole candidate too,
+unless that is the word itself, and nothing is said otherwise. ANNOTATE,
+DOCUMENT, CONSTITUENT and KEEP-ORDER are as POPUP has them."
   (let* ((editor *editor*)
          (popup (if (eq target :minibuffer)
                     (%make-popup target start (subseq (editor-minibuffer-text editor) end)
@@ -353,7 +355,9 @@ Returns the rows and the box's width."
                                       (loop for (s e face) in (match-spans components name)
                                             collect (list (1+ s) (1+ e) (funcall over face)))
                                       (when (plusp (length note))
-                                        (list (list note-start (+ note-start (length note)) (funcall over :popup-annotation))))
+                                        (list (list note-start
+                                                    (+ note-start (length note))
+                                                    (funcall over :popup-annotation))))
                                       (when (and thumb (<= (car thumb) row) (< row (cdr thumb)))
                                         (list (list (1- (length text)) (length text) '(:popup-bar :popup)))))))
                          (list text (flatten-spans spans (length text) :last t)))))
@@ -361,10 +365,10 @@ Returns the rows and the box's width."
 
 (defun wrap-text (text width)
   "TEXT, a docstring, as lines of at most WIDTH columns, its parts as
-TUATARA.DISPLAY:DOCSTRING-PARAGRAPHS finds them: a paragraph's words filled
-anew between words (TUATARA.DISPLAY:FILL-WORDS), a word longer than a line
-cut, an item of a list under its first word; a blank line kept, and a line
-set in, as an example is, as it is where it fits, else filled."
+TUATARA.DISPLAY:DOCSTRING-PARAGRAPHS finds them. A paragraph's words are
+filled anew between words (TUATARA.DISPLAY:FILL-WORDS), a word longer than a
+line cut, an item of a list under its first word. A blank line is kept, and a
+line set in, as an example is, is kept as it is where it fits, else filled."
   (flet ((filled (words head indent)
            (let ((lines (tuatara.display:fill-words words width :start (length head) :indent indent
                                                                  :width #'panel-char-columns :cut t)))
@@ -394,7 +398,8 @@ narrow as its widest line lets it."
          (lines (loop for (text . face) in paragraphs
                       append (mapcar (lambda (line) (cons line face)) (wrap-text text (- width 2)))))
          (lines (subseq lines 0 (min (length lines) (cdr limits)))))
-    (values lines (min width (+ 2 (reduce #'max lines :key (lambda (line) (panel-columns (car line))) :initial-value 0))))))
+    (values lines
+            (min width (+ 2 (reduce #'max lines :key (lambda (line) (panel-columns (car line))) :initial-value 0))))))
 
 (defun box-row-text (text width)
   "TEXT as a row of a box WIDTH columns wide: a space either side, padded
@@ -437,14 +442,18 @@ there is nothing to show or no room. Returns the rows and the box's width."
   (let ((candidates (popup-candidates popup)))
     (when (and (popup-document popup) (plusp (length candidates)) (>= (popup-index popup) 0) (>= room-columns 20))
       (multiple-value-bind (lines width)
-          (documentation-lines popup (aref candidates (popup-index popup)) (min room-columns (car *popup-documentation-limits*)))
+          (documentation-lines popup
+                               (aref candidates (popup-index popup))
+                               (min room-columns (car *popup-documentation-limits*)))
         (when lines
           (let ((open nil))
             (values (box-rows (loop for (line) in lines
                                     for k from 0
                                     collect (multiple-value-bind (plain keys)
                                                 ;; a key the line before broke off goes on here
-                                                (unmark-keys (if open (concatenate 'string (string +key-open+) line) line))
+                                                (unmark-keys (if open (concatenate 'string
+                                                                                   (string +key-open+)
+                                                                                   line) line))
                                               (setf open (let ((start (position +key-open+ line :from-end t)))
                                                            (and start (not (find +key-close+ line :start start)))))
                                               (list plain (if (zerop k) '(:popup-heading :popup) '(:popup)) keys)))

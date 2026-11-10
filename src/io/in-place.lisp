@@ -47,32 +47,34 @@
 
 (defvar *save-in-place* nil
   "True to save a large file by writing only what changed into the file
-itself, where that is quicker than writing it whole; NIL, as standard, to
-write every save as a new file put in the old one's place.
+itself, where that is quicker than writing it whole. NIL, as standard, writes
+every save as a new file put in the old one's place.
 
 It is used on ext4 and the other file systems that cannot share blocks
 between files (all but btrfs, XFS, bcachefs and ZFS, where a new file costs
-no more than the change anyway), for a file of over 64 MB on a local drive,
-when the edit keeps the length of the text or lies in about the last third
-of the file. A 10 GB file with one line changed is then saved in a few
-hundredths of a second, where writing it whole takes about a minute. An
-edit nearer the start moves all that follows it, so it is saved as a new
-file either way.
+no more than the change anyway). It is used for a file of over 64 MB on a
+local drive. It is used when the edit keeps the length of the text or lies in
+about the last third of the file. A 10 GB file with one line changed is then
+saved in a few hundredths of a second, where writing it whole takes about a
+minute. An edit nearer the start moves all that follows it, so it is saved as
+a new file either way.
 
 What such a save will overwrite is first copied into .NAME.tuatara-journal
-beside the file and put on the disk; the journal goes once the changes are
+beside the file and put on the disk. The journal goes once the changes are
 on the disk too. The trade-off: should the computer crash or lose power
 during such a save, another program that reads the file before Tuatara
 opens it again may find it half saved. Tuatara itself always gets the old
-file or the new one: the next time it opens, saves or reverts the file, it
+file or the new one. The next time it opens, saves or reverts the file, it
 puts the old file back exactly from the journal, whatever this setting is
-then. It does so only when the journal is surely that save's: one the file
+then. It does so only when the journal is surely that save's. One the file
 has been changed after is left, said, and the file not saved until you
-remove it. On a file system that keeps no birth time for files (ext4 made
-with 128-octet inodes), a new file made under the old name that the system
-gave the old one's number is told apart from it only by its times. With
-NIL, every program finds the old file or the new one. A file opened safely,
-or in an evidence folder, is never written, so never put back either.")
+remove it.
+On a file system that keeps no birth time for files (ext4 made with 128-octet
+inodes), a new file may be made under the old name and be given the old one's
+number by the system. It is told apart from the old file only by its times.
+With NIL, every program finds the old file or the new one. A file opened
+safely, or in an evidence folder, is never written, so never put back
+either.")
 
 (defvar *in-place-most* 2/3
   "The most a save in place writes, journal and changes together, as a share
@@ -254,8 +256,9 @@ this release reads. PATH names it in messages."
         (return-from read-journal-header nil))
       (dolist (line (rest lines) nil)
         (let* ((word (subseq line 0 (or (position #\Space line) (length line))))
-               (key (cdr (assoc word '(("born" . :born) ("made" . :made) ("size" . :size) ("new" . :new) ("data" . :data)
-                                       ("time" . :mtime))
+               (key (cdr (assoc word
+                                '(("born" . :born) ("made" . :made) ("size" . :size) ("new" . :new) ("data" . :data)
+                                  ("time" . :mtime))
                                 :test #'string=))))
           (cond ((string= word "end")
                  (return (and (every (lambda (key) (getf fields key)) '(:dev :born :made :size :new :mtime :data))
@@ -290,9 +293,9 @@ is the account Tuatara runs as (*JOURNAL-OWNER*)."
 (defun journal-fits-p (header journal-stamp stamp born)
   "True when the journal whose header is HEADER, last marked by its save at
 JOURNAL-STAMP's time, is of the file STAMP describes, born at BORN, as a save
-cut short left it: the same file, its length between the old and the new,
-not changed since the save began, or changed while the save went on, no
-later than a few seconds after its last mark."
+cut short left it. That means the same file, its length between the old and
+the new, not changed since the save began, or changed while the save went on,
+no later than a few seconds after its last mark."
   (let ((old (getf header :size)) (new (getf header :new)) (changed (stamp-mtime stamp))
         (second 1000000000))
     (and (= (getf header :dev) (stamp-dev stamp)) (= (getf header :ino) (stamp-ino stamp))
@@ -358,7 +361,9 @@ journal of TARGET is there already."
                     (lambda (dirfd)
                       (and (zerop (sb-alien:alien-funcall
                                    (sb-alien:extern-alien "linkat" (function sb-alien:int sb-alien:int sb-alien:c-string
-                                                                             sb-alien:int sb-alien:c-string sb-alien:int))
+                                                                             sb-alien:int
+                                                                             sb-alien:c-string
+                                                                             sb-alien:int))
                                    -100 (format nil "/proc/self/fd/~d" journal) dirfd
                                    (native-file-name (journal-path target)) #x400)) ; AT_SYMLINK_FOLLOW
                            (progn (saving-step :journal-named)
@@ -441,13 +446,14 @@ octets."
 (defun write-changes-in-place (rope target existing plan &key mappings cancel progress)
   "Save ROPE over TARGET, which EXISTING describes, by writing only the
 changes PLAN (from IN-PLACE-PLAN) gives, in place, after a journal of what
-they overwrite (this file's header); MAPPINGS read TARGET's own octets and
-read the journal for those after. Returns :DONE; :STOPPED with the file as
-it was; or NIL, the file untouched, for a new file to be written instead:
-when the file system takes no file without a name or no lock, a journal of
-it is there already, the text cannot be moved onto the journal, or the file
-was replaced, changed or about to be written by another program meanwhile.
-A failure puts the file back as it was before it is signalled."
+they overwrite (this file's header). MAPPINGS read TARGET's own octets and
+read the journal for those after.
+Returns :DONE; :STOPPED with the file as it was; or NIL, the file untouched,
+for a new file to be written instead. NIL comes when the file system takes no
+file without a name or no lock, a journal of it is there already, the text
+cannot be moved onto the journal, or the file was replaced, changed or about
+to be written by another program meanwhile. A failure puts the file back as it
+was before it is signalled."
   (let* ((directory (parent-path target))
          (changes (getf plan :changes)) (ranges (getf plan :ranges))
          (size (tuatara.text:rope-octet-length rope))
@@ -501,7 +507,8 @@ A failure puts the file back as it was before it is signalled."
              (saving-step :text-moved)
              (multiple-value-bind (stood broken) (step-aside-leases mappings)
                (setf leases stood
-                     out (handler-case (sb-posix:open (native target) (logior sb-posix:o-wronly +o-nofollow+ +o-cloexec+))
+                     out (handler-case (sb-posix:open (native target)
+                                                      (logior sb-posix:o-wronly +o-nofollow+ +o-cloexec+))
                            (sb-posix:syscall-error (e) (fail "open for writing" target (sb-posix:syscall-errno e)))))
                ;; another program about to write it, or the file replaced since it was read: a new file instead
                (when (or broken (not (same-file-p out existing target)))
@@ -538,16 +545,17 @@ A failure puts the file back as it was before it is signalled."
 (defun recover-from-journal (fd path &key safe (operation "open"))
   "Put back the file open as file descriptor (FD), at PATH, as it was before
 a save in place that was cut short (by a crash or a power cut), when its
-journal is beside it: the file is then exactly the old one, and the journal
-gone. Said in words (TELL-WRITING). Nothing is written, and that is said,
-for a file opened SAFE (the journal not even read), where nothing may be
-written (WRITING-REFUSAL), where the system refuses, for a journal that may
-not be used (JOURNAL-REFUSAL), one of another file or that does not fit it
-as a save cut short left it (JOURNAL-FITS-P), one this release cannot read,
-and when the file is replaced meanwhile. A journal another save or putting
-back holds is waited for, *JOURNAL-BUSY-WAIT* seconds at most, else
-JOURNAL-BUSY is signalled for OPERATION (\"open\"). True when the file was
-put back, or changed by the one waited for."
+journal is beside it. The file is then exactly the old one, and the journal
+gone. This is said in words (TELL-WRITING).
+Nothing is written, and that is said, in these cases. The file is opened SAFE
+\(the journal not even read). Nothing may be written (WRITING-REFUSAL). The
+system refuses. The journal may not be used (JOURNAL-REFUSAL). The journal is
+one of another file or does not fit the file as a save cut short left it
+\(JOURNAL-FITS-P). This release cannot read the journal. The file is replaced
+meanwhile.
+A journal another save or putting back holds is waited for, *JOURNAL-BUSY-WAIT*
+seconds at most, else JOURNAL-BUSY is signalled for OPERATION (\"open\"). True
+when the file was put back, or changed by the one waited for."
   (let* ((target (or (fd-real-path fd) (native path)))
          (journal-path (journal-path target)))
     (when (path-stamp journal-path :follow nil :failure nil)
@@ -569,7 +577,8 @@ put back, or changed by the one waited for."
                      (when refusal (left-alone refusal))
                      (unless (tuatara.runtime:lock-fd journal :wait *journal-busy-wait*)
                        (error 'journal-busy :operation operation :path target
-                                            :reason "a save of it, or a putting back, is going on now; try again shortly"))
+                                            :reason
+                                            "a save of it, or a putting back, is going on now; try again shortly"))
                      ;; the one waited for has ended, its journal gone: the file is as it left it
                      (let ((named (path-stamp journal-path :follow nil :failure nil)))
                        (unless (and named (= (stamp-ino named) (stamp-ino (fd-stamp journal journal-path))))
@@ -579,8 +588,10 @@ put back, or changed by the one waited for."
                        (unless header (left-alone "this release cannot read it"))
                        (unless (journal-fits-p header (fd-stamp journal journal-path) stamp (fd-birth-time fd))
                          (left-alone "the file has been changed or replaced since the save was cut short"))
-                       (let ((out (handler-case (sb-posix:open target (logior sb-posix:o-wronly +o-nofollow+ +o-cloexec+))
-                                    (sb-posix:syscall-error (e) (fail "open for writing" target (sb-posix:syscall-errno e))))))
+                       (let ((out (handler-case (sb-posix:open target
+                                                               (logior sb-posix:o-wronly +o-nofollow+ +o-cloexec+))
+                                    (sb-posix:syscall-error (e)
+                                      (fail "open for writing" target (sb-posix:syscall-errno e))))))
                          (unwind-protect
                               (progn (unless (same-file-p out stamp target)
                                        (left-alone "the file was replaced while it was being put back"))

@@ -126,15 +126,15 @@ asked to put a question to you for them (*SSH-MAY-ASK*)."
 ;;; The buffer of a file on another machine
 
 (defstruct (remote-file (:constructor make-remote-file (host path)) (:copier nil))
-  "What a buffer visiting a copy of a file on another machine knows of it:
-HOST, as ssh takes it, and PATH there, from the root; ATTRIBUTES, those the
-file had as last read or written there (NIL when it was not there); SUM, its
-SHA-256 sum then, when it was small enough (+REMOTE-HASH-MOST+); SENT, the
-content number of the text last there, NIL for none; EVIDENCE, why it is
-evidence, or NIL; TRUSTED, true when HOST is a trusted server; PARTLY, true
-while a save that failed half-way left the file there partly written;
-ARRIVAL, how the file stands as it comes, an ARRIVAL while part of it has not
-arrived, NIL once all of it is here."
+  "What a buffer visiting a copy of a file on another machine knows of it. HOST
+is the machine, as ssh takes it, and PATH is the file's path there, from the
+root. ATTRIBUTES are those the file had as last read or written there (NIL when
+it was not there). SUM is its SHA-256 sum then, when it was small enough
+\(+REMOTE-HASH-MOST+). SENT is the content number of the text last there, NIL for
+none. EVIDENCE is why it is evidence, or NIL. TRUSTED is true when HOST is a
+trusted server. PARTLY is true while a save that failed half-way left the file
+there partly written. ARRIVAL is how the file stands as it comes: an ARRIVAL
+while part of it has not arrived, NIL once all of it is here."
   (host "" :type string :read-only t)
   (path "" :type string :read-only t)
   (attributes nil)
@@ -402,8 +402,9 @@ needs (REMOTE-EARLY-P), the copy its whole size and left open for the rest."
       (let ((folder (or (remote-read-job-folder job) (new-private-folder (private-cache-directory "remote/")))))
         (setf (remote-read-job-folder job) folder)
         (multiple-value-bind (fd copy)
-            (tuatara.io:create-free-file folder (lambda (n) (format nil "~a~:[.~d~;~*~]" (tuatara.io:native-file-name path)
-                                                                     (= n 1) n)))
+            (tuatara.io:create-free-file folder
+                                         (lambda (n) (format nil "~a~:[.~d~;~*~]" (tuatara.io:native-file-name path)
+                                                              (= n 1) n)))
           (setf (remote-read-job-copy job) copy)
           (let ((size (or (getf attributes :size) 0)))
             (if (remote-early-p size job)
@@ -517,12 +518,12 @@ it holds stands for the file there."
           (tuatara.buffer:buffer-local buffer :reread) #'remote-read-again)))
 
 (defun remote-visit-copy (remote path job)
-  "The buffer visiting the copy JOB read of PATH, REMOTE's file: opened
-safely when the visit is safe or the file is evidence; else shown by one of
-*REMOTE-FILE-VIEWS* when one shows it and all of it has come; else with only
-the find-file functions REMOTE-FIND-FILE-FUNCTIONS gives; one that looks
-binary in the hex view (*HEX-VIEW-BINARY-FILES*); named and placed after the
-file there, its copy's folder deleted with it."
+  "The buffer visiting the copy JOB read of PATH, REMOTE's file. It is opened
+safely when the visit is safe or the file is evidence. Else it is shown by one
+of *REMOTE-FILE-VIEWS* when one shows it and all of it has come. Else it is
+opened with only the find-file functions REMOTE-FIND-FILE-FUNCTIONS gives. One
+that looks binary is opened in the hex view (*HEX-VIEW-BINARY-FILES*). It is
+named and placed after the file there, its copy's folder deleted with it."
   (let* ((host (remote-file-host remote))
          (folder (remote-read-job-folder job))
          (copy (or (remote-read-job-copy job)
@@ -693,13 +694,13 @@ yet, or NIL when what is there is here."
 
 (defstruct (remote-write-job (:include tuatara.runtime:job)
                              (:constructor make-remote-write-job (buffer remote copy content)) (:copier nil))
-  "The copy of a file on another machine being sent there for BUFFER, a job:
-REMOTE, its REMOTE-FILE; COPY, the copy's path here; CONTENT, the content
-number of the text saved in it; ATTRIBUTES and SUM, the file's there once
-written; IN-PLACE, why it was written in place, in words, or NIL when it
-was replaced (REMOTE-UPLOAD); WHOLE, true to write it over a file there
-left partly written, whatever it is now; PARTLY, true once the job left the
-file there partly written."
+  "The copy of a file on another machine being sent there for BUFFER, a job.
+REMOTE is its REMOTE-FILE. COPY is the copy's path here. CONTENT is the content
+number of the text saved in it. ATTRIBUTES and SUM are the file's there once
+written. IN-PLACE is why it was written in place, in words, or NIL when it was
+replaced (REMOTE-UPLOAD). WHOLE is true to write it over a file there left
+partly written, whatever it is now. PARTLY is true once the job left the file
+there partly written."
   remote copy content attributes sum in-place whole partly)
 
 (setf (documentation 'remote-write-job-p 'function) "True when OBJECT is a REMOTE-WRITE-JOB.")
@@ -723,15 +724,15 @@ read or written: there or not as it was, of the same size and time."
            "it was changed on the server since it was read"))))
 
 (defun send-remote-copy (job)
-  "The work of JOB, a REMOTE-WRITE-JOB: the copy sent to its file there, made
+  "The work of JOB, a REMOTE-WRITE-JOB. The copy is sent to its file there, made
 like it (REMOTE-UPLOAD), only when it is not evidence, told again now
-\(REMOTE-EVIDENCE-WORDS), and is as it was read: there or not as it was, of
-the same size and time, and then, when small enough (+REMOTE-HASH-MOST+),
-of the same contents, read into a file of its own beside the copy and taken
-away after; a job writing it WHOLE over a file left partly written skips
-the comparing. A file with other names is not written in place while
-*EVIDENCE-FOLDERS* names a folder on that machine, as one of them may be in
-it. The sum of what was sent taken likewise."
+\(REMOTE-EVIDENCE-WORDS), and is as it was read. That means there or not as it
+was, of the same size and time, and then, when small enough
+\(+REMOTE-HASH-MOST+), of the same contents. The contents are read into a file of
+its own beside the copy and taken away after. A job writing it WHOLE over a file
+left partly written skips the comparing. A file with other names is not written
+in place while *EVIDENCE-FOLDERS* names a folder on that machine, as one of them
+may be in it. The sum of what was sent is taken likewise."
   (let* ((remote (remote-write-job-remote job))
          (host (remote-file-host remote))
          (path (remote-file-path remote))

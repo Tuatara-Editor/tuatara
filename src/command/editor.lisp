@@ -44,7 +44,8 @@ editor running in the background, by default when it has a FRONTEND."
       (documentation 'client-p 'function) "True when OBJECT is a CLIENT."
       (documentation 'client-frontend 'function)
       "The remote frontend CLIENT paints, or NIL for the editor's own screen or once CLIENT has ended."
-      (documentation 'client-remote 'function) "True when CLIENT shows an editor running in the background, from a program of its own."
+      (documentation 'client-remote 'function) "True when CLIENT shows an editor running in the
+background, from a program of its own."
       (documentation 'client-number 'function) "The number telling CLIENT apart from the editor's other clients."
       (documentation 'client-directory 'function) "The folder CLIENT was started in, or NIL."
       (documentation 'client-environment 'function)
@@ -53,28 +54,29 @@ editor running in the background, by default when it has a FRONTEND."
       (documentation 'client-ended 'function) "When CLIENT ended, in universal time, or NIL while it works."
       (documentation 'client-startup-buffers 'function)
       "The buffers of the files CLIENT was started with: those a program running it as its editor waits on."
-      (documentation 'client-exit-code 'function) "The code CLIENT ends with: 0, or 1 for a program running it as its editor to give up."
+      (documentation 'client-exit-code 'function) "The code CLIENT ends with: 0, or 1 for a program
+running it as its editor to give up."
       (documentation 'client-exit-words 'function) "What CLIENT says as it ends, or NIL."
       (documentation 'client-endings 'function) "Functions of CLIENT called as it ends, newest first.")
 
 (defstruct (frame (:constructor make-frame (frontend)) (:copier nil))
-  "One screen of the editor. FRONTEND paints it and reads its events; WINDOW
-is its selected window, the one commands act on, in a layout of one or more;
+  "One screen of the editor. FRONTEND paints it and reads its events. WINDOW
+is its selected window, the one commands act on, in a layout of one or more.
 MINIBUFFER-PROMPT, MINIBUFFER-TEXT and MINIBUFFER-ACTIVE describe its echo
-area; MESSAGE is transient text shown there; PENDING are the key specs of an
-unfinished key sequence typed in it; UNREAD holds events read while the
-editor waited on work of its own, to be handled next, in order; DEFERRED
+area. MESSAGE is transient text shown there. PENDING are the key specs of an
+unfinished key sequence typed in it. UNREAD holds events read while the
+editor waited on work of its own, to be handled next, in order. DEFERRED
 holds the window closed or files dropped while a command was asking for
 something, to be handled once it is done. LAST-COMMAND, REPEATABLE and
-REPEAT-MAP are what the next command typed in it follows on from;
-KEYS-RECORDING and KEYS-PLAYING the keys being recorded in it and played
+REPEAT-MAP are what the next command typed in it follows on from.
+KEYS-RECORDING and KEYS-PLAYING are the keys being recorded in it and played
 into it. PAINTED is what it showed when it was last painted while another
 frame was worked in, for PAINT-OTHER-FRAMES, or NIL to be painted again.
 HELD is, while its question waits for what is done in another frame to run
 inside it (RUN-INSIDE-QUESTION), the variables of that question, their
-values there and the buffer it is about, as (VARIABLES VALUES BUFFER); NIL
-otherwise. DELETED is true once the frame has left the editor. NAME is what
-it is called, F1 for the first: the mode line shows it while frames take
+values there and the buffer it is about, as (VARIABLES VALUES BUFFER). It is
+NIL otherwise. DELETED is true once the frame has left the editor. NAME is
+what it is called, F1 for the first: the mode line shows it while frames take
 turns on one display, as in a terminal. CLIENT is the one who works in it
 \(CLIENT), whose buffers it shows first."
   (frontend nil :read-only t)
@@ -121,25 +123,26 @@ turns on one display, as in a terminal. CLIENT is the one who works in it
       (documentation 'frame-painted 'function)
       "What FRAME showed when it was last painted while another frame was worked in, or NIL (PAINT-OTHER-FRAMES)."
       (documentation 'frame-held 'function)
-      "While FRAME's question waits for another frame, its variables, their values and its buffer, as (VARIABLES VALUES BUFFER)."
+      "While FRAME's question waits for another frame, its variables, their values and its buffer,
+as (VARIABLES VALUES BUFFER)."
       (documentation 'frame-client 'function) "The client who works in FRAME (CLIENT).")
 
 (defstruct (editor (:constructor %make-editor (frontend &aux (frame (make-frame frontend)) (frames (list frame))))
                    (:copier nil))
   "The editor state. FRAMES are its screens, a list replaced and never changed
-in place, as other threads read it; FRAME is the one being worked in, between
-commands the one you last typed in: EDITOR-WINDOW, EDITOR-MESSAGE,
+in place, as other threads read it. FRAME is the one being worked in, between
+commands the one you last typed in. EDITOR-WINDOW, EDITOR-MESSAGE,
 EDITOR-LAST-COMMAND and the other names of a screen's state read and set that
-frame's; SELECTIONS counts the times a window was selected; KILL-RING holds
-killed text, newest first; STATE-KEYMAP is the modal state's map consulted
-before the others (the modal layer's); OTHERS-PAINTED is when the frames
-not worked in were last painted (PAINT-OTHER-FRAMES), and SETTINGS-LOOKED
-when the settings were last looked at for them (LOOK-AT-SETTINGS), in
-internal time; CLIENTS, those who work with it (CLIENT), the one who
-started it first, a list replaced and never changed in place; IDLE-FRONTEND,
-in an editor running in the background, the frontend with no screen its
-frame shows on while no client shows it, else NIL;
-RUNNING is false once the editor should exit."
+frame's. SELECTIONS counts the times a window was selected. KILL-RING holds
+killed text, newest first. STATE-KEYMAP is the modal state's map consulted
+before the others (the modal layer's). OTHERS-PAINTED is when the frames not
+worked in were last painted (PAINT-OTHER-FRAMES), and SETTINGS-LOOKED when the
+settings were last looked at for them (LOOK-AT-SETTINGS), in internal time.
+CLIENTS are those who work with it (CLIENT), the one who started it first, a
+list replaced and never changed in place. IDLE-FRONTEND is, in an editor
+running in the background, the frontend with no screen its frame shows on
+while no client shows it, else NIL. RUNNING is false once the editor should
+exit."
   (frames '() :type list)
   (frame nil :type frame)
   (clients '() :type list)
@@ -261,22 +264,34 @@ drawn; NIL otherwise.")
       (documentation 'editor-clients 'function) "Those who work with EDITOR (CLIENT), the one who started it first."
       (documentation 'editor-idle-frontend 'function)
       "The frontend with no screen EDITOR's frame shows on while no client shows it, or NIL."
-      (documentation 'editor-others-painted 'function) "When the frames of EDITOR not worked in were last painted, in internal time."
-      (documentation 'editor-settings-looked 'function) "When the settings were last looked at for the frames of EDITOR not worked in, in internal time."
-      (documentation 'editor-selections 'function) "How many times a window of EDITOR has been selected: the clock of WINDOW-USE-TIME."
+      (documentation 'editor-others-painted 'function) "When the frames of EDITOR not worked in were
+last painted, in internal time."
+      (documentation 'editor-settings-looked 'function) "When the settings were last looked at for
+the frames of EDITOR not worked in, in internal time."
+      (documentation 'editor-selections 'function) "How many times a window of EDITOR has been
+selected: the clock of WINDOW-USE-TIME."
       (documentation 'editor-global-keymap 'function) "EDITOR's global keymap, the last one consulted."
       (documentation 'editor-state-keymap 'function) "The modal state keymap consulted first, or NIL."
-      (documentation 'editor-fallback-keymap 'function) "A keymap consulted after the buffer's own and before the global one (the modal support keys), or NIL."
+      (documentation 'editor-fallback-keymap 'function) "A keymap consulted after the buffer's own
+and before the global one (the modal support keys), or NIL."
       (documentation 'editor-minibuffer-keymap 'function) "The keymap active while the minibuffer reads input."
       (documentation 'editor-key-hints 'function) "True to show the bindings under a pending prefix key in the panel."
-      (documentation 'editor-kill-ring 'function) "Kills, newest first: strings, or ropes for kills too large for the system clipboard."
+      (documentation 'editor-kill-ring 'function) "Kills, newest first: strings, or ropes for kills
+too large for the system clipboard."
       (documentation 'editor-this-command 'function) "The command being run."
       (documentation 'editor-running 'function) "False once the editor should exit."
-      (documentation 'editor-self-insert-command 'function) "Command run for an unbound plain character, or NIL to treat it as undefined."
-      (documentation 'editor-mode-line-function 'function) "Function of (EDITOR WINDOW) returning the text of WINDOW's mode line and the spans of it in faces of their own, or NIL for the default."
-      (documentation 'editor-cursor-shape-function 'function) "Function of (EDITOR) returning the cursor's shape and colour, as *CURSOR-SHAPE* and *CURSOR-COLOUR* take them, NIL for those; and as a third value, true while text is typed. NIL for *CURSOR-SHAPE* and *CURSOR-COLOUR* always."
+      (documentation 'editor-self-insert-command 'function) "Command run for an unbound plain
+character, or NIL to treat it as undefined."
+      (documentation 'editor-mode-line-function 'function) "Function of (EDITOR WINDOW) returning
+the text of WINDOW's mode line and the spans of it in faces of their own, or NIL
+for the default."
+      (documentation 'editor-cursor-shape-function 'function) "Function of (EDITOR) returning the
+cursor's shape and colour, as *CURSOR-SHAPE* and *CURSOR-COLOUR* take them, NIL
+for those; and as a third value, true while text is typed. NIL for
+*CURSOR-SHAPE* and *CURSOR-COLOUR* always."
       (documentation 'editor-post-command-functions 'function) "Functions called with (EDITOR) after every command."
-      (documentation 'editor-pre-command-functions 'function) "Functions called with (EDITOR COMMAND) before every command runs.")
+      (documentation 'editor-pre-command-functions 'function) "Functions called with (EDITOR
+COMMAND) before every command runs.")
 
 (defun wake-editor (editor)
   "Wake EDITOR, from any thread, to show what work in the background has for
@@ -306,48 +321,52 @@ runs.")
 lone minus; NIL for none, or with no editor."
   (and *editor* (editor-prefix-argument *editor*)))
 
-(defstruct (completion (:constructor make-completion (table &key annotate require-match history (separator #\/) (filter t)
+(defstruct (completion (:constructor make-completion
+                                     (table &key annotate require-match history (separator #\/) (filter t)
                                                              select reselect preview source default keep-order none taken
                                                              (prompt "")))
                        (:copier nil))
   "State of a completing read. TABLE is a list of CANDIDATE or a function of
-the input returning one; ANNOTATE is a function of a candidate returning an
-annotation string or NIL; REQUIRE-MATCH true means \\<minibuffer>\\[minibuffer-finish] must pick a candidate;
-HISTORY is a list of previous inputs, most recent first (or a function of no
-arguments returning one, for a list still growing); SEPARATOR, for a
-TABLE that is a function, the character after whose last occurrence the input
-is matched and completed (/ for file names, a comma for a list of words);
-FILTER false shows a function TABLE's candidates as it gives them, matched and
-ordered already (a search of files as you type). SELECT, when given, is a
-function of the candidates first shown (a vector) and the input, returning the
-index of the one selected at first, or :INPUT for the line typed itself; with
-RESELECT, of those shown after each change of the input too. Where the read
-takes what is typed (REQUIRE-MATCH false), the line typed can be selected as a
-candidate is (INDEX -1): it is when nothing matches, or SELECT says so, and
-one step above the first candidate; PREVIEW a function called with the selected candidate,
-or NIL when none is, each time the selection changes, and PREVIEWED the
-candidate it was last called with. SOURCE, for candidates that arrive from
-work in the background, is a function the minibuffer calls on the editor's
-thread whenever it is woken while the read is open, returning three values:
-true when the candidates may have changed (STALE is set then, and they are
-worked out again, the selected one kept), true while more may come
-(WORKING), and how many things it has listed so far, or NIL for nothing to
-tell (LISTED), which the prompt tells while more come (SHOWN-PROMPT).
+the input returning one. ANNOTATE is a function of a candidate returning an
+annotation string or NIL. REQUIRE-MATCH true means
+\\<minibuffer>\\[minibuffer-finish] must pick a candidate. HISTORY is a list of
+previous inputs, most recent first (or a function of no arguments returning
+one, for a list still growing). SEPARATOR, for a TABLE that is a function, is
+the character after whose last occurrence the input is matched and completed
+\(/ for file names, a comma for a list of words). FILTER false shows a function
+TABLE's candidates as it gives them, matched and ordered already (a search of
+files as you type).
+SELECT, when given, is a function of the candidates first shown (a vector) and
+the input. It returns the index of the one selected at first, or :INPUT for
+the line typed itself. With RESELECT, it is called for those shown after each
+change of the input too. Where the read takes what is typed (REQUIRE-MATCH
+false), the line typed can be selected as a candidate is (INDEX -1). It is
+when nothing matches, or SELECT says so, and one step above the first
+candidate. PREVIEW is a function called with the selected candidate, or NIL
+when none is, each time the selection changes. PREVIEWED is the candidate it
+was last called with.
+SOURCE, for candidates that arrive from work in the background, is a function
+the minibuffer calls on the editor's thread whenever it is woken while the
+read is open. It returns three values. The first is true when the candidates
+may have changed (STALE is set then, and they are worked out again, the
+selected one kept). The second is true while more may come (WORKING). The
+third is how many things it has listed so far, or NIL for nothing to tell
+\(LISTED), which the prompt tells while more come (SHOWN-PROMPT).
 DEFAULT, when not NIL, is what \\[minibuffer-finish] takes while nothing is
-typed, its candidate offered first then, and named in the prompt; KEEP-ORDER
+typed, its candidate offered first then, and named in the prompt. KEEP-ORDER
 true keeps the candidates matching in the order TABLE gives them, not sorted
-best first; NONE, words the prompt says once all have come and there are
-none; TAKEN, a list of names the read takes when they are typed whole,
-though they are not among its candidates; PROMPT, the question as asked,
+best first. NONE is words the prompt says once all have come and there are
+none. TAKEN is a list of names the read takes when they are typed whole,
+though they are not among its candidates. PROMPT is the question as asked,
 before those words are added to it (or a function of no arguments giving it).
 DONE-PENDING is true when \\[minibuffer-finish] came while nothing could be
-chosen yet and more was coming, to be done once it has come; MOVED
-is true once a candidate was selected by hand for the input typed, which
-stays selected as more come (else the best match is); TALLEST, the most rows
-of candidates shown so far, the panel keeping that height while the question
-is open, so that the windows above do not jump as typing narrows the list.
+chosen yet and more was coming, to be done once it has come. MOVED is true
+once a candidate was selected by hand for the input typed, which stays
+selected as more come (else the best match is). TALLEST is the most rows of
+candidates shown so far, the panel keeping that height while the question is
+open, so that the windows above do not jump as typing narrows the list.
 CANDIDATES holds the matches for the current input and INDEX the selected
-one, -1 for the line typed; NARROWED, the last filtering, (ALL QUERY
+one, -1 for the line typed. NARROWED is the last filtering, (ALL QUERY
 MATCHES), so that a query typed on from that one is matched against MATCHES
 alone."
   (table nil :read-only t)
@@ -384,47 +403,63 @@ alone."
       (documentation 'completion-annotate 'function) "The annotation function of a COMPLETION, or NIL."
       (documentation 'completion-require-match 'function) "True when the completing read only accepts a candidate."
       (documentation 'completion-history 'function) "Previous inputs of a COMPLETION, most recent first."
-      (documentation 'completion-separator 'function) "The character after which a COMPLETION with a function table matches and completes the input."
-      (documentation 'completion-filter 'function) "False when a COMPLETION shows its function table's candidates as they come."
-      (documentation 'completion-select 'function) "The function naming the candidate a COMPLETION selects at first, or NIL."
-      (documentation 'completion-reselect 'function) "True when a COMPLETION's SELECT names the candidate selected after each change of the input too."
-      (documentation 'completion-preview 'function) "The function a COMPLETION calls with the selected candidate as the selection changes, or NIL."
-      (documentation 'completion-source 'function) "The function a COMPLETION calls to take in candidates found in the background, or NIL."
+      (documentation 'completion-separator 'function) "The character after which a COMPLETION with a
+function table matches and completes the input."
+      (documentation 'completion-filter 'function) "False when a COMPLETION shows its function
+table's candidates as they come."
+      (documentation 'completion-select 'function) "The function naming the candidate a COMPLETION
+selects at first, or NIL."
+      (documentation 'completion-reselect 'function) "True when a COMPLETION's SELECT names the
+candidate selected after each change of the input too."
+      (documentation 'completion-preview 'function) "The function a COMPLETION calls with the
+selected candidate as the selection changes, or NIL."
+      (documentation 'completion-source 'function) "The function a COMPLETION calls to take in
+candidates found in the background, or NIL."
       (documentation 'completion-default 'function) "What a COMPLETION takes while nothing is typed, or NIL."
       (documentation 'completion-keep-order 'function) "True when a COMPLETION keeps its candidates in the order given."
-      (documentation 'completion-taken 'function) "The names a COMPLETION takes when typed whole, though they are not among its candidates."
-      (documentation 'completion-none 'function) "The words a COMPLETION's prompt says when all have come and there are none, or NIL."
+      (documentation 'completion-taken 'function) "The names a COMPLETION takes when typed whole,
+though they are not among its candidates."
+      (documentation 'completion-none 'function) "The words a COMPLETION's prompt says when all have
+come and there are none, or NIL."
       (documentation 'completion-prompt 'function) "The question a COMPLETION asks, as asked."
       (documentation 'completion-working 'function) "True while a COMPLETION's SOURCE said more candidates may come."
-      (documentation 'completion-listed 'function) "How many things a COMPLETION's SOURCE said it has listed so far, or NIL."
-      (documentation 'completion-stale 'function) "True when a COMPLETION's candidates are to be worked out again, its input unchanged."
-      (documentation 'completion-tallest 'function) "The most rows of candidates a COMPLETION's panel has shown, which it keeps while the question is open."
-      (documentation 'completion-tall 'function) "True while a COMPLETION's candidates take as many rows as the frame has room for (\\[minibuffer-toggle-tall])."
-      (documentation 'completion-moved 'function) "True when a COMPLETION's selection was moved by hand since the input last changed."
-      (documentation 'completion-done-pending 'function) "True when a choice was asked of a COMPLETION before anything could be chosen, more coming."
-      (documentation 'completion-previewed 'function) "The candidate a COMPLETION's preview function was last called with, or :NONE."
+      (documentation 'completion-listed 'function) "How many things a COMPLETION's SOURCE said it
+has listed so far, or NIL."
+      (documentation 'completion-stale 'function) "True when a COMPLETION's candidates are to be
+worked out again, its input unchanged."
+      (documentation 'completion-tallest 'function) "The most rows of candidates a COMPLETION's
+panel has shown, which it keeps while the question is open."
+      (documentation 'completion-tall 'function) "True while a COMPLETION's candidates take as many
+rows as the frame has room for (\\[minibuffer-toggle-tall])."
+      (documentation 'completion-moved 'function) "True when a COMPLETION's selection was moved by
+hand since the input last changed."
+      (documentation 'completion-done-pending 'function) "True when a choice was asked of a
+COMPLETION before anything could be chosen, more coming."
+      (documentation 'completion-previewed 'function) "The candidate a COMPLETION's preview function
+was last called with, or :NONE."
       (documentation 'completion-candidates 'function) "The candidates matching the current input."
       (documentation 'completion-index 'function) "The index of the selected candidate, -1 when it is the line typed."
       (documentation 'completion-input-seen 'function) "The input the candidates were computed for."
       (documentation 'completion-narrowed 'function) "The last filtering of a COMPLETION: (ALL QUERY MATCHES).")
 
-(defstruct (popup (:constructor %make-popup (target start end table annotate document constituent &optional keep-order auto))
+(defstruct (popup (:constructor %make-popup
+                                (target start end table annotate document constituent &optional keep-order auto))
                   (:copier nil))
   "Completion in the text (COMPLETE-IN-TEXT). TARGET is the buffer the word is
 in, or :MINIBUFFER. In a buffer, START and END are anchors at the word's ends,
-END moving on with what is typed at it; in the minibuffer, START is the index
+END moving on with what is typed at it. In the minibuffer, START is the index
 of the word's first character and END the text after the word, which stays as
-it is. TABLE is the candidates, a list of CANDIDATE; ANNOTATE a function of a
-candidate returning what is said beside it, or NIL; DOCUMENT one returning its
-documentation, shown in the box beside the list, or NIL; CONSTITUENT a
-function of a character, true for those a word is made of; KEEP-ORDER true to
-list the matches in TABLE's order, not the best first; AUTO true for a list
-that opened by itself as the word was typed, with none chosen at first.
-CANDIDATES holds the matches of the word, INDEX the chosen one (-1 for none)
-and SCROLL the first shown;
-SEPARATOR is true once \\<popup>\\[popup-insert-separator] put a space in the word, which
-then goes on past spaces; INPUT-SEEN is the word the candidates were matched
-against; SHOWN the documentation last shown, as (CANDIDATE . LINES)."
+it is. TABLE is the candidates, a list of CANDIDATE. ANNOTATE is a function of
+a candidate returning what is said beside it, or NIL. DOCUMENT is one
+returning its documentation, shown in the box beside the list, or NIL.
+CONSTITUENT is a function of a character, true for those a word is made of.
+KEEP-ORDER true lists the matches in TABLE's order, not the best first. AUTO
+is true for a list that opened by itself as the word was typed, with none
+chosen at first. CANDIDATES holds the matches of the word, INDEX the chosen
+one (-1 for none) and SCROLL the first shown. SEPARATOR is true once
+\\<popup>\\[popup-insert-separator] put a space in the word, which then goes on
+past spaces. INPUT-SEEN is the word the candidates were matched against. SHOWN
+is the documentation last shown, as (CANDIDATE . LINES)."
   (target nil :read-only t)
   (start nil :read-only t)
   (end nil :read-only t)
@@ -443,8 +478,10 @@ against; SHOWN the documentation last shown, as (CANDIDATE . LINES)."
 
 (setf (documentation 'popup-p 'function) "True when OBJECT is a POPUP."
       (documentation 'popup-target 'function) "The buffer the completed word is in, or :MINIBUFFER."
-      (documentation 'popup-start 'function) "Where the completed word starts: an anchor in a buffer, an index in the minibuffer."
-      (documentation 'popup-end 'function) "Where the completed word ends: an anchor in a buffer, the text after it in the minibuffer."
+      (documentation 'popup-start 'function) "Where the completed word starts: an anchor in a
+buffer, an index in the minibuffer."
+      (documentation 'popup-end 'function) "Where the completed word ends: an anchor in a buffer,
+the text after it in the minibuffer."
       (documentation 'popup-table 'function) "Every candidate of a completion in the text."
       (documentation 'popup-annotate 'function) "The function giving what is said beside a candidate, or NIL."
       (documentation 'popup-document 'function) "The function giving a candidate's documentation, or NIL."
@@ -454,9 +491,12 @@ against; SHOWN the documentation last shown, as (CANDIDATE . LINES)."
       (documentation 'popup-auto 'function) "True for a list that opened by itself as the word was typed."
       (documentation 'popup-index 'function) "The index of the chosen candidate, -1 while none is."
       (documentation 'popup-scroll 'function) "The index of the first candidate shown."
-      (documentation 'popup-separator 'function) "True once \\<popup>\\[popup-insert-separator] put a space in the word."
+      (documentation 'popup-separator 'function) "True once \\<popup>\\[popup-insert-separator] put
+a space in the word."
       (documentation 'popup-input-seen 'function) "The word the candidates were matched against."
-      (documentation 'popup-shown 'function) "The documentation last shown, as (CANDIDATE ROOM LINES WIDTH): its lines broken for ROOM columns, the box WIDTH wide (DOCUMENTATION-LINES).")
+      (documentation 'popup-shown 'function) "The documentation last shown, as (CANDIDATE ROOM LINES
+WIDTH): its lines broken for ROOM columns, the box WIDTH wide
+(DOCUMENTATION-LINES).")
 
 (defun resize (editor width height)
   "Record the display size and lay the windows out on the rows the panel leaves."
@@ -479,7 +519,8 @@ unless SET-BUFFER or WITH-CURRENT-BUFFER made another current."
 
 (defvar *message-log-max* 1000
   "Lines the *Messages* buffer keeps of the messages shown, the oldest going
-first; NIL keeps none.")
+first, 1000 as standard; NIL keeps none. Raise it to look back further, at the
+cost of the memory of those lines.")
 
 (defun message-repeats (line)
   "LINE, a line of *Messages*, as the message it shows and how many times:
@@ -544,7 +585,8 @@ hold the secret."
                 (lambda (buffer)
                   (let* ((size (tuatara.buffer:buffer-size buffer))
                          (last-start (if (zerop size) 0 (tuatara.buffer:buffer-line-start buffer (1- size))))
-                         (last (and (plusp size) (tuatara.buffer:buffer-string buffer :start last-start :end (1- size)))))
+                         (last (and (plusp size)
+                                    (tuatara.buffer:buffer-string buffer :start last-start :end (1- size)))))
                     (multiple-value-bind (said count) (if last (message-repeats last) (values nil 0))
                       (if (and last (string= said text))
                           (tuatara.buffer:buffer-replace buffer last-start (1- size) (format nil "~a [~d times]" text (1+ count)))

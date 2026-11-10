@@ -55,7 +55,9 @@ back and C-M-, goes forward again.")
   (multiple-value-bind (f editor) (fresh-start (format nil "o ~a C-g M-." (key-string "(insert")) :width 120)
     (declare (ignore f))
     (is string= "user-lisp.lisp" (current-name editor))
-    (is eql (session-point-chars editor) (search "(defun tuatara-user:insert" (session-text editor) :start2 (session-point-chars editor))))
+    (is eql
+        (session-point-chars editor)
+        (search "(defun tuatara-user:insert" (session-text editor) :start2 (session-point-chars editor))))
   (multiple-value-bind (f editor) (fresh-start (format nil "o ~a C-g M-. M-," (key-string "(insert")) :width 120)
     (declare (ignore f))
     (is string= "*lisp-scratch*" (current-name editor)))
@@ -77,7 +79,9 @@ back and C-M-, goes forward again.")
                         :width 120)
          (declare (ignore f))
          (is string= "*lisp-scratch*" (current-name editor))
-         (is eql (session-point-chars editor) (search "(defun xref-test-scratch-fn" (session-text editor) :start2 (session-point-chars editor))))
+         (is eql
+             (session-point-chars editor)
+             (search "(defun xref-test-scratch-fn" (session-text editor) :start2 (session-point-chars editor))))
     (let ((symbol (find-symbol "XREF-TEST-SCRATCH-FN" :tuatara-user)))
       (when symbol
         (fmakunbound symbol)
@@ -137,7 +141,9 @@ back and C-M-, goes forward again.")
 
 (define-test (xref chosen-by-name)
   ;; a name asked for keeps its package
-  (multiple-value-bind (f editor) (fresh-start (format nil "C-u M-. C-a C-k ~a RET" (key-string "tuatara.display:layout")) :width 160)
+  (multiple-value-bind (f editor) (fresh-start (format nil "C-u M-. C-a C-k ~a RET"
+                                                       (key-string "tuatara.display:layout"))
+                                               :width 160)
     (declare (ignore f))
     (is string= "layout.lisp" (current-name editor))))
 

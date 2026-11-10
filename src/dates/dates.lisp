@@ -1,4 +1,5 @@
-;;;; src/dates/dates.lisp --- Dates and times: day numbers, weekdays, ISO weeks, local time, names, and times written in a pattern.
+;;;; src/dates/dates.lisp --- Dates and times: day numbers, weekdays, ISO weeks, local time, names, and times written in
+;;;; a pattern.
 ;;;; Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
 ;;;;
 ;;;; A day is a number: 0 for 1900-01-01, one more for each day after, below 0
@@ -177,7 +178,8 @@ letters at least; with PLURAL, an s after the name or a beginning of it too
 \(mondays, tues). NIL for none."
   (flet ((index (word)
            (and (>= (length word) 3)
-                (position-if (lambda (name) (and (<= (length word) (length name)) (string-equal word name :end2 (length word))))
+                (position-if (lambda (name)
+                               (and (<= (length word) (length name)) (string-equal word name :end2 (length word))))
                              names))))
     (or (index word)
         (and plural (> (length word) 3) (char-equal (char word (1- (length word))) #\s)
@@ -211,16 +213,17 @@ weekday in a month a day is, the first Monday to the fifth.")
 ;;; Times written in a pattern
 
 (defun format-day (pattern day &optional (hour 0) (minute 0) (second 0) offset)
-  "The day number DAY at HOUR:MINUTE:SECOND written as PATTERN says; its
-characters as they are, except for these, which stand for parts of the date:
-  %Y year (2026, four digits at least)   %y year in two digits   %G ISO week's year
-  %m month (01-12)   %d day of the month (01-31)   %e day of the month, space-padded
-  %j day of the year (001-366)   %V ISO week (01-53)   %u weekday, 1 Monday to 7 Sunday
-  %w weekday, 0 Sunday to 6 Saturday   %A Monday   %a Mon   %B March   %b Mar
-  %H hour (00-23)   %I hour (01-12)   %p AM or PM   %M minute   %S second
-  %F the date as %Y-%m-%d   %T the time as %H:%M:%S   %R the time as %H:%M
-  %z offset from universal time as +1300   %:z as +13:00   %% a %
-A - after the % leaves out the padding (%-e, %-d give 5 for 05), a ^ makes the
+  "The day number DAY at HOUR:MINUTE:SECOND written as PATTERN says. Its
+characters are as they are, except for these, which stand for parts of the
+date:
+  %Y year (2026, four digits at least).   %y year in two digits.   %G ISO week's year.
+  %m month (01-12).   %d day of the month (01-31).   %e day of the month, space-padded.
+  %j day of the year (001-366).   %V ISO week (01-53).   %u weekday, 1 Monday to 7 Sunday.
+  %w weekday, 0 Sunday to 6 Saturday.   %A Monday.   %a Mon.   %B March.   %b Mar.
+  %H hour (00-23).   %I hour (01-12).   %p AM or PM.   %M minute.   %S second.
+  %F the date as %Y-%m-%d.   %T the time as %H:%M:%S.   %R the time as %H:%M.
+  %z offset from universal time as +1300.   %:z as +13:00.   %% a %.
+A - after the % leaves out the padding (%-e, %-d give 5 for 05). A ^ makes the
 part capitals (%^p, %^a). OFFSET is the seconds local time is ahead of
 universal time for %z; NIL to work it out. O(length of PATTERN)."
   (multiple-value-bind (year month date) (day-date day)
@@ -238,7 +241,8 @@ universal time for %z; NIL to work it out. O(length of PATTERN)."
                          (when (< i n)
                            (let* ((spec (char pattern i))
                                   (two (lambda (v) (if plain (format nil "~d" v) (format nil "~2,'0d" v))))
-                                  (four (lambda (v) (if (or plain (minusp v)) (format nil "~d" v) (format nil "~4,'0d" v))))
+                                  (four (lambda (v)
+                                          (if (or plain (minusp v)) (format nil "~d" v) (format nil "~4,'0d" v))))
                                   (text (case spec
                                           (#\Y (funcall four year))
                                           (#\y (funcall two (mod year 100)))
@@ -246,7 +250,10 @@ universal time for %z; NIL to work it out. O(length of PATTERN)."
                                           (#\m (funcall two month))
                                           (#\d (funcall two date))
                                           (#\e (if plain (format nil "~d" date) (format nil "~2d" date)))
-                                          (#\j (if plain (format nil "~d" (year-day day)) (format nil "~3,'0d" (year-day day))))
+                                          (#\j
+                                           (if plain
+                                               (format nil "~d" (year-day day))
+                                               (format nil "~3,'0d" (year-day day))))
                                           (#\V (funcall two (nth-value 1 (iso-week day))))
                                           (#\u (format nil "~d" (nth-value 2 (iso-week day))))
                                           (#\w (format nil "~d" (weekday day)))
@@ -262,10 +269,12 @@ universal time for %z; NIL to work it out. O(length of PATTERN)."
                                           (#\F (format nil "~a-~2,'0d-~2,'0d" (funcall four year) month date))
                                           (#\T (format nil "~2,'0d:~2,'0d:~2,'0d" hour minute second))
                                           (#\R (format nil "~2,'0d:~2,'0d" hour minute))
-                                          (#\z (let* ((east (or offset (local-offset (day-universal-time day hour minute second))))
+                                          (#\z
+                                           (let* ((east (or offset
+                                                            (local-offset (day-universal-time day hour minute second))))
                                                       (minutes (round (abs east) 60)))
-                                                 (format nil "~:[+~;-~]~2,'0d~:[~;:~]~2,'0d"
-                                                         (minusp east) (floor minutes 60) colon (mod minutes 60))))
+                                             (format nil "~:[+~;-~]~2,'0d~:[~;:~]~2,'0d"
+                                                     (minusp east) (floor minutes 60) colon (mod minutes 60))))
                                           (#\% "%")
                                           (t (format nil "%~c" spec)))))
                              (write-string (if upper (string-upcase text) text) out)
@@ -319,22 +328,26 @@ the part of a date it reads.")
 (defun read-date-text (input today)
   "The day INPUT, a date as typed, names, TODAY being the day number of
 today, as five values: its day number, the hour and minute when INPUT names
-a time, and the hour and minute it ends at when it names a time range; NIL
-when INPUT names no date. Read: nothing, . or today for today, tomorrow and
-yesterday; fri, the Friday to come (a week on when today is one); +3d, -1w,
-+1m, +1y from today, or from the date before it (2026-10-20 +3d); 5, the 5th
-of this month or the next; 10-15 and sep 30 (or 30 sep), that day of this
-year or the next; 2026-12-24; 2027, this day in that year; and a time or a
-range of two as TIME-RANGE-AT reads them, 14:00, 10:00-11:30, 3pm, 3:30 pm.
+a time, and the hour and minute it ends at when it names a time range. The
+result is NIL when INPUT names no date.
+Read these. Nothing, . or today is today, and tomorrow and yesterday are as
+they say. fri is the Friday to come (a week on when today is one). +3d, -1w,
++1m, +1y count from today, or from the date before it (2026-10-20 +3d). 5 is
+the 5th of this month or the next. 10-15 and sep 30 (or 30 sep) are that day
+of this year or the next. 2026-12-24 is that date. 2027 is this day in that
+year. A time or a range of two is read as TIME-RANGE-AT reads them, 14:00,
+10:00-11:30, 3pm, 3:30 pm.
 A weekday written with a date names that date's own (2026-11-02 Mon is that
-day), and the brackets of a timestamp are passed over, so that one written
-out is read as it stands: <2026-11-02 Mon 09:00-10:00>. Case does not
-count. A month or year on keeps the day of the month, a day past the
-month's end counted on into the next: 31 January a month on is 3 March. A day or a time that does not exist (31 in a
-month of 30 days, 13pm, 10:00-25:00) names no date. O(length of INPUT)."
+day). The brackets of a timestamp are passed over, so that one written out is
+read as it stands: <2026-11-02 Mon 09:00-10:00>. Case does not count.
+A month or year on keeps the day of the month, a day past the month's end
+counted on into the next: 31 January a month on is 3 March. A day or a time
+that does not exist (31 in a month of 30 days, 13pm, 10:00-25:00) names no
+date. O(length of INPUT)."
   (multiple-value-bind (year month day) (day-date today)
     (let ((weekday (weekday today))
-          (text (string-downcase (string-trim '(#\Space #\Tab) (substitute-if #\Space (lambda (c) (find c "<>[]")) input))))
+          (text (string-downcase (string-trim '(#\Space #\Tab)
+                                              (substitute-if #\Space (lambda (c) (find c "<>[]")) input))))
           (y year) (m month) (d day) (dated nil) hour minute end-hour end-minute)
       (labels ((take (part &optional (wanted (constantly t)))
                  ;; the first match of PART's pattern whose groups are WANTED, as its groups, taken out of TEXT
@@ -363,10 +376,13 @@ month of 30 days, 13pm, 10:00-25:00) names no date. O(length of INPUT)."
                            (and other (list (second other) (first other) (third other)))))))
           (when named
             (let ((nm (month-of-word (first named))) (nd (parse-integer (second named))))
-              (date (cond ((third named) (parse-integer (third named))) ((past-p year nm nd) (1+ year)) (t year)) nm nd))))
+              (date (cond ((third named) (parse-integer (third named)))
+                          ((past-p year nm nd) (1+ year))
+                          (t year)) nm nd))))
         (let ((word (take :word)))
           (when word
-            (to-day (+ (day-number y m d) (cond ((string= (first word) "tomorrow") 1) ((string= (first word) "yesterday") -1) (t 0))))))
+            (to-day (+ (day-number y m d)
+                       (cond ((string= (first word) "tomorrow") 1) ((string= (first word) "yesterday") -1) (t 0))))))
         (let ((weekday-name (take :weekday (lambda (groups) (weekday-of-word (first groups))))))
           (when (and weekday-name (not dated))
             (let ((ahead (mod (- (weekday-of-word (first weekday-name)) weekday) 7)))
@@ -540,7 +556,9 @@ nanoseconds the last figure written counts in (a minute, a second, a tenth
               (setf at (+ at 3)
                     nanos (+ nanos (* second 1000000000))
                     unit 1000000000)
-              (when (and (char-at-p text at end fraction-marks) (char/= (char text at) separator) (ascii-digit text (1+ at) end))
+              (when (and (char-at-p text at end fraction-marks)
+                         (char/= (char text at) separator)
+                         (ascii-digit text (1+ at) end))
                 (incf at)
                 (let ((scale 100000000))
                   (loop for d = (ascii-digit text at end)

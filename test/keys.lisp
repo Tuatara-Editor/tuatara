@@ -49,7 +49,8 @@ the editor TUATARA.COMMAND:*EDITOR* is bound to."
         (is string= "a C-x C-f b" text)
         (is equal '((2 9 :help-key-binding)) spans)
         (is equal spans (tuatara.command:text-spans text)))
-      (is string= "tilde ~ as is" (format nil (tuatara.command:unmark-keys (keys "tilde \\`~' as is" :marks t :for-format t)))))))
+      (is string= "tilde ~ as is"
+          (format nil (tuatara.command:unmark-keys (keys "tilde \\`~' as is" :marks t :for-format t)))))))
 
 (define-test (keys-in-text follow-rebinding)
   ;; a command bound anew is named by its new keys
@@ -92,7 +93,8 @@ the editor TUATARA.COMMAND:*EDITOR* is bound to."
                      ((find next "[<{`")
                       (let ((close (position (case next (#\[ #\]) (#\< #\>) (#\{ #\}) (#\` #\')) text :start (+ i 2))))
                         (when close
-                          (push (list (case next (#\[ :command) (#\` :keys) (t :keymap)) (subseq text (+ i 2) close)) out))
+                          (push (list (case next (#\[ :command) (#\` :keys) (t :keymap))
+                                      (subseq text (+ i 2) close)) out))
                         (setf i (if close (1+ close) (+ i 2)))))
                      (t (incf i 2)))))
     (nreverse out)))
@@ -132,12 +134,28 @@ the editor TUATARA.COMMAND:*EDITOR* is bound to."
   (true (null tuatara.defaults::*tuatara-leader-bindings*))
   (with-editor-session (editor)
     (let ((global (tuatara.command:editor-global-keymap editor)))
-      (loop for (keys command) in '(("C-x b" switch-to-buffer) ("C-x x b" switch-other-buffer) ("C-x C-b" buffers) ("C-x C-r" find-recent-file)
-                                    ("M-g o" buffer-outline) ("C-x C-j" rimu-jump) ("C-x n f" find-file-formatted) ("C-x n o" open-file-formatted)
-                                    ("C-x n n" new-file-formatted) ("C-x n g" search-in-formatted) ("C-x n j" journal-new-or-existing-entry)
-                                    ("C-x n a" calendar) ("C-x n e" new-empty-buffer) ("C-x a a" org-agenda) ("C-x a c" org-capture)
-                                    ("C-x a l" org-store-link) ("C-x a o" org-clock-out) ("C-x T h" hl-line-mode) ("C-x T v" visual-line-mode)
-                                    ("C-x w h" swap-window-left) ("C-x w t" transpose-window-layout) ("C-x 4 0" kill-buffer-and-window)
+      (loop for (keys command) in '(("C-x b" switch-to-buffer)
+                                    ("C-x x b" switch-other-buffer)
+                                    ("C-x C-b" buffers)
+                                    ("C-x C-r" find-recent-file)
+                                    ("M-g o" buffer-outline)
+                                    ("C-x C-j" rimu-jump)
+                                    ("C-x n f" find-file-formatted)
+                                    ("C-x n o" open-file-formatted)
+                                    ("C-x n n" new-file-formatted)
+                                    ("C-x n g" search-in-formatted)
+                                    ("C-x n j" journal-new-or-existing-entry)
+                                    ("C-x n a" calendar)
+                                    ("C-x n e" new-empty-buffer)
+                                    ("C-x a a" org-agenda)
+                                    ("C-x a c" org-capture)
+                                    ("C-x a l" org-store-link)
+                                    ("C-x a o" org-clock-out)
+                                    ("C-x T h" hl-line-mode)
+                                    ("C-x T v" visual-line-mode)
+                                    ("C-x w h" swap-window-left)
+                                    ("C-x w t" transpose-window-layout)
+                                    ("C-x 4 0" kill-buffer-and-window)
                                     ("C-x 8 &" insert-digraph) ("C-M-h" select-window-left))
             do (is eq (find-symbol (string-upcase (symbol-name command)) :tuatara.defaults)
                    (tuatara.command:lookup-key global (tuatara.frontend:parse-key-sequence keys))
@@ -155,7 +173,8 @@ the editor TUATARA.COMMAND:*EDITOR* is bound to."
       (true (tuatara.frontend.fake:fake-frame-showing (hints "C-n C-n C-f C-f") "table at point"))
       (true (tuatara.frontend.fake:fake-frame-showing (hints "") "heading at point"))
       ;; on plain text: the hints as before, no title
-      (false (tuatara.frontend.fake:fake-frame-showing (hints "C-n C-e") (format nil " at point ~c" (code-char #x2500)))))))
+      (false (tuatara.frontend.fake:fake-frame-showing (hints "C-n C-e")
+               (format nil " at point ~c" (code-char #x2500)))))))
 
 (define-test (keys-in-text one-order-of-keys)
   ;; the fewest keys first, then the shortest to read, then by name
@@ -177,7 +196,8 @@ the editor TUATARA.COMMAND:*EDITOR* is bound to."
   ;; a key the child binds again runs the child's command; one it takes away runs nothing
   (let* ((parent (tuatara.command:make-keymap :name "parent"))
          (child (tuatara.command:make-keymap :name "child" :parent parent)))
-    (tuatara.command:define-keys parent '(("C-c a" parent-command) ("C-c b" other-parent-command) ("C-c d" kept-command)))
+    (tuatara.command:define-keys parent
+      '(("C-c a" parent-command) ("C-c b" other-parent-command) ("C-c d" kept-command)))
     (tuatara.command:define-keys child '(("C-c a" child-command) ("C-c b" :undefined)))
     (let ((summary (tuatara.command:keymap-summary child)))
       (true (search "child-command" summary))
@@ -215,7 +235,8 @@ the editor TUATARA.COMMAND:*EDITOR* is bound to."
       (is eq 'caught-command (runs "C-x")))
     ;; without one, the later keymap's key
     (setf (tuatara.command::keymap-default menu) nil)
-    (is eq 'later-command (tuatara.command::keymaps-lookup (list menu later) (tuatara.frontend:parse-key-sequence "b")))))
+    (is eq 'later-command
+        (tuatara.command::keymaps-lookup (list menu later) (tuatara.frontend:parse-key-sequence "b")))))
 
 (define-test (keys-in-text bindings-held-while-walked)
   ;; a key bound on another thread waits until a walk of the keymaps has ended
@@ -230,7 +251,8 @@ the editor TUATARA.COMMAND:*EDITOR* is bound to."
          (setf bound-meanwhile (sb-thread:thread-alive-p binder))))
      (list map))
     (true bound-meanwhile "the binding waited")
-    (loop repeat 100 until (tuatara.command:lookup-key map (tuatara.frontend:parse-key-sequence "C-c b")) do (sleep 0.01))
+    (loop repeat 100 until (tuatara.command:lookup-key map
+                                                       (tuatara.frontend:parse-key-sequence "C-c b")) do (sleep 0.01))
     (is eq 'later-command (tuatara.command:lookup-key map (tuatara.frontend:parse-key-sequence "C-c b")))))
 
 (define-test (keys-in-text new-keymap-keeps-what-was-worked-out)

@@ -187,7 +187,8 @@ two are no pair of *PAIR-DELIMITERS*, delete nothing and say so."
           (sexp-failure-message why)
           (let* ((start (min from to)) (end (max from to))
                  (open (tuatara.buffer:buffer-char-at b start))
-                 (close (and (< start end) (tuatara.buffer:buffer-char-at b (tuatara.buffer:buffer-forward-char b end -1)))))
+                 (close (and (< start end)
+                             (tuatara.buffer:buffer-char-at b (tuatara.buffer:buffer-forward-char b end -1)))))
             (if (or (>= (tuatara.buffer:buffer-forward-char b start) end)
                     (not (eql close (pair-closer open))))
                 (message (if forward "Not before matching pair" "Not after matching pair"))
@@ -332,7 +333,8 @@ a definition: it is in no string or comment of SYNTAX's tree, where there is one
       (notany (lambda (node) (or (tuatara.syntax:string-node-p node) (tuatara.syntax:comment-node-p node)))
               (tuatara.syntax:node-ancestry syntax position (1+ position)))))
 
-(defun line-opener-before (rope position &key (openers tuatara.text:*opening-octets*) (reach most-positive-fixnum) test block)
+(defun line-opener-before
+    (rope position &key (openers tuatara.text:*opening-octets*) (reach most-positive-fixnum) test block)
   "The last octet before POSITION of ROPE that is one of OPENERS (an opening
 bracket) at the start of a line, and for which TEST, a function of its
 offset, is true when given; looked for no further than REACH octets back. NIL

@@ -38,7 +38,8 @@ rule goes on from, as a hash table)."
                    (make-input-method-of name title description
                                          (if (eq rules :digraphs)
                                              (loop for (keys . code) in *digraph-table*
-                                                   collect (cons (concatenate 'string "&" keys) (string (code-char code))))
+                                                   collect (cons (concatenate 'string "&" keys)
+                                                                 (string (code-char code))))
                                              rules))))
     methods)
   "The input methods, by name: rfc1345 (the digraphs of RFC 1345, after an

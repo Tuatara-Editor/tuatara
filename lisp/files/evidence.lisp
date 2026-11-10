@@ -26,16 +26,16 @@ of the editor's own files (backups, auto-saves, locks). The folder itself is
 not renamed, moved or deleted either, nor a folder holding one. Empty, as
 standard: no folder is evidence and nothing is looked at.
 
-Each entry is one of:
-  \"~/cases/*/evidence/\"   a folder's path, * standing for any name of one
-                           folder, ** for any folders, none too;
+Each entry takes one of three forms.
+  \"~/cases/*/evidence/\"   is a folder's path, * standing for any name of one
+                           folder, ** for any folders, none too.
   (:name \"evidence\" :within \"~/cases/\")
-                           every folder of that name, within the folder
-                           :within names (anywhere without it);
+                           means every folder of that name, within the folder
+                           :within names (anywhere without it).
   (:regex \"^[0-9]{4}-[0-9]{4}$\" :within \"~/cases/\" :then \"evidence\")
-                           in every folder within ~/cases/ whose whole name
+                           means every folder within ~/cases/ whose whole name
                            the regular expression matches (as searches read
-                           one), the folder :then names inside it (that
+                           one), and the folder :then names inside it (that
                            folder itself without :then).
 Names are compared without regard to case. A file is evidence when the
 folder it really is in, links followed, is one of these or below one, and a
@@ -47,23 +47,26 @@ cannot be read is said in *Messages* and by \\[check-health], and left out.
 ;;; The entries as read
 
 (defstruct (evidence-entry (:constructor make-evidence-entry (given kind pattern withins then)) (:copier nil))
-  "An entry of *EVIDENCE-FOLDERS* as it is read: GIVEN, the entry as it was
-written; KIND, :GLOB, :NAME or :REGEX; PATTERN, the globs (as written, and
-with their fixed folders at the front where they really are), the name, or
-the scanner; WITHINS, the folder it is held to as written and where it
-really is (each with no / at its end), or NIL; THEN, the names of the
-folders below a matched one that are the evidence; TARGETS, the real paths
-of the folders that links it matches lead to (ENTRY-LINK-TARGETS), learnt in
-the background and as they are met; LINKS, how they were looked for. Names
-are kept in Unicode's composed form (NFC-NAME)."
+  "An entry of *EVIDENCE-FOLDERS* as it is read. GIVEN is the entry as it was
+written. KIND is :GLOB, :NAME or :REGEX. PATTERN is the globs (as written, and
+with their fixed folders at the front where they really are), the name, or the
+scanner. WITHINS is the folder it is held to as written and where it really is
+\(each with no / at its end), or NIL. THEN is the names of the folders below a
+matched one that are the evidence. TARGETS is the real paths of the folders
+that links it matches lead to (ENTRY-LINK-TARGETS), learnt in the background
+and as they are met. LINKS is how they were looked for. Names are kept in
+Unicode's composed form (NFC-NAME)."
   given kind pattern withins then (targets '()) (links nil))
 
 (setf (documentation 'evidence-entry-given 'function) "The entry of *EVIDENCE-FOLDERS* as written."
       (documentation 'evidence-entry-kind 'function) "What kind of entry it is: :GLOB, :NAME or :REGEX."
       (documentation 'evidence-entry-pattern 'function) "The globs, the folder's name or the scanner of the entry."
-      (documentation 'evidence-entry-withins 'function) "The folder the entry is held to, as written and where it really is, or NIL."
-      (documentation 'evidence-entry-then 'function) "The names of the folders below a matched one that are the evidence."
-      (documentation 'evidence-entry-targets 'function) "The real paths of the folders that links the entry matches lead to."
+      (documentation 'evidence-entry-withins 'function)
+      "The folder the entry is held to, as written and where it really is, or NIL."
+      (documentation 'evidence-entry-then 'function)
+      "The names of the folders below a matched one that are the evidence."
+      (documentation 'evidence-entry-targets 'function)
+      "The real paths of the folders that links the entry matches lead to."
       (documentation 'evidence-entry-links 'function) "How the links the entry matches were looked for: NIL not yet, :WHOLE, :CAPPED (not all of its folders), :ANYWHERE (not looked for; it may match anywhere)."
       (documentation 'evidence-entry-p 'function) "True when OBJECT is an EVIDENCE-ENTRY.")
 
@@ -117,7 +120,8 @@ folder counts as the folder it leads to); an error saying why it cannot be."
   (let* ((glob (nfc-name (written-folder-name given)))
          (end (glob-fixed-end glob))
          (front (if (plusp end) (string-right-trim "/" (nfc-name (real-folder-name (subseq glob 0 end)))) "")))
-    (make-evidence-entry given :glob (remove-duplicates (list glob (concatenate 'string front (subseq glob end))) :test #'string=)
+    (make-evidence-entry given :glob (remove-duplicates (list glob (concatenate 'string front (subseq glob end)))
+                                                        :test #'string=)
                          nil nil)))
 
 (defun read-folder-within (within)
@@ -153,7 +157,9 @@ whole name: it is read as \\A(?:RE)\\z."
                    (names (and then
                                (if (and (stringp then) (plusp (length then)) (char/= (char then 0) #\/))
                                    (mapcar #'nfc-name
-                                           (remove "" (uiop:split-string (string-right-trim "/" then) :separator "/") :test #'string=))
+                                           (remove ""
+                                                   (uiop:split-string (string-right-trim "/" then) :separator "/")
+                                                   :test #'string=))
                                    (refuse ":then ~s is not a folder's name, or path, inside the one matched" then)))))
                (when (intersection names '("." "..") :test #'string=)
                  (refuse ":then ~s leads out of the folder matched" then))
@@ -466,7 +472,9 @@ drive, or a folder of one, mounted in more than one place."
                     finally (return best))))
     (when here
       (destructuring-bind (device root place) here
-        (let ((inside (concatenate 'string (string-right-trim "/" root) (subseq folder (length (string-right-trim "/" place))))))
+        (let ((inside (concatenate 'string
+                                   (string-right-trim "/" root)
+                                   (subseq folder (length (string-right-trim "/" place))))))
           (loop for (other-device other-root other-place) in *mounts*
                 when (and (string= device other-device)
                           (not (and (string= root other-root) (string= place other-place)))
@@ -496,7 +504,8 @@ another (a drive mounted over it): one examination of it when kept."
          (kept (and key (gethash folder (evidence-rules-folders rules)))))
     (if (and kept (equal (cdr kept) key) (not *aliases-followed*))
         (car kept)
-        (let ((found (or (let ((entry (find-if (lambda (entry) (evidence-entry-matches-p entry folder)) (evidence-rules-entries rules))))
+        (let ((found (or (let ((entry (find-if (lambda (entry) (evidence-entry-matches-p entry folder))
+                                               (evidence-rules-entries rules))))
                            (and entry (cons folder entry)))
                          (and (string/= folder "/")
                               (folder-evidence rules (folder-above folder)))
@@ -507,16 +516,6 @@ another (a drive mounted over it): one examination of it when kept."
           (when (and key (not *aliases-followed*))
             (keep-answer rules (evidence-rules-folders rules) folder (cons found key) since))
           found))))
-
-(defun place-real-path (path)
-  "Where the place PATH names really is: the folder it is in where that
-really is (REAL-PATH-SO-FAR), with PATH's own name after it, not followed
-when it is a link; / for the root."
-  (let ((name (string-right-trim "/" (tuatara.io:native (tuatara.io:expand-path path)))))
-    (if (zerop (length name))
-        "/"
-        (let ((folder (string-right-trim "/" (tuatara.io:real-path-so-far (tuatara.io:parent-path name)))))
-          (concatenate 'string folder "/" (tuatara.io:native-file-name name))))))
 
 (defun written-evidence-match (rules written &optional (entries (evidence-rules-entries rules)))
   "The evidence folder the place WRITTEN (an absolute path as written, . and ..
@@ -551,23 +550,65 @@ one from the process's own folder, . and .. taken out."
                                name
                                (concatenate 'string (tuatara.io:slash-ended (sb-posix:getcwd)) name)))))
 
+(defun place-evidence (rules real)
+  "The evidence folder the place at REAL (a real path, its last name not
+followed) is, or is in, by RULES, as (EVIDENCE-FOLDER . ENTRY), or NIL."
+  (or (let ((entry (find-if (lambda (entry) (evidence-entry-matches-p entry real)) (evidence-rules-entries rules))))
+        (and entry (cons real entry)))
+      (if (eq :directory (tuatara.io:path-kind real :follow nil))
+          (folder-evidence rules real)
+          (and (string/= real "/")
+               (folder-evidence rules (folder-above real))))))
+
 (defun evidence-match (rules real &optional written)
   "The evidence folder the place at REAL (a real path) is, or is in, by RULES,
 as (EVIDENCE-FOLDER . ENTRY), or NIL; WRITTEN, the place as written
 \(ABSOLUTE-NATIVE), is matched too (WRITTEN-EVIDENCE-MATCH)."
   (let ((*mounts* :unread))
     (or (and written (written-evidence-match rules written))
-        (let ((entry (find-if (lambda (entry) (evidence-entry-matches-p entry real)) (evidence-rules-entries rules))))
-          (and entry (cons real entry)))
-        (if (eq :directory (tuatara.io:path-kind real :follow nil))
-            (folder-evidence rules real)
-            (and (string/= real "/")
-                 (folder-evidence rules (folder-above real)))))))
+        (place-evidence rules real))))
 
-(defun evidence-path-p (path)
+(defparameter *links-followed-most* 40
+  "The most links followed on the way along one path, as the system follows no
+more.")
+
+(defun walked-evidence-match (rules written &key follow)
+  "The evidence folder the place WRITTEN (ABSOLUTE-NATIVE) is, or is in, by
+RULES, as (EVIDENCE-FOLDER . ENTRY), or NIL. Its names are taken one at a
+time from the root, and each place is matched (PLACE-EVIDENCE) before a link
+there is read and followed, so that no link in an evidence folder is ever
+read: reading one changes its access time. Its last name is followed too with
+FOLLOW, as when what it holds is read. A name past the last that is there is
+taken as written."
+  (let ((*mounts* :unread)
+        (names (glob-components written))
+        (folder "")
+        (links 0))
+    (if (null names)
+        (place-evidence rules "/")
+        (loop while names
+              do (let ((name (pop names)))
+                   (cond ((string= name "."))
+                         ((string= name "..")
+                          (setf folder (subseq folder 0 (or (position #\/ folder :from-end t) 0))))
+                         (t (let* ((place (concatenate 'string folder "/" name))
+                                   (match (place-evidence rules place))
+                                   (target (and (null match) (or names follow) (< links *links-followed-most*)
+                                                (eq :symlink (tuatara.io:path-kind place :follow nil))
+                                                (tuatara.io:symlink-target place))))
+                              (cond (match (return match))
+                                    ((and target (plusp (length target)))
+                                     (incf links)
+                                     (setf names (append (glob-components target) names))
+                                     (when (char= (char target 0) #\/) (setf folder "")))
+                                    (t (setf folder place)))))))))))
+
+(defun evidence-path-p (path &key follow)
   "True when the file or folder at PATH is evidence (*EVIDENCE-FOLDERS*): it
 is an evidence folder, or within one, by where it really is, links on the
-way followed (its own name not, when it is a link). Two values then: the
+way followed. A link at PATH is judged by its own place, where taking it
+away writes nothing in evidence; with FOLLOW, by what it leads to as well,
+as when what it holds is read. Two values then: the
 evidence folder (a native name ending in /) and the entry of
 *EVIDENCE-FOLDERS* that makes it one, as written. NIL at once when the
 setting names no folder. A path on another machine (/ssh:HOST:/path) is told
@@ -579,7 +620,8 @@ done there asks it too (REMOTE-EVIDENCE)."
              (written (if remote path (absolute-native (tuatara.io:expand-path path))))
              (match (if remote
                         (written-evidence-match rules written)
-                        (evidence-match rules (place-real-path written) written))))
+                        (or (written-evidence-match rules written)
+                            (walked-evidence-match rules written :follow follow)))))
         (and match (values (tuatara.io:slash-ended (car match)) (evidence-entry-given (cdr match))))))))
 
 (defun evidence-words (folder entry)
@@ -601,12 +643,12 @@ evidence (EVIDENCE-PATH-P)."
 
 (defun evidence-writing-refusal (path &key dirfd fd)
   "Why nothing may be written at PATH, the words of EVIDENCE-WORDS, when it is
-evidence: told by the path as written (a relative one taken from the
-process's folder, as the system takes it) and by where the thing open as
-file descriptor (FD), or the folder open as DIRFD with PATH's name in it,
-really is, else by where PATH leads; NIL when it is not. With PATH NIL, true
-when *EVIDENCE-FOLDERS* names any folder. The core asks this before it writes
-\(TUATARA.IO:HOST-WRITING-REFUSAL)."
+evidence. The answer is told by the path as written (a relative one taken from
+the process's folder, as the system takes it). It is also told by where the
+thing open as file descriptor (FD), or the folder open as DIRFD with PATH's
+name in it, really is, else by where PATH leads. NIL when it is not. With PATH
+NIL, true when *EVIDENCE-FOLDERS* names any folder. The core asks this before
+it writes \(TUATARA.IO:HOST-WRITING-REFUSAL)."
   (let ((rules (evidence-rules)))
     (cond ((null rules) nil)
           ((null path) t)
@@ -614,9 +656,10 @@ when *EVIDENCE-FOLDERS* names any folder. The core asks this before it writes
                     (real (or (and fd (tuatara.io:fd-real-path fd))
                               (and dirfd (let ((folder (tuatara.io:fd-real-path dirfd)))
                                            (and folder (concatenate 'string (string-right-trim "/" folder) "/"
-                                                                    (tuatara.io:native-file-name written)))))
-                              (place-real-path written)))
-                    (match (evidence-match rules real written)))
+                                                                    (tuatara.io:native-file-name written)))))))
+                    (match (if real
+                               (evidence-match rules real written)
+                               (or (written-evidence-match rules written) (walked-evidence-match rules written)))))
                (and match (evidence-words (car match) (evidence-entry-given (cdr match)))))))))
 
 ;;; Folders holding evidence
@@ -631,12 +674,12 @@ with more, not all looked through, counts as holding one.")
   (remove "" (uiop:split-string path :separator "/") :test #'string=))
 
 (defun glob-holding (glob folder)
-  "What the glob GLOB of an entry says of FOLDER (a path from the root, no /
-at its end) holding a folder it matches: :YES when a folder it names exactly,
-with nothing special in it, is within FOLDER and there; :NO when it can
-match nothing within FOLDER; else the folder to look through, the deeper of
-FOLDER and the glob's fixed front, and how deep the glob reaches below it
-\(NIL for any depth, with **)."
+  "What the glob GLOB of an entry says of FOLDER (a path from the root, no / at
+its end) holding a folder it matches. The answer is :YES when a folder it names
+exactly, with nothing special in it, is within FOLDER and there. It is :NO when
+it can match nothing within FOLDER. Otherwise it is the folder to look through,
+the deeper of FOLDER and the glob's fixed front, and how deep the glob reaches
+below it \(NIL for any depth, with **)."
   (let ((end (glob-fixed-end glob)))
     (cond ((= end (length glob))
            (if (and (within-folder-p glob (list folder)) (tuatara.io:path-kind glob)) :yes :no))
@@ -715,16 +758,16 @@ links every entry matches have been looked for, all of them."
 
 (defun folder-holds-evidence-p (folder)
   "Words saying which evidence folder FOLDER is, or holds within it, or NIL.
-Told from the entries of *EVIDENCE-FOLDERS* and the links found for them
-\(ENTRY-HOLDING), for FOLDER by its path, where it really is and the paths it
-is mounted at too (FOLDER-ALIASES); the disk looked through (SEARCH-HOLDING)
-where an entry may match below one of them, and, unless the entries settle
-it (RULES-SETTLED-P: some links not looked for, or not all), FOLDER itself
-where it really is; within *EVIDENCE-HOLDING-SEARCH-FOLDERS* folders, more
-counting as holding one. Kept for each reading of the setting. On the
-editor's thread a look that would take time is made in the background,
-FOLDER counting as holding one meanwhile, said so. NIL at once when the
-setting names no folder."
+The answer comes from the entries of *EVIDENCE-FOLDERS* and the links found for
+them \(ENTRY-HOLDING), for FOLDER by its path, where it really is and the paths
+it is mounted at too (FOLDER-ALIASES). The disk is looked through
+\(SEARCH-HOLDING) where an entry may match below one of them. Unless the entries
+settle it (RULES-SETTLED-P: some links not looked for, or not all), FOLDER
+itself is looked through where it really is. This is done within
+*EVIDENCE-HOLDING-SEARCH-FOLDERS* folders, and more than that count as holding
+one. Kept for each reading of the setting. On the editor's thread a look that
+would take time is made in the background, FOLDER counting as holding one
+meanwhile, said so. NIL at once when the setting names no folder."
   (let ((rules (evidence-rules)))
     (when rules
       (let* ((folder (string-right-trim "/" (tuatara.io:native (tuatara.io:expand-path folder))))
@@ -733,9 +776,12 @@ setting names no folder."
              (since (evidence-rules-forgotten rules))
              (kept (gethash folder table :unknown)))
         (if (not (eq kept :unknown))
-            (if (eq kept :looking) (format nil "~a is being looked through for evidence folders" (abbreviated-path folder)) kept)
+            (if (eq kept :looking) (format nil
+                                           "~a is being looked through for evidence folders"
+                                           (abbreviated-path folder)) kept)
             (let* ((real (real-folder-name folder))
-                   (places (remove-duplicates (append (list folder real) (let ((*mounts* :unread)) (folder-aliases real)))
+                   (places (remove-duplicates (append (list folder real)
+                                                      (let ((*mounts* :unread)) (folder-aliases real)))
                                               :test #'string=))
                    (looks (if (rules-settled-p rules) '() (list (cons real nil))))
                    (yes nil))
@@ -789,7 +835,7 @@ told of its new one. NIL at once when the setting names no folder."
         (if (and kept (eql (first kept) *evidence-generation*) (equal (second kept) file))
             (cddr kept)
             (let ((folder (ignoring-errors-reported ("asking whether ~a is evidence" file)
-                            (evidence-path-p (tuatara.io:native file)))))
+                            (evidence-path-p (tuatara.io:native file) :follow t))))
               (setf (tuatara.buffer:buffer-local buffer :evidence) (list* *evidence-generation* file folder))
               folder))))))
 
@@ -823,7 +869,8 @@ cons of whether every folder was gone through and a table of (DEVICE . INODE)."
                                         (declare (ignore directory relative))
                                         (let ((stamp (and there (fifth there))))
                                           (when (and stamp (> (tuatara.io:stamp-nlink stamp) 1))
-                                            (setf (gethash (cons (tuatara.io:stamp-dev stamp) (tuatara.io:stamp-ino stamp))
+                                            (setf (gethash (cons (tuatara.io:stamp-dev stamp)
+                                                                 (tuatara.io:stamp-ino stamp))
                                                            table)
                                                   t)))
                                         t))
@@ -831,10 +878,10 @@ cons of whether every folder was gone through and a table of (DEVICE . INODE)."
     (cons whole table)))
 
 (defun evidence-inode-p (stamp)
-  "True when the file with STAMP, which has more than one name, may be named in an evidence folder too: when
-it is one of those found there, and while they are still looked for or could not all be (the files found
-are those under the folders the entries make evidence, looked for by a thread of its own whenever the
-rules change, never on the editor's)."
+  "True when the file with STAMP, which has more than one name, may be named in an evidence folder too. That
+is so when it is one of those found there, and while they are still looked for or could not all be. The
+files found are those under the folders the entries make evidence. They are looked for by a thread of its
+own whenever the rules change, never on the editor's."
   (let ((rules (evidence-rules)))
     (when (and rules (> (tuatara.io:stamp-nlink stamp) 1))
       (let ((answer (sb-thread:with-mutex (*evidence-inodes-lock*)
@@ -860,21 +907,13 @@ evidence does."
     (and stamp (evidence-inode-p stamp))))
 
 (defun evidence-visit-reason (path)
-  "Why the file at PATH opens safely when it is evidence, a phrase; NIL when it
-is not. A link counts when the file it leads to is evidence."
-  (flet ((reason (folder entry)
-           (let ((*print-pretty* nil))
-             (format nil "it is in the evidence folder ~a (*evidence-folders*: ~s)" (abbreviated-path folder) entry))))
-    (multiple-value-bind (folder entry) (evidence-path-p path)
-      (if folder
-          (reason folder entry)
-          (let ((leads-to (and (evidence-rules)
-                               (ignoring-errors-reported ("following the links of ~a" path)
-                                 (tuatara.io:real-path-so-far
-                                  (tuatara.io:native (tuatara.io:expand-path path)))))))
-            (when leads-to
-              (multiple-value-bind (folder entry) (evidence-path-p leads-to)
-                (and folder (reason folder entry)))))))))
+  "Why the file at PATH opens safely when it is evidence (EVIDENCE-PATH-P), a
+phrase; NIL when it is not. A link counts when the file it leads to is
+evidence."
+  (multiple-value-bind (folder entry) (evidence-path-p path :follow t)
+    (and folder
+         (let ((*print-pretty* nil))
+           (format nil "it is in the evidence folder ~a (*evidence-folders*: ~s)" (abbreviated-path folder) entry)))))
 
 (defvar *evidence-folders-seen* (list nil)
   "The value of *EVIDENCE-FOLDERS* when the buffers were last told of it, and
@@ -925,17 +964,23 @@ or BUFFER's file."
 (define-command describe-evidence ()
   "Say whether the file or folder here is evidence, and by which entry of
 *EVIDENCE-FOLDERS*: a rimu list's entry on the line, a path written at
-point, or the buffer's file. Evidence opens safely, and nothing is written
-where it is."
+point, or the buffer's file; a link is evidence when what it leads to is.
+A file with more than one name, one of which may be in an evidence folder,
+is said to be one maybe. Evidence opens safely, and nothing is written where
+it is."
   (let ((path (thing-at-point-path (current-buffer))))
     (cond ((null path) (message "Nothing here names a file or folder"))
           ((null *evidence-folders*) (message "No: *evidence-folders* names no folder (off)"))
-          (t (multiple-value-bind (folder entry) (evidence-path-p path)
-               (let ((*print-pretty* nil))
-                 (if folder
-                     (message "Yes: ~a is in the evidence folder ~a (*evidence-folders*: ~s)"
-                              (abbreviated-path path) (abbreviated-path folder) entry)
-                     (message "No: ~a is in no evidence folder" (abbreviated-path path)))))))))
+          (t (multiple-value-bind (folder entry) (evidence-path-p path :follow t)
+               (let ((*print-pretty* nil)
+                     (stamp (and (null folder) (tuatara.io:path-stamp path :failure nil))))
+                 (cond (folder
+                        (message "Yes: ~a is in the evidence folder ~a (*evidence-folders*: ~s)"
+                                 (abbreviated-path path) (abbreviated-path folder) entry))
+                       ((and stamp (eq :regular (tuatara.io:stamp-kind stamp)) (evidence-inode-p stamp))
+                        (message "Maybe: ~a has more than one name, and one may be in an evidence folder"
+                                 (abbreviated-path path)))
+                       (t (message "No: ~a is in no evidence folder" (abbreviated-path path))))))))))
 
 ;;; Copying out
 
@@ -959,25 +1004,38 @@ before its ending when that is taken; returns its path."
   (multiple-value-bind (fd path)
       (tuatara.io:create-free-file folder (lambda (n)
                                             (tuatara.io:numbered-name
-                                             (format nil "copied-from-evidence-~a.log" (tuatara.dates:format-time "%Y%m%d-%H%M%S" time))
+                                             (format nil
+                                                     "copied-from-evidence-~a.log"
+                                                     (tuatara.dates:format-time "%Y%m%d-%H%M%S" time))
                                              n))
                                    :mode #o400)
-    (unwind-protect (tuatara.io:write-octets fd (tuatara.text:string-octets (copies-log-text copies folder time)) :path path)
+    (unwind-protect (tuatara.io:write-octets fd
+                                             (tuatara.text:string-octets (copies-log-text copies folder time))
+                                             :path path)
       (sb-posix:close fd))
     path))
 
 (defun copy-from-evidence-work (pairs folder cancel logged)
   "Copy each of PAIRS, (FROM . TO), checked (COPY-FILE-CHECKED), on the thread
-calling it, stopping between files when CANCEL's car turns true; then, or
-when it stops or fails, write the log of those copied beside them in FOLDER
-\(WRITE-COPIES-LOG) and call LOGGED with its path."
+calling it. Each is told evidence by where the file opened really is (a FROM no
+longer evidence by then is refused and stops the copying). Copying stops
+between files when CANCEL's car turns true. Then, or when it stops or fails,
+the log of those copied is written beside them in FOLDER \(WRITE-COPIES-LOG)
+and LOGGED is called with its path."
   (let ((copies '()) (time (get-universal-time)))
     (unwind-protect
          (dolist (pair pairs)
            (when (car cancel) (return))
            (destructuring-bind (from . to) pair
-             (multiple-value-bind (evidence entry) (evidence-path-p from)
-               (multiple-value-bind (copy original) (copy-file-checked from to :cancel cancel)
+             (let ((evidence nil) (entry nil))
+               (multiple-value-bind (copy original)
+                   (copy-file-checked from to :cancel cancel
+                                              :check (lambda (real)
+                                                       (setf (values evidence entry) (and real (evidence-path-p real)))
+                                                       (unless evidence
+                                                         (refuse "~a leads to no evidence folder now ~
+                                                                  (*evidence-folders*): nothing copied"
+                                                                 (abbreviated-path from)))))
                  (when copy
                    (push (list from to (tuatara.io:stamp-size (tuatara.io:path-stamp to)) original copy evidence entry)
                          copies))))))
@@ -1007,7 +1065,9 @@ FOLDER; LOG, the log written beside them once done."
   (let ((log (evidence-copy-log job)))
     (if (and log (eq (tuatara.runtime:job-status job) :done))
         (message "Copied ~:d file~:p to ~a, each copy's SHA-256 checked against its original; the log is ~a"
-                 (length (evidence-copy-pairs job)) (abbreviated-path (evidence-copy-folder job)) (tuatara.io:native-file-name log))
+                 (length (evidence-copy-pairs job))
+                 (abbreviated-path (evidence-copy-folder job))
+                 (tuatara.io:native-file-name log))
         (message "Not all copied: ~a~@[; the log of those copied is ~a~]"
                  (tuatara.runtime:job-ending-words job) (and log (tuatara.io:native-file-name log))))))
 
@@ -1035,9 +1095,9 @@ folders are not copied: their files are. Copied in the background."
           ((find-if-not (lambda (path) (eq :regular (tuatara.io:path-kind path))) paths)
            (message "~a is not a file: only files are copied out (mark the files in a folder)"
                     (abbreviated-path (find-if-not (lambda (path) (eq :regular (tuatara.io:path-kind path))) paths))))
-          ((find-if-not #'evidence-path-p paths)
+          ((find-if-not (lambda (path) (evidence-path-p path :follow t)) paths)
            (message "~a is in no evidence folder (*evidence-folders*): nothing copied"
-                    (abbreviated-path (find-if-not #'evidence-path-p paths))))
+                    (abbreviated-path (find-if-not (lambda (path) (evidence-path-p path :follow t)) paths))))
           (t
            (let ((folder (read-native-path (format nil "Copy ~a out of evidence to folder: "
                                                    (rimu-question nil paths))
@@ -1047,12 +1107,15 @@ folders are not copied: their files are. Copied in the background."
                     (message "~a is no folder: nothing copied" (abbreviated-path folder)))
                    ((evidence-refusal "copy into" folder) (message "~a" (evidence-refusal "copy into" folder)))
                    (t (let* ((folder (tuatara.io:slash-ended folder))
-                             (pairs (mapcar (lambda (path) (cons path (tuatara.io:path-join folder (tuatara.io:native-file-name path))))
+                             (pairs (mapcar (lambda (path)
+                                              (cons path
+                                                    (tuatara.io:path-join folder (tuatara.io:native-file-name path))))
                                             paths))
                              (there (remove-if-not (lambda (pair) (tuatara.io:path-kind (cdr pair) :follow nil)) pairs)))
                         (if there
                             (message "Nothing copied: ~{~a~^, ~} ~:[is~;are~] in ~a already, and nothing is written over"
-                                     (mapcar (lambda (pair) (tuatara.io:native-file-name (cdr pair))) there) (rest there)
+                                     (mapcar (lambda (pair) (tuatara.io:native-file-name (cdr pair))) there)
+                                     (rest there)
                                      (abbreviated-path folder))
                             (let ((job (make-evidence-copy pairs folder)))
                               (tuatara.runtime:start-job-thread
@@ -1060,7 +1123,9 @@ folders are not copied: their files are. Copied in the background."
                                      (copy-from-evidence-work pairs folder (tuatara.runtime:job-cancel job)
                                                               (lambda (log) (setf (evidence-copy-log job) log))))
                                :name "tuatara copying out of evidence")
-                              (message "Copying ~:d file~:p out of evidence to ~a..." (length pairs) (abbreviated-path folder))))))))))))
+                              (message "Copying ~:d file~:p out of evidence to ~a..."
+                                       (length pairs)
+                                       (abbreviated-path folder))))))))))))
 
 ;;; What check-health says
 
@@ -1094,13 +1159,16 @@ or each entry with the folders it matches on disk, and those not read."
   (let ((rules (evidence-rules)) (*print-pretty* nil))
     (if (null rules)
         (list "Evidence folders: none (off)")
-        (append (list (format nil "Evidence folders: ~:d entr~:@p (*evidence-folders*)" (length (setting-list '*evidence-folders* *evidence-folders*))))
+        (append (list (format nil
+                              "Evidence folders: ~:d entr~:@p (*evidence-folders*)"
+                              (length (setting-list '*evidence-folders* *evidence-folders*))))
                 (loop for entry in (evidence-rules-entries rules)
                       collect (multiple-value-bind (found whole) (entry-folders-found entry)
                                 (format nil "  ~s: ~:[matches nothing~;~:*~a~]~:[ (not all looked through)~;~]~@[; ~a~]"
                                         (evidence-entry-given entry)
                                         (and found (format nil "~:d folder~:p, ~{~a~^, ~}~:[~;, …~]" (length found)
-                                                           (mapcar #'abbreviated-path (subseq found 0 (min 3 (length found))))
+                                                           (mapcar #'abbreviated-path
+                                                                   (subseq found 0 (min 3 (length found))))
                                                            (> (length found) 3)))
                                         whole
                                         (case (evidence-entry-links entry)

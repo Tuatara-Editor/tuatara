@@ -1,0 +1,763 @@
+#+title: The screen
+#+language: en
+
+* The screen
+
+What Tuatara shows you, and the name of each part.
+
+When Tuatara starts, its screen is divided into a few parts. Each part has a
+name, and the rest of this manual uses those names. This chapter goes through
+them from the large ones to the small ones. For each part it lists the keys
+that act on it and the settings that change how it looks.
+
+This manual is written with modal editing on, first and foremost. Tuatara has
+it on until you turn it off, so the keys the manual gives first are those of
+NORMAL state. Where a command also has a key that works with modal editing off,
+the manual gives that too.
+
+** Keys and names
+
+Most commands have a key. A key written as ~C-x~ means hold down the Control
+key and press x. A key written as ~M-x~ means hold down Alt (called Meta in
+older manuals) and press x. On a terminal where Alt does not reach the
+program, press Escape, let go, then press x. ~S-~ stands for Shift.
+
+Several keys in a row, as in ~C-x C-f~, are pressed one after the other. You
+may keep Control held down through the whole sequence. A few keys have names
+instead of letters: ~RET~ is Return (Enter), ~TAB~ is Tab, ~SPC~ is the space
+bar, ~DEL~ is the Backspace key and ~ESC~ is Escape.
+
+Every command also has a name, such as =find-file=. You can run any command by
+its name. Press ~M-x~, type a few letters of the name, and press ~RET~. The
+list of choices that appears shows the keys of each command beside it. A
+command that has no key can only be run this way, and the tables in this
+manual say ~M-x~ and its name for it.
+
+A setting is a name that starts and ends with a star, such as
+=*mode-line-tuatara*=. Settings go in your init file, the file Tuatara reads
+when it starts, as in =(setf *mode-line-tuatara* nil)=. Each table of settings
+in this chapter gives the standard value, the one Tuatara has until you
+change it.
+
+Tuatara is a modal editor, which means a key can do different things
+depending on a state the editor is in. There are two states you will meet
+first. In NORMAL state, the letter keys are commands: ~i~ starts INSERT
+state. In INSERT state, the letter keys write text. ~C-g~ or ~ESC~ takes you
+back to NORMAL state. The mode line, described below, always tells you which
+state you are in.
+
+The tables of commands have two columns of keys. The Modal column holds the
+keys of the modal layer, such as the letter keys of NORMAL state. They work only
+with modal editing on. The Non-modal column holds the keys that work in both
+states and with modal editing off: those with Control or Alt, the arrow keys
+and the keys of a major mode. A side with no key says "none". In the text, a
+key that has a partner of the other kind is followed by it in brackets, as in
+~j~ (non-modal: ~C-n~) and ~C-n~ (modal: ~j~). To turn modal editing off, put
+=(setf *modal-editing* nil)= in your init file. Every key of the Non-modal
+column then does what the table says, and typing inserts text everywhere.
+
+** The parts of the screen
+
+Figure 1.1 shows the whole editor with two windows and a question open, and
+names each part.
+
+#+caption: Figure 1.1. The parts of the screen. Frame is the name for all of it.
+#+name: fig-parts
+#+begin_example
+ +-------------------------------+  +------------------------------+
+ | eggs                          |  | Pancakes                     |  Window
+ | bread                         |  | 2 eggs, 200 g flour, milk    |
+ | milk                          |  | Mix, rest, fry.              |
+ |                               |  |                              |
+ +-------------------------------+  +------------------------------+
+ | TUATARA[N] PD [-] list.txt .. |  | TUATARA[N] PD [-] pancakes.. |  Mode line
+ +-------------------------------+  +------------------------------+
+ | 3/12 Find file: ~/notes/sh                                      |  Panel
+ | shopping.txt                                                    |
+ | sheep-notes.org                                                 |
+ +-----------------------------------------------------------------+
+ | (echo area, or the minibuffer when a question is open)          |  Last row
+ +-----------------------------------------------------------------+
+#+end_example
+
+The frame is everything Tuatara draws. In a window of its own it is that
+window, and in a terminal it is the terminal's screen.
+
+A window is a part of the frame that shows one piece of text. Each window has
+a mode line under it, a row that describes what the window shows.
+
+The echo area is the last row of the frame. Tuatara says short things there,
+such as =Wrote /home/you/list.txt=.
+
+The minibuffer is the same row when Tuatara asks you a question. The question
+is called the prompt, and what you type after it is your answer.
+
+The panel is a few rows above the last row. It lists choices while a question
+is open, and it lists the keys you can press next after a key such as ~C-x~.
+It is only there when it has something to say.
+
+The cursor is the mark that shows where typed text goes. Other editors call
+that place the point, and Tuatara's help uses the word too.
+
+The gutter is the narrow strip at the left edge of a window. It can hold line
+numbers.
+
+** Windows and buffers
+
+A buffer is a piece of text Tuatara holds in memory. When you open a file,
+Tuatara reads it into a buffer. Your changes go to the buffer, and the file on
+disk changes only when you save with ~C-x C-s~. Not every buffer has a file.
+=*Messages*=, the log of what the echo area said, is a buffer. So is the list of
+files you get from =find-file=. Buffers that Tuatara makes itself have their
+names between stars.
+
+A window is a view of one buffer. Two windows may show the same buffer, each
+at its own place, or different buffers. Closing a window never closes its
+buffer, and killing a buffer closes only the windows that were made for it.
+
+Tuatara puts new windows where you would expect. A help buffer opens in
+another window. The =*Messages*= log opens across the bottom, 30% of the
+height, and takes the cursor so that you can read it; ~q~ closes it. A window
+that already holds a buffer is never split into pieces smaller than
+=*window-min-height*= rows or =*window-min-width*= columns.
+
+#+begin_try Try it, with a shopping list and a recipe
+1. Press ~C-x C-f~, type =~/shopping.txt= and press ~RET~. The file does not
+   exist yet, so Tuatara makes an empty buffer with that name.
+2. Press ~i~ to start INSERT state. Type =eggs=, ~RET~, =bread=, ~RET~, =milk=.
+   Press ~C-g~ to go back to NORMAL state, then ~C-x C-s~ to save.
+3. Press ~C-x 3~. The window splits in two, side by side, and both show the
+   shopping list. The left window keeps the cursor.
+4. Press ~C-x o~ to move to the right window. Press ~C-x C-f~, type
+   =~/pancakes.txt=, press ~RET~, then press ~i~ and type a recipe.
+5. Press ~C-x o~ to go back to the left window. Press ~C-x 1~. The left window
+   fills the frame again. The pancake buffer is still there: press ~C-x b~,
+   type =pan= and press ~RET~ to bring it back.
+#+end_try
+
+*** Commands for windows
+
+| Modal | Non-modal              | Command                         | What it does          |
+|-------+------------------------+---------------------------------+-----------------------|
+| none  | ~C-x 2~                | =split-window-below=            | Two windows, one above the other. The upper one keeps the cursor. A number before it sets the upper window's rows. |
+| none  | ~C-x 3~                | =split-window-right=            | Two windows side by side. The left one keeps the cursor. |
+| none  | ~C-x 0~                | =delete-window=                 | Closes this window. Its room goes to its neighbour. |
+| ~F~   | ~C-x 1~                | =delete-other-windows=          | Closes all other windows. ~F~ works in NORMAL state. |
+| none  | ~C-x o~                | =other-window=                  | Moves to the next window, from the top left. A number moves that many windows on, and a negative one goes back. |
+| none  | ~C-M-h~                | =select-window-left=            | Moves to the window on the left. |
+| none  | ~C-M-l~                | =select-window-right=           | Moves to the window on the right. |
+| none  | ~C-M-k~                | =select-window-above=           | Moves to the window above. |
+| none  | ~C-M-j~                | =select-window-below=           | Moves to the window below. |
+| none  | ~q~, ~h~               | =quit-window=                   | Closes a window that was opened for a help buffer, a list or a log, or shows the buffer it had before. ~h~ works in lists. |
+| none  | ~C-x 4 0~              | =kill-buffer-and-window=        | Kills this buffer, asking first if it has unsaved changes, and closes its window. |
+| none  | ~C-x 4 b~              | =switch-to-buffer-other-window= | Asks for a buffer and shows it in another window. |
+| none  | ~C-x 4 f~, ~C-x 4 C-f~ | =find-file-other-window=        | Opens a file in another window. |
+
+*** Moving windows and changing their size
+
+| Modal | Non-modal                             | Command                               | What it does          |
+|-------+---------------------------------------+---------------------------------------+-----------------------|
+| none  | ~C-x w h~                             | =swap-window-left=                    | Swaps this window's buffer with the one on the left. The cursor goes with the buffer. |
+| none  | ~C-x w l~                             | =swap-window-right=                   | The same, with the window on the right. |
+| none  | ~C-x w k~                             | =swap-window-above=                   | The same, with the window above. |
+| none  | ~C-x w j~                             | =swap-window-below=                   | The same, with the window below. |
+| none  | ~C-x w x~                             | =window-swap-states=                  | Swaps what this window shows with the next window. |
+| none  | ~C-x w r~                             | =rotate-windows=                      | Moves each buffer to the next window. |
+| none  | ~C-x w R~                             | =rotate-windows-back=                 | Moves each buffer to the window before. |
+| none  | ~C-x w .~                             | =rotate-window-layout-clockwise=      | Turns the arrangement of windows a quarter turn clockwise. |
+| none  | ~C-x w ,~                             | =rotate-window-layout-anticlockwise=  | Turns the arrangement a quarter turn the other way. |
+| none  | ~C-x w t~                             | =transpose-window-layout=             | Windows that were stacked go side by side, and the other way round. |
+| none  | ~M-x flip-window-layout-horizontally~ | =flip-window-layout-horizontally=     | Mirrors the arrangement from left to right. |
+| none  | ~M-x flip-window-layout-vertically~   | =flip-window-layout-vertically=       | Mirrors the arrangement from top to bottom. |
+| none  | ~C-x ^~                               | =enlarge-window=                      | Makes this window a row taller, or as many rows as the number you gave first. |
+| none  | ~M-x shrink-window~                   | =shrink-window=                       | Makes this window a row shorter. Right after ~C-x ^~, ~v~ does it. |
+| none  | ~C-x }~                               | =enlarge-window-horizontally=         | Makes this window a column wider. |
+| none  | ~C-x {~                               | =shrink-window-horizontally=          | Makes this window a column narrower. |
+| none  | ~C-x +~                               | =balance-windows=                     | Gives all windows the same size. |
+| none  | ~C-x -~                               | =shrink-window-if-larger-than-buffer= | Shrinks the window to the height its text needs. |
+
+Each of the four keys that make a window larger or smaller says in the echo
+area what share of the split every window has now, in per cent. Side by side
+it reads =Widths, left to right: 52%, 48%=, and one above the other it reads
+=Heights, top to bottom: 55%, 45%=. The shares may not add up to exactly 100,
+as each is rounded. The echo area then lists the keys that repeat the change.
+Right after one of the size commands, you can press a key alone to go on
+resizing. ~}~ and ~>~ make the window wider, ~{~ and ~<~ narrower, ~^~ and ~+~
+taller, and ~v~ and ~-~ shorter. If the window has no neighbour in that
+direction, the echo area says that it cannot be made larger or smaller. With
+the mouse,
+drag a mode line up or down, or the line between two windows left or right.
+
+*** Scrolling and finding out where buffers go
+
+| Modal | Non-modal                    | Command                    | What it does           |
+|-------+------------------------------+----------------------------+------------------------|
+| none  | ~C-v~, ~<next>~              | =scroll-up-command=        | Scrolls forward by nearly a screenful. A number scrolls that many rows. |
+| none  | ~M-v~, ~<prior>~             | =scroll-down-command=      | Scrolls back by nearly a screenful. |
+| ~z z~ | ~C-l~                        | =recenter=                 | Puts the cursor's line in the middle of the window. ~z z~ works in NORMAL state. |
+| none  | ~C-M-v~                      | =scroll-other-window=      | Scrolls the next window forward. |
+| none  | ~C-M-S-v~                    | =scroll-other-window-down= | Scrolls the next window back. |
+| none  | ~<wheel-up>~, ~<wheel-down>~ | =scroll-by-wheel=          | Scrolls the window under the mouse. |
+| none  | ~M-x describe-buffer-places~ | =describe-buffer-places=   | Lists where each kind of buffer is shown. |
+
+*** Commands for buffers
+
+| Modal | Non-modal | Command               | What it does                        |
+|-------+-----------+-----------------------+-------------------------------------|
+| none  | ~C-x b~   | =switch-to-buffer=    | Asks for a buffer. A name that does not exist makes a new buffer. ~RET~ alone goes back to the last one. |
+| none  | ~C-x x b~ | =switch-other-buffer= | Goes to the buffer used before this one. Press it again to come back. |
+| none  | ~C-x C-b~ | =buffers=             | Lists every buffer, grouped by project. |
+| none  | ~C-x k~   | =kill-buffer=         | Kills this buffer, asking first if it has unsaved changes. |
+| none  | ~C-x C-s~ | =save-buffer=         | Writes the buffer to its file.      |
+
+*** Settings
+
+| Setting                   | Standard | What it changes                     |
+|---------------------------+----------+-------------------------------------|
+| =*window-min-height*=     | =4=      | The fewest rows, mode line included, a window may be left with when it is split or made smaller. |
+| =*window-min-width*=      | =10=     | The fewest columns a window may be left with. |
+| =*split-height-threshold*= | =80=    | The rows a window needs before a buffer shown "in another window" splits it into one above the other. A lone window always splits when it has room. |
+| =*split-width-threshold*= | =160=    | The columns a window needs before it is split into two side by side for the same purpose. |
+| =*help-window-select*=    | =nil=    | Set to =t= to move the cursor to a help window when it opens. ~q~ there closes it and goes back. |
+| =*scroll-margin*=         | =0=      | How many rows to keep between the cursor and the top or bottom of a window. |
+| =*scroll-recenter*=       | =nil=    | Set to =t= to put the cursor's line in the middle of the window whenever it leaves the window or comes within the margin. |
+
+** Frames, windows of their own and terminals
+
+Tuatara runs in two ways. Typed as =tuatara=, it runs in the terminal you
+started it from. Typed as =tuatara --gui=, it opens a window of its own on the
+desktop, drawn with GTK, the toolkit most Linux desktops use. Both have the
+same keys, the same commands and the same parts. The window of its own has
+things a terminal does not, such as pictures in every case, a font you can
+change and ligatures where the font has them.
+
+A frame is one such screen. You can have several frames. In a window of its
+own each frame is a separate desktop window. A terminal has only one screen,
+so its frames take turns: the one you work in is shown, and the others wait.
+When frames take turns, the mode line starts the buffer's name with the
+frame's name, F1, F2 and so on. Every frame has its own windows and its own
+echo area. They all show the same buffers, so a change you make in one frame
+is in the other at once.
+
+Tuatara can also run in the background as a daemon, started with
+=tuatara --daemon=, and be reached with =tuatara --client=, each client with
+frames of its own. The sign D in the mode line, described below, says that the
+editor you are in runs as a daemon.
+
+#+begin_try Try it, with two frames
+1. In a terminal, start Tuatara with =tuatara ~/shopping.txt=.
+2. Press ~C-x 5 2~. A second frame opens showing the same file. In a terminal
+   the new frame replaces the first on the screen, and the mode line now
+   starts the buffer's name with =F2=.
+3. Press ~C-x 5 o~ to go to the other frame, and back again with the same
+   keys. The mode line says =F1= in the first.
+4. Press ~C-x 5 0~ in the second frame to close it. Closing the last frame is
+   refused. Quit with ~C-x C-c~.
+#+end_try
+
+*** Commands for frames and the window's font
+
+| Modal | Non-modal                        | Command                        | What it does           |
+|-------+----------------------------------+--------------------------------+------------------------|
+| none  | ~C-x 5 2~                        | =make-frame=                   | Opens another frame showing this buffer. |
+| none  | ~C-x 5 0~                        | =delete-frame=                 | Closes this frame. The buffers stay. The last frame cannot be closed this way. |
+| none  | ~C-x 5 1~                        | =delete-other-frames=          | Closes all frames but this one. |
+| none  | ~C-x 5 o~                        | =other-frame=                  | Goes to the next frame. A number goes that many on, a negative one goes back. |
+| none  | ~C-x 5 f~                        | =find-file-other-frame=        | Opens a file in another frame. |
+| none  | ~C-x 5 b~                        | =switch-to-buffer-other-frame= | Shows a buffer in another frame. |
+| none  | ~C-x 5 d~                        | =rimu-other-frame=             | Lists a folder in another frame. |
+| none  | ~C-x C-+~, ~C-x C-=~             | =text-scale-adjust=            | Makes the font a step larger. After it, ~+~, ~=~, ~-~ and ~0~ alone go on. |
+| none  | ~C-x C--~                        | =text-scale-adjust=            | Makes the font a step smaller. |
+| none  | ~C-x C-0~                        | =text-scale-adjust=            | Goes back to the size the window started with. |
+| none  | ~M-x text-scale-increase~        | =text-scale-increase=          | Makes the font a step larger. |
+| none  | ~M-x text-scale-decrease~        | =text-scale-decrease=          | Makes the font a step smaller. |
+| none  | ~C-<wheel-up>~, ~C-<wheel-down>~ | =mouse-wheel-text-scale=       | Larger or smaller as the wheel turns with Control held. |
+| none  | ~M-x set-frame-font~             | =set-frame-font=               | Asks for a font family. It lasts until you quit. |
+| none  | ~<f11>~                          | =toggle-frame-fullscreen=      | Fills the screen, or goes back. |
+| none  | ~M-<f10>~                        | =toggle-frame-maximized=       | Makes the window as large as the screen allows, or goes back. |
+
+Font steps are 1.2 times each, from 0.4 to 15 times the starting size. In a
+terminal the font belongs to the terminal, and these commands say so.
+
+*** Settings
+
+| Setting                       | Standard         | What it changes         |
+|-------------------------------+------------------+-------------------------|
+| =*startup-buffer*=            | ="*lisp-scratch*"= | The buffer shown when Tuatara starts without files, either ="*lisp-scratch*"= or ="*org-scratch*"=. |
+| =*auto-scratch-buffers*=      | =("*lisp-scratch*" "*org-scratch*")= | The scratch buffers made without being asked for. |
+| =*gui-font*=                  | =nil=            | The window's font as Pango reads it, ="Adwaita Mono 12"= for one. =nil= takes the desktop's monospace font. |
+| =*gui-padding*=               | =8=              | Pixels between the window's edge and its text. One number, or a list of two, three or four, read as in CSS. |
+| =*gui-renderer*=              | =:gl=            | How the window is drawn: =:gl=, =:vulkan=, =:cairo=, or =nil= for GTK's choice. |
+| =*gui-title*=                 | ="~a - Tuatara"= | The window's title. =~a= is the name of the buffer shown. |
+| =*window-colours-from-desktop*= | =nil=          | Set to =t= to take colours the theme leaves out from the desktop's style. |
+| =*tui-padding*=               | =0=              | Cells between the terminal's edge and the text, in the same forms as =*gui-padding*=. |
+| =*tui-mouse*=                 | =t=              | Whether the mouse works in a terminal. =nil= leaves it to the terminal. |
+| =*tui-colours*=               | =:auto=          | How many colours to use in a terminal: =:auto=, =:24-bit=, =256=, =16=, =8= or =nil=. |
+| =*tui-pictures*=              | =:auto=          | Whether pictures show in a terminal: =:auto=, =t= or =nil=. |
+
+** The mode line
+
+The mode line is the bar under every window. It says what the window shows
+and in what state. The mode line of the window you are working in is drawn
+brighter than the others. Here is a typical one.
+
+#+attr_html: :screen t :ml 2 :signs PD :lit P
+#+caption: Figure 1.2. A mode line. The sign P is lit: a job is running.
+#+begin_example
+Dear Hana, thank you for the lovely weekend.
+ TUATARA[N] PD [-] letter.txt  L1 C0  Text  ~/letters/
+#+end_example
+
+Read left to right, the parts are these.
+
+1. The modal state, in square brackets after the word TUATARA.
+2. Up to four signs, P, U, S and D, always in the same place.
+3. The marker that says whether the buffer is saved, [-], [*] or [%].
+4. Words about the buffer itself, such as Safe or Narrow, when they apply.
+5. The buffer's name.
+6. The line and the column of the cursor.
+7. The name of the buffer's major mode, when it has one.
+8. Anything more the buffer has to say, such as CRLF or Page 3 of 10.
+9. The folder the buffer lives in, at the right end.
+
+Only the parts that apply are shown, and a mode line that is too narrow cuts
+the buffer's name in the middle, with a mark for what is left out.
+
+*** The modal state
+
+The first part tells you what a key will do. =TUATARA[N]= is NORMAL state,
+=TUATARA[I]= is INSERT state. =TUATARA[S]= is a support buffer, one that holds
+a list, help or the =*Messages*= log. There you can read, move and select but
+not type. =TUATARA[E]= is a buffer that holds no modal keys, such as the Lisp
+prompt (IELM). With =*modal-editing*= set to =nil= there is no
+modal part at all.
+
+With =*mode-line-tuatara*= set to =nil= the word TUATARA is left out and only
+=[N]= remains. ~C-x T t~ switches it while Tuatara runs.
+
+*** The signs P, U, S and D
+
+Four letters stand before the saved marker, side by side. Each is faint when
+nothing is going on and bright, in the warning colour, while its work goes on.
+They never move, so nothing after them jumps when one lights up. A sign stays
+lit for half a second after its work ends, so that a short job can be seen.
+
+| Sign | Setting                  | What it says                                |
+|------+--------------------------+---------------------------------------------|
+| P    | =*processing-indicator*= | Processing. A job is running for this buffer, or waits its turn. Jobs are things done in the background, such as a search through a large file, a sort or a save. ~C-x j~ lists them. |
+| U    | =*indexing-indicator*=   | Update. A folder you asked Tuatara to keep read in memory is being read. |
+| S    | =*searching-indicator*=  | Search. A search runs over such a folder. |
+| D    | =*daemon-indicator*=     | Daemon. This editor runs in the background as a daemon. |
+
+U and S only appear when =*indexed-directories*= names some folder, and P and D
+always appear. Set any of the four settings to =nil= to hide that sign, or to
+another piece of text, such as ="indexing"= or an icon from a font that has
+one, to show that instead.
+
+*** Saved or not
+
+Next comes the marker for the buffer's state.
+
+| Marker | Meaning                                                           |
+|--------+-------------------------------------------------------------------|
+| [-]    | The buffer is as it was saved or read.                            |
+| [*]    | You have changed it and not yet saved it.                         |
+| [%]    | The buffer is read-only. Typing does not change it. ~C-x C-q~ switches that. |
+
+*** Words about the buffer
+
+Just before the buffer's name, Tuatara may add a word that is lit up in a
+colour of its own.
+
+| Word        | Meaning                                                         |
+|-------------+-----------------------------------------------------------------|
+| Safe        | The file was opened safely. Tuatara shows its text and leaves the file untouched. |
+| Evidence    | The file is in a folder listed in =*evidence-folders*=. It is never written to. |
+| Narrow      | The buffer shows only a part of its text (~C-x x n~, ~C-x x s~). ~C-x x w~ shows all of it again. |
+| Look only   | The buffer belongs to a git repository opened for looking at only. Commands that would change it are refused. |
+
+*** The name, the line and the column
+
+The buffer's name follows. When it is long, it is cut in the middle and a
+mark stands for what is left out, down to 12 columns. =*mode-line-name-limit*=
+sets a shorter limit.
+
+After the name comes =L= and the line number, then =C= and the column, which
+counts from 0. A number above 999 has commas, as in =L100,000,001=. When Tuatara
+is still counting the lines of a very large file you see =L...= instead, and
+the number appears when the count is done. The same holds for a column on a
+line too long to measure at once.
+
+After them, if the buffer has a major mode, comes its name, such as Org or
+Terminal. A major mode is the set of habits Tuatara gives a buffer according to
+what it holds: how it colours text, which keys it adds, and so on.
+
+*** Other things the mode line says
+
+While keys are recorded, the word Rec stands before the signs (~C-x (~
+starts recording). While recorded keys play over and over for more than a
+second, =Played 1,200/10,000= says how many plays are done. The words below
+follow the mode name, each when it applies.
+
+| Shows                     | Meaning                                              |
+|---------------------------+------------------------------------------------------|
+| CRLF or CR                | The file's lines end the way Windows (CRLF) or old Macintosh files (CR) end them. Plain files with the usual ending show nothing. |
+| Following                 | The buffer follows its file as it grows, like =tail -f= (=follow-file=). |
+| Counting lines 40%        | Tuatara is counting the lines of a large file. |
+| Saving 50%                | A save is under way. Another buffer's save shows with its name. |
+| Changed on disk           | Another program changed the file after you read it. |
+| Deleted on disk           | The file was removed. |
+| Stale, read-only          | The file was rewritten on disk while it was shown, so the buffer is read-only. =revert-buffer= reads it again. |
+| incomplete                | A file from another machine stopped arriving before it was all there. |
+| Wrap, Centred             | The buffer wraps long lines (~C-x T l~) or shows its text in a column in the middle (~C-x T o~). |
+| Rewind a1b2c3d            | The buffer shows a file as an older git commit had it (~C-x G~). The commit's date and its place in the history follow. |
+| Conflicts 3               | The buffer holds git conflict markers, and says how many. |
+| Hex 0x00000010 digits     | The buffer shows the file's bytes. =digits= or =text= says which side the cursor is on. |
+| Page 3 of 10              | A PDF's page, the number of pages and its zoom. |
+| Sandboxed                 | What you see was made by a program shut in a sandbox. |
+| Quick edit                | A file opened from a folder list to be edited there. |
+| Filtered by kiwi: 12 of 1,000 records | A search filter hides some lines of the file. |
+| ✘2 ⚠1                    | A language server found 2 errors and 1 warning. |
+| Debug                     | Debug mode is on. |
+| SV<                       | An input method is on, here the one for Swedish. |
+| [0:22] (Task)             | The Org clock is running on a task. |
+| by time, by name          | How a folder list is sorted. |
+
+*** The folder
+
+The last part is the folder the buffer lives in, written with =~= for your home
+folder: =~/letters/=. A buffer with no file, such as a scratch buffer, shows the
+folder named by =*default-directory*=. Files on another machine show their
+=/ssh:pinetree:= path.
+
+#+begin_try Try it, with a letter
+1. Press ~C-x C-f~, type =~/letter.txt= and press ~RET~. Look at the mode line:
+   =[-]=, the name, =L1 C0=.
+2. Press ~i~, type =Dear Hana,= and press ~RET~. The mode line now says =[*]=,
+   and =TUATARA[I]=, and =L2 C0=.
+3. Press ~C-g~ to leave INSERT state, then ~C-x C-s~. The marker goes back to
+   =[-]= and the echo area says that the file was written.
+4. Press ~C-x C-q~. The marker becomes =[%]=. Now ~C-x C-q~ again.
+5. Press ~C-x T t~. The word TUATARA disappears from the mode line. Press the
+   same keys to bring it back.
+6. Press ~M-x~, type =follow-file= and press ~RET~. The word =Following=
+   appears. Run it again to stop it.
+#+end_try
+
+*** Commands
+
+| Modal | Non-modal | Command                    | What it does                     |
+|-------+-----------+----------------------------+----------------------------------|
+| none  | ~C-x T t~ | =toggle-mode-line-tuatara= | Writes TUATARA before the modal state, or only the state. |
+| none  | ~C-x C-q~ | =read-only-mode=           | Makes the buffer read-only, or editable again. |
+| none  | ~C-x j~   | =list-jobs=                | Lists the jobs running or waiting, which P stands for. |
+| none  | ~C-x J~   | =stop-job=                 | Stops the job running in this buffer, after asking. |
+
+Clicking a window's mode line with the mouse selects that window.
+
+*** Settings
+
+| Setting                   | Standard | What it changes                     |
+|---------------------------+----------+-------------------------------------|
+| =*mode-line-tuatara*=     | =t=      | Writes TUATARA before the modal state. |
+| =*modal-editing*=         | =t=      | Modal editing on. With =nil= the mode line has no state and every key types. |
+| =*mode-line-name-limit*=  | =nil=    | The most columns the buffer's name may take, or =nil= for as many as fit. |
+| =*processing-indicator*=  | ="P"=    | The sign for jobs. =nil= hides it. |
+| =*indexing-indicator*=    | ="U"=    | The sign for folders being read. |
+| =*searching-indicator*=   | ="S"=    | The sign for searches over those folders. |
+| =*daemon-indicator*=      | ="D"=    | The sign for a daemon. |
+| =*default-directory*=     | ="~/"=   | The folder of a buffer with no file. =nil= is the folder Tuatara started in. |
+| =*terminal-title-limit*=  | =40=     | The most columns of the title a program in a terminal buffer gave itself, shown in the mode line. |
+
+*** Faces
+
+A face is a name for a way of drawing text: a colour, bold, and so on. The
+theme in force, ao-dark as standard, gives each face its look. Change one in
+your init file, for example =(set-face :mode-line-sign :fg "#e0a33a")=.
+
+| Face                    | Standard | What it paints                       |
+|-------------------------+----------+--------------------------------------|
+| =:mode-line=            | theme    | The mode line of the selected window. |
+| =:mode-line-inactive=   | theme    | The mode lines of the other windows. |
+| =:mode-line-directory=  | theme    | The folder at the right end. |
+| =:mode-line-sign=       | theme    | A sign while its work goes on. |
+| =:mode-line-sign-idle=  | theme    | A sign while nothing happens. Worked out from the mode line's colours unless you set it. |
+| =:mode-line-narrowed=   | theme    | The word Narrow. |
+| =:mode-line-evidence=   | theme    | The word Evidence. |
+| =:mode-line-look-only=  | theme    | The words Look only. |
+| =:mode-line-rewind=     | theme    | Rewind and the commit's short name. |
+| =:mode-line-recording=  | theme    | Rec and Played. |
+| =:org-mode-line-clock=  | theme    | The running Org clock. |
+
+** The echo area and the messages log
+
+The echo area is the last row of the frame. Tuatara writes a short message
+there after most things you do, such as =Wrote /home/you/letter.txt=, and the
+message stays until the next key you press does something. It also shows the
+keys of a long sequence while you are typing it, and asks questions that one
+key answers, such as yes or no.
+
+Every message is also kept in the =*Messages*= buffer. A message said twice in
+a row is written once with a count, as in =Saved [3 times]=. The buffer is
+read-only, and it holds the last 1000 lines. Messages said while a password or
+other secret was at hand are shown but not kept.
+
+~C-h e~ opens the log across the bottom of the frame, 30% of the height,
+with the cursor in it. It is a read-only buffer, so ~q~ closes it. The log
+is the place to look when a message went by too fast.
+
+#+begin_try Try it, with a message gone by
+1. Press ~C-x C-f~, open =~/shopping.txt=, press ~i~, type =tea= and press
+   ~C-g~. Then press ~C-x C-s~. The echo area says that the file was written
+   (on a file with no change it says that no changes need to be saved). The
+   message disappears when you press the next key.
+2. Press ~C-h e~. The log opens at the bottom with the message in its last
+   line. Press ~q~ to close it.
+3. Press ~C-h N~ to read the notifications Tuatara or its packages have given
+   this session, for example when an agenda entry's time came.
+#+end_try
+
+*** Commands
+
+| Modal | Non-modal | Command                   | What it does                     |
+|-------+-----------+---------------------------+----------------------------------|
+| none  | ~C-h e~   | =view-echo-area-messages= | Shows the =*Messages*= log.      |
+| none  | ~C-h N~   | =view-notifications=      | Shows the =*Notifications*= log, each line dated. |
+| none  | ~C-g~     | =keyboard-quit=           | Stops what is going on, drops a selection and closes a question. |
+
+*** Settings
+
+| Setting              | Standard | What it changes                          |
+|----------------------+----------+------------------------------------------|
+| =*message-log-max*=  | =1000=   | Lines =*Messages*= keeps. The oldest go first. =nil= keeps none. |
+| =*lsp-hover-echo*=   | =t=      | Shows in the echo area what the thing under the cursor is, as a language server knows it. |
+| =*escape-quits*=     | =nil=    | Set to =t= to have ~ESC~ do what ~C-g~ does everywhere. |
+| =*help-window-select*= | =nil=  | See the settings for windows. |
+
+** The minibuffer and its prompt
+
+When a command needs something from you, a file name, a word to search for, a
+yes or no, it asks in the last row of the frame. That row is then called the
+minibuffer. The words that ask are the prompt, such as =Find file:=, and
+your answer follows it. The prompt is drawn in bold. A frame that has a
+question open keeps its window text where it was, and its cursor is drawn as
+an outline there while you type in the row below.
+
+Press ~RET~ to give the answer, or ~C-g~ or ~ESC~ to give up. Before the prompt
+Tuatara may show a count, such as =3/12=, which means the third of twelve
+choices. A search shows which match the cursor is at and how many there are.
+=*/0= means nothing matches but what you typed can be taken, and =!/0= means it
+cannot.
+
+You edit the answer with keys much like the ones in a text buffer. These keys
+work only while a question is open, so =M-x= does not list their commands.
+
+| Modal | Non-modal                  | Command                           | What it does           |
+|-------+----------------------------+-----------------------------------+------------------------|
+| none  | ~RET~                      | =minibuffer-finish=               | Gives the answer, taking the selected choice if there is one. |
+| none  | ~C-j~, ~M-RET~             | =minibuffer-submit-input=         | Gives the answer exactly as typed, whatever is selected. |
+| none  | ~C-g~, ~ESC~               | =minibuffer-cancel=               | Gives up the question. |
+| none  | ~DEL~, ~C-h~               | =minibuffer-backward-delete-char= | Deletes the character before the cursor. |
+| none  | ~C-b~, ~<left>~            | =minibuffer-backward-char=        | Moves the cursor left. |
+| none  | ~C-f~, ~<right>~           | =minibuffer-forward-char=         | Moves the cursor right. |
+| none  | ~C-a~, ~<home>~            | =minibuffer-beginning=            | Moves to the start of the answer. |
+| none  | ~C-e~, ~<end>~             | =minibuffer-end=                  | Moves to the end of the answer. |
+| none  | ~C-k~                      | =minibuffer-kill-line=            | Deletes the answer after the cursor. |
+| none  | ~C-u~                      | =minibuffer-clear=                | Clears the answer. The prompt stays. |
+| none  | ~C-<backspace>~, ~M-DEL~   | =minibuffer-backward-kill-word=   | Deletes the word before the cursor. |
+| none  | ~C-y~, ~C-V~, ~S-<insert>~ | =minibuffer-paste=                | Pastes the clipboard, or what you cut last. |
+| none  | ~M-p~                      | =minibuffer-previous-history=     | Brings back an earlier answer to this question. |
+| none  | ~M-n~                      | =minibuffer-next-history=         | Goes to a later answer. |
+
+A question the editor thinks is risky, such as deleting a file, needs the
+whole word yes or no and then ~RET~. A question whose answer is easy to undo
+takes one key. A password is typed with stars shown, and is never kept.
+
+A question that offers a text to start with selects it, so that typing
+replaces it and ~RET~ takes it.
+
+*** Settings
+
+| Setting                | Standard | What it changes                        |
+|------------------------+----------+----------------------------------------|
+| =*show-completion-count*= | =t=   | Shows the place of the selected choice and how many there are before the prompt. |
+| =*prompt-above-candidates*= | =t= | Shows the prompt above the list of choices. =nil= puts it on the last row, under them. |
+| =*last-used-first*=    | =t=      | Questions for a file or folder start where you chose last and list that entry first. |
+
+*** Faces
+
+| Face                  | Standard | What it paints                         |
+|-----------------------+----------+----------------------------------------|
+| =:minibuffer-prompt=  | theme    | The prompt. |
+| =:cursor=             | theme    | The cursor in a window of Tuatara's own. |
+| =:cursor-inactive=    | theme    | The cursor in a window that does not get the typing. |
+
+** The choices panel
+
+When a question has a list of answers, Tuatara shows them in the panel above
+the last row, and narrows them as you type. Completing means finishing your
+answer from that list. Type any part of a name. Several words may be typed,
+and a choice has to match all of them, in any order. The letters that matched
+are coloured, one colour for each word.
+
+#+attr_html: :screen t :ml 2 :pr 3 :signs PD
+#+caption: Figure 1.3. Choosing a file. The prompt is above the choices.
+#+begin_example
+Mix the batter and let it rest.
+ TUATARA[N] PD [-] pancakes.txt  L2 C0  Text  ~/notes/
+  2/3  Find file: ~/notes/sh
+  shed-plan.txt
+  shopping.txt
+  sheep-notes.org
+#+end_example
+
+The selected choice is drawn reversed. ~C-n~ or ~<down>~ select the next one and
+~C-p~ or ~<up>~ the one before. Above the first one is the line you typed, when
+what you typed can be taken as it is. ~TAB~ puts the selected choice into the
+answer. For a file name it replaces the part after the last slash, and for a
+folder it goes into the folder, so that you can walk down a path with ~TAB~.
+~RET~ gives the selected choice, and ~C-j~ gives what you typed.
+
+At most 10 rows are used for the panel, the prompt row included. When there
+are more choices, ~M-t~ makes the panel as tall as the frame allows, and
+again as usual. A choice may
+have a note beside it, such as the keys of a command, the mode of a buffer or
+the permissions of a file. A title with a line beside it begins a group, such
+as the folder that the files under it are in.
+
+#+begin_try Try it, with a folder of notes
+1. Press ~C-x C-f~. Tuatara starts where you chose last and lists what is there.
+2. Type =~/= and look at the panel. Each choice is a file or a folder.
+3. Type a few letters of a file's name. The list shrinks.
+4. Press ~C-n~ twice and ~C-p~ once. The marked line moves.
+5. Press ~TAB~. The name is put into the answer. If it was a folder, its
+   contents are listed.
+6. Press ~M-t~. The panel grows. Press it again to shrink it.
+7. Press ~C-g~ to give up.
+#+end_try
+
+*** Commands
+
+| Modal | Non-modal               | Command                         | What it does       |
+|-------+-------------------------+---------------------------------+--------------------|
+| none  | ~C-n~, ~<down>~         | =minibuffer-next-candidate=     | Selects the next choice. |
+| none  | ~C-p~, ~<up>~           | =minibuffer-previous-candidate= | Selects the previous choice. |
+| none  | ~TAB~, ~C-M-i~, ~M-TAB~ | =minibuffer-complete=           | Puts the selected choice into the answer. In a Lisp question it lists the names that fit the word at the cursor. |
+| none  | ~M-t~                   | =minibuffer-toggle-tall=        | Makes the panel as tall as it can be, or as usual. |
+
+*** Settings
+
+The settings for the prompt, =*prompt-above-candidates*= and
+=*show-completion-count*=, are in the table in the section before this one.
+
+| Face                         | Standard | What it paints             |
+|------------------------------+----------+----------------------------|
+| =:completion-selected=       | theme    | The selected choice. |
+| =:completion-annotation=     | theme    | Notes beside choices. |
+| =:completion-group-title=    | theme    | The title of a group of choices. |
+| =:completion-group-line=     | theme    | The line beside a title. |
+| =:completion-match-0=        | theme    | What the first word typed matches. |
+| =:completion-match-1=        | theme    | What the second word matches. |
+| =:completion-match-2=        | theme    | What the third word matches. |
+| =:completion-match-3=        | theme    | What the fourth and later words match. |
+| =:completion-key=            | theme    | The keys beside commands. |
+| =:completion-major-mode=     | theme    | The major mode beside a buffer. |
+| =:completion-modified=       | theme    | The mark beside a buffer with unsaved changes. |
+| =:completion-safe=           | theme    | The mark beside a file that opens safely. |
+
+** Key hints
+
+Press ~C-x~ and wait. The panel lists every key that can follow, with the
+name of its command, so you do not have to remember them. Names that start
+with a plus sign, such as =+rectangles and registers=, are further prefixes,
+and pressing their key opens another list. A key whose command cannot run in
+this buffer is dimmed, and pressing it says why. ~C-h~ right after a prefix
+key lists every key under it in a buffer of its own. ~C-g~ closes the hints.
+
+The hints take as many rows as the frame has room for, and the echo area
+stays under them. If they do not all fit, the last row ends in =... C-h lists
+all=.
+
+#+begin_try Try it, with the keys under C-x
+1. Press ~C-x~ and wait a moment. The panel appears with keys such as =C-f=,
+   =C-s= and =5=.
+2. Press ~5~. The panel changes to the keys under ~C-x 5~, the ones for frames.
+3. Press ~C-g~. The hints close and nothing was run.
+4. Press ~C-x~ and then ~C-h~. A buffer lists all the keys under ~C-x~.
+#+end_try
+
+*** Commands
+
+| Modal | Non-modal            | Command                    | What it does                      |
+|-------+----------------------+----------------------------+-----------------------------------|
+| none  | ~C-h~ after a prefix | none                       | Lists every key under the prefix in a buffer. |
+| none  | ~M-x~                | =execute-extended-command= | Asks for a command by name, with its keys beside each choice. |
+
+*** Settings
+
+| Setting             | Standard | What it changes                         |
+|---------------------+----------+-----------------------------------------|
+| =*key-hint-rows*=   | =nil=    | The most rows for the hints, the echo row included. =nil= takes all the room. |
+
+| Face                    | Standard | What it paints                     |
+|-------------------------+----------+------------------------------------|
+| =:key-hint-key=         | theme    | The keys. |
+| =:key-hint-command=     | theme    | The command names. |
+| =:key-hint-prefix=      | theme    | The names of prefixes. |
+| =:key-hint-unavailable= | theme    | Keys whose command cannot run here. |
+| =:help-key-binding=     | theme    | Keys named in help and messages. |
+
+** The cursor, the gutter and header lines
+
+The cursor is drawn as a block as standard. A bar or an underline can be
+chosen, and each modal state may have its own shape and colour, so that you
+see at once whether you are in NORMAL or INSERT state. In a window that does
+not get the typing the cursor is drawn as an outline in a window of its own
+and as an underline in a terminal.
+
+The gutter is on the left edge of a window. It is empty as standard. Line
+numbers appear in it when you ask: ~M-x toggle-line-numbers~ goes through none,
+absolute and relative, where relative numbers show how many lines away each
+line is. Where a long line wraps, the gutter shows a mark beside the extra
+rows.
+
+Tuatara has no tab bar. Buffers are reached by name (~C-x b~) or from the list
+(~C-x C-b~). A window can have a header line at its top. A file of records,
+such as a CSV, can keep its first row, the header, at the top of the window
+while the rest scrolls under it.
+
+*** Commands
+
+| Modal | Non-modal                                | Command                              | What it does                |
+|-------+------------------------------------------+--------------------------------------+-----------------------------|
+| none  | ~M-x toggle-line-numbers~                | =toggle-line-numbers=                | Goes through no numbers, absolute and relative in this buffer. |
+| none  | ~M-x display-line-numbers-mode~          | =display-line-numbers-mode=          | Absolute line numbers on or off. |
+| none  | ~M-x display-relative-line-numbers-mode~ | =display-relative-line-numbers-mode= | Relative line numbers on or off. |
+| none  | ~M-x global-display-line-numbers-mode~   | =global-display-line-numbers-mode=   | The same for every buffer.  |
+| none  | ~C-x / t~                                | =list-toggle-header=                 | Takes the first line of a file of records as its header, or as a record. |
+| none  | ~C-x / L~                                | =list-toggle-header-lock=            | Keeps the header at the top of the window while the rest scrolls. |
+
+*** Settings
+
+| Setting                        | Standard | What it changes              |
+|--------------------------------+----------+------------------------------|
+| =*cursor-shape*=               | =:block= | The cursor's shape: =:block=, =:bar= or =:underline=. |
+| =*cursor-colour*=              | =nil=    | The cursor's colour. =nil= uses the text's colour. |
+| =*tuatara-normal-cursor-shape*= | =nil=   | The shape in NORMAL state. =nil= uses =*cursor-shape*=. |
+| =*tuatara-normal-cursor-colour*= | =nil=  | The colour in NORMAL state. |
+| =*tuatara-insert-cursor-shape*= | =nil=   | The shape in INSERT state. |
+| =*tuatara-insert-cursor-colour*= | =nil=  | The colour in INSERT state. |
+| =*tuatara-support-cursor-shape*= | =nil=  | The shape in lists, help and the log. |
+| =*tuatara-support-cursor-colour*= | =nil= | The colour in those buffers. |
+| =*line-numbers-default*=       | =nil=    | Line numbers for buffers that did not choose: =nil=, =:absolute= or =:relative=. |
+| =*line-numbers-modes*=         | =nil=    | Line numbers by major mode, such as =((prog-mode . :relative))=. |
+| =*soft-wrap-indicator*=        | ="↪"=    | The gutter's mark beside a wrapped row. =nil= for none. |
+| =*list-header-lock*=           | =nil=    | Keeps a header at the top wherever there is one. |
+| =*csv-header*=                 | =t=      | Takes a CSV's first line as its header. |
+
+| Face                | Standard | What it paints                          |
+|---------------------+----------+-----------------------------------------|
+| =:line-number=      | theme    | The line numbers. |
+| =:wrap-indicator=   | theme    | The mark beside a wrapped row. |
+| =:header-line=      | theme    | The header of a list or a table. |
+| =:vertical-border=  | theme    | The line between windows side by side. |

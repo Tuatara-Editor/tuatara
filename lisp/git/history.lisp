@@ -177,7 +177,8 @@ of the list's path doing BODY, a shell command where $1 is that path."
 
 (defun git-rebase-todo-lines (text)
   "The lines of a rebase's list TEXT that are not comments or empty."
-  (remove-if (lambda (line) (let ((l (string-left-trim '(#\Space #\Tab) line))) (or (zerop (length l)) (char= (char l 0) #\#))))
+  (remove-if (lambda (line)
+               (let ((l (string-left-trim '(#\Space #\Tab) line))) (or (zerop (length l)) (char= (char l 0) #\#))))
              (uiop:split-string text :separator '(#\Newline))))
 
 (defun git-reword-line-p (line)
@@ -194,11 +195,12 @@ would read as an option (beginning with -)."
 
 (define-command git-rebase-interactive ()
   "Rebase the commits after a revision asked for (the commit on point's line
-first) as a list says: git's own list of them is shown to change, a line a
+first) as a list says. Git's own list of them is shown to change, a line a
 commit, pick keeping one, reword giving it a new subject, edit stopping at
 it, squash and fixup folding it into the one above, drop leaving it out,
-the lines in the order wanted. \\<git-rebase-mode>\\[git-rebase-todo-finish] rebases as the list says, \\[git-rebase-todo-cancel] gives it up.
-The rebase menu's switches go with it (--autosquash orders fixups first)."
+the lines in the order wanted. \\<git-rebase-mode>\\[git-rebase-todo-finish]
+rebases as the list says, \\[git-rebase-todo-cancel] gives it up. The rebase
+menu's switches go with it (--autosquash orders fixups first)."
   (with-git-repository (top switches)
     (git-ask-revision "Rebase the commits after: " top
                       (lambda (base)
@@ -269,7 +271,8 @@ list's folder, the new messages in it, is deleted once git is done."
                                                  (body (git-output-line job top (list "log" "-1" "--format=%b" "--end-of-options" hash)))
                                                  (file (format nil "~amessage-~d" folder (incf n))))
                                             (tuatara.io:write-private-file
-                                             file (format nil "~a~@[~%~%~a~]~%" subject (and (plusp (length body)) body)))
+                                             file
+                                             (format nil "~a~@[~%~%~a~]~%" subject (and (plusp (length body)) body)))
                                             ;; the commit made as it was, then its message replaced, a line
                                             ;; beginning with # kept, an empty commit amended as it is
                                             (format out "pick ~a~%exec git commit --amend --only --allow-empty --cleanup=whitespace -F ~a~%"

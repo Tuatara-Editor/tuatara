@@ -46,8 +46,8 @@ repository's address or a folder of your disk (PACKAGE-SOURCE sets them).")
 
 (defun package-line (entry)
   "The line of the packages file for ENTRY, (KEY COMMIT TAG ACCEPTED PREVIOUS
-PREVIOUS-TAG SIGNER), COMMIT being a dash for a folder of your disk, PREVIOUS
-the commit taken before it and kept to fall back on, or NIL, and SIGNER who
+PREVIOUS-TAG SIGNER). COMMIT is a dash for a folder of your disk. PREVIOUS is
+the commit taken before it and kept to fall back on, or NIL. SIGNER is who
 signed COMMIT as git checked it when it was taken, a key's fingerprint or
 \"unsigned\", or NIL when not known."
   (destructuring-bind (key commit tag accepted &optional previous previous-tag signer) entry
@@ -70,7 +70,9 @@ are passed over (STATE-LINE-FIELDS)."
           (let ((previous (and previous (plusp (length previous)) previous))
                 (signer (and signer (plusp (length signer)) signer)))
             (and (plusp (length key)) (commit-p commit) (or (null previous) (commit-p previous))
-                 (or (null signer) (string= signer "unsigned") (cl-ppcre:scan "^(?:SHA256:[A-Za-z0-9+/=]+|[0-9A-F]{40,64})$" signer))
+                 (or (null signer)
+                     (string= signer "unsigned")
+                     (cl-ppcre:scan "^(?:SHA256:[A-Za-z0-9+/=]+|[0-9A-F]{40,64})$" signer))
                  (list (unescape-path key) commit (tag tag) (string= accepted "yes")
                        previous (and previous previous-tag (tag previous-tag)) signer))))))))
 
@@ -163,7 +165,8 @@ list of fingerprints."
 transport that no load-package allowed with :plain t, with how to allow it;
 NIL when WHERE needs no allowing or is allowed."
   (when (and (plain-transport-p where) (not (member (cons name where) *package-plain-allowed* :test #'equal)))
-    (format nil "The package ~a is not fetched from ~a: over http:// or git:// anyone on the way can read and change it. ~
+    (format nil
+            "The package ~a is not fetched from ~a: over http:// or git:// anyone on the way can read and change it. ~
                  Use https://, ssh or a folder of your disk, or allow this source by adding :plain t to its load-package"
             name where)))
 
@@ -178,10 +181,10 @@ folder, is."
 
 (defun check-package-where (where)
   "Signal an error unless WHERE, a package's source, is an address or a folder
-named whole (/ or ~/ first): one named from the folder Tuatara starts in would
-be another folder at each start, one that starts with - would be read by git
-as an option, and a line of the lists of packages that starts with @ is of a
-kind a later release adds."
+named whole (/ or ~/ first). One named from the folder Tuatara starts in would
+be another folder at each start. One that starts with - would be read by git
+as an option. A line of the lists of packages that starts with @ is of a kind
+a later release adds."
   (unless (and (stringp where) (plusp (length where)))
     (refuse "A package's source is an address or a folder: ~s" where))
   (when (char= (char where 0) #\-)
@@ -291,7 +294,8 @@ each (NAME COMMAND . FUNCTION): FUNCTION runs COMMAND of the package NAME.")
   "While the init file is read, the packages loaded meanwhile, each (NAME .
 MILLISECONDS), after :START; NIL otherwise.")
 
-(defparameter *load-package-keywords* '(:source :version :file :folder :signers :plain :disabled :if :defer :after :commands :modes :init :config)
+(defparameter *load-package-keywords*
+  '(:source :version :file :folder :signers :plain :disabled :if :defer :after :commands :modes :init :config)
   "What load-package takes after a package's name, each followed by its value
 or, for :commands, :modes, :init and :config, by any number of them.")
 
@@ -311,7 +315,8 @@ there is said to be inside this one, a parenthesis left open before it."
                        (refuse "load-package's ~(~s~) takes one value, not also ~s" key extra))))
                (setf (getf parsed key) (reverse items)))))
       (dolist (item options)
-        (if (and (keywordp item) (or (member item *load-package-keywords*) (null key) (not (member key '(:init :config)))))
+        (if (and (keywordp item)
+                 (or (member item *load-package-keywords*) (null key) (not (member key '(:init :config)))))
             (progn
               (unless (member item *load-package-keywords*)
                 (refuse "load-package takes ~{~(~s~)~^, ~}, not ~(~s~)" *load-package-keywords* item))
@@ -397,7 +402,8 @@ the others still evaluated."
       (handler-case (reporting-errors ("evaluating ~a's ~(~s~)" name what)
                       (handler-bind ((warning #'muffle-warning)) (eval form)))
         (error (e)
-          (message "~a's ~(~s~): ~a failed: ~a" name what (let ((*print-length* 4) (*print-level* 2)) (prin1-to-string form)) e))))))
+          (message "~a's ~(~s~): ~a failed: ~a" name what (let ((*print-length* 4) (*print-level* 2))
+                                                            (prin1-to-string form)) e))))))
 
 (defun package-loaded-p (name)
   "True when the package NAME has loaded this session."
@@ -487,10 +493,10 @@ returned is returned, or NIL."
 
 (defun package-command-stub (command name start)
   "Make COMMAND, a command of the package NAME not loaded yet, one that calls
-START to load it and then runs the command the package has of that name: at
-once when the package loads at once, else once it has (asked about first, or
-fetched), or saying why it could not load; a command of that name there is
-already is left as it is."
+START to load it and then runs the command the package has of that name. It
+runs at once when the package loads at once. Otherwise it runs once the
+package has loaded (asked about first, or fetched), or says why it could not
+load. A command of that name there is already is left as it is."
   (unless (find-command (symbol-name command))
     (let (stub)
       (labels ((real ()
@@ -512,7 +518,8 @@ already is left as it is."
                        (cond ((run-real))
                              (failure (message "~(~a~) is of the package ~a, which could not be loaded: ~a" command name failure))
                              (t (setf *commands-after-load*
-                                      (cons (list* name command #'run-real) (remove command *commands-after-load* :key #'second)))
+                                      (cons (list* name command #'run-real)
+                                            (remove command *commands-after-load* :key #'second)))
                                 (message "~(~a~) runs once the package ~a has loaded~:[~; (being fetched)~]"
                                          command name (member name *fetching-packages* :test #'string=)))))))
         (setf (symbol-function command) stub
@@ -566,7 +573,8 @@ changed once at most), case ignored."
     (loop for i from 1 to (length a)
           do (loop for j from 1 to (length b)
                    do (let ((cost (if (char-equal (char a (1- i)) (char b (1- j))) 0 1)))
-                        (setf (aref d i j) (min (1+ (aref d (1- i) j)) (1+ (aref d i (1- j))) (+ (aref d (1- i) (1- j)) cost)))
+                        (setf (aref d i j)
+                              (min (1+ (aref d (1- i) j)) (1+ (aref d i (1- j))) (+ (aref d (1- i) (1- j)) cost)))
                         (when (and (> i 1) (> j 1)
                                    (char-equal (char a (1- i)) (char b (- j 2)))
                                    (char-equal (char a (- i 2)) (char b (1- j))))
@@ -584,7 +592,8 @@ of four letters or fewer, two for a longer one."
                                               (if (uiop:string-suffix-p text "-mode") (subseq text 0 (- (length text) 5)) text)))
                              (mode-names))))))
 
-(defun declare-package (name &key left-out source version file folder signers plain defer after commands modes init config)
+(defun declare-package
+    (name &key left-out source version file folder signers plain defer after commands modes init config)
   "Load the package NAME as LOAD-PACKAGE says, each keyword as it takes it,
 INIT and CONFIG the forms after :init and :config; LEFT-OUT :disabled or :if
 when the block is left out, said in *Messages*. A package removed
@@ -663,13 +672,16 @@ loaded later, and which wait for a package no load-package names."
     (multiple-value-prog1 (funcall read)
       (let ((times (rest *start-package-times*)))
         (when (or times *deferred-packages* *fetching-packages*)
-          (log-message (format nil "Packages: ~d loaded in ~d ms~[~:;, ~:*~d to load later~]~[~:;, ~:*~d being fetched~]"
+          (log-message (format nil
+                               "Packages: ~d loaded in ~d ms~[~:;, ~:*~d to load later~]~[~:;, ~:*~d being fetched~]"
                                (length times) (reduce #'+ times :key #'cdr)
                                (length *deferred-packages*) (length *fetching-packages*))))
         (dolist (waiting *packages-waiting*)
           (unless (or (declared-package (car waiting))
                       (member (car waiting) *deferred-packages* :test #'string=))
-            (message "~a waits for ~a (:after), which no load-package before it or after it names" (second waiting) (car waiting))))))))
+            (message "~a waits for ~a (:after), which no load-package before it or after it names"
+                     (second waiting)
+                     (car waiting))))))))
 
 ;;; Loading what is there
 
@@ -725,7 +737,8 @@ one of a folder of yours."
 folder, or the folder of the file being loaded when no package is. A package
 names its own files so, as where it is loaded from is the cache's."
   (merge-pathnames name (or *package-folder*
-                            (and *load-truename* (make-pathname :name nil :type nil :version nil :defaults *load-truename*))
+                            (and *load-truename*
+                                 (make-pathname :name nil :type nil :version nil :defaults *load-truename*))
                             *default-pathname-defaults*)))
 
 (defun compile-failure-words (report)
@@ -881,18 +894,18 @@ when that is not one of OWN, the package's own Lisp packages."
 
 (defun forget-package-code (own &optional folder)
   "Take out of Tuatara what the code of the Lisp packages OWN, loaded from
-FOLDER when given, put there, and delete them: their jobs running, of their
-own kinds, asked to stop; their modes, a buffer in one of them put in the
-mode its file calls for, or fundamental-mode; their commands, and those whose
-function is theirs; the keys bound to their commands, with their labels; the
-places they gave commands to run in (COMMANDS-FOR-MODE), Tuatara's own among
-them; their ways of showing text (DEFINE-DISPLAY-TOGGLE); their functions on
-the lists of functions Tuatara calls (*FILE-VIEWS*, *TICK-FUNCTIONS* and the
-rest); their methods of Tuatara's generic functions; and their settings,
-which are settings no more, their values kept for when they load again.
-Their faces stay, doing nothing. A function is theirs when one of their
-symbols names it, or it was made in one of their functions or by a file of
-FOLDER."
+FOLDER when given, put there, and delete them. Their jobs running, of their
+own kinds, are asked to stop. Their modes go, a buffer in one of them put in
+the mode its file calls for, or fundamental-mode. Their commands go, and those
+whose function is theirs. The keys bound to their commands go, with their
+labels. The places they gave commands to run in (COMMANDS-FOR-MODE) go,
+Tuatara's own among them. Their ways of showing text (DEFINE-DISPLAY-TOGGLE)
+go. Their functions on the lists of functions Tuatara calls (*FILE-VIEWS*,
+*TICK-FUNCTIONS* and the rest) go, and so do their methods of Tuatara's
+generic functions. Their settings are settings no more, their values kept for
+when they load again. Their faces stay, doing nothing. A function is theirs
+when one of their symbols names it, or it was made in one of their functions
+or by a file of FOLDER."
   (when own
     (labels ((own-p (name)
                (typecase name
@@ -1042,7 +1055,8 @@ file of the package (LOAD-CHECKED-FILE); NIL otherwise.")
 (define-condition package-load-stopped (error)
   ((name :initarg :name :reader package-load-stopped-name))
   (:report (lambda (condition stream)
-             (format stream "The package ~a is half loaded; restart Tuatara before using it (its commands are taken out)"
+             (format stream
+                     "The package ~a is half loaded; restart Tuatara before using it (its commands are taken out)"
                      (package-load-stopped-name condition))))
   (:documentation "Signalled when the loading of the package NAME was stopped between two of
 its files: what of it loaded is taken out (FORGET-PACKAGE-CODE), its
@@ -1314,7 +1328,10 @@ THEN at once with *PACKAGE-ASK-BEFORE-LOADING* NIL."
                                            '(#\y #\n #\v) :fresh t)
               (quit () nil))
         (#\y (funcall then))
-        (#\v (rimu-show-directory (tuatara.io:native folder) :safe t :root (tuatara.io:native folder) :back (current-buffer))
+        (#\v (rimu-show-directory (tuatara.io:native folder)
+                                  :safe t
+                                  :root (tuatara.io:native folder)
+                                  :back (current-buffer))
          (message (substitute-command-keys "~a is shown; load-package asks again at the next start, \\[package-update] now" :for-format t)
                   name))
         (#\n (message "The package ~a is not loaded" name))
@@ -1324,7 +1341,11 @@ THEN at once with *PACKAGE-ASK-BEFORE-LOADING* NIL."
 
 (defun git-for-packages ()
   "The git program packages are fetched with, or an error saying it is missing."
-  (or (tuatara.io:find-program "git") (tuatara.io:program-missing "git" :why (format nil "packages are fetched with it: ~a" (outside-program-install-words :git)))))
+  (or (tuatara.io:find-program "git")
+      (tuatara.io:program-missing "git"
+                                  :why (format nil
+                                               "packages are fetched with it: ~a"
+                                               (outside-program-install-words :git)))))
 
 (defvar *package-plain-transport* nil
   "True while a package whose load-package allows http:// or git:// (:plain
@@ -1337,13 +1358,13 @@ before it is ended.")
 
 (defun package-git-environment ()
   "What git is given when it fetches and checks packages, what it is given to
-push and pull now (GIT-NETWORK-ENVIRONMENT), and besides: no hooks, no
-submodules, no attributes file of yours, and none of the system's, so that
-none of your own git's programs runs on a package; symbolic links in a
-package checked out as small files of their target's name, never leading
-outside it; git-lfs's filters, which would ask other servers, left out; ftp
-never, and http:// and git:// not unless *PACKAGE-PLAIN-TRANSPORT*, however
-a server redirects."
+push and pull now (GIT-NETWORK-ENVIRONMENT), and besides this. There are no
+hooks, no submodules, no attributes file of yours, and none of the system's,
+so that none of your own git's programs runs on a package. Symbolic links in a
+package are checked out as small files of their target's name, never leading
+outside it. The filters of git-lfs, which would ask other servers, are left
+out. ftp is never used, and http:// and git:// are not unless
+*PACKAGE-PLAIN-TRANSPORT*, however a server redirects."
   (append (apply #'git-network-environment
                  '("core.symlinks" "false") '("filter.lfs.smudge" "") '("filter.lfs.process" "")
                  '("filter.lfs.required" "false") '("core.hooksPath" "/dev/null") '("submodule.recurse" "false")
@@ -1387,12 +1408,13 @@ one (GIT-HASH-P, 7 to 64 hexadecimal digits); an error otherwise."
 
 (defun package-commit (directory where version)
   "The commit, and its tag or NIL, VERSION of the repository at WHERE is,
-asking it from DIRECTORY, a repository of no commit made for it: \"latest\",
-its main branch's newest commit; \"release\", its newest tag by date, its
-name never read; NIL, the same, or its newest commit when it has no tag; else
-that tag, branch or commit as written. Every commit's name is checked to be
-one (PACKAGE-COMMIT-NAME)."
-  (labels ((first-word (text) (first (uiop:split-string (string-trim '(#\Newline #\Space) text) :separator '(#\Space #\Tab))))
+asking it from DIRECTORY, a repository of no commit made for it. \"latest\" is
+its main branch's newest commit. \"release\" is its newest tag by date, its
+name never read. NIL is the same, or its newest commit when it has no tag.
+Anything else is that tag, branch or commit as written. Every commit's name is
+checked to be one (PACKAGE-COMMIT-NAME)."
+  (labels ((first-word (text)
+             (first (uiop:split-string (string-trim '(#\Newline #\Space) text) :separator '(#\Space #\Tab))))
            (newest-commit ()
              (values (package-commit-name (or (first-word (package-git directory "ls-remote" where "HEAD"))
                                               (refuse "~a has no main branch" where))
@@ -1440,7 +1462,8 @@ an error for any other folder."
 (defparameter *package-size-limit* (* 512 1024 1024)
   "The most octets a package may take on disk while it is fetched, what git
 keeps of its history and its files together: a fetch that grows past it is
-ended and its files deleted.")
+ended and its files deleted. 512 MB as standard. Raise it for a package with a
+long history; lower it to refuse large fetches, as on a metered link.")
 
 (define-condition package-too-large (error)
   ((where :initarg :where :reader package-too-large-where))
@@ -1515,7 +1538,8 @@ commits; for a tag, branch or commit named, none."
            (package-git probe "fetch" "--quiet" (format nil "--depth=~d" *package-history-depth*) "--filter=blob:none" where "HEAD")
            (let ((commits (remove-if-not #'git-hash-p
                                          (lines (package-git probe "rev-list" "--first-parent"
-                                                             (format nil "--max-count=~d" *package-history-depth*) "FETCH_HEAD"))))
+                                                             (format nil "--max-count=~d" *package-history-depth*)
+                                                             "FETCH_HEAD"))))
                  (found '()))
              (dolist (change (lines (apply #'package-git probe "log" "--first-parent" "--format=%H"
                                            (format nil "--max-count=~d" *package-history-depth*) "FETCH_HEAD" "--"
@@ -1603,7 +1627,8 @@ tag is fetched apart, into a repository of its own), gives the fifth value."
                                (t
                                 (tuatara.io:ensure-private-directory (directory-namestring (string-right-trim "/" folder)))
                                 ;; a fetch of the same commit beside this one may have kept it first
-                                (handler-case (sb-posix:rename (string-right-trim "/" files) (string-right-trim "/" folder))
+                                (handler-case (sb-posix:rename (string-right-trim "/" files)
+                                                               (string-right-trim "/" folder))
                                   (sb-posix:syscall-error (e) (unless (probe-file folder) (error e))))
                                 (values folder nil folder))))))))
              (taken (folder commit tag looked passed)
@@ -1690,15 +1715,17 @@ starts meanwhile.")
   "The fetch or check whose version is being decided on (PACKAGE-FETCHED), or NIL.")
 
 (defun load-version (name where folder file before &optional then)
-  "Load the package NAME from FOLDER, a version of WHERE; when it fails and
+  "Load the package NAME from FOLDER, a version of WHERE. When it fails and
 BEFORE, what was remembered of the version taken before it (as
 *FETCHED-PACKAGES* has it), names one that is kept, that one is remembered
-again as the one taken, said, and loaded in its place once who signed it is
-checked against the trust in force now (START-PACKAGE-CHECK). Gives
-:TAKEN and the file loaded, :PREVIOUS when the version before it is being
-checked, or NIL: to THEN, a function of them, when given, once it has
-loaded (a loading stopped on purpose falls back on nothing), which may be later, in the background (LOAD-PACKAGE-FOLDER), and
-returns what THEN returns; else returns them, or NIL when it loads later."
+again as the one taken, and said. It is loaded in its place once who signed it
+is checked against the trust in force now (START-PACKAGE-CHECK). Gives :TAKEN
+and the file loaded, :PREVIOUS when the version before it is being checked, or
+NIL. When THEN is given, a function of them, it is called with them once the
+package has loaded, which may be later, in the background
+\(LOAD-PACKAGE-FOLDER). A loading stopped on purpose falls back on nothing.
+It returns what THEN returns. Without THEN it returns them, or NIL
+when it loads later."
   (load-package-folder
    folder name file
    (lambda (loaded &optional stopped)
@@ -1729,7 +1756,9 @@ when given."
     (message "~a. ~:[It is not loaded~;The version loaded now is kept~]; ~a" text loaded
              (if (package-signers-named where)
                  "its :signers in the init file say whose versions are taken"
-                 (format nil "~a trusts its source anew, as the first time" (substitute-command-keys "\\[package-trust-again]"))))
+                 (format nil
+                         "~a trusts its source anew, as the first time"
+                         (substitute-command-keys "\\[package-trust-again]"))))
     (prune-package-versions name where)))
 
 ;;; Fetching in the background
@@ -1752,7 +1781,10 @@ file of it is compiled."
 (tuatara.runtime:define-job-words package-fetch
   :doing (if (package-fetch-load job) "Compiling and loading a package" "Fetching a package")
   :verb (if (package-fetch-load job) "load the package" "fetch the package")
-  :description (format nil "~:[Fetching~;Compiling and loading~] the package ~a" (package-fetch-load job) (package-fetch-name job))
+  :description (format nil
+                       "~:[Fetching~;Compiling and loading~] the package ~a"
+                       (package-fetch-load job)
+                       (package-fetch-name job))
   :left-words (if (package-fetch-load job) "the package not loaded" "the package not fetched")
   :at-exit :quiet)
 
@@ -1761,10 +1793,10 @@ file of it is compiled."
   nil)
 
 (defun take-package-in-hand (job &key quiet)
-  "Hold the package of JOB in hand (*PACKAGES-IN-HAND*) and return true; NIL
-when a fetch or check of it runs already, its question waits for an
-answer or it is being loaded, said on the echo row unless QUIET (a load at
-the start, or by one of its commands or modes, which the version being
+  "Hold the package of JOB in hand (*PACKAGES-IN-HAND*) and return true.
+Return NIL when a fetch or check of it runs already, its question waits for an
+answer or it is being loaded. That is said on the echo row unless QUIET (a
+load at the start, or by one of its commands or modes, which the version being
 decided on serves), else in *Messages* alone."
   (let ((name (package-fetch-name job)))
     (if (assoc name *packages-in-hand* :test #'string=)
@@ -1796,20 +1828,20 @@ TAKE-PACKAGE-IN-HAND); let go again when the job cannot be started."
           (setf *fetching-packages* (remove name *fetching-packages* :test #'string=)))))))
 
 (defun start-package-load (name where load compile then)
-  "Load the package NAME, of WHERE, in the background: a job calls COMPILE,
-a function of it, which compiles the package apart from the editor
-\(COMPILE-PACKAGE-APART), the editor going on with your keys meanwhile; then
-LOAD, the editor waiting between two commands all the while it runs
-\(CALL-WITH-EDITOR-HELD), so that no command runs with the package part
-loaded, nor compiles any of it there (*PACKAGE-COMPILING* :REFUSED); when it
-could not be compiled apart, what is left to compile is compiled as it
-loads, the editor waiting for that too. The
-package is held in hand meanwhile (*PACKAGES-IN-HAND*), taken over from the
-fetch or check deciding on it; while another fetch, check or loading holds
-it, nothing starts, said (TAKE-PACKAGE-IN-HAND). Once it has loaded, THEN
-is called on the editor's thread with the file it was loaded by, or NIL, the
-error that ended it, or NIL, true when a file of it was compiled, and true
-when it was stopped on purpose. Returns the job, or NIL."
+  "Load the package NAME, of WHERE, in the background. A job calls COMPILE, a
+function of it, which compiles the package apart from the editor
+\(COMPILE-PACKAGE-APART), the editor going on with your keys meanwhile. Then
+LOAD is run, the editor waiting between two commands all the while it runs
+\(CALL-WITH-EDITOR-HELD), so that no command runs with the package part loaded,
+nor compiles any of it there (*PACKAGE-COMPILING* :REFUSED). When it could not
+be compiled apart, what is left to compile is compiled as it loads, the editor
+waiting for that too. The package is held in hand meanwhile
+\(*PACKAGES-IN-HAND*), taken over from the fetch or check deciding on it. While
+another fetch, check or loading holds it, nothing starts, said
+\(TAKE-PACKAGE-IN-HAND). Once it has loaded, THEN is called on the editor's
+thread with the file it was loaded by, or NIL, the error that ended it, or
+NIL, true when a file of it was compiled, and true when it was stopped on
+purpose. Returns the job, or NIL."
   (let ((job (make-package-fetch name where nil nil nil))
         (deciding *package-job-deciding*))
     (setf (package-fetch-load job) load
@@ -1864,19 +1896,20 @@ once the editor has started; ACCEPT, a function, remembers that it was let."
         (load-it))))
 
 (defun load-package-from (name source version file)
-  "Load the package NAME from SOURCE (LOAD-PACKAGE): a folder of your disk at
-once, asked about the first time; one fetched before from where it was kept,
-the version before it in its place when it fails to load (LOAD-VERSION),
-unless it is to be asked about, or who signed it checked again first against
-the trust in force (KEPT-VERSION-CHECK-NEEDED-P), in the background
-\(START-PACKAGE-CHECK); else
-fetched in the background first."
+  "Load the package NAME from SOURCE (LOAD-PACKAGE). A folder of your disk is
+loaded at once, asked about the first time. One fetched before is loaded from
+where it was kept, the version before it in its place when it fails to load
+\(LOAD-VERSION). That holds unless it is to be asked about, or who signed it is
+to be checked again first against the trust in force
+\(KEPT-VERSION-CHECK-NEEDED-P), in the background (START-PACKAGE-CHECK).
+Otherwise it is fetched in the background first."
   (let* ((where (package-where source))
          (key (package-key name where version))
          (entry (fetched-package key))
          (folder (package-folder-of name where entry)))
     (cond ((and (not (local-source-p where))
-                (wait-for-sweep (package-kept-folder where name) (lambda () (load-package-from name source version file))))
+                (wait-for-sweep (package-kept-folder where name)
+                                (lambda () (load-package-from name source version file))))
            nil)
           ((not (or (local-source-p where) (and folder (probe-file folder))))
            (start-package-fetch name where version file key :quiet t))
@@ -1891,7 +1924,8 @@ fetched in the background first."
            (load-package-folder folder name file))
           ((and entry (fourth entry))
            (multiple-value-bind (outcome loaded) (load-version name where folder file
-                                                                       (and (fifth entry) (list key (fifth entry) (sixth entry) t)))
+                                                                       (and (fifth entry)
+                                                                            (list key (fifth entry) (sixth entry) t)))
              (declare (ignore outcome))
              loaded))
           (t (load-or-ask name where folder file

@@ -30,13 +30,13 @@ this order.")
 
 (defun write-daemon-report (stream &key home socket runs gpg-socket gpg-autostart (unlink "unknown") agent)
   "Write on STREAM, for a client on another machine, what tuatara
---daemon-socket says of a daemon (*REPORT-KEYS*): the messages' format, this
-build's version line, HOME, the home folder, SOCKET, where the daemon listens,
-and whether it RUNS; GPG-SOCKET, where gpg here looks for its agent, or
-NIL; whether gpg would start an agent of its own (GPG-AUTOSTART); and
-UNLINK, whether sshd here removes a socket in the way of one forwarded
-(yes, no or unknown); AGENT, the socket of the agent sshd brought here for
-this connection (SSH_AUTH_SOCK), or NIL."
+--daemon-socket says of a daemon (*REPORT-KEYS*). The lines are the messages'
+format, this build's version line, HOME, the home folder, SOCKET, where the
+daemon listens, and whether it RUNS. Then come GPG-SOCKET, where gpg here
+looks for its agent, or NIL, and whether gpg would start an agent of its own
+\(GPG-AUTOSTART). Then UNLINK, whether sshd here removes a socket in the way of
+one forwarded (yes, no or unknown). Last is AGENT, the socket of the agent
+sshd brought here for this connection (SSH_AUTH_SOCK), or NIL."
   (format stream "tuatara-daemon ~d~%version ~a~%home ~a~%socket ~a~%runs ~:[no~;yes~]~%gpg-socket ~:[-~;~:*~a~]~%~
                   gpg-autostart ~:[no~;yes~]~%unlink ~a~%agent ~:[-~;~:*~a~]~%"
           tuatara.frontend::+protocol+ (tuatara:version-line) home socket runs gpg-socket gpg-autostart unlink
@@ -46,12 +46,12 @@ this connection (SSH_AUTH_SOCK), or NIL."
   "What TEXT, the output of tuatara --daemon-socket, says, as a plist:
 :PROTOCOL, :VERSION, :HOME (ending in /), :SOCKET, :RUNS, :GPG-SOCKET (NIL
 for none, or one ssh cannot forward), :GPG-AUTOSTART, :UNLINK (:YES, :NO
-or :UNKNOWN) and :AGENT (as :GPG-SOCKET); NIL when it is not that, each line of *REPORT-KEYS* once and
-in order, the home folder and the sockets from the root, the sockets ones
-ssh can forward (FORWARDABLE-PATH-P), the home folder a plain path
-\(PLAIN-PATH-P); none is named to ssh here as the other machine wrote it
-otherwise. What comes before its first line, as a shell's start files may
-print there, is passed over."
+or :UNKNOWN) and :AGENT (as :GPG-SOCKET). The result is NIL when TEXT is not
+that. It must hold each line of *REPORT-KEYS* once and in order, with the home
+folder and the sockets from the root. The sockets must be ones ssh can forward
+\(FORWARDABLE-PATH-P), and the home folder a plain path (PLAIN-PATH-P). None is
+named to ssh here as the other machine wrote it otherwise. What comes before
+its first line, as a shell's start files may print there, is passed over."
   (let* ((lines (remove "" (uiop:split-string text :separator '(#\Newline)) :test #'string=))
          (start (position-if (lambda (line) (uiop:string-prefix-p "tuatara-daemon " line)) lines :from-end t))
          (lines (and start (nthcdr start lines))))
@@ -136,16 +136,17 @@ lingering), or NIL when it keeps it or there is no telling."
 ;;; The connection to the daemon's machine
 
 (defstruct (ssh-link (:constructor make-ssh-link (host program folder lock permissions)) (:copier nil))
-  "A connection to HOST made with the ssh PROGRAM, its control socket and the
-daemon's socket forwarded here in FOLDER, a private folder held by the lock
-LOCK (a descriptor) while the client runs; PERMISSIONS, what HOST is trusted
-with (TUATARA.DEFAULTS::SERVER-PERMISSIONS), NIL for nothing; MASTER, the
-ssh holding the connection, a process of the client's own that ends with
-it; AGENT, the ssh-agent of its own forwarded there, a process, while it
-runs; AGENT-THERE, where that agent is brought on HOST, or NIL; NOTES, what
-the connection said that the person should read, the latest first; GPG-FORWARD,
-\(THERE HERE), the socket of gpg-agent there forwarded from the one here,
-while it is; HOME, the home folder there, once the Tuatara there said it."
+  "A connection to HOST made with the ssh PROGRAM. Its control socket and the
+daemon's socket are forwarded here in FOLDER, a private folder held by the
+lock LOCK (a descriptor) while the client runs. PERMISSIONS is what HOST is
+trusted with (TUATARA.DEFAULTS::SERVER-PERMISSIONS), NIL for nothing. MASTER
+is the ssh holding the connection, a process of the client's own that ends
+with it. AGENT is the ssh-agent of its own forwarded there, a process, while
+it runs. AGENT-THERE is where that agent is brought on HOST, or NIL. NOTES is
+what the connection said that the person should read, the latest first.
+GPG-FORWARD, (THERE HERE), is the socket of gpg-agent there forwarded from the
+one here, while it is. HOME is the home folder there, once the Tuatara there
+said it."
   (host "" :type string :read-only t)
   (program "" :type string :read-only t)
   (folder "" :type string :read-only t)
@@ -182,17 +183,18 @@ while it is; HOME, the home folder there, once the Tuatara there said it."
 
 (defun ssh-arguments (link &key master session agent (operation nil operation-p) forward remote command
                                ask-host)
-  "The arguments of ssh for LINK: the control socket's, with MASTER the
-connection's own, held until it is told to exit or the client ends, with no
-command (*SSH-OPTIONS*, the agent forwarded LINK's own when it has one, a
-machine whose key ssh has not seen asked about with ASK-HOST); with SESSION, COMMAND, a list of words, run over the connection, reading nothing
-when SESSION is :QUIET, no ssh configuration read and no question asked
-should the connection be gone, AGENT asking for the agent there for it; or
-OPERATION (\"forward\", \"cancel\", \"exit\") asked of the connection,
-with FORWARD, (HERE THERE), a socket there brought here, or REMOTE, (THERE
-HERE), one here brought there, and no ssh configuration read, so that none
-of its forwards for the host joins ours. The host comes last but for
-COMMAND, after --."
+  "The arguments of ssh for LINK. The control socket's are given, with MASTER
+the connection's own, held until it is told to exit or the client ends, with
+no command (*SSH-OPTIONS*, the agent forwarded LINK's own when it has one, a
+machine whose key ssh has not seen asked about with ASK-HOST).
+With SESSION, COMMAND, a list of words, is run over the connection. Nothing is
+read when SESSION is :QUIET. No ssh configuration is read and no question is
+asked should the connection be gone. AGENT asks for the agent there for it.
+With OPERATION (\"forward\", \"cancel\", \"exit\") the arguments ask that of the
+connection. FORWARD, (HERE THERE), is a socket there brought here, or REMOTE,
+\(THERE HERE), one here brought there. No ssh configuration is read, so that
+none of its forwards for the host joins ours.
+The host comes last but for COMMAND, after --."
   (append (list "-T" "-o" (format nil "ControlPath=~a" (cl-ppcre:regex-replace-all
                                                          "%" (tuatara.io:path-join (ssh-link-folder link) "c") "%%")))
           (when master
@@ -465,11 +467,11 @@ made _, and one starting with . or `-' given a _ first."
 
 (defun send-dropped-files (link paths)
   "Send the files at PATHS, dropped on a window, into the folder of LINK's
-machine it is trusted with dropped files in, each through the Tuatara there
-\(tuatara --receive-file), told its size first, which writes it for you
-alone and runs nothing of it: their paths there; NIL, why said on the error output, when one is
-no file, larger than *MOST-DROPPED-OCTETS* or could not be sent, and none
-is named to the daemon."
+machine it is trusted with dropped files in. Each goes through the Tuatara
+there (tuatara --receive-file), told its size first, which writes it for you
+alone and runs nothing of it. Returns their paths there. Returns NIL, why
+said on the error output, when one is no file, larger than
+*MOST-DROPPED-OCTETS* or could not be sent, and none is named to the daemon."
   (let ((folder (getf (ssh-link-permissions link) :files))
         (host (ssh-link-host link)))
     (flet ((fail (control &rest arguments)

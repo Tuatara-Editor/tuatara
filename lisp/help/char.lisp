@@ -66,10 +66,10 @@ instead, as \\[describe-char] does."
       (message "~a" (cursor-position-text (current-buffer) (point)))))
 
 (defun captures-at (query tree rope position faces)
-  "The captures of QUERY, a language's colouring rules, of the nodes of TREE (the
-tree of ROPE) that hold octet POSITION: each (NAME FACE), FACE from FACES by
-capture number, innermost first, and of two of the same node the one of the
-later rule first, as colouring chooses; the rules' own names (_, and those
+  "The captures of QUERY, a language's colouring rules, of the nodes of TREE
+\(the tree of ROPE) that hold octet POSITION: each (NAME FACE), FACE from FACES
+by capture number, innermost first, and of two of the same node the one of the
+later rule first, as colouring chooses. The rules' own names (_, and those
 beginning with it) left out."
   (let ((names (tuatara.syntax:query-captures query)) (found '()))
     (tuatara.syntax:map-query-matches
@@ -107,7 +107,10 @@ node by its name, a token by its text in quotation marks, one with an error so
 marked."
   (format nil "~{~a~^, in ~}"
           (mapcar (lambda (node)
-                    (format nil (if (tuatara.syntax:tree-node-named node) "~a~@[ (with an error)~]" "\"~a\"~@[ (with an error)~]")
+                    (format nil
+                            (if (tuatara.syntax:tree-node-named node)
+                                "~a~@[ (with an error)~]"
+                                "\"~a\"~@[ (with an error)~]")
                             (tuatara.syntax:tree-node-name node) (tuatara.syntax:tree-node-broken node)))
                   nodes)))
 
@@ -143,12 +146,14 @@ marked."
                          (or (cdr (assoc category *general-categories*)) "a character")
                          (string-capitalize (symbol-name category))))
                (format out "  octets       #x~a~%"
-                       (tuatara.text:octets-hex (tuatara.text:rope-octets rope :start position :end end) :separator " #x"))
+                       (tuatara.text:octets-hex (tuatara.text:rope-octets rope :start position :end end)
+                                                :separator " #x"))
                (let ((columns (tuatara.display:char-columns char)))
                  (format out "  width        ~d column~:p~%" columns)))))
       (let ((face (face-shown-at buffer position)))
         (when face (format out "  face         ~(~s~)~%" face)))
-      (format out "  mode         ~(~a~)~@[, the language ~(~a~)~]~%" (type-of mode) (and language (language-name language)))
+      (format out "  mode         ~(~a~)~@[, the language ~(~a~)~]~%" (type-of mode) (and language
+                                                                                          (language-name language)))
       (when (and syntax char)
         (let ((nodes (tuatara.syntax:node-ancestry syntax position end)))
           (when nodes
@@ -156,7 +161,8 @@ marked."
         (let ((query (language-compiled-query language :colouring)))
           (when query
             (let ((captures (captures-at query (tuatara.syntax:syntax-tree syntax) (tuatara.syntax:syntax-rope syntax)
-                                         position (multiple-value-call #'query-faces query (language-colouring language mode))))
+                                         position
+                                         (multiple-value-call #'query-faces query (language-colouring language mode))))
                   (shown nil))
               (loop for (name face) in captures
                     for first = t then nil
@@ -167,10 +173,10 @@ marked."
 (define-command describe-char ()
   "Show in *Help* all that is known of the character at point: where it is, its
 code in decimal, octal and hexadecimal, its Unicode name and kind, its octets
-and the columns it takes, the face it shows in and the major mode; and in a
-buffer parsed with tree-sitter the syntax node it is in, with the nodes
-around it, and the colouring rules that capture it, innermost first, the one
-whose colour shows marked."
+and the columns it takes, the face it shows in and the major mode. And in a
+buffer parsed with tree-sitter the syntax node it is in, with the nodes around
+it, and the colouring rules that capture it, innermost first, the one whose
+colour shows marked."
   (show-help (describe-char-text (current-buffer) (point))))
 
 (defun install-char-help ()

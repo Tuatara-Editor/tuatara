@@ -85,16 +85,17 @@ or replaced the whole text, which shows everything again."
 
 (setf (documentation 'hidden-ranges-p 'function) "True when OBJECT is a HIDDEN-RANGES."
       (documentation 'hidden-ranges-version 'function) "The version of a text HIDDEN-RANGES' bounds are offsets into."
-      (documentation 'hidden-ranges-bounds 'function) "The start and end of each stretch hidden, in turn, a vector of fixnums."
+      (documentation 'hidden-ranges-bounds 'function) "The start and end of each stretch hidden, in
+turn, a vector of fixnums."
       (documentation 'hidden-ranges-touched 'function) "True once a change reached into what HIDDEN-RANGES hides.")
 
 (defun hide-ranges (buffer bounds &key version)
   "Hide from BUFFER's windows the stretches of its text BOUNDS gives, a vector
 of fixnums holding the start and end of each in turn, in order and apart, as
-offsets into the text of VERSION (BUFFER's version now unless given), those
-hidden before shown again: the lines search filters leave out, each stretch
-from the newline ending a line shown to the newline ending the last line it
-hides. NIL or an empty vector hides nothing."
+offsets into the text of VERSION (BUFFER's version now unless given). Those
+hidden before are shown again. This is how the lines search filters leave out
+are hidden, each stretch from the newline ending a line shown to the newline
+ending the last line it hides. NIL or an empty vector hides nothing."
   (setf (tuatara.buffer:buffer-local buffer :hidden-ranges)
         (and bounds (plusp (length bounds))
              (make-hidden-ranges (or version (tuatara.buffer:buffer-version buffer))
@@ -363,7 +364,8 @@ then. O(log n) in the folds."
           (and (< i (length folds)) (<= (car (svref folds i)) position) (svref folds i))))
       (let ((bounds (and hidden (hidden-bounds buffer))))
         (when bounds
-          (let ((stretch (hidden-stretch bounds (hidden-index bounds (lambda (s e) (declare (ignore s)) (> e position))))))
+          (let ((stretch (hidden-stretch bounds
+                                         (hidden-index bounds (lambda (s e) (declare (ignore s)) (> e position))))))
             (and stretch (<= (car stretch) position) (values stretch t)))))))
 
 (defun fold-from (buffer position)
@@ -374,7 +376,9 @@ END), or NIL; the lines search filters hide count as folds."
                        (i (fold-index folds (lambda (fold) (>= (car fold) position)))))
                   (and (< i (length folds)) (svref folds i)))))
         (stretch (let ((bounds (hidden-bounds buffer)))
-                   (and bounds (hidden-stretch bounds (hidden-index bounds (lambda (s e) (declare (ignore e)) (>= s position))))))))
+                   (and bounds
+                        (hidden-stretch bounds
+                                        (hidden-index bounds (lambda (s e) (declare (ignore e)) (>= s position))))))))
     (if (and fold stretch) (if (< (car stretch) (car fold)) stretch fold) (or fold stretch))))
 
 (defun fold-before (buffer position)
@@ -435,7 +439,8 @@ start). NIL when all of the stretch is shown. O(log n) in the folds."
     (or (and (< i (length folds)) (< (car (svref folds i)) end) (svref folds i))
         (let ((bounds (fold-set-bounds now)))
           (when bounds
-            (let ((stretch (hidden-stretch bounds (hidden-index bounds (lambda (s e) (declare (ignore s)) (> e start))))))
+            (let ((stretch (hidden-stretch bounds
+                                           (hidden-index bounds (lambda (s e) (declare (ignore s)) (> e start))))))
               (and stretch (< (car stretch) end) stretch)))))))
 
 (defun hold-folds (buffer spans)

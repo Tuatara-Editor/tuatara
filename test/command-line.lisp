@@ -110,7 +110,8 @@ frontend, the editor, and the options read."
         (is equal '("+5") (getf options :files)))
       (uiop:with-current-directory (dir)
         ;; with the file there, +5 alone is not guessed at
-        (true (search "+5 is a file here too" (getf (tuatara.terminal::read-options (list "+5" "+5") :directory (namestring dir)) :error)))
+        (true (search "+5 is a file here too"
+                      (getf (tuatara.terminal::read-options (list "+5" "+5") :directory (namestring dir)) :error)))
         ;; opened as the file it is
         (session-from-arguments (list "--" "+5") :directory dir)
         (is equal '(1 0) (point-in plus))
@@ -149,7 +150,8 @@ frontend, the editor, and the options read."
         (let ((said (make-string-output-stream)))
           (let ((*error-output* said))
             (is = 2 (tuatara.terminal:main arguments)))
-          (true (search (format nil "tuatara: ~a is not there: nothing to compare" gone) (get-output-stream-string said))))))))
+          (true (search (format nil "tuatara: ~a is not there: nothing to compare" gone)
+                        (get-output-stream-string said))))))))
 
 (define-test (command-line evidence-file-at-a-line-stays-a-safe-visit)
   (with-case-folder (root evidence work)
@@ -208,7 +210,8 @@ frontend, the editor, and the options read."
         (multiple-value-bind (f editor)
             (session-from-arguments (list "-") :directory dir :input reader
                                     :until (lambda () (let ((b (tuatara.buffer:find-buffer "*stdin*")))
-                                                        (and b (search "second line" (tuatara.buffer:buffer-string b))))))
+                                                        (and b
+                                                             (search "second line" (tuatara.buffer:buffer-string b))))))
           (let ((buffer (shown-buffer editor)))
             (is string= "*stdin*" (tuatara.buffer:buffer-name buffer))
             (is string= text (tuatara.buffer:buffer-string buffer))
@@ -222,11 +225,14 @@ frontend, the editor, and the options read."
 
 (define-test (command-line standard-input-asked-for)
   (with-test-directory (dir)
-    (is equal '((:standard-input)) (getf (tuatara.terminal::read-options (list "-") :directory (namestring dir)) :files))
+    (is equal '((:standard-input))
+        (getf (tuatara.terminal::read-options (list "-") :directory (namestring dir)) :files))
     ;; a file named - is not guessed at, and after -- it is a file
     (put-file (merge-pathnames "-" dir) "x")
-    (true (search "- is a file here too" (getf (tuatara.terminal::read-options (list "-") :directory (namestring dir)) :error)))
-    (true (search "- is a file here too" (getf (tuatara.terminal::read-options (list "a" "-") :directory (namestring dir)) :error)))
+    (true (search "- is a file here too"
+                  (getf (tuatara.terminal::read-options (list "-") :directory (namestring dir)) :error)))
+    (true (search "- is a file here too"
+                  (getf (tuatara.terminal::read-options (list "a" "-") :directory (namestring dir)) :error)))
     (is equal '("-") (getf (tuatara.terminal::read-options (list "--" "-") :directory (namestring dir)) :files))
     ;; the terminal itself as the input is refused, plainly
     (when (tuatara.terminal::terminal-p 0)
@@ -289,13 +295,15 @@ frontend, the editor, and the options read."
              (remote (file "remote.txt" (format nil "one~%2~%three~%")))
              (left (format nil "one~%<<<<<<< HEAD~%TWO~%=======~%2~%>>>>>>> side~%three~%"))
              (merged (file "merged.txt" left)))
-        (flet ((merge-text () (let ((b (tuatara.defaults::buffer-visiting merged))) (and b (tuatara.buffer:buffer-string b)))))
+        (flet ((merge-text ()
+                 (let ((b (tuatara.defaults::buffer-visiting merged))) (and b (tuatara.buffer:buffer-string b)))))
           (flet ((merging (&optional keys)
                    (multiple-value-bind (f editor)
                        (session-from-arguments (list "--merge" local base remote merged) :directory dir :keys keys
                                                :until (lambda ()
                                                         (let ((b (tuatara.defaults::buffer-visiting merged)))
-                                                          (and b (search "<<<<<<< local" (tuatara.buffer:buffer-string b))
+                                                          (and b
+                                                               (search "<<<<<<< local" (tuatara.buffer:buffer-string b))
                                                                (plusp (length (tuatara.defaults::conflict-list b)))))))
                      (declare (ignore f))
                      editor)))
@@ -319,8 +327,11 @@ frontend, the editor, and the options read."
 (define-test (command-line merge-wrongly-given)
   (with-test-directory (dir)
     (let ((a (namestring (put-file (merge-pathnames "a.txt" dir) "x"))))
-      (true (search "--merge needs four files" (getf (tuatara.terminal::read-options (list "--merge" a a a) :directory (namestring dir)) :error)))
-      (true (search "--merge takes the four files" (getf (tuatara.terminal::read-options (list "--merge" a a a a a) :directory (namestring dir)) :error)))
+      (true (search "--merge needs four files"
+                    (getf (tuatara.terminal::read-options (list "--merge" a a a) :directory (namestring dir)) :error)))
+      (true (search "--merge takes the four files"
+                    (getf (tuatara.terminal::read-options (list "--merge" a a a a a)
+                                                          :directory (namestring dir)) :error)))
       (let ((said (make-string-output-stream)))
         (let ((*error-output* said))
           (is = 2 (tuatara.terminal:main (list "--merge" "/nonexistent/l" a a a))))
@@ -379,8 +390,11 @@ frontend, the editor, and the options read."
       (uiop:with-current-directory (dir)
         (multiple-value-bind (f editor) (session-from-arguments (list "./x" "x") :directory dir)
           (declare (ignore f editor))
-          (is = 1 (count x tuatara.buffer:*buffers* :key (lambda (b) (let ((file (tuatara.buffer:buffer-file b))) (and file (tuatara.io:native file))))
-                                                    :test #'equal)))))))
+          (is = 1
+              (count x
+                     tuatara.buffer:*buffers*
+                     :key (lambda (b) (let ((file (tuatara.buffer:buffer-file b))) (and file (tuatara.io:native file))))
+                                                :test #'equal)))))))
 
 (define-test (command-line hard-link-never-hands-evidence-over-as-editable)
   ;; a file with two names, one in an evidence folder: whichever is opened first, the evidence is never
@@ -398,7 +412,8 @@ frontend, the editor, and the options read."
                 (e (tuatara.defaults::buffer-visiting ev)))
             (true (tuatara.io:safe-visit-p e))
             (true (tuatara.buffer:buffer-local e :read-only))
-            (is = (tuatara.io:stamp-ino (tuatara.io:path-stamp ev)) (tuatara.io:stamp-ino (tuatara.io:buffer-file-stamp e)))
+            (is = (tuatara.io:stamp-ino (tuatara.io:path-stamp ev))
+                (tuatara.io:stamp-ino (tuatara.io:buffer-file-stamp e)))
             (true (tuatara.frontend.fake:fake-frame-showing f "stays opened safely")))
           (kill-buffers-visiting root)
           ;; the evidence name first: the work name finds that buffer, not an editable one
@@ -458,7 +473,8 @@ frontend, the editor, and the options read."
                  (let* ((base (file "base.txt" (format nil "one~%two~%three~%~a" tail-of-merged)))
                         (local (file "local.txt" (format nil "one~%TWO~%three~%~a" tail-of-merged)))
                         (remote (file "remote.txt" (format nil "one~%2~%three~%~a" tail-of-merged)))
-                        (merged (file "merged.txt" (format nil "one~%<<<<<<< HEAD~%TWO~%=======~%2~%>>>>>>> side~%three~%"))))
+                        (merged (file "merged.txt"
+                                      (format nil "one~%<<<<<<< HEAD~%TWO~%=======~%2~%>>>>>>> side~%three~%"))))
                    (session-from-arguments (list "--merge" local base remote merged) :directory dir
                                            :keys '("C-c ^ n C-c ^ l C-x C-s")
                                            :until (lambda ()
@@ -516,7 +532,8 @@ frontend, the editor, and the options read."
   (with-test-directory (dir)
     (let ((a (namestring (put-file (merge-pathnames "a.txt" dir) "x"))))
       (dolist (bad '("+12345678901" "+5:" "+:3" "+5:6:7" "+1234567890"))
-        (true (search "is not +LINE or +LINE:COLUMN" (getf (tuatara.terminal::read-options (list bad a) :directory (namestring dir)) :error))
+        (true (search "is not +LINE or +LINE:COLUMN"
+                      (getf (tuatara.terminal::read-options (list bad a) :directory (namestring dir)) :error))
               "~a refused" bad))
       (false (getf (tuatara.terminal::read-options (list "+123456789:123456789" a) :directory (namestring dir)) :error))
       ;; names in a message have their control characters written out

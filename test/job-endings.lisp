@@ -45,7 +45,9 @@
            (tuatara.buffer:make-buffer "*scratch*" :text "")
            (tuatara.frontend.fake:fake-queue-action
             f (lambda ()
-                (let ((job (tuatara.io::%make-save-job :buffer (tuatara.buffer:find-buffer "*scratch*") :thread thread)))
+                (let ((job (tuatara.io::%make-save-job :buffer
+                                                       (tuatara.buffer:find-buffer "*scratch*")
+                                                       :thread thread)))
                   (setf result (tuatara.defaults::wait-for-saves (list job))))))
            (tuatara.frontend.fake:fake-queue-keys f "C-g")
            (let ((start (get-internal-real-time)))

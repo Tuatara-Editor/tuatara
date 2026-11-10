@@ -7,7 +7,8 @@
   :description "Line numbers absolute and relative in the margin, cursor offset, and git marks for added, changed and deleted lines.")
 
 (define-test (gutter line-numbers)
-  (multiple-value-bind (f editor) (run-keys "M-x d i s p l a y - l i n e - n u m b e r s - m o d e RET j" :text (format nil "aa~%bb~%cc"))
+  (multiple-value-bind (f editor)
+      (run-keys "M-x d i s p l a y - l i n e - n u m b e r s - m o d e RET j" :text (format nil "aa~%bb~%cc"))
     (declare (ignore editor))
     (is string= "1 aa" (tuatara.frontend.fake:fake-screen-line f 0))
     (is string= "2 bb" (tuatara.frontend.fake:fake-screen-line f 1))
@@ -16,8 +17,9 @@
     ;; the current line's number is bold, the others dim
     (is equal '((0 1 :current-line-number)) (aref (tuatara.frontend.fake:fake-spans f) 1))
     (is equal '((0 1 :line-number)) (aref (tuatara.frontend.fake:fake-spans f) 0)))
-  (multiple-value-bind (f editor) (run-keys "M-x d i s p l a y - r e l a t i v e - l i n e - n u m b e r s - m o d e RET j j"
-                                            :text (format nil "~{l~a~%~}" (loop for i below 12 collect i)))
+  (multiple-value-bind (f editor)
+      (run-keys "M-x d i s p l a y - r e l a t i v e - l i n e - n u m b e r s - m o d e RET j j"
+                :text (format nil "~{l~a~%~}" (loop for i below 12 collect i)))
     (declare (ignore editor))
     ;; width follows the 13 lines; row 2 is current and shows 3, the others their distance
     (is string= " 2 l0" (tuatara.frontend.fake:fake-screen-line f 0))
@@ -31,13 +33,15 @@
       (is string= "2 l0" (tuatara.frontend.fake:fake-screen-line f 0))
       (is string= "3 l2" (tuatara.frontend.fake:fake-screen-line f 2))
       (is string= "1 l3" (tuatara.frontend.fake:fake-screen-line f 3)))
-    (multiple-value-bind (f editor) (run-keys "M-x d i s p l a y - r e l a t i v e - l i n e - n u m b e r s - m o d e RET" :text "x")
+    (multiple-value-bind (f editor)
+        (run-keys "M-x d i s p l a y - r e l a t i v e - l i n e - n u m b e r s - m o d e RET" :text "x")
       (declare (ignore editor))
       (is string= "x" (tuatara.frontend.fake:fake-screen-line f 0))))
   ;; the line after the last newline has no number: ~ there, in the plain
   ;; colour when point rests on it, and the width counts the numbered lines
   (let ((tuatara-user:*line-numbers-default* :absolute))
-    (multiple-value-bind (f editor) (run-keys "g e" :text (format nil "~{l~a~%~}" (loop for i below 9 collect i)) :height 14)
+    (multiple-value-bind (f editor)
+        (run-keys "g e" :text (format nil "~{l~a~%~}" (loop for i below 9 collect i)) :height 14)
       (declare (ignore editor))
       (is string= "1 l0" (tuatara.frontend.fake:fake-screen-line f 0))
       (is string= "~" (tuatara.frontend.fake:fake-screen-line f 9))
@@ -55,7 +59,10 @@
 
 (defun git (directory &rest args)
   "Run git in DIRECTORY with ARGS; return its output."
-  (uiop:run-program (list* "git" "-C" (namestring directory) args) :output :string :error-output nil :ignore-error-status t))
+  (uiop:run-program (list* "git" "-C" (namestring directory) args)
+                    :output :string
+                    :error-output nil
+                    :ignore-error-status t))
 
 (defun vc-session (keys file)
   "Run KEYS on FILE once the version-control marks, worked out in the
@@ -63,7 +70,8 @@ background, are in; return the frontend and the editor."
   (let ((f (tuatara.frontend.fake:make-fake-frontend :width 40 :height 8))
         (start (get-internal-real-time)))
     (labels ((wait ()
-               (if (and (some (lambda (b) (tuatara.buffer:buffer-local b 'tuatara.defaults::vc-refresh)) tuatara.buffer:*buffers*)
+               (if (and (some (lambda (b) (tuatara.buffer:buffer-local b 'tuatara.defaults::vc-refresh))
+                              tuatara.buffer:*buffers*)
                         (< (- (get-internal-real-time) start) (* 10 internal-time-units-per-second)))
                    (progn (sleep 0.02) (tuatara.frontend.fake:fake-queue-action f #'wait))
                    (tuatara.frontend.fake:fake-queue-keys f keys))))
@@ -72,7 +80,8 @@ background, are in; return the frontend and the editor."
       (values f editor))))
 
 (define-test (gutter vc-marks)
-  (let ((dir (uiop:ensure-directory-pathname (merge-pathnames (format nil "tuatara-vc-~a/" (random 1000000)) (uiop:temporary-directory)))))
+  (let ((dir (uiop:ensure-directory-pathname (merge-pathnames (format nil "tuatara-vc-~a/" (random 1000000))
+                                                              (uiop:temporary-directory)))))
     (ensure-directories-exist dir)
     (unwind-protect
          (let ((file (merge-pathnames "data.txt" dir)))
@@ -190,11 +199,16 @@ background, are in; return the frontend and the editor."
         (let ((tuatara.defaults::*modal-editing* nil))
           (auto-save-session (list (format nil "C-x C-f C-a C-k ~a RET" (rimu-typed (namestring file)))
                                    (list :until #'settled)
-                                   (list :until (lambda () (tuatara.buffer:buffer-local (visited) 'tuatara.defaults::vc-marks)))
+                                   (list :until
+                                         (lambda ()
+                                           (tuatara.buffer:buffer-local (visited) 'tuatara.defaults::vc-marks)))
                                    "C-e DEL C-x C-s" (list :wait 0.1)
                                    (list :until #'settled)
-                                   (list :until (lambda () (setf marks (tuatara.buffer:buffer-local (visited) 'tuatara.defaults::vc-marks))
-                                                  (null marks))))))
+                                   (list :until
+                                         (lambda ()
+                                           (setf marks
+                                                 (tuatara.buffer:buffer-local (visited) 'tuatara.defaults::vc-marks))
+                                           (null marks))))))
         (is equal nil marks)))))
 
 (define-test (gutter vc-marks-after-undo)
@@ -217,7 +231,9 @@ background, are in; return the frontend and the editor."
         (let ((tuatara.defaults::*modal-editing* nil))
           (auto-save-session (list (format nil "C-x C-f C-a C-k ~a RET" (rimu-typed (namestring file)))
                                    (list :until #'settled)
-                                   (list :until (lambda () (tuatara.buffer:buffer-local (visited) 'tuatara.defaults::vc-marks)))
+                                   (list :until
+                                         (lambda ()
+                                           (tuatara.buffer:buffer-local (visited) 'tuatara.defaults::vc-marks)))
                                    "C-n C-e y C-n C-e z" (list :wait 0.1)
                                    (list :until (lambda () (equal (kinds) '(:changed :changed :changed))))
                                    "C-/ C-/" (list :wait 0.1)
@@ -228,7 +244,8 @@ background, are in; return the frontend and the editor."
 (define-test (gutter vc-marks-many-edits)
   ;; marks from git's hunks follow the text, lines typed in widen them, and
   ;; each line an edit touches is marked once, however many marks there are
-  (let ((b (tuatara.buffer:make-buffer "vc-many-edits" :text (format nil "~{line ~d~%~}" (loop for i below 20000 collect i)))))
+  (let ((b (tuatara.buffer:make-buffer "vc-many-edits"
+                                       :text (format nil "~{line ~d~%~}" (loop for i below 20000 collect i)))))
     (flet ((kind (line) (tuatara.defaults::vc-mark-at b line))
            (type-at-lines (lines)
              (tuatara.buffer:buffer-edit b (loop for l in lines

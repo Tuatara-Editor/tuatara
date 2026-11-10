@@ -18,10 +18,15 @@ the folders of the three, read only. Stopped when CANCEL's car turns true; an
 error saying why when it cannot be done."
   (multiple-value-bind (output outcome said)
       (tuatara.io:sandbox-run "git" (list "merge-file" "-p" "--diff3" "-L" "local" "-L" "base" "-L" "remote"
-                                          (tuatara.io:real-place local) (tuatara.io:real-place base) (tuatara.io:real-place remote))
-                              :output-limit *differences-limit* :cancel cancel :ended-well (loop for n from 0 to 127 collect n)
+                                          (tuatara.io:real-place local)
+                                          (tuatara.io:real-place base)
+                                          (tuatara.io:real-place remote))
+                              :output-limit *differences-limit*
+                              :cancel cancel
+                              :ended-well (loop for n from 0 to 127 collect n)
                               :directories (remove-duplicates
-                                            (mapcar #'sandbox-seen-directory (remove "/dev/null" (list local base remote) :test #'equal))
+                                            (mapcar #'sandbox-seen-directory
+                                                    (remove "/dev/null" (list local base remote) :test #'equal))
                                             :test #'string=))
     (unless (eq outcome :done)
       (refuse "~a" (sandbox-outcome-words outcome said :label "git merge-file")))
@@ -64,7 +69,9 @@ are, going to the first; or say why it could not be made, or that the file was c
   (let ((buffer (tuatara.runtime:job-buffer job)))
     (when (live-buffer-p buffer)
       (cond ((not (eq (tuatara.runtime:job-status job) :done))
-             (message "~a could not be merged: ~a" (tuatara.buffer:buffer-name buffer) (tuatara.runtime:job-ending-words job)))
+             (message "~a could not be merged: ~a"
+                      (tuatara.buffer:buffer-name buffer)
+                      (tuatara.runtime:job-ending-words job)))
             ((/= (merge-job-version job) (tuatara.text:version-number (tuatara.buffer:buffer-version buffer)))
              (message "~a was changed meanwhile: the merge is not put in it" (tuatara.buffer:buffer-name buffer)))
             (t

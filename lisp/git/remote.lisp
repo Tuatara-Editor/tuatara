@@ -107,9 +107,10 @@ to them (fast-forward), unless the pull menu says to rebase (-r) or merge
     (git-ask-remote "Pull from remote: " top
                     (lambda (remote)
                       (git-ask "Reading the branches" top
-                               (lambda (job top) (values (git-lines job top (list "for-each-ref" "--format=%(refname:lstrip=3)"
-                                                                                  (format nil "refs/remotes/~a" remote)))
-                                                         (git-current-branch job top)))
+                               (lambda (job top)
+                                 (values (git-lines job top (list "for-each-ref" "--format=%(refname:lstrip=3)"
+                                                                  (format nil "refs/remotes/~a" remote)))
+                                         (git-current-branch job top)))
                                (lambda (branches current)
                                  (let ((branch (git-read-name (format nil "Pull from ~a's branch: " remote) branches :default current)))
                                    (when branch
@@ -226,12 +227,12 @@ itself, never a program or an alias of a repository's or yours."
   "The words that have git config change its settings.")
 
 (defun git-config-reading-p (more)
-  "True when git config with the words MORE after it only reads: its first
-word get or list, or its first option one of *GIT-CONFIG-READING-OPTIONS*,
-no word of *GIT-CONFIG-WRITING-WORDS* among them, and no more names and
+  "True when git config with the words MORE after it only reads. Its first word
+is get or list, or its first option is one of *GIT-CONFIG-READING-OPTIONS*. No
+word of *GIT-CONFIG-WRITING-WORDS* is among them. There are no more names and
 values than reading takes (a name and a pattern with --get, --get-all,
---get-regexp and the others asking of one setting; none with --list), as
-git takes config NAME VALUE --get as setting NAME."
+--get-regexp and the others asking of one setting; none with --list), as git
+takes config NAME VALUE --get as setting NAME."
   (let ((first-option (find-if (lambda (word) (uiop:string-prefix-p "-" word)) more))
         (plain (count-if-not (lambda (word) (uiop:string-prefix-p "-" word)) more)))
     (and (notany (lambda (word) (member word *git-config-writing-words* :test #'string=)) more)
@@ -243,12 +244,12 @@ git takes config NAME VALUE --get as setting NAME."
 
 (defun git-command-refusal (words)
   "Why git is not run with WORDS, typed for \\[git-run-command], in words; NIL
-when it may be. While evidence folders are named (*EVIDENCE-FOLDERS*): no
-option before the command but *GIT-LINE-OPTIONS-ALLOWED* (-c, --config-env,
---exec-path and the like could name a program for git to run or point it
-elsewhere); no command but those built into git (an alias or a program of
-git's family runs what a repository or a setting names); and git config
-only reading, never setting what a later command would run (hooks,
+when it may be. While evidence folders are named (*EVIDENCE-FOLDERS*), three
+rules hold. Only *GIT-LINE-OPTIONS-ALLOWED* may stand as an option before the
+command (-c, --config-env, --exec-path and the like could name a program for
+git to run or point it elsewhere). Only commands built into git are run (an
+alias or a program of git's family runs what a repository or a setting names).
+And git config only reads, never setting what a later command would run (hooks,
 filters, programs)."
   (when (tuatara.io:writing-refused-anywhere-p)
     (let* ((rest (git-command-words words))

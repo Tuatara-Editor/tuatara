@@ -12,19 +12,20 @@
 
 (defvar *tui-padding* 0
   "The room, in whole cells, between the edges of the terminal and Tuatara's
-text: one number for all four sides, or a list, of two, the top and bottom,
-then the right and left ((0 2) is none above and below, two columns at the
-sides); of three, the top, the right and left, the bottom; of four, the top,
-right, bottom and left, clockwise. A terminal may have padding of its own,
-in pixels, which is finer. Set it in the init file, or try values with
-\\[eval-expression] (setf *tui-padding* 1), which the terminal follows at once.")
+text. It is one number for all four sides, or a list. A list of two gives the
+top and bottom, then the right and left ((0 2) is none above and below, two
+columns at the sides). A list of three gives the top, the right and left, the
+bottom. A list of four gives the top, right, bottom and left, clockwise. A
+terminal may have padding of its own, in pixels, which is finer. Set it in
+the init file, or try values with \\[eval-expression] (setf *tui-padding* 1),
+which the terminal follows at once.")
 
 (defvar *tui-pictures* :auto
   "Whether pictures (a preview of an image, a PDF's pages) are shown in the
-terminal: :auto, where the terminal says, when asked at the start, that it speaks
-the kitty graphics protocol (such as kitty or Ghostty), never inside tmux or
-screen; T, in any terminal,
-for one that speaks it but does not say; NIL, never, the file's octets shown instead.")
+terminal. :auto shows them where the terminal says, when asked at the start,
+that it speaks the kitty graphics protocol (such as kitty or Ghostty), never
+inside tmux or screen. T shows them in any terminal, for one that speaks it
+but does not say. NIL never shows them, the file's octets shown instead.")
 
 (defvar *tui-mouse* t
   "Whether the mouse works in Tuatara in a terminal as in its window: the first
@@ -40,12 +41,14 @@ what the terminal says: 24-bit colour, the theme's colours exactly, where
 COLORTERM is truecolor or 24bit (as kitty, Ghostty, WezTerm, foot, Konsole and
 GNOME's terminal set it), outside the Linux console; else as many as TERM's description gives; none where NO_COLOR is
 set. :24-BIT, 256, 16 or 8 say it outright, for a terminal that does not say
-(COLORTERM is not passed on by ssh); NIL, none, the plain theme in their place.")
+(COLORTERM is not passed on by ssh), so that over ssh the theme's colours come
+out exactly rather than approximated; a number the terminal cannot show gives
+wrong colours. NIL, none, the plain theme in their place.")
 
 (defvar *kitty-keyboard* :auto
-  "Whether the terminal frontend reads keys by the kitty keyboard protocol, so
-that Escape, Alt and Control keys arrive whole, nothing waiting 25 ms to tell
-Escape then a key from Meta and that key, and Tab from C-i, RET from C-m:
+  "Whether the terminal frontend reads keys by the kitty keyboard protocol. Then
+Escape, Alt and Control keys arrive whole, nothing waits 25 ms to tell Escape
+then a key from Meta and that key, and Tab is told from C-i, RET from C-m.
 :AUTO (the standard) asks the terminal (kitty, foot, WezTerm, Ghostty and
 others speak it), T uses it, NIL never.")
 
@@ -226,12 +229,13 @@ NIL), else NIL where NO_COLOR is set (not empty), else :AUTO."
                                   (colorterm (tuatara.io:own-variable "COLORTERM"))
                                   (wanted (wanted-colours)) (term-colours (terminfo-colours term)))
   "The terminal type to start ncurses with for 24-bit colour, or NIL to go on
-with TERM: xterm-direct256 (xterm-256color with 24-bit colour, whose numbers
-below 256 stay the palette's) when WANTED is :24-BIT, or :AUTO and the
-terminal says it shows 24-bit colour (COLORTERM truecolor or 24bit) and is
-no Linux console, whose colours are its own, and TERM-COLOURS, the colours of
-TERM's description, are 8 or more or there is no description of it installed;
-and that description is installed."
+with TERM. The type is xterm-direct256 (xterm-256color with 24-bit colour,
+whose numbers below 256 stay the palette's). It is chosen when WANTED is
+:24-BIT, or :AUTO and the terminal says it shows 24-bit colour (COLORTERM
+truecolor or 24bit) and is no Linux console, whose colours are its own. It is
+chosen only when TERM-COLOURS, the colours of TERM's description, are 8 or
+more or there is no description of it installed, and that description is
+installed."
   (and (case wanted
          (:24-bit t)
          (:auto (and (member colorterm '("truecolor" "24bit") :test #'string-equal)
@@ -322,7 +326,8 @@ description names (KEY-NAME-KEY)."
           ((<= 277 code 324)
            (multiple-value-bind (group n) (floor (- code 265) 12)
              (tuatara.frontend:make-key (intern (format nil "F~d" (1+ n)) :keyword)
-                                        :shift (and (member group '(1 3)) t) :ctrl (and (member group '(2 3)) t) :meta (= group 4))))
+                                        :shift (and (member group '(1 3))
+                                                    t) :ctrl (and (member group '(2 3)) t) :meta (= group 4))))
           (t (key-name-key (tuatara.runtime:ignoring-errors-reported ("naming the key ~d" code) (%keyname code)))))))
 
 (defvar *kitty-keyboard-decided* nil
@@ -349,22 +354,33 @@ terminal's own), so that it is sent only when it changes.")
   ((window :initform nil :accessor tui-window
            :documentation "The ncurses stdscr pointer while started.")
    (wake :initform nil :accessor tui-wake
-         :documentation "The wake pipe (TUATARA.IO:MAKE-WAKE-PIPE) reading keys waits on besides the terminal, while started.")
+         :documentation "The wake pipe (TUATARA.IO:MAKE-WAKE-PIPE) reading keys waits on besides the
+terminal, while started.")
    (mouse :initform nil :accessor tui-mouse :documentation "True while the terminal reports the mouse (*TUI-MOUSE*).")
    (clicks :initform nil :accessor tui-clicks
-           :documentation "The first button's last press: (COLUMN ROW TIME COUNT), to tell a second and third press there.")
+           :documentation "The first button's last press: (COLUMN ROW TIME COUNT), to tell a second
+and third press there.")
    (padding :initform '(0 0 0 0) :accessor tui-padding
-            :documentation "The room in cells round the text, as last taken from *TUI-PADDING*: top, right, bottom and left.")
+            :documentation "The room in cells round the text, as last taken from *TUI-PADDING*: top,
+right, bottom and left.")
    (pending :initform '() :accessor tui-pending
-            :documentation "Events to hand the editor before reading the terminal, oldest first: a resize the padding made.")
+            :documentation "Events to hand the editor before reading the terminal, oldest first: a
+resize the padding made.")
    (images :initform (make-hash-table) :accessor tui-images
-           :documentation "The pictures the terminal has been sent, by their number there: each a list of the IMAGE, the columns and rows it was last placed in, and whether the frame being painted has it.")
+           :documentation "The pictures the terminal has been sent, by their number there: each a
+list of the IMAGE, the columns and rows it was last placed in, and whether the
+frame being painted has it.")
    (placing :initform '() :accessor tui-placing
-            :documentation "The pictures the frame being painted places at their cells, where the terminal draws no picture in place of text (PICTURES-IN-TEXT-P): each a list of the picture's number, its placement's number, the row and column, and the control keys of its size.")
+            :documentation "The pictures the frame being painted places at their cells, where the
+terminal draws no picture in place of text (PICTURES-IN-TEXT-P): each a list of
+the picture's number, its placement's number, the row and column, and the
+control keys of its size.")
    (placed :initform '() :accessor tui-placed
            :documentation "The pictures the frame painted last placed at their cells, as TUI-PLACING has them.")
    (next-image :initform 0 :accessor tui-next-image
-               :documentation "How many pictures have been sent to the terminal: the next one's number there is made from it (KITTY-IMAGE-ID), the same again every 4,096 pictures."))
+               :documentation "How many pictures have been sent to the terminal: the next one's
+number there is made from it (KITTY-IMAGE-ID), the same again every 4,096
+pictures."))
   (:documentation "The ncurses terminal frontend."))
 
 (defun make-tui-frontend ()
@@ -417,11 +433,11 @@ takes it in as text and never as keys (READ-PASTE), or to stop."
 
 (defun tell-terminal-order (on)
   "Ask the terminal to show the characters of each row in the order they are
-sent (ON true: explicit mode, CSI 8 l), as Tuatara sends right-to-left text
-already in the order it is read, so that a terminal that turns such text
-round itself does not turn it back; or to go back to its own way (implicit
-mode, CSI 8 h). The terminals that do it (those made with GNOME's VTE) take
-this request; the others turn nothing round, and leave it."
+sent (ON true: explicit mode, CSI 8 l). Tuatara sends right-to-left text
+already in the order it is read, so a terminal that turns such text round
+itself would turn it back. With ON false, go back to the terminal's own way
+\(implicit mode, CSI 8 h). The terminals that do it (those made with GNOME's
+VTE) take this request; the others turn nothing round, and leave it."
   (terminal-control (if on "[8l" "[8h")))
 
 (defparameter *reordering-terminals* '("KONSOLE_VERSION" "MLTERM")
@@ -573,7 +589,10 @@ TERM_PROGRAM a terminal sets, else TERM."
                                         ((multiplexer-p) "no pictures (inside tmux or screen; *tui-pictures* t sends them)")
                                         (t "no pictures (the terminal does not say it draws kitty's)"))))
           (cons "Clipboard" (if programs
-                                (format nil "~a and ~a" (file-namestring (first (first programs))) (file-namestring (first (second programs))))
+                                (format nil
+                                        "~a and ~a"
+                                        (file-namestring (first (first programs)))
+                                        (file-namestring (first (second programs))))
                                 "no program for it found (wl-copy, xclip or xsel): kills stay in the editor")))))
 
 (defun inner-size (f)
@@ -671,10 +690,10 @@ first time anything wants to know): :KEYBOARD, the kitty keyboard protocol;
 
 (defun ask-terminal ()
   "Ask the terminal, in one go, whether it speaks the kitty keyboard protocol
-\(CSI ? u), whether it draws kitty's pictures (a picture of one pixel offered
-to it, not kept), and, on this machine, whether it reads them from shared
-memory (one more such picture, put there), pictures not asked about inside
-tmux or screen (MULTIPLEXER-P); then for its primary device
+\(CSI ? u). Ask also whether it draws kitty's pictures (a picture of one pixel
+offered to it, not kept) and, on this machine, whether it reads them from
+shared memory (one more such picture, put there). Pictures are not asked
+about inside tmux or screen (MULTIPLEXER-P). Then ask for its primary device
 attributes (CSI c), which every terminal answers after the rest, so that one
 that knows none of these answers only that, and nothing waits longer than a
 quarter of a second. Keys typed meanwhile are handed back. Returns the
@@ -838,12 +857,13 @@ answer among them."
 count as a double or triple click.")
 
 (defun mouse-key (f parameters final)
-  "The mouse key of F's terminal's report, PARAMETERS the text between CSI and
-FINAL in SGR's form (<BUTTON;COLUMN;ROW, M pressed or moved, m let go): the
-first button's press (a second or third on the cell soon after, a double or
-triple), its moves while held, its letting go, the middle button's press,
-the wheel; at the cell of the editor's screen (the padding taken off), with
-Control, Meta and Shift as held. NIL for the other buttons."
+  "The mouse key of F's terminal's report. PARAMETERS is the text between CSI
+and FINAL in SGR's form (<BUTTON;COLUMN;ROW, M pressed or moved, m let go).
+The keys are the first button's press (a second or third on the cell soon
+after, a double or triple), its moves while held, its letting go, the middle
+button's press, and the wheel. They are at the cell of the editor's screen
+\(the padding taken off), with Control, Meta and Shift as held. NIL for the
+other buttons."
   (let ((fields (mapcar (lambda (field) (tuatara.text:whole-number field))
                         (uiop:split-string (subseq parameters 1) :separator ";"))))
     (destructuring-bind (&optional button x y &rest more) fields
@@ -859,7 +879,8 @@ Control, Meta and Shift as held. NIL for the other buttons."
                            (moved :drag-mouse-1)
                            (t (let* ((now (get-internal-real-time)) (last (tui-clicks f))
                                      (count (if (and last (= column (first last)) (= row (second last))
-                                                     (< (- now (third last)) (* *click-seconds* internal-time-units-per-second)))
+                                                     (< (- now (third last))
+                                                        (* *click-seconds* internal-time-units-per-second)))
                                                 (min 3 (1+ (fourth last)))
                                                 1)))
                                 (setf (tui-clicks f) (list column row now count))
@@ -885,7 +906,8 @@ connection it may come in parts. NIL when it breaks off."
                                    (return nil)))))))))
            (loop for value = (or (shiftf first nil) (next))
                  do (cond ((null value) (return nil))
-                          ((<= #x40 value #x7e) (return (values (get-output-stream-string parameters) (code-char value))))
+                          ((<= #x40 value #x7e)
+                           (return (values (get-output-stream-string parameters) (code-char value))))
                           ((<= #x20 value #x3f) (write-char (code-char value) parameters))
                           (t (return nil)))))
       (%nodelay window nil))))
@@ -904,12 +926,12 @@ come is taken as all of it, for a paste whose end never comes.")
   "The longest one paste is read for, however steadily it comes.")
 
 (defstruct (paste (:constructor make-paste (&optional (limit *paste-limit*))) (:copier nil))
-  "A paste being read from the terminal (PASTE-TAKE): its TEXT so far, at most
-LIMIT characters, carriage returns made newlines; how many characters of the
-paste's end (*PASTE-END*) have just come, MATCHED, held back until it is
-known whether they are its end; AFTER-RETURN, true after a carriage return,
-whose newline is then left out; and CUT, true once characters were left out
-past LIMIT."
+  "A paste being read from the terminal (PASTE-TAKE). It holds its TEXT so far,
+at most LIMIT characters, carriage returns made newlines. MATCHED is how many
+characters of the paste's end (*PASTE-END*) have just come, held back until it
+is known whether they are its end. AFTER-RETURN is true after a carriage
+return, whose newline is then left out. CUT is true once characters were left
+out past LIMIT."
   (text (make-array 0 :element-type 'character :adjustable t :fill-pointer 0))
   (limit *paste-limit*)
   (matched 0)
@@ -1178,9 +1200,11 @@ wl-paste under Wayland, else xclip or xsel under X; NIL when there are none.")
                    (let ((w (tuatara.io:find-program (first write))) (r (tuatara.io:find-program (first read))))
                      (and w r (list (cons w (rest write)) (cons r (rest read)))))))
             (or (and (tuatara.io:own-variable "WAYLAND_DISPLAY")
-                     (found '("wl-copy" "--type" "text/plain;charset=utf-8") '("wl-paste" "--no-newline" "--type" "text")))
+                     (found '("wl-copy" "--type" "text/plain;charset=utf-8")
+                            '("wl-paste" "--no-newline" "--type" "text")))
                 (and (tuatara.io:own-variable "DISPLAY")
-                     (or (found '("xclip" "-selection" "clipboard" "-in") '("xclip" "-selection" "clipboard" "-out" "-target" "UTF8_STRING"))
+                     (or (found '("xclip" "-selection" "clipboard" "-in")
+                                '("xclip" "-selection" "clipboard" "-out" "-target" "UTF8_STRING"))
                          (found '("xsel" "--clipboard" "--input") '("xsel" "--clipboard" "--output"))))))))
   *clipboard-programs*)
 
@@ -1385,7 +1409,8 @@ terminal, which reads it and removes it. NIL when no object could be made."
     (when name
       ;; those the terminal read and removed are let go of here too
       (when (> (length *shared-pictures*) 64)
-        (setf *shared-pictures* (remove-if-not (lambda (old) (probe-file (shared-picture-path old))) *shared-pictures*)))
+        (setf *shared-pictures*
+              (remove-if-not (lambda (old) (probe-file (shared-picture-path old))) *shared-pictures*)))
       (push name *shared-pictures*)
       (kitty-command (format nil "a=t,t=s,f=~d,s=~d,v=~d,i=~d,S=~d,q=2"
                              (if (= 4 (tuatara.frontend:image-channels image)) 32 24)
@@ -1441,12 +1466,12 @@ HEIGHT pixels: as large as fits, its proportions kept, never larger than it is."
 the terminal's colour pairs, of which the faces need the most.")
 
 (defun kitty-image-id (count)
-  "The number the terminal knows the picture sent COUNT-th (from 0) by: its
+  "The number the terminal knows the picture sent COUNT-th (from 0) by. Its
 lowest octet, 1 to *KITTY-IMAGE-COLOURS*, is the colour its cells are written
-in, so that pictures never use up the colour pairs; its highest octet the
-mark each row's first cell has as well; 4,096 numbers before one comes again,
-so that the terminal never shows a picture of long ago in place of a new one
-of the same number."
+in, so that pictures never use up the colour pairs. Its highest octet is the
+mark each row's first cell has as well. There are 4,096 numbers before one
+comes again, so that the terminal never shows a picture of long ago in place
+of a new one of the same number."
   (let ((count (mod count (* *kitty-image-colours* 256))))
     (logior (ash (floor count *kitty-image-colours*) 24) (1+ (mod count *kitty-image-colours*)))))
 
@@ -1457,7 +1482,9 @@ from its column FROM: the first marked with its row, its column and, when not
   (let ((cell (code-char tuatara.frontend:+kitty-placeholder+))
         (high (ldb (byte 8 24) id)))
     (concatenate 'string
-                 (list* cell (code-char (aref tuatara.frontend:*kitty-marks* row)) (code-char (aref tuatara.frontend:*kitty-marks* from))
+                 (list* cell
+                        (code-char (aref tuatara.frontend:*kitty-marks* row))
+                        (code-char (aref tuatara.frontend:*kitty-marks* from))
                         (and (plusp high) (list (code-char (aref tuatara.frontend:*kitty-marks* high)))))
                  (make-string (1- columns) :initial-element cell))))
 
@@ -1480,7 +1507,9 @@ from its column FROM: the first marked with its row, its column and, when not
             (setf number (kitty-image-id (tui-next-image f)))
             (incf (tui-next-image f))
             (tuatara.runtime:debug-report :redisplay "kitty: picture ~d sent, ~dx~d pixels (image ~d), placed ~dx~d cells~:[ through the terminal~; through shared memory~]"
-                                          number (tuatara.frontend:image-width image) (tuatara.frontend:image-height image)
+                                          number
+                                          (tuatara.frontend:image-width image)
+                                          (tuatara.frontend:image-height image)
                                           (tuatara.frontend:image-id image) across down (terminal-answer :shared))
             ;; a picture of long ago had this number: the terminal forgets it
             (when (gethash number images)
@@ -1522,11 +1551,12 @@ from its column FROM: the first marked with its row, its column and, when not
 
 (defun placement-size (image across down offset from-row from-column rows columns width height)
   "The keys of the kitty graphics protocol that size a picture put at its cells
-\(PLACE-PICTURES), IMAGE shown ACROSS by DOWN cells of WIDTH by HEIGHT pixels:
-with OFFSET, at its own size, the part from FROM-ROW and FROM-COLUMN on,
-ROWS by COLUMNS cells of it; else the whole of it, as large as fits, its
-proportions kept, the columns given where its width decides, the rows where
-its height does, neither where it is shown at its own size."
+\(PLACE-PICTURES), IMAGE shown ACROSS by DOWN cells of WIDTH by HEIGHT pixels.
+With OFFSET, the picture is at its own size, the part from FROM-ROW and
+FROM-COLUMN on, ROWS by COLUMNS cells of it. Otherwise it is the whole of it,
+as large as fits, its proportions kept. The columns are given where its width
+decides, the rows where its height does, neither where it is shown at its own
+size."
   (let ((w (tuatara.frontend:image-width image))
         (h (tuatara.frontend:image-height image)))
     (if offset

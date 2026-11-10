@@ -102,8 +102,12 @@ selected in another program."
   (false (session-region (nth-value 1 (run-events '((:down-mouse-1 3 6) (:drag-mouse-1 5 1))))))
   (false (session-region (nth-value 1 (run-events '((:drag-mouse-1 5 1))))))
   ;; held below the window's text it scrolls a line each time, point on the last row shown
-  (let* ((editor (nth-value 1 (run-events '((:down-mouse-1 0 0) (:drag-mouse-1 0 7) (:drag-mouse-1 0 7) (:drag-mouse-1 0 7))
-                                          :text *twenty-lines*)))
+  (let* ((editor (nth-value 1
+                            (run-events '((:down-mouse-1 0 0)
+                                          (:drag-mouse-1 0 7)
+                                          (:drag-mouse-1 0 7)
+                                          (:drag-mouse-1 0 7))
+                                        :text *twenty-lines*)))
          (window (tuatara.command:editor-window editor)))
     (is = 21 (tuatara.display:window-start window))
     (is equal '(0 56) (session-region editor)))
@@ -132,14 +136,16 @@ selected in another program."
       (tuatara.frontend.fake:fake-primary (run-events '((:down-mouse-1 2 0) (:up-mouse-1 2 0)) :primary "before")))
   ;; nor is a drag made outside the text
   (is string= "before"
-      (tuatara.frontend.fake:fake-primary (run-events '((:down-mouse-1 3 6) (:drag-mouse-1 5 1) (:up-mouse-1 5 1)) :primary "before"))))
+      (tuatara.frontend.fake:fake-primary (run-events '((:down-mouse-1 3 6) (:drag-mouse-1 5 1) (:up-mouse-1 5 1))
+                                                      :primary "before"))))
 
 (define-test (mouse clicking-again)
   ;; twice: the word; three times: the line with its line break
   (let ((editor (nth-value 1 (run-events '((:down-mouse-1 8 0) (:double-mouse-1 8 0))))))
     (is equal '(6 11) (session-region editor))
     (is = 11 (session-point editor)))
-  (is equal '(12 24) (session-region (nth-value 1 (run-events '((:down-mouse-1 8 1) (:double-mouse-1 8 1) (:triple-mouse-1 8 1))))))
+  (is equal '(12 24)
+      (session-region (nth-value 1 (run-events '((:down-mouse-1 8 1) (:double-mouse-1 8 1) (:triple-mouse-1 8 1))))))
   ;; after a rectangle, a word clicked twice is a plain selection
   (let ((editor (nth-value 1 (run-events '("C-x r SPC C-f C-f" (:down-mouse-1 8 0) (:double-mouse-1 8 0))))))
     (false (tuatara.defaults::rectangle-live-p (session-buffer editor)))
@@ -161,11 +167,15 @@ selected in another program."
     (is string= "cd" (word "ab cd" 9))
     (false (word "" 3)))
   ;; a drag after two clicks goes on from the word's start
-  (is equal '(6 15) (session-region (nth-value 1 (run-events '((:down-mouse-1 8 0) (:double-mouse-1 8 0) (:drag-mouse-1 3 1)))))))
+  (is equal '(6 15)
+      (session-region (nth-value 1 (run-events '((:down-mouse-1 8 0) (:double-mouse-1 8 0) (:drag-mouse-1 3 1)))))))
 
 (define-test (mouse hex-view)
   ;; on an octet's digits: that octet, point at the start of its character
-  (let ((editor (nth-value 1 (run-events '("M-x h e x - m o d e RET" (:down-mouse-1 16 1)) :text *hex-sample* :width 80))))
+  (let ((editor (nth-value 1
+                           (run-events '("M-x h e x - m o d e RET" (:down-mouse-1 16 1))
+                                       :text *hex-sample*
+                                       :width 80))))
     (is = 18 (session-hex-point editor))
     (is = 17 (session-point editor)))
   ;; on the offsets: the row's first octet
@@ -184,7 +194,9 @@ selected in another program."
       (session-text (nth-value 1 (run-events '("f f o o RET" (:wheel-down 0 0) "i X C-g") :text "foo bar foo"))))
   ;; without a cell, the selected window; up goes back
   (is = 0 (tuatara.display:window-start
-           (tuatara.command:editor-window (nth-value 1 (run-events '("<wheel-down>" "<wheel-up>") :text *twenty-lines*)))))
+           (tuatara.command:editor-window (nth-value 1
+                                                     (run-events '("<wheel-down>" "<wheel-up>")
+                                                                 :text *twenty-lines*)))))
   (is = 21 (tuatara.display:window-start
             (tuatara.command:editor-window (nth-value 1 (run-events '("<wheel-down>") :text *twenty-lines*))))))
 
@@ -316,7 +328,8 @@ cell of TEXT as the frame drawn now shows it, and its release."
       (let ((column (search text (aref (tuatara.frontend.fake:fake-screen frontend) row))))
         (dolist (base (list base :up-mouse-1))
           (tuatara.frontend.fake:fake-queue-event
-           frontend (tuatara.frontend:make-event :key :key (tuatara.frontend:make-key base :column column :row row))))))))
+           frontend (tuatara.frontend:make-event :key
+                                                 :key (tuatara.frontend:make-key base :column column :row row))))))))
 
 (define-test (mouse click-acts-in-the-window-clicked)
   ;; a click on a link of *Help* shown beside the window in use follows it at once, as the
@@ -332,7 +345,10 @@ cell of TEXT as the frame drawn now shows it, and its release."
                                       (button (first (tuatara.buffer:buffer-local help :buttons))))
                                  (setf shown (tuatara.buffer:buffer-name
                                               (tuatara.display:window-buffer (tuatara.command:editor-window tuatara.command:*editor*))))
-                                 (click-on-text f (tuatara.buffer:buffer-string help :start (first button) :end (second button)))))))
+                                 (click-on-text f
+                                                (tuatara.buffer:buffer-string help
+                                                                              :start (first button)
+                                                                              :end (second button)))))))
     (let ((editor (tuatara.command:run-editor f :setup #'tuatara.defaults:install-defaults
                                                 :buffer (tuatara.buffer:find-buffer "*scratch*"))))
       (is string= "*scratch*" shown "the window in use before the click")

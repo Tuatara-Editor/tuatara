@@ -143,6 +143,7 @@ ampersand in front of it while digraphs are on.~%~%")
                                                :initial-element #\Space)
                                   (format nil "U+~4,'0X" (char-code char))
                                   (unicode-name char))))))))
-       (format out (substitute-command-keys "~%~a~%\\<help-mode>\\[quit-window]: quit  |  \\[regex-search-forward]: search"
-                                            :marks t :for-format t)
+       (format out
+               (substitute-command-keys "~%~a~%\\<help-mode>\\[quit-window]: quit  |  \\[regex-search-forward]: search"
+                                        :marks t :for-format t)
                (make-string 50 :initial-element #\=))))))

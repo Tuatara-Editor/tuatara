@@ -9,7 +9,8 @@
 (defun calendar-oracle-cases ()
   "The cases of test/calendar/layouts.txt, written by tools/calendar-oracle.el:
 each (YEAR MONTH WEEK-START TEXT)."
-  (let ((lines (uiop:read-file-lines (merge-pathnames "test/calendar/layouts.txt" (asdf:system-source-directory :tuatara))))
+  (let ((lines (uiop:read-file-lines (merge-pathnames "test/calendar/layouts.txt"
+                                                      (asdf:system-source-directory :tuatara))))
         (cases '()))
     (loop while lines
           do (let ((head (pop lines)))
@@ -29,7 +30,9 @@ each (YEAR MONTH WEEK-START TEXT)."
 
 (define-test (calendar months-shown)
   ;; a year, three side by side: May 2026 to April 2027 around October, rows of months a blank line apart
-  (let ((tuatara-user:*calendar-months* 12) (tuatara-user:*calendar-months-per-row* 3) (tuatara-user:*calendar-week-start-day* 1))
+  (let ((tuatara-user:*calendar-months* 12)
+        (tuatara-user:*calendar-months-per-row* 3)
+        (tuatara-user:*calendar-week-start-day* 1))
     (multiple-value-bind (text places) (tuatara.defaults::calendar-layout 2026 10)
       (let ((lines (uiop:split-string text :separator '(#\Newline))))
         (true (search "May 2026" (first lines)))
@@ -87,15 +90,17 @@ calendar."
   (let ((old (tuatara.buffer:find-buffer "*Calendar*")))
     (when old (tuatara.buffer:kill-buffer old)))
   (let ((tuatara.defaults::*org-now* (encode-universal-time 0 0 12 3 10 2026)))
-    (multiple-value-bind (f editor) (run-keys (if (listp keys) (cons "M-x c a l e n d a r RET" keys) (format nil "M-x c a l e n d a r RET ~a" keys))
-                                                 :width width :height height)
+    (multiple-value-bind (f editor)
+        (run-keys (if (listp keys) (cons "M-x c a l e n d a r RET" keys) (format nil "M-x c a l e n d a r RET ~a" keys))
+                     :width width :height height)
       (let ((b (tuatara.buffer:find-buffer "*Calendar*")))
         (values f editor (and b (tuatara.defaults::calendar-date-at b)))))))
 
 (defun wait-for-calendar-marks ()
   "Wait, a few seconds at most, till no calendar's days are being marked in the background."
   (let ((until (+ (get-internal-real-time) (* 10 internal-time-units-per-second))))
-    (loop while (and (some (lambda (job) (and (typep job 'tuatara.defaults::calendar-marks) (tuatara.runtime:job-running-p job)))
+    (loop while (and (some (lambda (job)
+                             (and (typep job 'tuatara.defaults::calendar-marks) (tuatara.runtime:job-running-p job)))
                            tuatara.runtime:*jobs*)
                      (< (get-internal-real-time) until))
           do (sleep 0.01))))
@@ -184,15 +189,18 @@ calendar."
   (let ((tuatara-user:*tuatara-support-cursor-colour* nil) (tuatara-user:*cursor-colour* nil))
     (calendar-keys "")
     (false (tuatara.display:face-attribute :calendar-selected :reverse))
-    (is equal (or (tuatara.display:face-attribute :default :fg) :white) (tuatara.display:face-attribute :calendar-selected :bg))
-    (is equal (or (tuatara.display:face-attribute :default :bg) :black) (tuatara.display:face-attribute :calendar-selected :fg)))
+    (is equal (or (tuatara.display:face-attribute :default :fg) :white)
+        (tuatara.display:face-attribute :calendar-selected :bg))
+    (is equal (or (tuatara.display:face-attribute :default :bg) :black)
+        (tuatara.display:face-attribute :calendar-selected :fg)))
   ;; shown below, the months in it; q closes it
   (multiple-value-bind (f editor) (calendar-keys "")
     (true (tuatara.frontend.fake:fake-frame-showing f "September 2026            October 2026"))
     (is = 2 (length (tuatara.command:editor-windows editor)))
     ;; as tall as its eight lines, as your Emacs fits it
     (is = 8 (tuatara.display:window-height (find "*Calendar*" (tuatara.command:editor-windows editor)
-                                                  :key (lambda (w) (tuatara.buffer:buffer-name (tuatara.display:window-buffer w)))
+                                                  :key (lambda (w)
+                                                         (tuatara.buffer:buffer-name (tuatara.display:window-buffer w)))
                                                   :test #'string=))))
   (is = 1 (length (tuatara.command:editor-windows (nth-value 1 (calendar-keys "q")))))
   ;; no cursor drawn over the day at point, which the calendar marks itself; back once it is closed
@@ -204,9 +212,11 @@ calendar."
       (is = 2 (length (tuatara.command:editor-windows editor))))
     (let ((editor (nth-value 1 (run-keys "SPC C" :width 100 :height 24))))
       (is = 1 (length (tuatara.command:editor-windows editor)))
-      (is string= "*Calendar*" (tuatara.buffer:buffer-name (tuatara.display:window-buffer (tuatara.command:editor-window editor)))))
+      (is string= "*Calendar*"
+          (tuatara.buffer:buffer-name (tuatara.display:window-buffer (tuatara.command:editor-window editor)))))
     (let ((editor (nth-value 1 (run-keys "SPC C q" :width 100 :height 24))))
-      (is string= "*scratch*" (tuatara.buffer:buffer-name (tuatara.display:window-buffer (tuatara.command:editor-window editor)))))))
+      (is string= "*scratch*"
+          (tuatara.buffer:buffer-name (tuatara.display:window-buffer (tuatara.command:editor-window editor)))))))
 
 (define-test (calendar with-the-agenda)
   (with-test-directory (dir)
@@ -216,7 +226,8 @@ calendar."
     (let ((tuatara-user:*org-agenda-files* (list (namestring dir))))
       ;; the days with entries marked, worked out in the background
       (calendar-keys "")
-      (let ((marked (tuatara.buffer:buffer-local (tuatara.buffer:find-buffer "*Calendar*") 'tuatara.defaults::calendar-marked)))
+      (let ((marked (tuatara.buffer:buffer-local (tuatara.buffer:find-buffer "*Calendar*")
+                                                 'tuatara.defaults::calendar-marked)))
         (true marked)
         (true (and marked (gethash (calendar-day 2026 10 5) marked)))
         (true (and marked (gethash (calendar-day 2026 11 12) marked)))
@@ -235,13 +246,17 @@ calendar."
       ;; c in the agenda shows the calendar on the day at point
       (let ((tuatara.defaults::*org-now* (encode-universal-time 0 0 12 3 10 2026)))
         (run-keys "M-x o r g - a g e n d a - l i s t RET c" :width 100 :height 30)
-        (is = (calendar-day 2026 10 3) (tuatara.defaults::calendar-date-at (tuatara.buffer:find-buffer "*Calendar*")))))))
+        (is = (calendar-day 2026 10 3)
+            (tuatara.defaults::calendar-date-at (tuatara.buffer:find-buffer "*Calendar*")))))))
 
 (define-test (calendar in-the-date-prompt)
   (let ((tuatara.defaults::*org-now* (encode-universal-time 0 0 12 3 10 2026)))
     (flet ((scheduled (keys)
              (multiple-value-bind (f editor)
-                 (run-keys (format nil "M-x o r g - m o d e RET C-c C-s ~a" keys) :text (format nil "* Task~%") :width 100 :height 24)
+                 (run-keys (format nil "M-x o r g - m o d e RET C-c C-s ~a" keys)
+                           :text (format nil "* Task~%")
+                           :width 100
+                           :height 24)
                (values (session-text editor) f editor))))
       ;; S-<right> twice: two days on, written at the prompt
       (multiple-value-bind (text f editor) (scheduled "S-<right> S-<right> RET")
@@ -252,10 +267,14 @@ calendar."
       ;; as it asks, the day at point is marked by the calendar alone, one look across,
       ;; with no cursor of the window drawn over one of its digits
       (multiple-value-bind (cursor screen spans)
-          (cursor-at-question '("M-x o r g - m o d e RET C-c C-s" :look "C-g") :text (format nil "* Task~%") :width 100 :height 24)
+          (cursor-at-question '("M-x o r g - m o d e RET C-c C-s" :look "C-g")
+            :text (format nil "* Task~%")
+            :width 100
+            :height 24)
         (declare (ignore cursor))
         (flet ((with-face (row face)
-                 (some (lambda (span) (let ((faces (third span))) (if (listp faces) (member face faces) (eq faces face)))) row)))
+                 (some (lambda (span)
+                         (let ((faces (third span))) (if (listp faces) (member face faces) (eq faces face)))) row)))
           (let ((row (position-if (lambda (row) (with-face row :calendar-selected)) spans)))
             (true row)
             (true (search " 3 " (aref screen row)))
@@ -322,12 +341,14 @@ calendar."
                         "C-g")
                   :text "Meeting" :width 120 :height 24)
         (is equal (list (calendar-day 2026 10 5) (calendar-day 2026 10 3)) chosen)
-        (false (tuatara.buffer:buffer-local (tuatara.buffer:find-buffer "*Calendar*") 'tuatara.defaults::calendar-chosen)))
+        (false (tuatara.buffer:buffer-local (tuatara.buffer:find-buffer "*Calendar*")
+                                            'tuatara.defaults::calendar-chosen)))
       (multiple-value-bind (cursor screen spans)
           (cursor-at-question '("M-x o r g - m o d e RET C-c . m l" :look "C-g") :text "Meeting" :width 120 :height 24)
         (declare (ignore cursor screen))
         (true (some (lambda (row) (some (lambda (span) (let ((faces (third span)))
-                                                         (if (listp faces) (member :calendar-chosen faces) (eq faces :calendar-chosen))))
+                                                         (if (listp faces) (member :calendar-chosen faces)
+                                                           (eq faces :calendar-chosen))))
                                         row))
                     spans))))))
 
@@ -339,7 +360,8 @@ calendar."
     (run-keys (list "M-x o r g - m o d e RET C-c C-s"
                     (lambda ()
                       (let ((window (find "*Calendar*" (tuatara.command:editor-windows tuatara.command:*editor*)
-                                          :key (lambda (w) (tuatara.buffer:buffer-name (tuatara.display:window-buffer w)))
+                                          :key (lambda (w)
+                                                 (tuatara.buffer:buffer-name (tuatara.display:window-buffer w)))
                                           :test #'string=)))
                         (setf shown (and window (tuatara.display:window-height window)))))
                     "C-g")

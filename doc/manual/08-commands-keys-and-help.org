@@ -1,0 +1,500 @@
+#+title: Commands, keys and help
+#+language: en
+
+* Commands, keys and help
+
+Running a command by its name, the keys that start longer keys, and the
+help that Tuatara keeps for itself.
+
+Everything Tuatara does is a command. Moving down a line is a command, so is
+saving a file, and so is sorting a list. Most commands have a key, but many
+do not, and nobody remembers all of them. This chapter is about the ways of
+finding and running a command without knowing its key. It starts with ~M-x~,
+which runs any command by name, and with the count that you can give to a
+command. It then explains the prefix keys, the keys that start a longer key,
+and the key hints that show you what can follow. The longest part is about
+help: how to ask what a key does, what a command does, what a setting is and
+where to look when you do not know the name. The end of the chapter has the
+page that introduces Tuatara, the check of what your system has, and a short
+look at running Lisp in the editor.
+
+Before you start, one reminder about the state keys. ~i~ starts INSERT state,
+and ~C-g~ or ~ESC~ returns to NORMAL state. The keys in this chapter that
+start with ~C-x~, ~C-h~ or ~M-x~ work in both states, and the others are
+pressed in NORMAL state.
+
+** Running a command by name
+
+~M-x~ asks for the name of a command in the minibuffer, the row at the bottom
+of the screen where Tuatara asks its questions, and runs the command you
+choose. It is the way to run anything that has no key, and the way to run
+something you only need once in a while. You use it when you know what you
+want done but not which key does it.
+
+You do not type the whole name. As you type, Tuatara lists the commands that
+match, and each one shows its keys and the first line of what it does. The
+words you type may be in any order, so =lines sort= finds =sort-lines=. The
+first letters of the words also match, so =sbke= finds
+=save-buffers-kill-editor=. ~C-n~ and ~C-p~ move down and up the list, ~TAB~
+puts the chosen name into what you typed, and ~RET~ runs it. ~C-g~ gives up and
+nothing runs. The commands you ran lately come first, so a command you use
+often needs only a few letters.
+
+Figure 8.1 shows the minibuffer after typing =sort lines= with some text
+selected.
+
+#+caption: Figure 8.1. M-x with its list of choices. The prompt shows the number of the chosen match and how many there are.
+#+name: fig-mx
+#+begin_example
+ | 1/6  M-x sort lines                                             |
+ | sort-lines          Sort the lines the selection touches by ...  |
+ | sort-lines-reverse  Sort the lines the selection touches by ...  |
+ | sort-fields         Sort the lines the selection touches by ...  |
+ | sort-numeric-fields Sort the lines the selection touches by ...  |
+ | sort-columns        Sort the lines from the one where the ...    |
+#+end_example
+
+A command that needs something from you asks for it after you press ~RET~, in
+the same row. =sort-lines=, for example, works on the lines you have
+selected, and =flush-lines= asks for the text to look for. A command made for
+one kind of buffer says so when you run it in another, and tells you where
+it works.
+
+#+begin_try Try it, to find a command for sorting lines
+1. Press ~C-x C-f~, type =~/shopping.txt= and press ~RET~. Press ~i~ and type
+   =milk=, ~RET~, =eggs=, ~RET~, =bread=, ~RET~, =apples=. Press ~C-g~.
+2. Press ~M-<~ (modal: ~g g~) to go to the top. Press ~V~ to select the first
+   line, then ~J J J~ to take in the other three.
+3. Press ~M-x~ and type =sort lines=. The list shows =sort-lines= first, with
+   its first line of help beside it. Press ~RET~.
+4. The four lines are in alphabetical order: =apples=, =bread=, =eggs=,
+   =milk=. Press ~C-/~ (modal: ~u~) to put them back.
+5. Press ~M-x~ and type =sbke=. The list shows =save-buffers-kill-editor=.
+   Look at the key beside it, then press ~C-g~. Nothing ran.
+#+end_try
+
+#+table: commands execute-extended-command
+
+*** The count before M-x
+
+A count given before ~M-x~ goes to the command you choose. ~C-u 3 M-x
+upcase-word~ makes the next three words capital letters. The next section
+says how a count is typed.
+
+** Counts
+
+A count tells a command how many times to do its work, or gives it a number to
+work with. You type ~C-u~, then the number, then the key or command. In NORMAL
+state ~C-u 5 j~ moves five lines down. ~C-u~ alone means 4 and ~C-u C-u~ means
+16, and a minus sign makes the count negative, which turns many commands
+around. Chapter 2 shows counts with moves, and the other chapters name what a
+count does for their commands, such as how many cursors to add or how many
+lines to kill. The count is always taken by the command that follows it.
+
+~.~ in NORMAL state runs the last command again, with the count it had. It
+is the quickest way to do the same small thing three times. After ~C-u 4 j~,
+pressing ~.~ goes four more lines down. A command started with ~M-x~ is
+repeated as well, with its count.
+
+Inside a question, ~C-u~ does something else. In the minibuffer it clears what
+you typed, and leaves the question as it is. That is useful when you started
+a long name and want to begin again.
+
+#+table: commands universal-argument repeat
+
+** Giving up
+
+~C-g~ is the key to press when you are unsure. It closes a question, closes a
+list of choices, closes the key hints, drops a selection and leaves INSERT
+state. Whatever you were in the middle of is abandoned, and nothing is run.
+
+~ESC~ is a key of its own as standard. It does what it is bound to, and where
+it is bound to nothing it does what ~C-g~ does. It closes a question typed in
+the minibuffer and leaves INSERT state, but it does not end a question that is
+answered with one key. If you would rather have ~ESC~ do everything that ~C-g~
+does, set =*escape-quits*= to =t= in your init file, the file described in
+chapter 20.
+
+#+table: commands keyboard-quit
+
+#+table: settings *escape-quits*
+
+** Prefix keys
+
+Most of the keys you press are one key. Longer keys are made by pressing a
+prefix first and then another key, as in ~C-x C-f~. A prefix key gathers a
+family of commands under one key, so that a small number of keys at the top
+leads to many commands. Tuatara uses four of them in particular ways.
+
+~C-x~ is the family of global commands. Its keys are the same in every buffer
+and in both states: ~C-x C-f~ finds a file, ~C-x C-s~ saves it, ~C-x b~ goes to
+another buffer, ~C-x C-b~ lists them. Under it are smaller families with a
+name: ~C-x w~ for windows, ~C-x r~ for rectangles and registers, ~C-x m~ for
+bookmarks, ~C-x p~ for projects, ~C-x T~ for things you switch on and off.
+The chapter for each subject says which keys it uses.
+
+~C-c~ is the family of the buffer you are in. Its keys differ from mode to
+mode. In a list of buffers, ~C-c~ shows what the list can do. In an Org note
+it shows what Org can do, and in a PDF it shows how to turn a page. It is the
+one prefix to try when you wonder what a particular buffer offers. In the
+terminal that Tuatara can run, ~C-c~ is not a prefix, because it goes to the
+program that is running there. The keys ~C-c x~, ~C-c s~ and ~C-c t~ are never
+given to a mode, and are left for your own commands.
+
+~SPC~ in NORMAL state is the leader, a prefix that belongs to you. As Tuatara
+comes, nothing is under it. You put there the keys that you use most, in the
+places that suit you, and nothing the editor updates will move them.
+~C-x SPC~ opens the same keys in every buffer and in both states, so that the
+leader works in INSERT state too. If another key suits you better than ~SPC~,
+set =*leader-key*= to it, for example =","=. How to bind keys is the subject
+of chapter 20.
+
+~C-h~ is the family of help, described below.
+
+Two more prefixes you meet in NORMAL state are ~g~, which starts moves such as
+~g g~ (non-modal: ~M-<~) for the top of the buffer, and ~m~, which starts the
+selecting keys of chapter 5. They work the same way, and the key hints show
+them.
+
+Tuatara has a setting that turns the modal states off. With =*modal-editing*=
+set to =nil= every key writes text as it does in a plain editor, and the
+Control and Meta keys do the commands. The prefixes in this section work in
+the same way.
+
+** Key hints
+
+Press a prefix key and wait a moment. Under the text, a panel opens that lists
+every key that can come next with the name of its command. You do not need to
+remember the keys of a family; you need only remember the first key. Figure
+8.2 shows the panel after ~C-x~ in a buffer that visits a letter.
+
+#+caption: Figure 8.2. The key hints after C-x. A name that starts with a plus sign is another prefix.
+#+name: fig-key-hints
+#+begin_example
+ +-------------------------------------------------------------+
+ | C-x                                                         |
+ | C-f  find-file          b  switch-to-buffer    +bookmarks   |
+ | C-s  save-buffer        k  kill-buffer         +windows     |
+ | C-b  buffers            u  undo                +rectangles  |
+ | C-c  save-buffers-kill-editor                       ... C-h |
+ +-------------------------------------------------------------+
+ | C-x-                                                        |
+#+end_example
+
+The names that start with a plus sign are further prefixes, and pressing their
+key opens another panel one level down. A key whose command cannot run in the
+buffer you are in is dimmed, and pressing it tells you why. ~C-g~ closes the
+panel. If the keys do not all fit, the last row ends in ... and says that
+~C-h~ lists them all.
+
+~C-h~ pressed right after any prefix key lists every key under it in a buffer
+of its own, the prefixes unfolded, so that you can read them at leisure:
+~C-x C-h~ for the global keys, ~C-c C-h~ for those of the buffer you are in.
+~q~ closes that buffer.
+
+A panel of hints takes as many rows as the frame has room for. If you want it
+shorter, set =*key-hint-rows*= to the most rows it may take. The panel's
+colours are the faces below.
+
+#+begin_try Try it, with the keys of a buffer you do not know
+1. Press ~C-x C-b~ to open the list of buffers. The cursor is in it.
+2. Press ~C-c~ and wait a moment. The panel lists what the list can do: mark
+   a buffer, mark it for deletion, open one and so on, each with its key.
+3. Press ~C-g~. The panel closes and nothing was run.
+4. Press ~C-c C-h~. The same keys are listed in a buffer of its own, in a
+   window beside the list, and the cursor stays in the list. Press ~C-x o~ to
+   move to it and ~q~ to close it, then ~q~ again to close the list of
+   buffers.
+5. Press ~C-x~ and wait. Press ~w~ to see what is under ~C-x w~, then ~C-g~.
+#+end_try
+
+#+table: settings *key-hint-rows*
+
+#+table: faces :key-hint-key :key-hint-command :key-hint-prefix :key-hint-unavailable
+
+** Menus
+
+Some commands have more to say than one key can. Git's commit command has
+switches, options and several ways to finish. For these Tuatara opens a menu:
+a panel of the same kind as the key hints, but with a title, and with keys that
+are not all commands. There are three kinds of entry. An action runs a command
+and closes the menu. A switch turns something on or off, as in "sign this
+commit", and keeps the menu open. An option asks you for a value, such as a
+number of commits, and keeps the menu open too. A switch or option that is on
+is drawn in its own colour, and the rest in a fainter one, so that you can see
+at a glance what the action will be given.
+
+~C-h~ in a menu lists every entry in a buffer of its own, with the command or
+argument behind each, including the entries that are left out of the panel for
+now. ~C-g~ leaves a menu. A menu that holds changes you made asks first, so
+that you do not lose them. The git chapter shows menus in use, and the
+commands in them can be run from ~M-x~ without the menu.
+
+#+table: commands menu-toggle-switch menu-set-option menu-leave menu-describe
+
+#+table: faces :menu-argument-on :menu-argument-off
+
+** Asking what a key does
+
+You press a key by accident and something happens, or you see a key in a
+book and want to know what it is. ~C-h k~ answers. It waits for a key or a
+longer key and then shows, in a window of its own, the command the key runs,
+what the command does and where the command is defined. You do not need to
+leave the key you were using; the question is answered the moment the key is
+complete.
+
+~C-h k~ takes a prefix as well. Press ~C-h k~, then ~C-x~, and it waits for the
+rest, then shows ~C-x C-f~ when you press ~C-f~. A key with no command says it
+is undefined.
+
+~?~ in NORMAL state, or ~C-h b~ anywhere, lists every key that is in effect in
+the buffer you are in. The list goes keymap by keymap, the one for this buffer
+first and then those it falls through to. A key that a mode has taken away is
+shown as =(none here)=. It is a long list, but a search with ~C-s~ finds a key
+or a command in it.
+
+#+begin_try Try it, when you forgot what a key does
+1. Press ~C-h k~. The echo area asks =Describe key:=.
+2. Press ~g e~ (non-modal: ~M->~). A second window opens, and the cursor stays
+   in the one you were in. The new window says that ~g e~ runs the command
+   =end-of-buffer=, lists the keys that run it, and says what it does.
+3. Press ~C-x 1~ (modal: ~F~) to leave only one window. Press ~C-h k~ again, and
+   this time press ~C-x~ and then ~C-s~. It names =save-buffer=.
+4. Press ~?~ (non-modal: ~C-h b~) to see every key in force. Press ~C-x o~ to
+   move into the list, then ~C-s~, type =save= and ~RET~ to find the keys for
+   saving. Close the list with ~q~.
+#+end_try
+
+#+table: commands describe-key describe-bindings
+
+** Asking what a command does
+
+~C-h x~ asks for a command by name, with the same list as ~M-x~, and shows the
+command: what it does, which keys run it and in which file it is defined. You
+use it when ~M-x~ offered a command whose first line was not enough, or when
+you want to see the keys that a command has so that you can learn them. Every
+command is offered, including those that belong to other kinds of buffers. The
+file in the last line is a link. Press ~RET~ on it and the source opens beside
+the help, with the cursor on the definition.
+
+~C-h f~ is the same for any function of Lisp, not just for the commands. It
+shows the parameters as well. It is for people who write their own commands.
+In a Lisp buffer it offers the name at the cursor first.
+
+~C-h v~ does the same for a variable. A setting is a variable, so this is how
+you ask what a setting is for and what it is now. Press ~C-h v~, type
+=*fill-column*= and ~RET~, and the help gives the value, 80 as Tuatara comes,
+and what it is for. A very long value, such as a list of hundreds of items, is
+cut after a few thousand characters, and says so.
+
+The help is shown in a window of its own, and you stay where you were, in the
+text. If you would rather be taken to the help, so that you can scroll it,
+set =*help-window-select*= to =t=. ~q~ then closes the window and returns you
+to where you were. Either way ~q~ closes a help window when you are in it, and
+~TAB~ goes from one link to the next, ~RET~ following a link.
+
+#+table: commands describe-command describe-function describe-variable
+
+#+table: settings *help-window-select*
+
+#+table: faces :help-key-binding :button
+
+** Finding a command when you do not know its name
+
+You know what you want, such as turning a line of text into capital letters,
+but not what it is called. Here are three ways to look.
+
+The first is ~M-x~ itself. Type a word that is likely to be in the name and
+read the list. Words may come in any order, so =upper= and =case= together
+find the commands with both. The list shows the first line of what each one
+does, which is often enough.
+
+The second is ~C-h a~, apropos. It asks for words and searches both the names
+and the documentation of every command and setting, which finds things that
+~M-x~ cannot, because the word you chose is in the help and not in the name.
+The matches appear in a buffer called =*Apropos*=, the commands first and then
+the settings, with the first sentence of each one's help. Each name is a link:
+~RET~ on it shows its full help, and ~TAB~ goes to the next name.
+
+The third is the keys. ~?~ (non-modal: ~C-h b~) lists everything that has a key,
+and ~C-c~ or ~C-x~ with a wait shows what a family offers. A command that has a
+key has usually been put there because it is common.
+
+#+begin_try Try it, to find how to make words capital
+1. Press ~C-h a~, type =capital= and press ~RET~. The =*Apropos*= buffer lists
+   the commands and settings that mention capital letters.
+2. Press ~TAB~ until a name you like is selected, and ~RET~ on it. Its help
+   opens.
+3. Close the help with ~q~, and the list with ~q~ again.
+4. Press ~M-x~ and type =upcase=. The list shows the commands that change
+   to upper case, and the keys of those that have one.
+5. Press ~C-g~.
+#+end_try
+
+#+table: commands apropos-command
+
+** What a face looks like
+
+A face is a name for a way of drawing text: its colour, whether it is bold,
+and so on. Chapter 1 explained them. ~M-x describe-face~ asks for a face by
+name and shows all that is known of it: a sample drawn in it, what it
+colours, what the theme and your init file set for it, the face it inherits
+from, and each attribute as it is drawn now. ~M-x list-faces~ shows every face,
+grouped by the first word of its name, each with a sample and the first
+sentence of what it colours. ~RET~ on a face in the list shows its full
+description.
+
+~M-x describe-char~ does the same for a character. It shows its number in
+Unicode, its name, the bytes it takes in the file, the face it is drawn in
+and, in a language Tuatara can parse, the part of the code it is in. It is
+how you find out which of two letters that look alike you have.
+
+#+table: commands describe-face list-faces describe-char
+
+** Messages, notifications and the log of what Tuatara says
+
+Tuatara says short things in the echo area, one at a time, and they are gone
+after a moment. ~C-h e~ shows them all in =*Messages*=, the latest at the end,
+with repeats counted. It is the first place to look when something went by too
+fast to read. The buffer keeps the last =*message-log-max*= lines.
+
+~C-h N~ shows =*Notifications*=: what was told to you during this session by
+the agenda, when an entry marked for a reminder came due, and by packages.
+Each one is a line with the date and time. Each notification is also sent to the
+desktop by the program that =*notify-program*= names, =notify-send= as Tuatara
+comes. Set it to =nil= to keep them in the buffer only.
+
+#+table: commands view-echo-area-messages view-notifications
+
+#+table: settings *message-log-max* *notify-program*
+
+** The tutor and manual pages
+
+~M-x tuatara-tutor~ opens the tutor, a buffer that teaches the modal keys by
+making you use them. It is an ordinary buffer with its own instructions. Each
+lesson tells you what to type and gives a line to practise on, marked with an
+arrow, and the keys it names are the keys you really have, even if you moved
+them. You edit the tutor as it says, and nothing you do in it is saved. Half
+an hour with it is the quickest way to get used to the two states. The page
+=*About Tuatara*= below has a button that opens it.
+
+The system's own manual pages, the ones that explain programs such as =ls= or
+=grep= in a terminal, can be read in Tuatara. ~M-x man~ asks for a name, as in
+=ls=, =ls(1)= or =1 ls=, and lists the names of the pages the system has as you
+type. The page opens read-only in a window of its own, laid out for the width of
+the window, with its headings, bold text and underlined text drawn in faces.
+Every mention of another page, such as =chmod(1)=, is a link. ~RET~ or ~l~
+follows it, ~TAB~ goes to the next link, and ~h~ comes back to the page you
+came from. ~n~ and ~p~ go to the next and the previous section, ~r~ lays the
+page out again if you changed the size of the window, and ~q~ closes it.
+
+If you open the source of a page, a file such as =tool.1=, ~M-x man~ offers
+that file first, so that you can see what you wrote as it will look.
+
+The page is made by the system's =man= and =groff=, run with no network and
+none of your files, and it is in English. If they are not installed,
+~M-x check-health~ says so.
+
+#+table: commands tuatara-tutor man man-next-section man-previous-section man-back
+
+** About Tuatara and what is there
+
+~C-h C-a~ opens =*About Tuatara*, the page that introduces the editor. It says
+which version you have, who wrote it and under which licence, where its ideas
+came from, where the sources are and where to report a fault, and it has
+buttons for the ways in: the tutor, the help keys of this chapter, your init
+file and the health check. ~TAB~ and ~S-TAB~ go from one button to the next,
+~RET~ presses one, and a click does too. Opening a web address from it asks
+first and uses your desktop's browser.
+
+~C-h C-c~ shows the licence, the GNU General Public License, version 3 or
+later, and ~C-h C-w~ the part of it that says there is no warranty.
+~M-x credits~ shows the projects that Tuatara owes its ideas to and what it
+took from each. ~M-x tuatara-version~ says which Tuatara this is: the version,
+the commit and date it was built from, the Steel Bank Common Lisp (SBCL) it
+runs on and whether it shows in a window or a terminal. With ~C-u~ it writes
+the line at the cursor instead of saying it, which is useful in a report of a
+fault.
+
+#+table: commands about-tuatara describe-copying describe-no-warranty credits tuatara-version
+
+** Checking what your system has
+
+Tuatara uses a few programs outside itself: for example, the sandbox that
+protects it when it opens a file you do not trust, the programs that read PDFs
+and Office files, and GnuPG for encryption. It also loads a grammar for each
+programming language it colours and indents. ~M-x check-health~ reports what
+is there and what is not. It runs in the background, because some of it takes
+a moment, and shows =*Health*= when it is ready. The top of the report says
+where your init file is and what the sandbox and the programs need. A cross
+beside a program the editor needs is a problem, and the message says how to
+get it. A fainter cross beside a program that only adds a feature says what the
+feature needs, and is nothing to worry about. Further down, a table has a row
+for each language, with a tick when its colours, indentation and selections
+work, and then the major modes and the files they take. In a window, the
+report also measures how quickly each way of drawing is on your machine and
+which is faster.
+
+In the report ~r~ checks again and ~q~ closes it. Run it first when something
+does not work, and send it with a report of a fault.
+
+If a command fails and you want to see why, ~M-x debug-mode~ keeps a record of
+what the editor does: commands with their keys, background jobs, files parsed
+and errors. ~C-h E~ shows it in =*Debug*=. The same lines go to a file that
+survives a crash, so that it can be read afterwards. =Debug= in the mode line
+says it is on, and ~M-x debug-mode~ again turns it off. =*debug-mode*= set to
+=t= turns it on when Tuatara starts, and =*debug-log-limit*= is how many lines
+=*Debug*= keeps.
+
+#+table: commands check-health debug-mode view-debug-buffer
+
+#+table: settings *debug-mode* *debug-log-limit*
+
+** Lisp in the running editor
+
+Tuatara is written in Common Lisp, and the Lisp you type runs inside the
+editor. This is how an init file works. It is also a calculator, a way to look
+at a value and a way to try something small. You do not need Lisp for any other
+chapter, so you may skip this part.
+
+~M-:~ asks for one Lisp expression in the minibuffer and shows its value, in
+any buffer. ~M-: (+ 2 3) RET~ shows =5=. In a Lisp buffer, such as
+=*lisp-scratch*= (chapter 7) or a file that ends in =.lisp=, ~C-x C-e~ runs the
+expression before the cursor, ~C-j~ puts what it printed on the lines after it,
+and ~C-M-x~ runs the whole top-level form the cursor is in. ~M-x eval-region~
+runs the selection, and ~M-x eval-buffer~ runs the whole buffer. They run only
+in Lisp buffers, and run nothing in a file opened with care because you do
+not trust it.
+
+~M-x ielm~ opens =*ielm*=, a buffer with a prompt where you type Lisp and
+read the answer below. ~RET~ runs the input when it is whole expressions and
+starts a new line when it is not. ~M-p~ and ~M-n~ bring back earlier inputs, and
+~C-c C-u~ clears what you typed. The modal keys are off in it, so you type at
+once without ~i~.
+
+If Lisp meets an error, the echo area says what it was. ~M-x
+toggle-debug-on-error~ makes it show the calls under way too, in
+=*Backtrace*=. That is for people who write Lisp, and is easy to leave off.
+
+#+begin_try Try it, with a sum
+1. Press ~M-:~, type =(* 12 7)= and press ~RET~. The echo area shows
+   =(* 12 7) => 84=, then the same number in other bases.
+2. Press ~M-x~, type =ielm= and press ~RET~. After the prompt type
+   =(reverse "kiwi")= and press ~RET~. The answer is ="iwik"=.
+3. Press ~M-p~. The input comes back. Press ~C-c C-u~ to take it away.
+4. Press ~C-x k~ and ~RET~ to close =*ielm*=. It has changed, so it asks;
+   type =y= and press ~RET~.
+#+end_try
+
+#+table: commands eval-expression eval-last-expression eval-print-last-expression eval-top-level-form eval-region eval-buffer ielm ielm-return ielm-send-input ielm-previous-input ielm-next-input ielm-kill-input ielm-change-working-buffer ielm-tab toggle-debug-on-error
+
+#+table: settings *debug-on-error*
+
+** Binding keys yourself
+
+The prefixes, the leader and the labels that the key hints show are yours to
+set. You can bind a key to any command, and give it a label that the hints
+show in place of the command's name, in your init file. That is described in
+chapter 20, together with the settings that move the leader.
+
+#+table: settings *leader-key* *modal-editing*

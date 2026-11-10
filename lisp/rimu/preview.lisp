@@ -29,7 +29,9 @@ named pipe, a socket or a device is, never opening it.
 
 (defvar *rimu-preview-delay* 0.1
   "Seconds point rests on an entry of a rimu list before the preview shows it,
-so that moving over many lines quickly reads none of them.")
+so that moving over many lines quickly reads none of them, 0.1 as standard.
+A longer time reads fewer files as you move, which helps on a slow disk or a
+remote folder; a shorter one shows the preview at once and reads more.")
 
 (defvar *rimu-preview-size* (expt 2 20)
   "The most of a file rimu's preview shows, in octets from its start: 1 MB by
@@ -49,21 +51,22 @@ opened it."
 
 (defvar *preview-text-functions* '()
   "Functions giving the preview of a file a text of their own, for kinds of
-file rimu's preview does not know (a package's): each is called, on the
+file rimu's preview does not know (a package's). Each is called, on the
 preview's own thread, with the file open as file descriptor (FD), its PATH,
 its SIZE in octets, its KIND (TUATARA.IO:OCTETS-KIND's keyword, or NIL) and
-its first OCTETS, and returns the text to show, read only, or NIL to leave the
+its first OCTETS. It returns the text to show, read only, or NIL to leave the
 file to the next and at last to its octets. The text is the file read by
 Tuatara itself, nothing in it run.")
 
 (defstruct (rimu-preview-job (:constructor make-rimu-preview-job (entry directory)) (:copier nil))
-  "The start of the file ENTRY of DIRECTORY read on THREAD for the preview:
-OCTETS and the file's SIZE once done, with KIND, what the octets tell of it
-(TUATARA.IO:OCTETS-KIND, as (WORDS KEYWORD)), for a PDF its TEXT when it could
-be taken out and for an image its IMAGE, with NOTES for the line over it
-(DECODE-PDF, DECODE-IMAGE), or the REASON it could not be read; DONE true
-then; READ-HERE true when its TEXT was read by Tuatara itself
-(*PREVIEW-TEXT-FUNCTIONS*). CANCEL, a cons, stops it when its car turns true."
+  "The start of the file ENTRY of DIRECTORY read on THREAD for the preview.
+OCTETS and the file's SIZE are set once done. KIND is what the octets tell of
+it (TUATARA.IO:OCTETS-KIND, as (WORDS KEYWORD)). For a PDF its TEXT is set
+when it could be taken out, and for an image its IMAGE, with NOTES for the
+line over it (DECODE-PDF, DECODE-IMAGE). Instead, REASON says why it could not
+be read. DONE is true then. READ-HERE is true when its TEXT was read by
+Tuatara itself (*PREVIEW-TEXT-FUNCTIONS*). CANCEL, a cons, stops it when its
+car turns true."
   entry directory thread octets size kind text image notes reason done read-here (cancel (list nil)))
 
 (setf (documentation 'rimu-preview-job-p 'function) "True when OBJECT is a RIMU-PREVIEW-JOB.")
@@ -231,7 +234,8 @@ is taken away."
                      ((and (null entry) (rimu-preview-gone-p state list))
                       (rimu-preview-empty state)))))
    :inside (lambda (state)
-             ;; the cursor gone into a PDF's or an Office document's preview: the whole of it there, as its pages, until it goes back
+             ;; the cursor gone into a PDF's or an Office document's preview: the whole of it there, as its pages,
+             ;; until it goes back
              (let ((preview (rimu-preview-buffer state))
                    (list (tuatara.display:window-buffer (rimu-preview-list-window state))))
                (when (and (rimu-preview-own state) preview (live-buffer-p preview)
@@ -322,7 +326,8 @@ of its own, or shown in the buffer visiting it already; the rest at once."
                           (frontend (editor-frontend editor))
                           ;; pictures where the frontend shows them, no larger than the preview can be
                           (pixels (and (tuatara.frontend:frontend-images-p frontend)
-                                       (multiple-value-bind (width height) (tuatara.frontend:frontend-cell-pixels frontend)
+                                       (multiple-value-bind (width height)
+                                           (tuatara.frontend:frontend-cell-pixels frontend)
                                          (and width (list (* width (max 1 (ceiling (editor-width editor) 2)))
                                                           (* height (max 1 (editor-height editor)))))))))
                      (setf (rimu-preview-job-thread job)
@@ -409,12 +414,13 @@ name has when that is not one of the kind's."
 
 (defun rimu-preview-take-in (state job)
   "Show in the preview STATE the start of the file JOB read, unless point has
-moved on to another entry meanwhile: a PDF's first page and its text, an
-image's picture and its octets, the picture shown where the frontend shows
-pictures and the list has not been switched to text (\\<rimu-mode>\\[rimu-toggle-picture]);
-a binary file, one with a null (NUL) octet in its first 64 KB, in the hex
-view; a text file with the major mode its name calls for, unless it would be
-visited safely or the list is opened safely."
+moved on to another entry meanwhile. A PDF shows its first page and its text,
+an image its picture and its octets, the picture shown where the frontend
+shows pictures and the list has not been switched to text
+\(\\<rimu-mode>\\[rimu-toggle-picture]). A binary file, one with a null (NUL)
+octet in its first 64 KB, shows in the hex view. A text file shows with the
+major mode its name calls for, unless it would be visited safely or the list
+is opened safely."
   (let ((entry (rimu-preview-job-entry job)))
     (when (eq entry (car (rimu-preview-wanted state)))
       (let ((name (escape-controls (tuatara.io:listed-name entry))))
@@ -446,19 +452,26 @@ visited safely or the list is opened safely."
                      (set-major-mode buffer (mode-for-file path (string-right-trim '(#\Return) first-line)))))))
               (setf (buffer-read-only-p buffer) t
                     ;; an Office document's text read by Tuatara itself, its page alone drawn in the sandbox
-                    (tuatara.buffer:buffer-local buffer :sandboxed) (and (or (and text (not office) (not (rimu-preview-job-read-here job)))
-                                                                             (rimu-preview-job-image job))
-                                                                         t)
-                    ;; the cursor into it shows its pages: a PDF's, or an Office document's that can be read or was drawn
-                    (tuatara.buffer:buffer-local buffer 'rimu-preview-pdf) (and (or (eq (second (rimu-preview-job-kind job)) :pdf)
-                                                                                    (and office (or (getf office :read) (rimu-preview-job-image job))))
-                                                                                t)
+                    (tuatara.buffer:buffer-local buffer :sandboxed)
+                    (and (or (and text (not office) (not (rimu-preview-job-read-here job)))
+                             (rimu-preview-job-image job))
+                         t)
+                    ;; the cursor into it shows its pages: a PDF's, or an Office document's that can be read or was
+                    ;; drawn
+                    (tuatara.buffer:buffer-local buffer 'rimu-preview-pdf)
+                    (and (or (eq (second (rimu-preview-job-kind job)) :pdf)
+                             (and office (or (getf office :read) (rimu-preview-job-image job))))
+                         t)
                     ;; its text the file's own octets (an image's), for the hex view
                     (tuatara.buffer:buffer-local buffer 'rimu-preview-octets) (null text)
                     (tuatara.buffer:buffer-local buffer :image) (rimu-preview-job-image job)
                     (tuatara.buffer:buffer-local buffer :image-hidden)
-                    (tuatara.buffer:buffer-local (tuatara.display:window-buffer (rimu-preview-list-window state)) 'rimu-preview-text))
-              (rimu-preview-kind-line buffer (rimu-preview-job-kind job) (tuatara.io:listed-name entry) (rimu-preview-job-notes job))
+                    (tuatara.buffer:buffer-local (tuatara.display:window-buffer (rimu-preview-list-window state))
+                                                 'rimu-preview-text))
+              (rimu-preview-kind-line buffer
+                                      (rimu-preview-job-kind job)
+                                      (tuatara.io:listed-name entry)
+                                      (rimu-preview-job-notes job))
               (rimu-preview-show state buffer t entry)))))))
 
 (defun rimu-preview-tick (editor)
@@ -559,11 +572,14 @@ room beside the list, the file is shown in the list's window."
               (setf (tuatara.display:hex-view-p buffer) t))
             (when (and place (null before))
               (setf (tuatara.display:window-point-anchor window)
-                    (tuatara.text:make-anchor (tuatara.buffer:buffer-version buffer) (min size (first place)) :bias :after)
+                    (tuatara.text:make-anchor (tuatara.buffer:buffer-version buffer)
+                                              (min size (first place))
+                                              :bias :after)
                     (tuatara.display:window-start window) (min size (second place))))
             (select-window window)
             (cond ((pdf-view-of buffer)
-                   (message "~a, all of it: the cursor back in the list shows its preview again" (tuatara.buffer:buffer-name buffer)))
+                   (message "~a, all of it: the cursor back in the list shows its preview again"
+                            (tuatara.buffer:buffer-name buffer)))
                   ((and binary (buffer-read-only-p buffer))
                    (message "~a is binary: shown in the hex view, read-only; \\[read-only-mode] lets you overwrite its octets, \\<*rimu-quick-edit-normal-keymap*>\\[rimu-quick-edit-finish] goes back to the preview"
                             (tuatara.buffer:buffer-name buffer)))
@@ -577,12 +593,13 @@ room beside the list, the file is shown in the list's window."
   "Edit the file on the current line where the preview shows it, the quick
 edit: the preview becomes the file itself, opened as \\[find-file] opens it
 (safely where that would be, and with \\[universal-argument] safely always), and the
-cursor goes there. \\<*rimu-quick-edit-normal-keymap*>\\[rimu-quick-edit-finish] in NORMAL state, \\<*rimu-quick-edit-keymap*>\\[rimu-quick-edit-finish] in any, or the cursor going back
-to the list returns to the preview, asking first whether to save the changes.
-On a directory, the cursor goes into its list in the preview's window, to move
-about in. With the preview off, a window beside the list is made for it. A
-named pipe, a socket or a device is not opened, and a file on another machine
-is opened with \\`RET' instead."
+cursor goes there. \\<*rimu-quick-edit-normal-keymap*>\\[rimu-quick-edit-finish]
+in NORMAL state, \\<*rimu-quick-edit-keymap*>\\[rimu-quick-edit-finish] in any,
+or the cursor going back to the list returns to the preview, asking first
+whether to save the changes. On a directory, the cursor goes into its list in
+the preview's window, to move about in. With the preview off, a window beside
+the list is made for it. A named pipe, a socket or a device is not opened, and a
+file on another machine is opened with \\`RET' instead."
   (let* ((list (current-buffer))
          (list-window (current-window))
          (entry (rimu-entry-at-point))

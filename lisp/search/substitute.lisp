@@ -173,15 +173,15 @@ whether it ignores case."
   "How to find PATTERN, a regular expression when REGEX is true, else literal
 text: a MATCHER, or NIL and the reason the pattern does not compile. FOLD
 ignores case, by default when the pattern has no capital letter and names no
-case ([[:upper:]], \\p{Lu}). A regular
-expression with no special character is found as literal text, which is
-several times faster and finds the same matches, unless COMPILED asks for it
-compiled whatever it is (a rectangle's rows are matched as text); literal text
-is compiled when case is ignored and it has letters beyond ASCII, whose other
-case only the regular expression knows, and when it holds a raw byte, which
-then matches only a byte standing on its own, never one inside a character.
-With carriage return and line feed (CRLF), for text whose lines end with a
-carriage return and a newline, $ matches before the carriage return."
+case ([[:upper:]], \\p{Lu}). A regular expression with no special character is
+found as literal text, which is several times faster and finds the same
+matches. Not so when COMPILED asks for it compiled whatever it is (a
+rectangle's rows are matched as text). Literal text is compiled when case is
+ignored and it has letters beyond ASCII, whose other case only the regular
+expression knows. It is also compiled when it holds a raw byte, which then
+matches only a byte standing on its own, never one inside a character. With
+carriage return and line feed (CRLF), for text whose lines end with a carriage
+return and a newline, $ matches before the carriage return."
   (let ((past-ascii (and fold (some (lambda (c) (and (>= (char-code c) 128) (both-case-p c))) pattern)))
         (raw (some (lambda (c) (tuatara.text:raw-byte-code-p (char-code c))) pattern)))
     (cond ((and (not regex) (or past-ascii raw))
@@ -214,8 +214,9 @@ true; NIL when HALT answers true, or all are done."
 POSITION of ROPE, the end of a stretch searched, with the line before it for
 context (4 KB at most)."
   (let ((text (tuatara.text:lenient-string
-               (tuatara.text:rope-octets rope :start (max (tuatara.text:rope-line-start rope position) (- position 4096))
-                                              :end position))))
+               (tuatara.text:rope-octets rope
+                                         :start (max (tuatara.text:rope-line-start rope position) (- position 4096))
+                                         :end position))))
     (multiple-value-bind (start end)
         (tuatara.runtime:stoppable (cl-ppcre:scan scanner text :start (length text) :real-start-pos 0))
       (and start (= start end (length text))))))
@@ -249,14 +250,13 @@ line."
 
 (defun map-match-units (function unit-of start end marked limit)
   "Call FUNCTION with (UNIT-START TEXT-END AFTER) for each line or record a
-match from START to END lies on, in order: from the one holding its first
-octet through the one holding its last, a line's end belonging to the line
-it ends; an empty match lies on the one holding it when it is no further on
-than that one's text end. Those before MARKED, given already, are left out,
-and so are those starting at LIMIT or after. UNIT-OF, a function of a
-position and MARKED, gives the three values for the one holding the
-position. Returns where the one after the last looked at starts, MARKED for
-the next match."
+match from START to END lies on, in order. That is from the one holding its
+first octet through the one holding its last, a line's end belonging to the
+line it ends. An empty match lies on the one holding it when it is no further
+on than that one's text end. Those before MARKED, given already, are left out,
+and so are those starting at LIMIT or after. UNIT-OF, a function of a position
+and MARKED, gives the three values for the one holding the position. Returns
+where the one after the last looked at starts, MARKED for the next match."
   (declare (type fixnum start end marked limit))
   (let ((last (if (> end start) (1- end) start))
         (at (max start marked)))
@@ -284,8 +284,18 @@ end then."
   (let ((fold (matcher-fold matcher)))
     (if (eq (matcher-kind matcher) :literal)
         (if forward
-            (tuatara.syntax:search-forward rope (matcher-pattern matcher) :start from :end limit :case-fold fold :stop stop)
-            (tuatara.syntax:search-backward rope (matcher-pattern matcher) :start from :end limit :case-fold fold :stop stop))
+            (tuatara.syntax:search-forward rope
+                                           (matcher-pattern matcher)
+                                           :start from
+                                           :end limit
+                                           :case-fold fold
+                                           :stop stop)
+            (tuatara.syntax:search-backward rope
+                                            (matcher-pattern matcher)
+                                            :start from
+                                            :end limit
+                                            :case-fold fold
+                                            :stop stop))
         (if forward
             (multiple-value-call
                 (lambda (&optional start end &rest more)
@@ -309,12 +319,11 @@ carriage return."
 
 (defun expand-replacement (replacement matched groups &optional (newline (string #\Newline)))
   "The text REPLACEMENT produces for a match of the text MATCHED whose groups
-matched GROUPS (a vector, or NIL): & and \\0 stand for the whole match and \\1
-to \\9 for a group; \\n and \\r for a line break, NEWLINE (the buffer's,
-BUFFER-NEWLINE), and \\t for a tab; \\u and \\l
-make the next character upper or lower case, \\U and \\L all that follows until
-\\E or \\e. Any other escaped character, such as \\& \\/ or \\\\, stands for
-itself."
+matched GROUPS (a vector, or NIL). & and \\0 stand for the whole match and \\1
+to \\9 for a group. \\n and \\r stand for a line break, NEWLINE (the buffer's,
+BUFFER-NEWLINE), and \\t for a tab. \\u and \\l make the next character upper
+or lower case, \\U and \\L all that follows until \\E or \\e. Any other escaped
+character, such as \\& \\/ or \\\\, stands for itself."
   (let ((mode nil) (once nil))
     (with-output-to-string (out)
       (flet ((emit (text)
@@ -674,7 +683,9 @@ second value, a REST for its \\`!' over what is left of them."
        (lambda (pos)
          (settle)
          (let ((rest (loop for j from i below (length pieces)
-                           collect (if (= j i) (cons (max pos (car (aref pieces j))) (cdr (aref pieces j))) (aref pieces j)))))
+                           collect (if (= j i)
+                                       (cons (max pos (car (aref pieces j))) (cdr (aref pieces j)))
+                                       (aref pieces j)))))
            (pieces-line-matches (tuatara.buffer:buffer-text buffer) matcher regex rest all)))))))
 
 (defun in-sight-lines (buffer low high)
@@ -702,8 +713,9 @@ BUFFER, or nothing out of sight, all of it is done in the background."
       (if (or (null found) status)
           (start-rewrite buffer line regex low high words flags)
           (let* ((shifts (loop for m in found
-                               collect (cons (second m) (- (tuatara.text:string-octet-length (funcall replacement-for m))
-                                                           (- (second m) (first m))))))
+                               collect (cons (second m)
+                                             (- (tuatara.text:string-octet-length (funcall replacement-for m))
+                                                (- (second m) (first m))))))
                  (moved (lambda (at) (+ at (loop for (end . shift) in shifts while (<= end at) sum shift))))
                  (shown (replace-matches buffer found replacement-for))
                  (shown-lines (matched-lines rope found))
@@ -789,7 +801,8 @@ so. Returns the number of matches replaced or counted here."
                                             (multiple-value-bind (found status count)
                                                 (line-matches rope matcher regex pos high :stop stop)
                                               (if (eq status :over)
-                                                  ;; too many to hold: those in sight at once, the rest in the background
+                                                  ;; too many to hold: those in sight at once, the rest in the
+                                                  ;; background
                                                   (progn (rewrite-after-sight buffer line regex pos high words flags matcher replacement-for all)
                                                          (values nil :background count))
                                                   (values (if all found (first-per-line rope found)) status count)))))))))

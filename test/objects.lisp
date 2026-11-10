@@ -26,7 +26,8 @@
     (is string= "for" (selection-after "w w w w m b" text)))
   ;; the same on the first line of *lisp-scratch*
   (is string= "text and serves"
-      (selection-after "w w w w w l m w m w m b" "This buffer holds unsaved text and serves as a space for Lisp evaluation."))
+      (selection-after "w w w w w l m w m w m b"
+                       "This buffer holds unsaved text and serves as a space for Lisp evaluation."))
   (is string= "alpha beta" (selection-after "C-u 2 m w" "alpha beta gamma"))
   ;; at the end of the text, the last word
   (is string= "gamma" (selection-after "g l m w" "alpha beta gamma  "))
@@ -75,7 +76,10 @@
              (run-keys "g l m W" :text (make-string 3000 :initial-element #\a) :width 80 :height 10)
              "No start of the symbol within 1000 bytes"))
       (true (tuatara.frontend.fake:fake-frame-showing
-             (run-keys "m W" :text (concatenate 'string (make-string 3000 :initial-element #\() "word") :width 80 :height 10)
+             (run-keys "m W"
+                       :text (concatenate 'string (make-string 3000 :initial-element #\() "word")
+                       :width 80
+                       :height 10)
              "No symbol at or before point")))))
 
 (define-test (objects sentences-and-paragraphs)
@@ -106,7 +110,8 @@
   (is string= "word" (selection-after "w w m i" "say \"word\" now"))
   ;; quotes do not nest: a level out is one more on either side
   (is string= "writing on paper." (selection-after "w w w w l m i \"" "\"No use \"writing on paper.\" That\""))
-  (is string= "No use \"writing on paper.\" That" (selection-after "w w w w l m i \" m i" "\"No use \"writing on paper.\" That\""))
+  (is string= "No use \"writing on paper.\" That"
+      (selection-after "w w w w l m i \" m i" "\"No use \"writing on paper.\" That\""))
   (multiple-value-bind (f editor) (run-keys "m i x" :text "abc")
     (declare (ignore editor))
     (true (search "Unsupported delimiter `x'" (tuatara.frontend.fake:fake-screen-line f 7))))
@@ -120,39 +125,58 @@
         (filled "C-u 2 0 C-x f g Q RET" (format nil "The quick brown fox jumps over the lazy dog and keeps running far away.~%~%Second paragraph stays.~%")))
     ;; the text before the words is kept: an indentation, a quotation's >
     (is string= (format nil "  Indented text that~%  is long enough to~%  need a break~%  somewhere.~%")
-        (filled "C-u 2 0 C-x f M-q RET" (format nil "  Indented text that is long enough to need a break somewhere.~%")))
+        (filled "C-u 2 0 C-x f M-q RET"
+          (format nil "  Indented text that is long enough to need a break somewhere.~%")))
     (is string= (format nil "> quoted line one~%> quoted line two~%> that is longer~%> than the rest~%")
-        (filled "C-u 2 0 C-x f j M-q RET" (format nil "> quoted line one~%> quoted line two that is longer than the rest~%")))
+        (filled "C-u 2 0 C-x f j M-q RET"
+          (format nil "> quoted line one~%> quoted line two that is longer than the rest~%")))
     ;; a list item continues under its words
     (is string= (format nil "- a list item that~%  goes on for quite~%  a while~%")
         (filled "C-u 2 0 C-x f M-q RET" (format nil "- a list item that goes on for quite a while~%")))
     ;; in Org's indented view, counted from the window's margin: under a second-level headline, 4 columns in
     (is string= (format nil "* A~%** B~%- one two three~%  four five six~%  seven~%")
-        (filled "M-x o r g - m o d e RET C-u 2 0 C-x f j j M-q RET" (format nil "* A~%** B~%- one two three four five six seven~%")))
+        (filled "M-x o r g - m o d e RET C-u 2 0 C-x f j j M-q RET"
+          (format nil "* A~%** B~%- one two three four five six seven~%")))
     ;; what is no prose in Org is never filled: tables, planning lines, drawers, blocks, fixed-width lines
     (let ((org (format nil "* A~%SCHEDULED: <2026-10-20 Tue>~%:PROPERTIES:~%:ID: abc~%:END:~%Some text here.~%~%| a_b | 10 | 50% |~%|-----+----+-----|~%| c   | 2  | 3%  |~%~%#+begin_src python~%def f(x):~%    return x + 1~%print(f(2))~%#+end_src~%~%: fixed one~%: fixed two~%")))
       (dolist (line '(1 2 3 7 8 12 13 17 18))
-        (is string= org (filled (format nil "M-x o r g - m o d e RET g g ~{~a ~}C-u 2 0 0 M-q" (make-list line :initial-element "j")) org)
+        (is string= org
+            (filled (format nil
+                            "M-x o r g - m o d e RET g g ~{~a ~}C-u 2 0 0 M-q"
+                            (make-list line :initial-element "j")) org)
             "line ~d" line))
       ;; a selection over all of it fills only the prose
       (is string= org (filled "M-x o r g - m o d e RET C-u 2 0 0 C-x f % g q RET" org)))
     ;; nor in Markdown: code fences and tables
     (let ((md (format nil "```python~%def f():~%    return 1~%```~%~%| a | b |~%|---|---|~%| 1 | 2 |~%")))
       (dolist (line '(1 2 5 6))
-        (is string= md (filled (format nil "M-x m a r k d o w n - m o d e RET g g ~{~a ~}C-u 2 0 0 M-q" (make-list line :initial-element "j")) md)
+        (is string= md
+            (filled (format nil
+                            "M-x m a r k d o w n - m o d e RET g g ~{~a ~}C-u 2 0 0 M-q"
+                            (make-list line :initial-element "j")) md)
             "line ~d" line)))
     ;; each item of a list is a paragraph of its own: V on one, g q, the others left as they are
     (is string= (format nil "- first item that~%  goes on for a~%  while~%- second item that goes on for a while too~%1. numbered item that goes on and on~%")
         (filled "C-u 2 0 C-x f V g q RET"
                 (format nil "- first item that goes on for a while~%- second item that goes on for a while too~%1. numbered item that goes on and on~%")))
     (is string= (format nil "- first one~%- second item that~%  goes on for a~%  while more~%- third~%")
-        (filled "C-u 2 0 C-x f j M-q RET" (format nil "- first one~%- second item that goes on~%  for a while more~%- third~%")))
+        (filled "C-u 2 0 C-x f j M-q RET"
+          (format nil "- first one~%- second item that goes on~%  for a while more~%- third~%")))
     (is string= (format nil ";; - one item that~%;;   is long enough~%;; - two~%")
-        (filled "M-x l i s p - m o d e RET C-u 2 0 C-x f M-q RET" (format nil ";; - one item that is long enough~%;; - two~%")))
+        (filled "M-x l i s p - m o d e RET C-u 2 0 C-x f M-q RET"
+          (format nil ";; - one item that is long enough~%;; - two~%")))
+    ;; a check box belongs to the item's mark: the lines go on under its words, also when filled again
+    (is string= (format nil "- [ ] a task that~%      goes on for~%      quite a while~%")
+        (filled "C-u 2 0 C-x f M-q RET" (format nil "- [ ] a task that goes on for quite a while~%")))
+    (is string= (format nil "- [ ] a task that~%      goes on for~%      quite a while~%")
+        (filled "C-u 2 0 C-x f M-q RET" (format nil "- [ ] a task that goes~%  on for quite a while~%")))
+    (is string= (format nil "1. [X] a done task~%       that goes on~%")
+        (filled "C-u 2 0 C-x f M-q RET" (format nil "1. [X] a done task that goes on~%")))
     ;; a numbered item goes on under its words; several items selected, each filled alone
     (is string= (format nil "1. numbered item~%   that goes on~%2. short~%")
         (filled "C-u 1 6 C-x f M-q RET" (format nil "1. numbered item that goes on~%2. short~%")))
-    (is string= (format nil "- one item that~%  goes on~%- two items that~%  go on~%~%Text after that is not selected at all.~%")
+    (is string= (format nil
+                  "- one item that~%  goes on~%- two items that~%  go on~%~%Text after that is not selected at all.~%")
         (filled "C-u 1 6 C-x f V j g q RET"
                 (format nil "- one item that goes on~%- two items that go on~%~%Text after that is not selected at all.~%")))
     ;; g q fills only the lines selected, the rest of their paragraph left as it is
@@ -175,7 +199,8 @@
                 (format nil "first line stays as it is written~%last line that is long and filled~%")))
     ;; g q fills every paragraph selected
     (is string= (format nil "one two three four~%five six seven eight~%~%nine ten eleven~%twelve thirteen~%fourteen~%")
-        (filled "C-u 2 0 C-x f % g q RET" (format nil "one two three four five six seven eight~%~%nine ten eleven twelve thirteen fourteen~%")))
+        (filled "C-u 2 0 C-x f % g q RET"
+          (format nil "one two three four five six seven eight~%~%nine ten eleven twelve thirteen fourteen~%")))
     ;; in Lisp, the comment at point, its ;; on every line; the code is left alone
     (is string= (format nil ";; A comment in Lisp that is~%;; long enough to be filled at~%;; thirty columns.~%(defun f () nil)~%")
         (filled "M-x l i s p - m o d e RET C-u 3 0 C-x f M-q RET"
@@ -424,7 +449,8 @@ abc")
       (true (search "Nothing to bank: empty final line" (echo (run-keys "j m l" :text (format nil "a~%")))))
       ;; shown in their face, to the window's edge, so an empty one shows too
       (is equal '((0 40 :banked-line)) (aref (tuatara.frontend.fake:fake-spans (run-keys "m l" :text five)) 0))
-      (is equal '((0 40 :banked-line)) (aref (tuatara.frontend.fake:fake-spans (run-keys "j m l" :text (format nil "a~%~%c"))) 1))
+      (is equal '((0 40 :banked-line))
+        (aref (tuatara.frontend.fake:fake-spans (run-keys "j m l" :text (format nil "a~%~%c"))) 1))
       ;; the selection is shown over them
       (is equal '((0 1 (:region :banked-line)) (1 40 :banked-line))
           (aref (tuatara.frontend.fake:fake-spans (run-keys "m l v l" :text five)) 0)))
@@ -472,7 +498,8 @@ abc")
     (is string= "«foo» bar" (text-of "m w SPC i & < <" "foo bar"))
     ;; SPC i . types digraphs after & in INSERT state: the rfc1345 input method, m in the mode line
     (is string= "éx" (text-of "SPC i . i & e ' x C-g" ""))
-    (true (tuatara.frontend.fake:fake-frame-showing (run-keys "SPC i ." :text "") "Digraphs (rfc1345) on when you enter INSERT state"))
+    (true (tuatara.frontend.fake:fake-frame-showing (run-keys "SPC i ." :text "")
+            "Digraphs (rfc1345) on when you enter INSERT state"))
     (is string= "m" (let ((b (tuatara.buffer:make-buffer "*method*")))
                       (unwind-protect (progn (tuatara.defaults::activate-input-method "rfc1345" b)
                                              (tuatara.defaults::input-method-mode-line nil b))
@@ -491,8 +518,12 @@ abc")
   ;; one name for a character wherever it is shown: none for a control character or a code
   ;; given no character, the standard's capitals for the rest
   (is equal '("LATIN SMALL LETTER E WITH ACUTE" "SPACE" "NO-BREAK SPACE" "" "" "" "")
-      (mapcar (lambda (code) (tuatara.defaults::unicode-name (code-char code))) '(#xE9 #x20 #xA0 #x7F #x9 #xE000 #x378)))
-  (false (find "UE000" (tuatara.defaults::list-character-names) :key #'tuatara.command::candidate-string :test #'string=)))
+      (mapcar (lambda (code) (tuatara.defaults::unicode-name (code-char code)))
+              '(#xE9 #x20 #xA0 #x7F #x9 #xE000 #x378)))
+  (false (find "UE000"
+               (tuatara.defaults::list-character-names)
+               :key #'tuatara.command::candidate-string
+               :test #'string=)))
 
 (define-test (objects input-methods-at-many-places)
   ;; a letter made of several keys (postfix, prefix, digraph) reaches every split place and every cursor
@@ -538,15 +569,21 @@ abc")
     (let ((tuatara-user:*default-input-method* "danish-postfix"))
       (is string= "æ" (session-text (nth-value 1 (run-keys "C-\\ a e" :text "")))))
     ;; the keys waiting are underlined, and the mode line shows the method's title
-    (let ((f (run-keys "M-x s e t - i n p u t - m e t h o d RET s w e d i s h - p o s t f i x RET x a" :text "" :width 100)))
+    (let ((f (run-keys "M-x s e t - i n p u t - m e t h o d RET s w e d i s h - p o s t f i x RET x a"
+                       :text ""
+                       :width 100)))
       (true (tuatara.frontend.fake:fake-frame-showing f "SV<"))))
   ;; your own under SPC i, made into commands
-  (let ((tuatara-user:*input-method-keys* '(("s" "swedish" "swedish-postfix") ("&" "taken" "rfc1345") ("x" "none" "no-such-method"))))
+  (let ((tuatara-user:*input-method-keys* '(("s" "swedish" "swedish-postfix")
+                                            ("&" "taken" "rfc1345")
+                                            ("x" "none" "no-such-method"))))
     (is string= "å" (session-text (nth-value 1 (run-keys "SPC i s i a a C-g" :text ""))))
     (true (tuatara.command:find-command 'tuatara.defaults::input-method-swedish)))
   ;; its rules listed
   (true (tuatara.frontend.fake:fake-frame-showing
-         (run-keys "M-x d e s c r i b e - i n p u t - m e t h o d RET s w e d i s h - p o s t f i x RET" :text "" :height 30)
+         (run-keys "M-x d e s c r i b e - i n p u t - m e t h o d RET s w e d i s h - p o s t f i x RET"
+                   :text ""
+                   :height 30)
          "AA          Å"))
   ;; the step the rules take, as Quail takes them
   (let ((m (tuatara.defaults::find-input-method "swedish-postfix")))
@@ -561,7 +598,8 @@ abc")
       (is string= "é" (typed "C-x 8 RET L A T I N SPC S M A L L SPC L E T T E R SPC E SPC W I T H SPC A C U T E RET"))
       (is string= (string (code-char #x1F600)) (typed "C-x 8 RET U + 1 F 6 0 0 RET"))
       (is string= "ééé" (typed "C-u 3 C-x 8 RET # x e 9 RET"))
-      (true (tuatara.frontend.fake:fake-frame-showing (run-keys "C-x 8 RET # x z z RET" :text "" :width 100) "No character is called #xzz"))))
+      (true (tuatara.frontend.fake:fake-frame-showing (run-keys "C-x 8 RET # x z z RET" :text "" :width 100)
+              "No character is called #xzz"))))
   (is = #xE9 (tuatara.defaults::character-code-from "latin small letter e with acute"))
   (is = #xE9 (tuatara.defaults::character-code-from "e9"))
   (is = #xE9 (tuatara.defaults::character-code-from "#o351"))
@@ -750,7 +788,8 @@ abcd")))))
     ;; a paragraph larger than filling takes by itself: said, and left as it was
     (let ((tuatara.defaults::*fill-paragraph-limit* 1000))
       (multiple-value-bind (f editor) (run-keys "j j M-q" :text text)
-        (true (search "The paragraph is larger than 0 KB, *fill-paragraph-limit*" (tuatara.frontend.fake:fake-screen-line f 7)))
+        (true (search "The paragraph is larger than 0 KB, *fill-paragraph-limit*"
+                      (tuatara.frontend.fake:fake-screen-line f 7)))
         (is string= text (session-text editor)))
       ;; and in a selection, filled with g q: the same limit, said the same way
       (multiple-value-bind (f editor) (run-keys "% g q RET" :text text)
@@ -843,7 +882,8 @@ C-x r y and (\"Q\") otherwise; as Emacs 30 does.")
       (is string= "abc" (session-text editor))
       (true (tuatara.frontend.fake:fake-frame-showing f "The mark is not set now")))
     ;; a format it does not understand changes nothing and says so
-    (multiple-value-bind (f editor) (session-in nil (format nil "ab~%cd~%") "C-u C-x r N RET C-a C-k % x RET" :point 4 :mark 0)
+    (multiple-value-bind (f editor)
+        (session-in nil (format nil "ab~%cd~%") "C-u C-x r N RET C-a C-k % x RET" :point 4 :mark 0)
       (is string= (format nil "ab~%cd~%") (session-text editor))
       (true (tuatara.frontend.fake:fake-frame-showing f "%x is not understood")))))
 
@@ -862,7 +902,10 @@ C-x r y and (\"Q\") otherwise; as Emacs 30 does.")
 
 (defparameter *emacs-screen-rectangle-cases*
   '(("ab<MARK>cdef~%x<TAB>yz~%abcdef<POINT>gh~%" "C-x r k" "ab~%x ~%ab<POINT>gh~%" ("cdef" "  yz" "cdef"))
-    ("ab<MARK>cdef~%x<TAB>yz~%abcdef<POINT>gh~%" "C-x r M-w" "abcdef~%x<TAB>yz~%abcdef<POINT>gh~%" ("cdef" "  yz" "cdef"))
+    ("ab<MARK>cdef~%x<TAB>yz~%abcdef<POINT>gh~%"
+     "C-x r M-w"
+     "abcdef~%x<TAB>yz~%abcdef<POINT>gh~%"
+     ("cdef" "  yz" "cdef"))
     ("ab<MARK>cdef~%x<TAB>yz~%abcdef<POINT>gh~%" "C-x r c" "ab~%x~%ab<POINT>    gh~%" ("Q"))
     ("ab<MARK>cdef~%x<TAB>yz~%abcdef<POINT>gh~%" "C-x r t X Y RET" "abXY~%x XY~%abXY<POINT>gh~%" ("Q"))
     ("ab<MARK>cdef~%x<TAB>yz~%abcdef<POINT>gh~%" "C-x r N" "ab1 cdef~%x 2   yz~%ab3 cdef<POINT>gh~%" ("Q"))
@@ -887,7 +930,10 @@ C-x r y and (\"Q\") otherwise; as Emacs 30 does.")
     ("a<MARK>bcdef~%xy漢z~%abc<POINT>def~%" "C-x r t X Y RET" "aXYdef~%xXY漢z~%aXY<POINT>def~%" ("Q"))
     ("a<MARK>bcdef~%xy漢z~%abc<POINT>def~%" "C-x r N" "a1 bcdef~%x2 y漢z~%a3 bc<POINT>def~%" ("Q"))
     ("<MARK>abcdef~%x<TAB>yz~%abcdef<POINT>gh~%" "C-x r k" "~%~%<POINT>gh~%" ("abcdef" "x   yz" "abcdef"))
-    ("<MARK>abcdef~%x<TAB>yz~%abcdef<POINT>gh~%" "C-x r M-w" "abcdef~%x<TAB>yz~%abcdef<POINT>gh~%" ("abcdef" "x   yz" "abcdef"))
+    ("<MARK>abcdef~%x<TAB>yz~%abcdef<POINT>gh~%"
+     "C-x r M-w"
+     "abcdef~%x<TAB>yz~%abcdef<POINT>gh~%"
+     ("abcdef" "x   yz" "abcdef"))
     ("<MARK>abcdef~%x<TAB>yz~%abcdef<POINT>gh~%" "C-x r c" "~%~%<POINT>      gh~%" ("Q"))
     ("<MARK>abcdef~%x<TAB>yz~%abcdef<POINT>gh~%" "C-x r t X Y RET" "XY~%XY~%XY<POINT>gh~%" ("Q"))
     ("<MARK>abcdef~%x<TAB>yz~%abcdef<POINT>gh~%" "C-x r N" "1 abcdef~%2 x<TAB>yz~%3 abcdef<POINT>gh~%" ("Q"))
@@ -903,8 +949,8 @@ C-x r y and (\"Q\") otherwise; as Emacs 30 does.")
 characters, each as *EMACS-RECTANGLE-CASES* has it: as Emacs 30 does, but
 where Emacs disagrees with itself. Here a wide character across an edge stays
 out of the block (Emacs takes it in at the right edge, so a row is wider than
-the block); a row kept is the block's width, its tabs made spaces, whether
-cut or copied (Emacs's C-x r k and C-x r M-w keep different rows); C-x r c
+the block). A row kept is the block's width, its tabs made spaces, whether
+cut or copied (Emacs's C-x r k and C-x r M-w keep different rows). C-x r c
 keeps what follows the block where it was, a tab across its edge as spaces,
 and cuts a line that ends inside it at its left column (Emacs moves the text
 after a tab, and leaves a row after a wide character as it was).")
@@ -926,7 +972,8 @@ after a tab, and leaves a row after a wide character as it was).")
               do (setf tuatara.defaults::*killed-rectangle* (list "Q"))
                  (multiple-value-bind (plain point mark) (point-and-mark-text (tabs text))
                    (with-background ()
-                     (let ((editor (nth-value 1 (run-keys-in-turns (list keys "") :text plain :point point :mark mark))))
+                     (let ((editor (nth-value 1
+                                              (run-keys-in-turns (list keys "") :text plain :point point :mark mark))))
                        (is string= (point-and-mark-text (tabs expected)) (session-text editor) "~s then ~a in the background" text keys)
                        (let ((kept tuatara.defaults::*killed-rectangle*))
                          (is equal (mapcar #'tabs store)
@@ -959,7 +1006,10 @@ after a tab, and leaves a row after a wide character as it was).")
   ;; a rectangle's job in the background shades its columns only, row by row
   (let ((tuatara.defaults::*rewrite-piece-hook* (lambda () (sleep 0.1))))
     (with-background ()
-      (let ((spans (painted-job-spans (run-keys "l m v j j d" :text (format nil "abcd~%efgh~%ijkl~%mnop") :width 60 :height 10))))
+      (let ((spans (painted-job-spans (run-keys "l m v j j d"
+                                                :text (format nil "abcd~%efgh~%ijkl~%mnop")
+                                                :width 60
+                                                :height 10))))
         (true spans)
         (true (every (lambda (span) (and (<= (first span) 2) (= 1 (second span)) (= 2 (third span)))) spans)))))
   ;; a sort's: its region, until an edit touches it
@@ -1001,14 +1051,18 @@ after a tab, and leaves a row after a wide character as it was).")
     ;; more rows than are changed at once, however little text: in the background too
     (let ((tuatara.defaults::*rectangle-rows-in-memory* 2))
       (true (tuatara.defaults::large-rectangle-p
-             (progn (run-keys "l m v j j" :text (format nil "abc~%def~%ghi~%")) (tuatara.buffer:find-buffer "*scratch*"))))
+             (progn
+               (run-keys "l m v j j" :text (format nil "abc~%def~%ghi~%"))
+               (tuatara.buffer:find-buffer "*scratch*"))))
       (is string= (format nil "ac~%df~%gi~%")
           (session-text (nth-value 1 (run-keys-in-turns '("l m v j j d" "") :text (format nil "abc~%def~%ghi~%"))))))
     ;; lines ending with a carriage return and a newline: the last row's ending kept once
     (with-background ()
       (is string= (format nil "ac~c~%df~c~%" #\Return #\Return)
-          (session-text (nth-value 1 (run-keys-in-turns '("l m v j d" "") :text (format nil "abc~c~%def~c~%" #\Return #\Return)
-                                                                          :crlf t)))))
+          (session-text (nth-value 1
+                                   (run-keys-in-turns '("l m v j d" "")
+                                                      :text (format nil "abc~c~%def~c~%" #\Return #\Return)
+                                                                        :crlf t)))))
     ;; short lines padded, rows past the last line on lines of their own
     (is string= (format nil "abd~%x~%abd") (both "l l m v j j d" (format nil "abcd~%x~%abcd")))
     (is equal '("c" " " "c") (tuatara.defaults::source-texts (store)))
@@ -1020,9 +1074,11 @@ after a tab, and leaves a row after a wide character as it was).")
       (is string= (format nil "Zc~%Zc~%Zc") (both "l m v j j c DEL Z C-g|" (format nil "abc~%abc~%abc")))
       (is string= (format nil "aZ~% Z~%aZ") (both "l m v l j j c Z C-g|" (format nil "abc~%~%abc"))))
     (with-background ()
-      (is string= (format nil "Zbc~%Zbc") (session-text (nth-value 1 (run-keys "m v j c Z C-g" :text (format nil "abc~%abc"))))))
+      (is string= (format nil "Zbc~%Zbc")
+        (session-text (nth-value 1 (run-keys "m v j c Z C-g" :text (format nil "abc~%abc"))))))
     ;; the emptying and the typing are one change: one u puts the block back, past the limit too
-    (is string= (format nil "abc~%abc") (session-text (nth-value 1 (run-keys-in-turns '("m v j c Z C-g C-g" "u") :text (format nil "abc~%abc")))))
+    (is string= (format nil "abc~%abc")
+        (session-text (nth-value 1 (run-keys-in-turns '("m v j c Z C-g C-g" "u") :text (format nil "abc~%abc")))))
     (let ((tuatara.defaults::*rectangle-cursors-limit* 1))
       (is string= (format nil "abc~%abc~%abc")
           (session-text (nth-value 1 (run-keys-in-turns '("m v j j c Z C-g" "u") :text (format nil "abc~%abc~%abc"))))))
@@ -1031,7 +1087,8 @@ after a tab, and leaves a row after a wide character as it was).")
     (is string= (format nil "a~%x~%a~%") (both "l m v j j l l l C-x r c" (format nil "abcd~%x~%abcd~%")))
     (is string= (format nil "a1 bcd~%x2 ~%a3 bcd~%") (both "l m v j j C-x r N" (format nil "abcd~%x~%abcd~%")))
     (is string= (format nil "a1cd~%x2~%a3cd~%")
-        (both "l m v j j M-x n u m b e r - r e c t a n g l e - l i n e s - r e p l a c e RET" (format nil "abcd~%x~%abcd~%")))
+        (both "l m v j j M-x n u m b e r - r e c t a n g l e - l i n e s - r e p l a c e RET"
+          (format nil "abcd~%x~%abcd~%")))
     (is string= (format nil "abcd~%x~%abcd~%") (both "l m v j j C-x r N|u" (format nil "abcd~%x~%abcd~%")))
     (is string= (format nil "(a)b~%(a)b") (both "m v j (" (format nil "ab~%ab")))
     (is string= (format nil "a[bc]~%a[  ]") (both "l m v l j [" (format nil "abc~%a")))
@@ -1064,7 +1121,8 @@ after a tab, and leaves a row after a wide character as it was).")
   ;; any buffer's folds, not Org's alone: "a" hides the line "b" after it
   (let ((text (format nil "a~%b~%c~%d~%")) (folds '((1 . 3))))
     (flet ((after (keys) (session-text (nth-value 1 (run-keys-folded keys text folds)))))
-      (is string= (format nil "a...") (string-right-trim " " (tuatara.frontend.fake:fake-screen-line (run-keys-folded "" text folds) 0)))
+      (is string= (format nil "a...")
+          (string-right-trim " " (tuatara.frontend.fake:fake-screen-line (run-keys-folded "" text folds) 0)))
       ;; a line and what its fold hides are one line to V, J, K and a count
       (is string= (format nil "c~%d~%") (after "V d"))
       (is string= (format nil "d~%") (after "V J d"))
@@ -1101,7 +1159,8 @@ after a tab, and leaves a row after a wide character as it was).")
       (dolist (keys '("% f b RET" "V f b RET"))
         (multiple-value-bind (f editor) (run-keys-folded keys text folds)
           (is string= text (session-text editor) "~a leaves it alone" keys)
-          (is string= "a..." (string-right-trim " " (tuatara.frontend.fake:fake-screen-line f 0)) "~a keeps the fold" keys)
+          (is string= "a..." (string-right-trim " "
+                                                (tuatara.frontend.fake:fake-screen-line f 0)) "~a keeps the fold" keys)
           (true (tuatara.frontend.fake:fake-frame-showing f "Nothing matched b; 1 hidden in folds left alone") "~a says so" keys)))
       ;; shown, the same key deletes what can now be seen
       (is string= (format nil "b~%d~%") (after "t V d d"))
@@ -1135,7 +1194,8 @@ after a tab, and leaves a row after a wide character as it was).")
       (declare (ignore f))
       (is string= (format nil "aXYXYbc~%dZZef~%") (session-text editor)))
     (setf tuatara.defaults::*killed-rectangle* (list "XY" "Z"))
-    (multiple-value-bind (f editor) (session-in nil (format nil "abc~%def~%") "C-f C-f C-x r SPC C-n C-b C-u 2 C-x r y" :point 0)
+    (multiple-value-bind (f editor)
+        (session-in nil (format nil "abc~%def~%") "C-f C-f C-x r SPC C-n C-b C-u 2 C-x r y" :point 0)
       (declare (ignore f))
       (is string= (format nil "aXYXYc~%dZZf~%") (session-text editor)))
     (setf tuatara.defaults::*killed-rectangle* (list "XY" "Z"))
@@ -1184,7 +1244,10 @@ after a tab, and leaves a row after a wide character as it was).")
   (let ((b (tuatara.buffer:make-buffer "*abbreviations*" :text "")))
     (unwind-protect
          (flet ((abbreviation-p (text)
-                  (tuatara.buffer:buffer-edit b (vector (tuatara.text:make-edit 0 (tuatara.buffer:buffer-size b) (tuatara.text:string-octets text))))
+                  (tuatara.buffer:buffer-edit b
+                                              (vector (tuatara.text:make-edit 0
+                                                                              (tuatara.buffer:buffer-size b)
+                                                                              (tuatara.text:string-octets text))))
                   (tuatara.defaults::abbreviation-before-p b (tuatara.buffer:buffer-size b))))
            (true (abbreviation-p "see e.g."))
            (true (abbreviation-p "E.g."))
@@ -1205,7 +1268,9 @@ after a tab, and leaves a row after a wide character as it was).")
   ;; filling with two spaces between sentences: none after an abbreviation, whatever followed it
   (let ((tuatara-user:*sentence-end-double-space* t))
     (is string= (format nil "Ask Dr. Who (e.g.) now.  Then~%")
-        (session-text (nth-value 1 (run-keys "C-u 4 0 C-x f M-q RET" :text (format nil "Ask Dr.~%Who (e.g.)  now.~%Then~%")))))))
+        (session-text (nth-value 1
+                                 (run-keys "C-u 4 0 C-x f M-q RET"
+                                           :text (format nil "Ask Dr.~%Who (e.g.)  now.~%Then~%")))))))
 
 (define-test (objects selection-remade-counts-when-used)
   ;; what makes a selection again is kept before every command but counts nothing until
@@ -1217,7 +1282,9 @@ after a tab, and leaves a row after a wide character as it was).")
            (setf (tuatara.buffer:buffer-mark b) 50000 (tuatara.buffer:buffer-mark-active-p b) t
                  (tuatara.buffer:buffer-point b) 0)
            (dolist (name '(tuatara.text:rope-count-chars tuatara.text:byte->char))
-             (sb-int:encapsulate name 'counted (lambda (function &rest arguments) (incf counted) (apply function arguments))))
+             (sb-int:encapsulate name 'counted (lambda (function &rest arguments)
+                                                 (incf counted)
+                                                 (apply function arguments))))
            (unwind-protect (true (functionp (tuatara.defaults::selection-remaker b)))
              (dolist (name '(tuatara.text:rope-count-chars tuatara.text:byte->char))
                (sb-int:unencapsulate name 'counted)))

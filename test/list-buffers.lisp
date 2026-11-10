@@ -63,7 +63,8 @@ is filled again only when the jobs have changed.")
            ;; pieces: octets, faces, buttons and keys over a face
            (multiple-value-bind (text spans buttons)
                (tuatara.defaults::pieces-text (list "é" (cons "ab" :type) (list "cd" :keyword 'push-button)
-                                                    (list (tuatara.command:substitute-command-keys "go \\`C-x' on" :marks t) :comment))
+                                                    (list (tuatara.command:substitute-command-keys "go \\`C-x' on"
+                                                                                                   :marks t) :comment))
                                               :keys t)
              (is string= "éabcdgo C-x on" text)
              (is equal '((2 4 :type) (4 6 :keyword) (6 15 :comment) (9 12 :help-key-binding)) spans)
@@ -80,12 +81,17 @@ is filled again only when the jobs have changed.")
         (text (tuatara.defaults::table-heading-pieces tuatara.defaults::*jobs-columns*)))
     (is string= (format nil "D*%  a-name-longer-t... ~9@a Fundamental      ~%" "12,345")
         (text (tuatara.defaults::table-row-pieces tuatara.defaults::*buffers-columns*
-                                                  (list "D*%" "a-name-longer-than-the-column" "12,345" "Fundamental" ""))))
+                                                  (list "D*%"
+                                                        "a-name-longer-than-the-column"
+                                                        "12,345"
+                                                        "Fundamental"
+                                                        ""))))
     ;; a shaded column's face covers the spaces either side of it
     (multiple-value-bind (text spans)
         (tuatara.defaults::pieces-text (tuatara.defaults::table-row-pieces tuatara.defaults::*jobs-columns*
                                                                           (list " D" (cons "b" :list-deletion)
-                                                                                (cons "Sorting 42%" :job-queued) "Sorting")))
+                                                                                (cons "Sorting 42%" :job-queued)
+                                                                                "Sorting")))
       (is string= (format nil " D ~20a ~26a Sorting~%" "b" "Sorting 42%") text)
       (is equal '((3 23 :list-deletion) (23 51 :job-queued)) spans))))
 
@@ -138,7 +144,8 @@ is filled again only when the jobs have changed.")
                  (is string= "*Buffers*" (current-name editor))
                  (false (eq version (tuatara.buffer:buffer-version (tuatara.buffer:find-buffer "*Buffers*"))) "~a fills again" refresh)
                  (true (uiop:string-prefix-p ">" (list-line editor "one")) "~a keeps >" refresh)
-                 (true (uiop:string-prefix-p "D" (list-line editor "two")) "~a keeps D: ~a" refresh (session-text editor))
+                 (true (uiop:string-prefix-p "D"
+                                             (list-line editor "two")) "~a keeps D: ~a" refresh (session-text editor))
                  (false (search "visits no file" (or (tuatara.command:editor-message editor) ""))))))
            ;; q leaves it
            (is string= "*scratch*" (current-name (nth-value 1 (fresh-list-session "C-x C-b q")))))
@@ -183,7 +190,8 @@ is filled again only when the jobs have changed.")
           (run-keys (list "r r % a / b RET r r % b / c RET M-x l i s t - j o b s RET"
                           (lambda () (setf seen (search "Replacing" (session-text tuatara.command:*editor*))))
                           (lambda () (loop repeat 400
-                                           until (search "No jobs in the background" (session-text tuatara.command:*editor*))
+                                           until (search "No jobs in the background"
+                                                         (session-text tuatara.command:*editor*))
                                            do (tuatara.command::run-tick-functions tuatara.command:*editor*)
                                               (sleep 0.05)))
                           :tick "j")
@@ -251,7 +259,10 @@ is filled again only when the jobs have changed.")
         ;; r makes it again, as revert-buffer does, never "visits no file"; q leaves
         (dolist (refresh '("r" "g r" "M-x r e v e r t - b u f f e r RET"))
           (multiple-value-bind (f editor)
-              (run-keys (list "SPC a a a" (lambda () (setf version (tuatara.buffer:buffer-version (session-buffer tuatara.command:*editor*))))
+              (run-keys (list "SPC a a a"
+                              (lambda ()
+                                (setf version
+                                      (tuatara.buffer:buffer-version (session-buffer tuatara.command:*editor*))))
                               refresh)
                         :width 100 :height 40)
             (declare (ignore f))
@@ -301,13 +312,17 @@ is filled again only when the jobs have changed.")
   (flet ((session (&rest keys)
            (run-keys (list* (lambda ()
                               (let ((list (tuatara.defaults::buffer-in-mode "*Previewed*" 'test-previewed-list-mode)))
-                                (tuatara.defaults::render-pieces list (list (format nil "alpha~%beta~%")) :entries '("alpha" "beta") :point :start)
+                                (tuatara.defaults::render-pieces list
+                                                                 (list (format nil "alpha~%beta~%"))
+                                                                 :entries '("alpha" "beta")
+                                                                 :point :start)
                                 (setf (tuatara.buffer:buffer-local list :list-preview) t)
                                 (tuatara.command:show-buffer list)))
                             keys)
                      :width 100 :height 12))
          (shown (f text) (loop for row below 12 thereis (search text (tuatara.frontend.fake:fake-screen-line f row))))
-         (notes () (remove-if-not (lambda (b) (search "(preview)" (tuatara.buffer:buffer-name b))) tuatara.buffer:*buffers*)))
+         (notes ()
+           (remove-if-not (lambda (b) (search "(preview)" (tuatara.buffer:buffer-name b))) tuatara.buffer:*buffers*)))
     (unwind-protect
          (progn
            (let ((f (session "C-p" "C-n")))

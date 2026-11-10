@@ -32,14 +32,15 @@ says, else *CURSOR-SHAPE* and *CURSOR-COLOUR*; a colour of
 
 (defvar *gutter-providers* '()
   "Gutter providers, each a plist (:name NAME :width WIDTH-FN :cell CELL-FN),
-with :prepare PREPARE-FN too when it has one: WIDTH-FN is called with (EDITOR
-WINDOW) and returns the columns the provider needs (0 to stay hidden);
-PREPARE-FN, once a frame, with (EDITOR WINDOW ROWS), the rows shown, and
-returns what its cells are worked out from; CELL-FN with (EDITOR WINDOW ROW
-LINE), and that as a fifth argument when it has a PREPARE-FN, where LINE is
-the 0-based line number of ROW's start, or NIL for a continuation row, and
-returns two values, the text for that row (padded to the width) and its face.
-A function that fails is said once (TUATARA.RUNTIME:CALL-HOOK-FUNCTION): its
+with :prepare PREPARE-FN too when it has one.
+WIDTH-FN is called with (EDITOR WINDOW) and returns the columns the provider
+needs (0 to stay hidden). PREPARE-FN is called once a frame, with (EDITOR
+WINDOW ROWS), the rows shown, and returns what its cells are worked out from.
+CELL-FN is called with (EDITOR WINDOW ROW LINE), and that as a fifth argument
+when it has a PREPARE-FN. LINE is the 0-based line number of ROW's start, or
+NIL for a continuation row. It returns two values, the text for that row
+\(padded to the width) and its face.
+A function that fails is said once (TUATARA.RUNTIME:CALL-HOOK-FUNCTION). Its
 provider shows nothing, the rest of the gutter and the screen drawn.")
 
 (defun gutter-width (editor window provider)
@@ -91,7 +92,9 @@ fold hiding more is looked past.")
                                                (when (typep face 'error) (setf face nil))
                                                (cons (let ((s (or text "")))
                                                        (if (< (length s) width)
-                                                           (concatenate 'string (make-string (- width (length s)) :initial-element #\Space) s)
+                                                           (concatenate 'string (make-string (- width (length s))
+                                                                                             :initial-element
+                                                                                             #\Space) s)
                                                            (subseq s 0 width)))
                                                      face)))
                         ;; the next line begins where the next row does not go on from this one:
@@ -167,13 +170,13 @@ COLUMN, past the end of point's line when that is shorter."
 (defun rectangle-rows (buffer point mark &key (from 0) (to most-positive-fixnum)
                                              (point-column (tuatara.display:buffer-screen-column buffer point)))
   "The rows of the rectangle with corners POINT and MARK in BUFFER, top
-first, each (START END START-COLUMN END-COLUMN): the byte span of its columns
-on the screen on that line, cut short where the line is, a tab across an edge
-in it, and the columns that span starts and ends at (outside the rectangle's
-where a tab crosses its edge, inside where a wide character does). Only the rows
-of lines between FROM and TO. POINT-COLUMN is the column of the corner at
-POINT, when that is past the end of its line. The text is read once
-\(TUATARA.TEXT:MAP-LINE-SLICES)."
+first, each (START END START-COLUMN END-COLUMN). START and END are the byte
+span of its columns on the screen on that line, cut short where the line is, a
+tab across an edge in it. START-COLUMN and END-COLUMN are the columns that span
+starts and ends at (outside the rectangle's where a tab crosses its edge,
+inside where a wide character does). Only the rows of lines between FROM and
+TO. POINT-COLUMN is the column of the corner at POINT, when that is past the
+end of its line. The text is read once (TUATARA.TEXT:MAP-LINE-SLICES)."
   (let ((low (min point mark)) (high (max point mark)))
     (when (and (<= from high) (>= to low))
       (let* ((c1 point-column)
@@ -366,18 +369,19 @@ or NIL before it has one."
   (setf (tuatara.buffer:buffer-local buffer :mode-name) name))
 
 (defun default-mode-line (editor &optional (window (editor-window editor)))
-  "The mode line of WINDOW, the selected window by default: [-], [*] or [%] as
-the buffer is saved, changed or read-only (MODIFIED-INDICATOR), the buffer's
-name (cut in its middle when long, MODE-LINE-NAME), the name of the frame
-before it while frames take turns on one display (F2, FRAME-TAKING-TURNS-P),
-the line and column of the window's point, digits grouped with commas
-\(L100,000,001) so large numbers read at a glance, the major mode's name when
-the buffer has one (BUFFER-MODE-NAME), what *MODE-LINE-FUNCTIONS* add, and
-last the buffer's directory in the :mode-line-directory face; what
-*MODE-LINE-LEAD-FUNCTIONS* give goes first, before [-], and what
-*MODE-LINE-NAME-FUNCTIONS* give just before the name. Returns the text and,
-as a second value, the spans of it in faces of their own, each (START END
-FACE)."
+  "The mode line of WINDOW, the selected window by default.
+It shows, in order, [-], [*] or [%] as the buffer is saved, changed or
+read-only (MODIFIED-INDICATOR). Then comes the buffer's name (cut in its
+middle when long, MODE-LINE-NAME). Then, while frames take turns on one
+display, the name of the frame (F2, FRAME-TAKING-TURNS-P). Then come the line
+and column of the window's point, digits grouped with commas (L100,000,001) so
+large numbers read at a glance. Then comes the major mode's name when the
+buffer has one (BUFFER-MODE-NAME), then what *MODE-LINE-FUNCTIONS* add, and
+last the buffer's directory in the :mode-line-directory face.
+What *MODE-LINE-LEAD-FUNCTIONS* give goes first, before [-], and what
+*MODE-LINE-NAME-FUNCTIONS* give just before the name.
+Returns the text and, as a second value, the spans of it in faces of their
+own, each (START END FACE)."
   (let* ((buffer (tuatara.display:window-buffer window))
          (point (tuatara.display:window-point window))
          (spans '())
@@ -392,7 +396,9 @@ FACE)."
                                   when pieces
                                     do (loop for (part face) in pieces
                                              do (when face
-                                                  (push (list (file-position out) (+ (file-position out) (length part)) face) spans))
+                                                  (push (list (file-position out)
+                                                              (+ (file-position out) (length part))
+                                                              face) spans))
                                                 (write-string part out))
                                        (write-char #\Space out))))
                      (write-char #\Space out)
@@ -462,15 +468,15 @@ text after its gutter, in order."
 
 (defun put-screen-row (frontend row pieces width &optional boxes)
   "Paint screen ROW, WIDTH columns, from PIECES, each (LEFT COLUMNS STRING
-SPANS FACE DRAW TEXT-FROM): STRING in the COLUMNS columns from LEFT, SPANS over its
-characters, FACE under the whole piece (a mode line) or NIL, DRAW how it is
-drawn otherwise (PIECE-SCALES), TEXT-FROM the column of the piece where a
-window's text begins after its gutter, with the parts
-of BOXES (POPUP-BOXES) on the row laid over them. The frontend is told where
-the row's parts begin (ROW-PARTS), so that it may keep each painted apart. A raw byte's character is
-written \\xNN (ESCAPE-CONTROLS). On a row with parts drawn large or moved
-down, the boxes' parts are given apart, to be drawn over all (OVER), not laid
-into the text."
+SPANS FACE DRAW TEXT-FROM). STRING is in the COLUMNS columns from LEFT, SPANS
+over its characters. FACE is under the whole piece (a mode line) or NIL. DRAW
+is how it is drawn otherwise (PIECE-SCALES). TEXT-FROM is the column of the
+piece where a window's text begins after its gutter. The parts of BOXES
+\(POPUP-BOXES) on the row are laid over them. The frontend is told where the
+row's parts begin (ROW-PARTS), so that it may keep each painted apart. A raw
+byte's character is written \\xNN (ESCAPE-CONTROLS). On a row with parts drawn
+large or moved down, the boxes' parts are given apart, to be drawn over all
+\(OVER), not laid into the text."
   (multiple-value-bind (string spans face scales) (screen-row-text pieces width)
     (multiple-value-bind (string spans) (escape-controls string spans :raw-bytes)
       (if scales
@@ -501,7 +507,8 @@ the row is taken as it is, FACE the row's."
               (let ((inner (loop for (start end span-face) in piece-spans
                                  when (and span-face (< start kept))
                                    collect (list start (min end kept) span-face))))
-                (dolist (span (if face (flatten-spans (cons (list 0 (length fitted) face) inner) (length fitted)) inner))
+                (dolist (span (if face (flatten-spans (cons (list 0 (length fitted) face) inner)
+                                                      (length fitted)) inner))
                   (push (list (+ at (first span)) (+ at (second span)) (third span)) spans)))
               (push fitted text)
               (incf at (length fitted))
@@ -511,10 +518,10 @@ the row is taken as it is, FACE the row's."
 (defun piece-scales (left columns draw)
   "The parts of a piece from column LEFT, COLUMNS wide, drawn otherwise than
 in its own cells, as the frontend takes them (TUATARA.FRONTEND:FRONTEND-PUT-ROW's
-SCALES), from DRAW, (OFFSET SCALE SHIFT): from OFFSET columns in, SCALE
+SCALES), from DRAW, (OFFSET SCALE SHIFT). They start OFFSET columns in, SCALE
 times as large, the whole piece SHIFT rows lower, its gutter before OFFSET as
-it is but as tall as the band; SCALE 0 for a piece left to the rows moved over
-it. NIL for a piece drawn as it is."
+it is but as tall as the band. SCALE 0 is for a piece left to the rows moved
+over it. The result is NIL for a piece drawn as it is."
   (when draw
     (destructuring-bind (offset scale shift) draw
       (cond ((zerop scale) (list (list left (+ left columns) 0 0 0)))
@@ -697,7 +704,9 @@ each (AT FACE), and SHIFT, how far rows drawn large above move it down."
                                (loop for (text . face) in pieces
                                      collect (prog1 (list pos (+ pos (length text)) face) (incf pos (length text))))))
                         (mapcar (lambda (span)
-                                  (list (+ (first span) (length gutter)) (+ (second span) (length gutter)) (third span)))
+                                  (list (+ (first span) (length gutter))
+                                        (+ (second span) (length gutter))
+                                        (third span)))
                                 (tuatara.display:row-spans row))))
          (text (concatenate 'string gutter (tuatara.display:row-string row)))
          (cursor-cell (and (< (+ (length gutter) (tuatara.display:row-columns row)) width) cursor))
@@ -866,19 +875,20 @@ another: a row is made only when something it shows has changed."
 
 (defun window-pieces (editor window selected screen)
   "Lay WINDOW out with its point visible and add what it shows to SCREEN, a
-vector of the pieces of each screen row (PUT-SCREEN-ROW): its buffer's header
-line when it has one, in :header-line, its text rows with their gutter, the
-divider beside a window to its right, and its mode line, in :mode-line when it
-is SELECTED, else in :mode-line-inactive. Point is kept visible in the rows the
-window has under a panel of one row, so that a taller panel, while it lasts,
-only hides rows. A buffer with a picture (its :image local) has it shown in
-place of its text where the frontend shows pictures, unless its :image-hidden
-local is true, at its own size from its :image-offset when it has one: the
-text rows are left blank, and the picture noted in *FRAME-IMAGES*. A buffer
-shown as pictures (:picture-view) whose picture is on its way (:picture-pending)
-shows blank rows meanwhile, not its text. Pictures a buffer places over its
-text (its :pictures local, each (IMAGE ROW COLUMN COLUMNS ROWS) of its text's
-cells, a terminal's) are noted too, its text shown as it is."
+vector of the pieces of each screen row (PUT-SCREEN-ROW). It adds its buffer's
+header line when it has one, in :header-line, its text rows with their gutter,
+the divider beside a window to its right, and its mode line, in :mode-line
+when it is SELECTED, else in :mode-line-inactive. Point is kept visible in the
+rows the window has under a panel of one row, so that a taller panel, while it
+lasts, only hides rows.
+A buffer with a picture (its :image local) has it shown in place of its text
+where the frontend shows pictures, unless its :image-hidden local is true, at
+its own size from its :image-offset when it has one. The text rows are left
+blank, and the picture is noted in *FRAME-IMAGES*. A buffer shown as pictures
+\(:picture-view) whose picture is on its way (:picture-pending) shows blank
+rows meanwhile, not its text. Pictures a buffer places over its text (its
+:pictures local, each (IMAGE ROW COLUMN COLUMNS ROWS) of its text's cells, a
+terminal's) are noted too, its text shown as it is."
   (let ((top (tuatara.display:window-text-top window))
         (left (tuatara.display:area-left window))
         (width (tuatara.display:window-width window))
@@ -925,7 +935,10 @@ cells, a terminal's) are noted too, its text shown as it is."
                   for shown-rows = (min rows (- height row))
                   for shown-columns = (min columns (- text-width column))
                   when (and (>= row 0) (>= column 0) (plusp shown-rows) (plusp shown-columns))
-                    do (push (list picture (+ top row) (+ left (tuatara.display:window-margin window) column) shown-columns shown-rows nil)
+                    do (push (list picture (+ top
+                                              row) (+ left
+                                                      (tuatara.display:window-margin window)
+                                                      column) shown-columns shown-rows nil)
                              *frame-images*)))
           ;; a buffer shown as pictures (:picture-view) whose picture is on its way: blank, not its text
           (when (and (null image)
@@ -977,17 +990,17 @@ shows the name alone.")
 
 (defun escape-controls (text &optional spans (which :controls))
   "TEXT with each control character in it written as the editor shows one in
-text (^J for a newline, ^I for a tab, \\x85 for code 133), and each invisible
+text (^J for a newline, ^I for a tab, \\x85 for code 133). Each invisible
 character that changes the direction text is drawn in, or draws nothing at
-all (a zero-width space, *ESCAPED-INVISIBLES*), as its code (<202E>, <200B>),
-so that it takes one line, reads in the order it is written and hides no
-character: how a name from elsewhere is shown in a list, a heading, the
-panel under the prompt or the window's title. With WHICH :RAW-BYTES, only
-each raw byte's character (U+DC80..U+DCFF, an octet that is not UTF-8) is
-written, as \\xNN, in the four columns its width counts: a row of the screen,
-laid out already, as it is painted. TEXT itself when it has none. The second
-value is SPANS, lists (START END FACE) over TEXT's characters, moved to
-match."
+all (a zero-width space, *ESCAPED-INVISIBLES*), is written as its code
+\(<202E>, <200B>). So the text takes one line, reads in the order it is written
+and hides no character. This is how a name from elsewhere is shown in a list,
+a heading, the panel under the prompt or the window's title.
+With WHICH :RAW-BYTES, only each raw byte's character (U+DC80..U+DCFF, an
+octet that is not UTF-8) is written, as \\xNN, in the four columns its width
+counts: a row of the screen, laid out already, as it is painted.
+Returns TEXT itself when it has none. The second value is SPANS, lists (START
+END FACE) over TEXT's characters, moved to match."
   (flet ((shown (c)
            ;; the text C is written as, or NIL to leave it as it is
            (let ((code (char-code c)))
@@ -1007,17 +1020,18 @@ match."
                                    (progn (write-char c out) (incf at)))))
                     (setf (aref moved (length text)) at))
                   (loop for (start end face) in spans
-                        collect (list (aref moved (min start (length text))) (aref moved (min end (length text))) face))))
+                        collect (list (aref moved
+                                            (min start (length text))) (aref moved (min end (length text))) face))))
         (values text spans))))
 
 (defun sandbox-outcome-words (outcome said &key (label "the program")
                                                    (seconds-setting 'tuatara-user:*sandbox-seconds*))
   "Why a program run shut in (SANDBOX-RUN) gave nothing, as a sentence
 beginning with LABEL, from how it went, OUTCOME, and what it SAID, as
-SANDBOX-RUN gives them: there is no sandbox here, and why; it was stopped
-after the seconds SECONDS-SETTING (a setting's symbol) holds, or by you; it
-printed more than it may; or it failed, with the first line of what it said.
-NIL when OUTCOME is :DONE."
+SANDBOX-RUN gives them. The reason is one of these. There is no sandbox here,
+and why. It was stopped after the seconds SECONDS-SETTING (a setting's symbol)
+holds, or by you. It printed more than it may. Or it failed, with the first
+line of what it said. The result is NIL when OUTCOME is :DONE."
   (case outcome
     (:done nil)
     (:unavailable (format nil "~a runs only shut in the sandbox, and there is none here: ~a" label said))
@@ -1046,7 +1060,10 @@ what *TITLE-FUNCTIONS* add before it, when that has changed since it was last
 given; control and direction characters in it are written out, and octets
 that are not UTF-8 as \\xNN, as the mode line writes them (ESCAPE-CONTROLS)."
   (let* ((name (tuatara.buffer:buffer-name buffer))
-         (extra (format nil "~{~a ~}" (remove nil (mapcar (lambda (f) (tuatara.runtime:call-hook-function f editor)) *title-functions*))))
+         (extra (format nil
+                        "~{~a ~}"
+                        (remove nil
+                                (mapcar (lambda (f) (tuatara.runtime:call-hook-function f editor)) *title-functions*))))
          (shown (editor-title-shown editor)))
     (unless (and shown (eq name (first shown)) (eq *gui-title* (second shown)) (equal extra (third shown)))
       (setf (editor-title-shown editor) (list name *gui-title* extra))

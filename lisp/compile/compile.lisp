@@ -1,4 +1,5 @@
-;;;; lisp/compile/compile.lisp --- Running a build or test command and stepping through the places its output names: compile.
+;;;; lisp/compile/compile.lisp --- Running a build or test command and stepping through the places its output names:
+;;;; compile.
 ;;;; Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
 ;;;;
 ;;;; M-x compile runs a command typed in the minibuffer with the shell, from
@@ -33,7 +34,9 @@ read on to its end and counted, but what comes past this is left out, and the
 last line says how much. NIL keeps all of it.")
 
 (defvar *compile-history* '()
-  "The commands typed for \\[compile] in this session, the latest first: \\<minibuffer>\\[minibuffer-previous-history] and \\[minibuffer-next-history] go through them.")
+  "The commands typed for \\[compile] in this session, the latest first:
+\\<minibuffer>\\[minibuffer-previous-history] and \\[minibuffer-next-history] go
+through them.")
 
 (defparameter *compile-piece* 65536
   "The most octets read at once from a compile's output.")
@@ -104,10 +107,19 @@ the first starts, where it ends, where the second starts (END for none), and
 where the first colon in the first word is, NIL for none."
   (declare (type simple-string line) (type fixnum end) (optimize speed))
   (flet ((blank-p (c) (or (char= c #\Space) (char= c #\Tab))))
-    (let* ((first (loop for i of-type fixnum from 0 below end unless (blank-p (schar line i)) return i finally (return end)))
-           (token-end (loop for i of-type fixnum from first below end when (blank-p (schar line i)) return i finally (return end))))
+    (let* ((first (loop for i of-type fixnum from 0 below end
+                        unless (blank-p (schar line i))
+                        return i
+                        finally (return end)))
+           (token-end (loop for i of-type fixnum from first below end
+                            when (blank-p (schar line i))
+                            return i
+                            finally (return end))))
       (values first token-end
-              (loop for i of-type fixnum from token-end below end unless (blank-p (schar line i)) return i finally (return end))
+              (loop for i of-type fixnum from token-end below end
+                    unless (blank-p (schar line i))
+                    return i
+                    finally (return end))
               (loop for i of-type fixnum from first below token-end when (char= #\: (schar line i)) return i)))))
 
 (defun line-may-be (what line end first token-end second colon)
@@ -126,7 +138,8 @@ with a letter, a . / or ~, or have a . or / in its name."
            (declare (type simple-string suffix) (type fixnum at))
            (let ((from (- at (length suffix))))
              (and (>= from first) (string= suffix line :start2 from :end2 at))))
-         (numbered () (and colon (< (1+ (the fixnum colon)) token-end) (digit-char-p (schar line (1+ (the fixnum colon)))))))
+         (numbered ()
+           (and colon (< (1+ (the fixnum colon)) token-end) (digit-char-p (schar line (1+ (the fixnum colon)))))))
     (ecase what
       (:kinded (and (numbered) (or (starts "error" second) (starts "fatal error" second) (starts "warning" second)
                                    (starts "note" second) (starts "remark" second))))
@@ -183,8 +196,9 @@ function of the file's name as written, says it is there, so that a time
 is. Python's File \"<string>\" and the like name no file."
   (multiple-value-bind (first token-end second colon) (output-line-words line end)
     (loop for (what scanner) in *compile-line-scanners*
-          do (multiple-value-bind (start match-end starts ends) (and (line-may-be what line end first token-end second colon)
-                                                                     (cl-ppcre:scan scanner line :end end))
+          do (multiple-value-bind (start match-end starts ends)
+                 (and (line-may-be what line end first token-end second colon)
+                      (cl-ppcre:scan scanner line :end end))
                (declare (ignore match-end))
                (when start
                  (flet ((group (i) (and (aref starts i) (subseq line (aref starts i) (aref ends i))))
@@ -215,7 +229,8 @@ names a file and line."
 (defun code-place-p (code) "True when the line a PLACE-CODE stands for names a place." (logbitp 0 code))
 
 (defun code-face (code)
-  "The face of the line a PLACE-CODE stands for: :compile-error, :compile-warning or :compile-note; NIL for one of no kind."
+  "The face of the line a PLACE-CODE stands for: :compile-error,
+:compile-warning or :compile-note; NIL for one of no kind."
   (case (ldb (byte 2 1) code) (1 :compile-error) (2 :compile-warning) (3 :compile-note)))
 
 ;;; A compile and its places
@@ -225,10 +240,11 @@ names a file and line."
 \(STEP-PLACE): BUFFER shows its output after BASE octets of heading; COMMAND
 ran in DIRECTORY. STARTS, CODES and FOLDERS hold, in the order of the output,
 each line of note (one naming a place, or saying an error, a warning or a
-note): where it starts in BUFFER, its PLACE-CODE, and the directory its file
-names are taken from, as an index into DIRECTORIES (the first DIRECTORY, the
-others those make said it went into); written by the thread reading the
-output under LOCK. INDEX is the line gone to last, -1 before any."
+note). They give where it starts in BUFFER, its PLACE-CODE, and the directory
+its file names are taken from, as an index into DIRECTORIES (the first
+DIRECTORY, the others those make said it went into). They are written by the
+thread reading the output under LOCK. INDEX is the line gone to last, -1
+before any."
   buffer command directory base
   (lock (sb-thread:make-mutex :name "compile places"))
   (starts (make-array 16 :element-type 'fixnum :adjustable t :fill-pointer 0))
@@ -243,10 +259,13 @@ output under LOCK. INDEX is the line gone to last, -1 before any."
       (documentation 'compile-run-directory 'function) "The directory a compile's command ran in."
       (documentation 'compile-run-base 'function) "The octets of heading before a compile's output in its buffer."
       (documentation 'compile-run-lock 'function) "The lock a compile's lines of note are written and read under."
-      (documentation 'compile-run-starts 'function) "Where each line of note of a compile's output starts in its buffer."
+      (documentation 'compile-run-starts 'function)
+      "Where each line of note of a compile's output starts in its buffer."
       (documentation 'compile-run-codes 'function) "The PLACE-CODE of each line of note of a compile's output."
-      (documentation 'compile-run-folders 'function) "The directory each line of note of a compile's output takes its file names from, an index into its DIRECTORIES."
-      (documentation 'compile-run-directories 'function) "The directory a compile's command ran in, then those make said it went into."
+      (documentation 'compile-run-folders 'function)
+      "The directory each line of note of a compile's output takes its file names from, an index into its DIRECTORIES."
+      (documentation 'compile-run-directories 'function)
+      "The directory a compile's command ran in, then those make said it went into."
       (documentation 'compile-run-index 'function) "The line of note of a compile gone to last, -1 before any.")
 
 (defmethod places-buffer ((places compile-run))
@@ -365,7 +384,9 @@ output is in the selected one, else in the selected one."
 
 ;;; Reading the output
 
-(defstruct (compile-job (:include tuatara.runtime:job) (:constructor make-compile-job (buffer run environment most)) (:copier nil))
+(defstruct (compile-job (:include tuatara.runtime:job)
+                        (:constructor make-compile-job (buffer run environment most))
+                        (:copier nil))
   "A compile at work in BUFFER, a job: RUN is its COMPILE-RUN, ENVIRONMENT
 what its program sees, MOST the most octets of its output kept
 \(*COMPILE-OUTPUT-LIMIT* as it started). PIECES are the pieces read from its output and not
@@ -479,14 +500,15 @@ the editor woken when it took in all there was before."
 
 (defstruct (output-scan (:constructor make-output-scan (run offset &aux (line-start offset))) (:copier nil))
   "Where the reading of a compile's output has got, for finding its lines of
-note: RUN, its COMPILE-RUN; OFFSET, the octet of its buffer the next octet
-read goes to; LINE-START, where the line being read began; LINE, the octets of
-it read so far when it began in a piece read before, at most
-*COMPILE-LINE-LOOKED-AT*; LENGTH, how long it is so far; KIND-BEFORE, the kind
-of the last line saying what is wrong without a place; TEXT, the string a
-line is matched in (LINE-TEXT); FOLDERS, the directories make went into, the
-innermost first, as indexes into RUN's (0, where the command ran, when none);
-THERE, whether each file name looked for is a file, by directory and name."
+note. RUN is its COMPILE-RUN. OFFSET is the octet of its buffer the next octet
+read goes to. LINE-START is where the line being read began. LINE is the
+octets of it read so far when it began in a piece read before, at most
+*COMPILE-LINE-LOOKED-AT*. LENGTH is how long it is so far. KIND-BEFORE is the
+kind of the last line saying what is wrong without a place. TEXT is the string
+a line is matched in (LINE-TEXT). FOLDERS are the directories make went into,
+the innermost first, as indexes into RUN's (0, where the command ran, when
+none). THERE is whether each file name looked for is a file, by directory and
+name."
   run offset (line-start 0) (line (make-array 256 :element-type '(unsigned-byte 8) :adjustable t :fill-pointer 0))
   (length 0) kind-before (text (make-string *compile-line-read*)) (folders '())
   (there (make-hash-table :test 'equal)))
@@ -578,10 +600,10 @@ the output goes in as it came, a carriage return in it ending a line.")
 
 (defstruct (output-returns (:constructor make-output-returns ()) (:copier nil))
   "How a compile's output stands where its last line is being written, for
-carriage returns written alone: SHOWN, the octets of that line as its buffer
-holds them; COLUMN, the character of it the next is written over, NIL when
-the next goes at its end; PENDING, true when the last octet read was a
-carriage return, a newline after it or not still to come; LOST, true while
+carriage returns written alone. SHOWN is the octets of that line as its buffer
+holds them. COLUMN is the character of it the next is written over, NIL when
+the next goes at its end. PENDING is true when the last octet read was a
+carriage return, a newline after it or not still to come. LOST is true while
 the line is longer than *COMPILE-RETURN-LINE-MOST*."
   (shown (make-array 256 :element-type '(unsigned-byte 8) :adjustable t :fill-pointer 0))
   (column nil) (pending nil) (lost nil))
@@ -792,7 +814,8 @@ their memory shared, at the cost of making BUFFER's tree of text again
 \(TUATARA.BUFFER:BUFFER-SPLICE); less is copied in, where only the end of
 the tree changes (TUATARA.BUFFER:BUFFER-INSERT)."
   (let* ((size (tuatara.buffer:buffer-size buffer))
-         (windows (remove-if-not (lambda (window) (= size (tuatara.display:window-point window))) (buffer-windows buffer)))
+         (windows (remove-if-not (lambda (window) (= size (tuatara.display:window-point window)))
+                                 (buffer-windows buffer)))
          (at-end (= size (tuatara.buffer:buffer-point buffer))))
     (tuatara.buffer:with-read-only-lifted (buffer :after t)
       (loop while pieces
@@ -805,7 +828,8 @@ the tree changes (TUATARA.BUFFER:BUFFER-INSERT)."
                      (if (> count (max *compile-rope-least* (floor end 128)))
                          (tuatara.buffer:buffer-splice buffer end end
                                                        (apply #'tuatara.text:splice-rope (tuatara.text:make-rope) 0 0 (pieces-ropes run)))
-                         (tuatara.buffer:buffer-insert buffer end (if (and (null (rest run)) (not (tuatara.text:rope-p (first run))))
+                         (tuatara.buffer:buffer-insert buffer end (if (and (null (rest run))
+                                                                           (not (tuatara.text:rope-p (first run))))
                                                                       (first run)
                                                                       (joined-octets run))))))))
     (setf (tuatara.buffer:buffer-undo-stack buffer) '() (tuatara.buffer:buffer-redo-stack buffer) '())
@@ -830,7 +854,9 @@ is noted asleep, to wake the editor with the next."
             (sb-thread:condition-broadcast (compile-job-room job))
             (setf (compile-job-asleep job) t))))
     (let ((buffer (tuatara.runtime:job-buffer job)))
-      (when (and taken (live-buffer-p buffer) (eq (compile-job-run job) (tuatara.buffer:buffer-local buffer 'compile-run)))
+      (when (and taken
+                 (live-buffer-p buffer)
+                 (eq (compile-job-run job) (tuatara.buffer:buffer-local buffer 'compile-run)))
         (add-compile-output buffer (nreverse taken))))
     (and taken t)))
 
@@ -1002,7 +1028,8 @@ comes, the list of places in force then."
       (use-places run)
       (let ((window (display-buffer buffer)))
         (when window (setf (tuatara.display:window-point window) (tuatara.buffer:buffer-size buffer))))
-      (tuatara.runtime:start-job-thread (make-compile-job buffer run (compile-environment) *compile-output-limit*) 'run-compile-job
+      (tuatara.runtime:start-job-thread (make-compile-job buffer run (compile-environment) *compile-output-limit*)
+                                        'run-compile-job
                                         :name "tuatara compile" :details command))))
 
 (defun compile-in (command directory)
@@ -1029,11 +1056,12 @@ command typed last is offered (*COMPILE-COMMAND* the first time), and
 \\<minibuffer>\\[minibuffer-previous-history] goes back through those before. A project not trusted is asked about
 first, since a build runs its own code; with no, nothing runs. In *compile*,
 lines naming a file and line (GCC, Clang, rustc and cargo, Python's
-tracebacks, grep -n) are places: \\<compile-output-mode>\\[list-visit] opens one, and \\[next-place] and \\[previous-place]
-go from place to place from anywhere; error, warning and note lines are in
-faces of their own; \\[revert-buffer] runs the command again and \\[compile-stop] stops it. At
-the end it says how the command ended (its exit code, or the signal that
-ended it) and how long it took."
+tracebacks, grep -n) are places: \\<compile-output-mode>\\[list-visit] opens
+one, and \\[next-place] and \\[previous-place] go from place to place from
+anywhere; error, warning and note lines are in faces of their own;
+\\[revert-buffer] runs the command again and \\[compile-stop] stops it. At the
+end it says how the command ended (its exit code, or the signal that ended it)
+and how long it took."
   (let* ((here (buffer-directory (current-buffer)))
          (directory (or (project-root here) here))
          (command (read-string (format nil "Compile in ~a: " (abbreviated-path directory))

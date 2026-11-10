@@ -84,7 +84,9 @@ none) and its address; its branches are fetched with f e."
   (with-git-repository (top)
     (git-ask "Reading the remotes" top (lambda (job top) (git-lines job top (list "remote")))
              (lambda (remotes)
-               (let ((name (git-read-name "Remote name: " '() :default (unless (member "origin" remotes :test #'string=) "origin"))))
+               (let ((name (git-read-name "Remote name: "
+                                          '()
+                                          :default (unless (member "origin" remotes :test #'string=) "origin"))))
                  (when name
                    (let ((address (git-read-address (format nil "Address of ~a: " name))))
                      (when address
@@ -210,7 +212,9 @@ on a section's heading, fold or unfold the section."
          (entry (list-entry-at list))
          (ref (entry-member entry)))
     (cond (ref (let ((name (second ref)))
-                 (git-show-log (git-here) (format nil "Log of ~a" name) (list (format nil "--max-count=~d" *git-log-length*) name "--"))))
+                 (git-show-log (git-here)
+                               (format nil "Log of ~a" name)
+                               (list (format nil "--max-count=~d" *git-log-length*) name "--"))))
           ((eq (first entry) :section) (list-toggle-section list (second entry)))
           (t (message "No branch or tag on this line")))))
 

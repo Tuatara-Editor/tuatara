@@ -24,18 +24,32 @@
   '(("numbered" (:heading) "no prints the heading without a number, as :UNNUMBERED: t does; yes, as standard, with one")
     ("annex" (:heading) "yes begins the annexes at this heading, on a page of their own, numbered anew, as the :appendix: tag does")
     ("contents" (:heading) "no leaves the heading out of the table of contents; yes, as standard, in it")
-    ("new page" (:heading :paragraph :list :block :table :picture) "before, after or both: a new page begins there (for a heading, after all under it); no, as standard")
-    ("space before" (:heading :paragraph :list :block :table :picture) "a length (6pt, 1em, 1cm): that much space above it")
-    ("space after" (:heading :paragraph :list :block :table :picture) "a length (6pt, 1em, 1cm): that much space under it (for a heading, after all under it)")
-    ("spacing" (:heading :paragraph :list :block :table) "single, 1.5, double or a number (1.15): the space between the lines, as a word processor counts it")
-    ("columns" (:heading :paragraph :list :block :table) "a number: the text set in that many columns (for a heading, all under it, the heading across them)")
+    ("new page"
+     (:heading :paragraph :list :block :table :picture)
+     "before, after or both: a new page begins there (for a heading, after all under it); no, as standard")
+    ("space before"
+     (:heading :paragraph :list :block :table :picture)
+     "a length (6pt, 1em, 1cm): that much space above it")
+    ("space after"
+     (:heading :paragraph :list :block :table :picture)
+     "a length (6pt, 1em, 1cm): that much space under it (for a heading, after all under it)")
+    ("spacing"
+     (:heading :paragraph :list :block :table)
+     "single, 1.5, double or a number (1.15): the space between the lines, as a word processor counts it")
+    ("columns"
+     (:heading :paragraph :list :block :table)
+     "a number: the text set in that many columns (for a heading, all under it, the heading across them)")
     ("page" (:heading :paragraph :list :block :table :picture) "landscape: on pages turned sideways, from a page of their own (for a heading, it and all under it; side by side, they share the pages); portrait, as standard")
-    ("font" (:heading :paragraph :list :block :table) "tiny, scriptsize, footnote, small, normal, large or larger: the size of the type")
+    ("font"
+     (:heading :paragraph :list :block :table)
+     "tiny, scriptsize, footnote, small, normal, large or larger: the size of the type")
     ("indent" (:paragraph :list :block :table :picture) "a length (2em, 1cm): set in from the left by that much")
     ("width" (:picture :table) "a share of the page (60%) or a length (8cm); for a table, full: from margin to margin, its columns sharing the width as their text does")
     ("widths" (:table) "each column's width in turn: a share of the page (30%), a length (5cm, 22em), * for an equal share of what is left, or auto")
     ("align" (:paragraph :table) "a paragraph takes left, right, centre or justify; a table takes each column in turn, left, right, centre or auto (numbers right, words left)")
-    ("position" (:table :picture) "left or right: the table or picture against that margin; centre, as standard, in the middle")
+    ("position"
+     (:table :picture)
+     "left or right: the table or picture against that margin; centre, as standard, in the middle")
     ("repeat header" (:table) "yes, as standard: the rows above the first rule again at the top of each page; no, only once")
     ("lines" (:table) "the lines printed, any of: top (above the table), header (under the header), rules (where the table's own |---| lines are), bottom, left, right (down its sides), columns (between the columns), rows (between every row); box (top bottom left right), all, or none; top header rules bottom, as standard")
     ("style" (:list) "bullets, none (no bullets), numbers, letters (a), Letters (A), roman (i), Roman (I)")
@@ -59,8 +73,12 @@ Any of them may be auto, which leaves it as the export would have it.")
   (and (assoc name *org-latex-settings* :test #'string-equal) t))
 
 (defparameter *org-latex-font-sizes*
-  '(("tiny" . "\\tiny") ("scriptsize" . "\\scriptsize") ("footnote" . "\\footnotesize") ("footnotesize" . "\\footnotesize")
-    ("small" . "\\small") ("normal" . "\\normalsize") ("large" . "\\large") ("larger" . "\\Large") ("largest" . "\\LARGE"))
+  '(("tiny" . "\\tiny")
+    ("scriptsize" . "\\scriptsize")
+    ("footnote" . "\\footnotesize")
+    ("footnotesize" . "\\footnotesize")
+    ("small" . "\\small") ("normal" . "\\normalsize") ("large" . "\\large") ("larger" . "\\Large")
+    ("largest" . "\\LARGE"))
   "The sizes of type the font setting takes, and the LaTeX for each.")
 
 (defparameter *export-setting-words*
@@ -152,22 +170,28 @@ others. A setting where it cannot apply is said and left out."
              (walk (node)
                (let ((children (org-node-children node)))
                  (loop for (child . rest) on children
-                       for leading = t then (and leading (member (org-node-type before) '(property-drawer planning drawer)))
+                       for leading = t then (and leading
+                                                 (member (org-node-type before) '(property-drawer planning drawer)))
                        for before = child
                        do (when (org-export-drawer-p child)
                             (let* ((settings (org-export-drawer-settings child))
                                    (heading (and leading (eq (org-node-type node) 'section)
                                                  (eq (org-node-type (org-node-parent node)) 'headline)
                                                  (org-node-parent node)))
-                                   (for-heading (remove-if-not (lambda (s) (member :heading (second (assoc (car s) *org-latex-settings* :test #'string=))))
+                                   (for-heading (remove-if-not (lambda (s)
+                                                                 (member :heading (second (assoc (car s)
+                                                                                                 *org-latex-settings*
+                                                                                                 :test #'string=))))
                                                                settings))
                                    (next (find-if-not #'org-export-drawer-p rest)))
                               (if heading
                                   (progn (give heading for-heading child)
-                                         ;; columns and font, both a heading's and an element's: the heading's when first under it
+                                         ;; columns and font, both a heading's and an element's: the heading's when
+                                         ;; first under it
                                          (setf settings (set-difference settings for-heading :test #'equal)))
                                   (when (and for-heading (not next))
-                                    (org-latex-note-at child "~{~a~^, ~} set~:[s~;~] a heading: put the drawer right under it"
+                                    (org-latex-note-at child
+                                                       "~{~a~^, ~} set~:[s~;~] a heading: put the drawer right under it"
                                                        (mapcar #'car for-heading) (rest for-heading))))
                               (when settings
                                 (if next
@@ -191,11 +215,11 @@ setting says: two values, each true or NIL."
             (and value (or (string-equal value "after") (string-equal value "both")) t))))
 
 (defun call-with-export-breaks (node out body &key length page space)
-  "Write NODE to OUT by calling BODY with OUT, with a new page and space
-before and after it as its new page, space before and space after settings
-say: LENGTH reads a length setting as the export takes it, NIL for none;
-PAGE writes a new page to OUT, and SPACE such a length's space, each called
-with OUT (SPACE with the length after it)."
+  "Write NODE to OUT by calling BODY with OUT, with a new page and space before
+and after it as its new page, space before and space after settings say: LENGTH
+reads a length setting as the export takes it, NIL for none. PAGE writes a new
+page to OUT, and SPACE such a length's space, each called with OUT (SPACE with
+the length after it)."
   (multiple-value-bind (page-before page-after) (export-new-page node)
     (let ((space-before (funcall length (org-latex-setting node "space before")))
           (space-after (funcall length (org-latex-setting node "space after"))))
@@ -279,34 +303,40 @@ when rows follow the rule; NIL when it has none."
   (let ((rule (position 'rule rows :key (lambda (r) (org-property r :type)))))
     (and rule (plusp rule) (< rule (1- (length rows))) rule)))
 
-(defun table-column-alignment (index standard cookies)
-  "How column INDEX of a table is aligned, :LEFT, :RIGHT or :CENTRE, as
-`org-column-alignment' decides from its cell in COOKIES, the row of widths
-and alignments, and its cells in STANDARD, the rows of cells."
-  (flet ((text (row)
-           (let ((cell (and row (nth index (org-node-children row)))))
-             (if cell (org-latex-cell-text cell) ""))))
-    (org-column-alignment (cons (text cookies) (mapcar #'text standard)))))
+(defun table-column-alignments (columns skip standard cookies)
+  "How each of the COLUMNS columns of a table is aligned, a vector of :LEFT,
+:RIGHT or :CENTRE, as `org-column-alignment' decides from a column's cell in
+COOKIES, the row of widths and alignments, and its cells in STANDARD, the rows
+of cells, the first SKIP cells of a row counting for no column. Each cell is
+read once."
+  (let ((fields (make-array columns :initial-element '())))
+    (dolist (row (if cookies (cons cookies standard) standard))
+      (loop for cell in (nthcdr skip (org-node-children row))
+            for column below columns
+            do (push (org-latex-cell-text cell) (aref fields column))))
+    (map 'vector (lambda (texts) (org-column-alignment (nreverse texts))) fields)))
 
-(defun export-column-alignment (node index special standard cookies)
-  "How column INDEX of the table NODE is aligned, :LEFT, :RIGHT or :CENTRE:
-as its align setting's word for it says, else as its numbers or words are
-\(TABLE-COLUMN-ALIGNMENT); SPECIAL true when its first column, only marking
-rows, is not counted in INDEX."
-  (let ((side (export-side (nth index (tuatara.text:split-words (org-latex-setting node "align"))))))
-    (if (member side '(:left :right :centre))
-        side
-        (table-column-alignment (+ index (if special 1 0)) standard cookies))))
+(defun export-column-alignments (node columns special standard cookies)
+  "How each of the COLUMNS columns of the table NODE is aligned, a vector of
+:LEFT, :RIGHT or :CENTRE: as its align setting's word for the column says, else
+as its numbers or words are (TABLE-COLUMN-ALIGNMENTS); SPECIAL true when the
+first column, only marking rows, is not counted."
+  (let ((sides (table-column-alignments columns (if special 1 0) standard cookies)))
+    (loop for word in (tuatara.text:split-words (org-latex-setting node "align"))
+          for column below columns
+          do (let ((side (export-side word)))
+               (when (member side '(:left :right :centre))
+                 (setf (aref sides column) side))))
+    sides))
 
 (defun export-table-measure (columns special standard)
-  "How the COLUMNS of a table print, as four values, each a list with one
-entry a column: the lengths of its cells in STANDARD, the rows of cells, as
-they print (ORG-LATEX-VISIBLE-LENGTH); its widest, at least 1; whether it
-has words to wrap, wider than 20 characters with a space in a cell; and
-the longest part of a cell that cannot go on to the next line
-\(ORG-LATEX-LONGEST-PIECE). SPECIAL true when the first column, only
-marking rows, is left out. The one measure of a table's columns for both
-exports."
+  "How the COLUMNS of a table print, as four values, each a list with one entry
+a column: the lengths of its cells in STANDARD, the rows of cells, as they print
+\(ORG-LATEX-VISIBLE-LENGTH). Its widest, at least 1. Whether it has words to
+wrap, wider than 20 characters with a space in a cell. And the longest part of a
+cell that cannot go on to the next line \(ORG-LATEX-LONGEST-PIECE). SPECIAL true
+when the first column, only marking rows, is left out. The one measure of a
+table's columns for both exports."
   (flet ((cell (row i) (nth i (nthcdr (if special 1 0) (org-node-children row)))))
     (let* ((lengths (loop for i below columns
                           collect (loop for row in standard
@@ -451,8 +481,10 @@ textwidth), as the enhanced export's own A4 page, 154 mm across, has
                             (loop for (name . width) in *latex-paper-widths*
                                   when (assoc name given :test #'string=) return width)))
                  (text (let ((w (value "textwidth" "width"))) (and w (latex-length-millimetres w))))
-                 (left (let ((m (value "left" "lmargin" "inner" "margin" "hmargin"))) (and m (latex-length-millimetres m))))
-                 (right (let ((m (value "right" "rmargin" "outer" "margin" "hmargin"))) (and m (latex-length-millimetres m))))
+                 (left (let ((m (value "left" "lmargin" "inner" "margin" "hmargin")))
+                         (and m (latex-length-millimetres m))))
+                 (right (let ((m (value "right" "rmargin" "outer" "margin" "hmargin")))
+                          (and m (latex-length-millimetres m))))
                  (width (or text (and paper left right (- paper left right)))))
             (and width (plusp width)
                  (max 30 (round (* *org-latex-text-characters* width) 154)))))))))
@@ -517,10 +549,10 @@ font, the space between its lines and its columns."
 (define-command describe-export-settings ()
   "Show the settings an :EXPORT: drawer may hold in an Org note, what each sets
 and what it takes: how the enhanced export sets a heading, a table, a list, a
-block or a picture, in words rather than LaTeX; then tips on what writes the
+block or a picture, in words rather than LaTeX. Then tips on what writes the
 same in the PDF and the Word document, and what only in the PDF, the lines
-filled to *HELP-COLUMN*. \\[org-insert-export-drawer] writes a drawer with
-those that fit what point is on."
+filled to *HELP-COLUMN*. \\[org-insert-export-drawer] writes a drawer with those
+that fit what point is on."
   (show-help
    (with-output-to-string (s)
      (format s "Settings of an :EXPORT: drawer~%~%")
@@ -531,7 +563,8 @@ those that fit what point is on."
      (format s "~%:EXPORT:~%widths: 30% * *~%align: left right centre~%font: small~%:END:~%~%")
      (dolist (kind '(:heading :table :list :block :paragraph :picture))
        (format s "~@(~a~)~%" (case kind (:heading "A heading") (:table "A table") (:list "A list")
-                                   (:block "A block (code, example, quote)") (:paragraph "A paragraph") (:picture "A picture")))
+                                   (:block "A block (code, example, quote)") (:paragraph "A paragraph")
+                                   (:picture "A picture")))
        (loop for (name kinds words) in *org-latex-settings*
              when (member kind kinds)
                do (write-filled s (format nil "  ~a:" name) words :indent 6))
@@ -591,7 +624,8 @@ so that other programs exporting the note as Org leave the drawers out too."
                          ;; under the heading, after its planning and properties
                          (let* ((section (find 'section (org-node-children node) :key #'org-node-type))
                                 (leading (and section
-                                              (remove-if-not (lambda (n) (member (org-node-type n) '(planning property-drawer)))
+                                              (remove-if-not (lambda (n)
+                                                               (member (org-node-type n) '(planning property-drawer)))
                                                              (org-node-children section)))))
                            (if leading
                                (org-node-end (car (last leading)))

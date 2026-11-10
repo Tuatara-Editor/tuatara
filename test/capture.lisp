@@ -70,7 +70,8 @@ templates those in DIRECTORY's capture-templates/ (none unless a test makes them
       (alexandria:write-string-into-file
        (format nil "# name: Book to read~%# key: b~%# file: ~a~%# outline: Other / Leave me~%# --~%* %^{Title}%?~%" agenda)
        (merge-pathnames "b-book.org" folder))
-      (alexandria:write-string-into-file (format nil "# name: Nowhere~%# key: w~%# --~%* x~%") (merge-pathnames "w-nowhere.org" folder))
+      (alexandria:write-string-into-file (format nil "# name: Nowhere~%# key: w~%# --~%* x~%")
+                                         (merge-pathnames "w-nowhere.org" folder))
       (alexandria:write-string-into-file (format nil "no head at all~%") (merge-pathnames "loose.org" folder))
       (let ((templates (tuatara.defaults::capture-templates)))
         (is equal '("b" "j" "m" "n" "t" "w") (mapcar #'tuatara.defaults::capture-template-key templates))
@@ -99,7 +100,11 @@ templates those in DIRECTORY's capture-templates/ (none unless a test makes them
 (define-test (capture copied-to-be-yours)
   (with-capture (dir agenda)
     (let ((copy (merge-pathnames "capture-templates/m-meeting.org" dir)))
-      (multiple-value-bind (f editor) (run-keys "M-x o r g - c a p t u r e - t e m p l a t e - c o p y RET M e e t i n g RET" :text "x" :width 120 :height 16)
+      (multiple-value-bind (f editor)
+          (run-keys "M-x o r g - c a p t u r e - t e m p l a t e - c o p y RET M e e t i n g RET"
+                    :text "x"
+                    :width 120
+                    :height 16)
         (true (probe-file copy))
         (true (search "# clock-resume: t" (file-text copy)))
         (is string= "m-meeting.org" (tuatara.buffer:buffer-name (session-buffer editor)))
@@ -107,7 +112,10 @@ templates those in DIRECTORY's capture-templates/ (none unless a test makes them
       (forget-file-buffers)
       ;; never written over
       (alexandria:write-string-into-file (format nil "# name: Mine~%# key: m~%# journal: t~%# --~%x~%") copy :if-exists :supersede)
-      (let ((f (run-keys "M-x o r g - c a p t u r e - t e m p l a t e - c o p y RET M e e t i n g RET" :text "x" :width 120 :height 16)))
+      (let ((f (run-keys "M-x o r g - c a p t u r e - t e m p l a t e - c o p y RET M e e t i n g RET"
+                         :text "x"
+                         :width 120
+                         :height 16)))
         (true (tuatara.frontend.fake:fake-frame-showing f "is yours already"))
         (true (search "# name: Mine" (file-text copy))))
       (forget-file-buffers))))
@@ -117,7 +125,8 @@ templates those in DIRECTORY's capture-templates/ (none unless a test makes them
     (run-keys "SPC a c j W r o t e SPC i t C-c C-c" :text "x" :width 100 :height 16)
     (let ((files (journal-files dir)))
       (is = 1 (length files))
-      (true (search (format nil "* 13:39 Wrote it") (file-text (merge-pathnames (concatenate 'string "journal/" (first files)) dir)))))))
+      (true (search (format nil "* 13:39 Wrote it")
+                    (file-text (merge-pathnames (concatenate 'string "journal/" (first files)) dir)))))))
 
 (define-test (capture meeting-clocked)
   (with-capture (dir agenda)
@@ -153,7 +162,10 @@ templates those in DIRECTORY's capture-templates/ (none unless a test makes them
       (alexandria:write-string-into-file
        (format nil "# name: Meeting notes~%# key: M~%# file: ~a~%# heading: Meetings~%# clock-in: t~%# clock-resume: t~%# --~%* Notes: %^{Subject}~%%?~%" agenda)
        (merge-pathnames "M-notes.org" folder))
-      (let ((f (run-keys "SPC a c m R e v i e w RET 2 0 2 6 - 0 3 - 2 3 SPC 1 0 : 0 0 RET A g e n d a C-c C-c" :text "x" :width 120 :height 16)))
+      (let ((f (run-keys "SPC a c m R e v i e w RET 2 0 2 6 - 0 3 - 2 3 SPC 1 0 : 0 0 RET A g e n d a C-c C-c"
+                         :text "x"
+                         :width 120
+                         :height 16)))
         ;; asked with the calendar beside, as C-c C-s asks
         (true (tuatara.frontend.fake:fake-frame-showing f "Calendar")))
       (let ((text (file-text agenda)))
@@ -162,11 +174,18 @@ templates those in DIRECTORY's capture-templates/ (none unless a test makes them
       (false tuatara.defaults::*org-clock*)
       ;; two days chosen in the calendar, a timestamp each
       (let ((tuatara-user:*org-read-date-in-calendar* t))
-        (run-keys "SPC a c m P l a n RET m l l m RET SPC 1 0 : 0 0 RET N o t e s C-c C-c" :text "x" :width 120 :height 16))
+        (run-keys "SPC a c m P l a n RET m l l m RET SPC 1 0 : 0 0 RET N o t e s C-c C-c"
+                  :text "x"
+                  :width 120
+                  :height 16))
       (let ((text (file-text agenda)))
         (true (search (format nil "** Meeting: Plan~%<2026-03-20 Fri 10:00> <2026-03-22 Sun 10:00>~%Notes") text) "~a" text))
       ;; what is no date asked again, never written empty
-      (multiple-value-bind (f) (run-keys "SPC a c m L a t e r RET x y z RET 2 0 2 6 - 0 3 - 2 4 RET N o C-c C-c" :text "x" :width 120 :height 16)
+      (multiple-value-bind (f)
+          (run-keys "SPC a c m L a t e r RET x y z RET 2 0 2 6 - 0 3 - 2 4 RET N o C-c C-c"
+                    :text "x"
+                    :width 120
+                    :height 16)
         (true (tuatara.frontend.fake:fake-frame-showing f "No date read, when:")))
       (true (search (format nil "** Meeting: Later~%<2026-03-24 Tue>~%No") (file-text agenda)) "~a" (file-text agenda))
       (run-keys "SPC a c M T a l k RET S a i d C-c C-c" :text "x" :width 120 :height 16)
@@ -238,7 +257,9 @@ templates those in DIRECTORY's capture-templates/ (none unless a test makes them
     (alexandria:write-string-into-file (format nil "* Inbox~%** TODO Sort me~%* Commitments and Jobs~%") agenda :if-exists :supersede)
     ;; from the agenda's TODO list, the entry on the line
     (run-keys "SPC a a t / S o r t RET C-c C-w C o m m i t RET" :text "x" :width 100 :height 16)
-    (true (search (format nil "* Inbox~%* Commitments and Jobs~%** TODO Sort me") (file-text agenda)) "~a" (file-text agenda))
+    (true (search (format nil "* Inbox~%* Commitments and Jobs~%** TODO Sort me") (file-text agenda))
+          "~a"
+          (file-text agenda))
     ;; a capture filed elsewhere than its template says
     (run-keys "SPC a c n E l s e w h e r e C-c C-w C o m m i t RET" :text "x" :width 100 :height 16)
     (true (search (format nil "** TODO Sort me~%** Elsewhere") (file-text agenda)) "~a" (file-text agenda))
@@ -283,17 +304,25 @@ templates those in DIRECTORY's capture-templates/ (none unless a test makes them
     (alexandria:write-string-into-file (format nil "* Projects~%** Notes~%first~%** Notes~%second~%* Inbox~%** Item~%") agenda :if-exists :supersede)
     (let* ((buffer (tuatara.io:visit-file agenda))
            (tree (tuatara.defaults::org-parse-tree (tuatara.defaults::org-parse-now buffer)))
-           (item (find "Item" (tuatara.defaults::org-headlines tree) :key (lambda (h) (tuatara.defaults::org-property h :raw-value)) :test #'string=))
-           (second-notes (second (remove "Notes" (tuatara.defaults::org-headlines tree) :key (lambda (h) (tuatara.defaults::org-property h :raw-value)) :test-not #'string=))))
+           (item (find "Item"
+                       (tuatara.defaults::org-headlines tree)
+                       :key (lambda (h) (tuatara.defaults::org-property h :raw-value))
+                       :test #'string=))
+           (second-notes (second (remove "Notes"
+                                         (tuatara.defaults::org-headlines tree)
+                                         :key (lambda (h) (tuatara.defaults::org-property h :raw-value))
+                                         :test-not #'string=))))
       ;; offered twice, told apart by where each begins
       (is = 2 (count "agenda.org/Projects/Notes" (tuatara.defaults::org-refile-candidates buffer)
                      :key #'tuatara.command:candidate-string :test #'string=))
       ;; to a heading that is not there: nothing taken away
       (fail (tuatara.defaults::org-refile-subtree buffer item (list :olp agenda "Nope")))
-      (is string= (format nil "* Projects~%** Notes~%first~%** Notes~%second~%* Inbox~%** Item~%") (tuatara.buffer:buffer-string buffer))
+      (is string= (format nil "* Projects~%** Notes~%first~%** Notes~%second~%* Inbox~%** Item~%")
+          (tuatara.buffer:buffer-string buffer))
       ;; to the second of two with the same titles
       (tuatara.defaults::org-refile-subtree buffer item (list :olp agenda "Projects" "Notes") (tuatara.defaults::org-node-begin second-notes))
-      (is string= (format nil "* Projects~%** Notes~%first~%** Notes~%second~%*** Item~%* Inbox~%") (tuatara.buffer:buffer-string buffer)))))
+      (is string= (format nil "* Projects~%** Notes~%first~%** Notes~%second~%*** Item~%* Inbox~%")
+          (tuatara.buffer:buffer-string buffer)))))
 
 (define-test (capture empty-question-and-windows-lines)
   (with-capture (dir agenda)
@@ -301,11 +330,16 @@ templates those in DIRECTORY's capture-templates/ (none unless a test makes them
       (ensure-directories-exist folder)
       ;; a template file whose lines end in carriage returns, asking with no prompt of its own
       (alexandria:write-string-into-file
-       (format nil "~{~a~c~%~}" (loop for line in (list "# name: Plain" "# key: p" (format nil "# file: ~a" agenda) "# heading: Other"
-                                                         "# --" "* %^{}%?" "Body")
-                                      append (list line #\Return)))
+       (format nil
+               "~{~a~c~%~}"
+               (loop for line in (list "# name: Plain" "# key: p" (format nil "# file: ~a" agenda) "# heading: Other"
+                                        "# --" "* %^{}%?" "Body")
+                     append (list line #\Return)))
        (merge-pathnames "p-plain.org" folder))
-      (let ((template (find "p" (tuatara.defaults::capture-templates) :key #'tuatara.defaults::capture-template-key :test #'string=)))
+      (let ((template (find "p"
+                            (tuatara.defaults::capture-templates)
+                            :key #'tuatara.defaults::capture-template-key
+                            :test #'string=)))
         (is string= (format nil "* %^{}%?~%Body") (tuatara.defaults::capture-template-text template)))
       (let ((f (run-keys "SPC a c p" :text "x" :width 200 :height 16)))
         (true (tuatara.frontend.fake:fake-frame-showing f "Answer:")))
@@ -318,7 +352,8 @@ templates those in DIRECTORY's capture-templates/ (none unless a test makes them
     (let ((folder (merge-pathnames "tuatara/capture-templates/" dir))
           (tuatara-user:*capture-template-directories* nil))
       (ensure-directories-exist folder)
-      (alexandria:write-string-into-file (format nil "# name: Kea seen~%# key: z~%# file: ~~/notes/kea.org~%# --~%* %?~%")
+      (alexandria:write-string-into-file (format nil
+                                                 "# name: Kea seen~%# key: z~%# file: ~~/notes/kea.org~%# --~%* %?~%")
                                          (merge-pathnames "z-kea.org" folder))
       (with-environment-variable ("XDG_CONFIG_HOME" (namestring dir))
         (is equal (list (namestring folder)) (tuatara.defaults::capture-template-directories))
@@ -357,12 +392,14 @@ templates those in DIRECTORY's capture-templates/ (none unless a test makes them
   (with-capture (dir agenda)
     (let* ((file (namestring (merge-pathnames "new/tasks.org" dir)))
            (tuatara-user:*org-agenda-files* (list file)))
-      (multiple-value-bind (f editor) (run-keys "SPC a c n C a l l SPC N g a i o C-c C-c y RET" :text "x" :width 100 :height 16)
+      (multiple-value-bind (f editor)
+          (run-keys "SPC a c n C a l l SPC N g a i o C-c C-c y RET" :text "x" :width 100 :height 16)
         (declare (ignore editor))
         (false (tuatara.frontend.fake:fake-frame-showing f "read-only"))
         (true (probe-file file))
         (true (search "** Call Ngaio" (file-text file))))
-      (let ((b (tuatara.buffer:find-buffer "tasks.org"))) (when b (tuatara.buffer:buffer-mark-saved b) (tuatara.buffer:kill-buffer b))))
+      (let ((b (tuatara.buffer:find-buffer "tasks.org")))
+        (when b (tuatara.buffer:buffer-mark-saved b) (tuatara.buffer:kill-buffer b))))
     ;; a folder of agenda files: agenda.org in it
     (let ((tuatara-user:*org-agenda-files* (list (namestring dir))))
       (is string= (namestring (merge-pathnames "agenda.org" dir)) (tuatara.defaults::org-agenda-main-file)))
@@ -389,8 +426,12 @@ templates those in DIRECTORY's capture-templates/ (none unless a test makes them
   ;; a template a package gives as text, filed under the heading it names
   (with-capture (dir agenda)
     (let ((*capture-with-target* (list :olp agenda "Other")))
-      (let ((f (run-keys "M-x c a p t u r e - w i t h - t e s t - c o m m a n d RET D e n t i s t C-c C-c" :text "x" :width 100 :height 16)))
-        (true (search (format nil "* Other~%** Leave me :home:~%** Dentist~%:PROPERTIES:~%:LOCATION:~%:END:") (file-text agenda))
+      (let ((f (run-keys "M-x c a p t u r e - w i t h - t e s t - c o m m a n d RET D e n t i s t C-c C-c"
+                         :text "x"
+                         :width 100
+                         :height 16)))
+        (true (search (format nil "* Other~%** Leave me :home:~%** Dentist~%:PROPERTIES:~%:LOCATION:~%:END:")
+                      (file-text agenda))
               "~a" (file-text agenda))
         (true (tuatara.frontend.fake:fake-frame-showing f "Event filed under agenda.org/Other"))))))
 

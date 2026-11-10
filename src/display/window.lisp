@@ -7,7 +7,8 @@
   ((parent :initform nil :accessor area-parent
            :documentation "The split holding the area, or NIL for the area that is the whole layout.")
    (share :initform 1 :accessor area-share
-          :documentation "The area's part of its split: of the split's height when the areas in it are one above another, else of its width. The parts of a split add up to 1.")
+          :documentation "The area's part of its split: of the split's height when the areas in it
+are one above another, else of its width. The parts of a split add up to 1.")
    (left :initform 0 :accessor area-left
          :documentation "The screen column of the area's left edge.")
    (top :initform 0 :accessor area-top
@@ -32,13 +33,16 @@ holding windows one above another or side by side."))
    (start :accessor window-start-anchor
           :documentation "An anchor holding the first byte shown: always a line start or a wrap point.")
    (point :initform nil :accessor window-point-anchor
-          :documentation "An anchor holding the window's point while another window is selected; NIL for the selected window, whose point is its buffer's.")
+          :documentation "An anchor holding the window's point while another window is selected; NIL
+for the selected window, whose point is its buffer's.")
    (width :initarg :width :initform 80 :accessor window-width
           :documentation "Columns available for text.")
    (height :initarg :height :initform 24 :accessor window-height
            :documentation "Rows available for text (excluding the mode line).")
    (full-height :initform nil :accessor window-full-height
-                :documentation "Rows of text the window has while the panel below the windows is one row, or NIL for its height: point is kept visible by these, so that a taller panel for a while hides rows without scrolling.")
+                :documentation "Rows of text the window has while the panel below the windows is one
+row, or NIL for its height: point is kept visible by these, so that a taller
+panel for a while hides rows without scrolling.")
    (wrap :initform nil :accessor window-wrap
          :documentation "True to wrap long lines, NIL to truncate them with horizontal scrolling.")
    (hscroll :initform 0 :accessor window-hscroll
@@ -46,7 +50,8 @@ holding windows one above another or side by side."))
    (goal-column :initform nil :accessor window-goal-column
                 :documentation "Column that vertical motion tries to keep, or NIL.")
    (margin :initform 0 :accessor window-margin
-           :documentation "Columns reserved at the left for gutters (line numbers, version-control marks); text starts after them.")
+           :documentation "Columns reserved at the left for gutters (line numbers, version-control
+marks); text starts after them.")
    (rows :initform #() :accessor window-rows
          :documentation "The rows of the last layout, for painting and cursor mapping.")
    (spare-rows :initform (make-array 0 :adjustable t :fill-pointer 0) :reader window-spare-rows
@@ -54,42 +59,53 @@ holding windows one above another or side by side."))
    (row-start-seen :initform nil :accessor window-row-start-seen
                    :documentation "What the window's start was last found a row's start for (ROW-START-STATE), or NIL.")
    (bidi :initform nil :accessor window-bidi
-         :documentation "What the window keeps of right-to-left text from one layout to the next (a BIDI-CACHE), or NIL before any.")
+         :documentation "What the window keeps of right-to-left text from one layout to the next (a
+BIDI-CACHE), or NIL before any.")
    (laid-out :initform nil :accessor window-laid-out
-             :documentation "The window's last layout, kept to be used again (KEPT-LAYOUT): (STATE START ROWS BASES), or NIL.")
+             :documentation "The window's last layout, kept to be used again (KEPT-LAYOUT): (STATE
+START ROWS BASES), or NIL.")
    (divider :initform nil :accessor window-divider
             :documentation "True when the window's last column is the line between it and the window beside it.")
    (use-time :initform 0 :accessor window-use-time
-             :documentation "When the window was last selected, as a count of selections: the highest was used most recently.")
+             :documentation "When the window was last selected, as a count of selections: the
+highest was used most recently.")
    (kept :initform nil :accessor window-kept
-         :documentation "What the window is kept for, a rule of where buffers go, or NIL: other buffers are shown elsewhere.")
+         :documentation "What the window is kept for, a rule of where buffers go, or NIL: other
+buffers are shown elsewhere.")
    (quit-restore :initform nil :accessor window-quit-restore
-                 :documentation "What quitting the window does: :DELETE for a window made to show its buffer, a buffer to show again, or NIL for the one shown before.")
+                 :documentation "What quitting the window does: :DELETE for a window made to show
+its buffer, a buffer to show again, or NIL for the one shown before.")
    (history :initform '() :accessor window-history
-            :documentation "The buffers the window showed before, the latest first, each (BUFFER START POINT) with anchors where it was."))
+            :documentation "The buffers the window showed before, the latest first, each (BUFFER
+START POINT) with anchors where it was."))
   (:documentation "A window: a rectangle showing part of a buffer, with a start position that
 the redisplay keeps adjusted so that point is visible. The selected window's
 point is its buffer's point; every other window keeps a point of its own."))
 
 (setf (documentation 'window-buffer 'function) "The buffer WINDOW shows."
       (documentation 'window-start-anchor 'function) "The anchor holding the first byte WINDOW shows."
-      (documentation 'window-point-anchor 'function) "The anchor of WINDOW's own point, or NIL while its point is its buffer's (the selected window)."
+      (documentation 'window-point-anchor 'function) "The anchor of WINDOW's own point, or NIL while
+its point is its buffer's (the selected window)."
       (documentation 'window-width 'function) "Columns of WINDOW available for text."
       (documentation 'window-height 'function) "Rows of WINDOW available for text."
-      (documentation 'window-full-height 'function) "Rows of text WINDOW has under a panel of one row, or NIL for its height."
+      (documentation 'window-full-height 'function) "Rows of text WINDOW has under a panel of one
+row, or NIL for its height."
       (documentation 'window-wrap 'function) "True when WINDOW wraps long lines."
       (documentation 'window-hscroll 'function) "Columns WINDOW is scrolled horizontally."
       (documentation 'window-goal-column 'function) "Column vertical motion in WINDOW tries to keep, or NIL."
       (documentation 'window-rows 'function) "Rows of WINDOW's last layout."
-      (documentation 'window-spare-rows 'function) "Rows WINDOW showed before and shows no more, for its next layout to fill again."
-      (documentation 'window-row-start-seen 'function) "What WINDOW's start was last found a row's start for (ROW-START-STATE), or NIL."
+      (documentation 'window-spare-rows 'function) "Rows WINDOW showed before and shows no more, for
+its next layout to fill again."
+      (documentation 'window-row-start-seen 'function) "What WINDOW's start was last found a row's
+start for (ROW-START-STATE), or NIL."
       (documentation 'window-laid-out 'function) "WINDOW's last layout, kept to be used again (KEPT-LAYOUT), or NIL."
       (documentation 'window-margin 'function) "Columns of WINDOW reserved at the left for gutters."
       (documentation 'window-divider 'function) "True when WINDOW's last column divides it from the window beside it."
       (documentation 'window-use-time 'function) "The count of selections when WINDOW was last selected."
       (documentation 'window-kept 'function) "The rule WINDOW is kept for, or NIL."
       (documentation 'window-quit-restore 'function) "What quitting WINDOW does: :DELETE, a buffer to show, or NIL."
-      (documentation 'window-history 'function) "The buffers WINDOW showed before, latest first, as (BUFFER START POINT).")
+      (documentation 'window-history 'function) "The buffers WINDOW showed before, latest first, as
+(BUFFER START POINT).")
 
 (defun make-window (buffer &key (width 80) (height 24))
   "Return a window showing BUFFER with WIDTH columns and HEIGHT rows of text."
@@ -163,14 +179,16 @@ the line its first character went to, so that each stays on the same text."
             for top in tops
             do (let ((rope (tuatara.buffer:buffer-text (window-buffer window))))
                  (setf (window-start window)
-                       (tuatara.text:rope-line-start rope (min (funcall forward top :before) (tuatara.text:rope-octet-length rope)))))))))
+                       (tuatara.text:rope-line-start rope
+                                                     (min (funcall forward top :before)
+                                                          (tuatara.text:rope-octet-length rope)))))))))
 
 (defun call-keeping-window-lines (windows start end function)
   "Call FUNCTION, which puts other lines in place of the lines of a buffer from
-byte START below END (sorted or reordered), WINDOWS showing it; then keep each
+byte START below END (sorted or reordered), WINDOWS showing it. Then keep each
 window's first line, and its own point when it has one, on the same line of
 those lines and at the same column as before, and anything after them as far
-past them as it was: each window stays where it was, however the lines moved."
+past them as it was. Each window stays where it was, however the lines moved."
   (when (null windows) (return-from call-keeping-window-lines (funcall function)))
   (let* ((old (tuatara.buffer:buffer-text (window-buffer (first windows))))
          (old-bytes (tuatara.text:rope-octet-length old)))
@@ -336,10 +354,11 @@ HOST-INVISIBLE-CHARACTERS-P says."
 
 (defgeneric host-text-direction (host buffer)
   (:documentation "How the lines of BUFFER holding right-to-left text (Hebrew, Arabic and the
-others) are shown: NIL for each line's characters in the order they are
-stored, else in the order they are read, each line a paragraph written from
-left to right (:LEFT-TO-RIGHT), right to left (:RIGHT-TO-LEFT), or as its
-first letter says (:AUTO); on the core's own host, :AUTO in every buffer.")
+others) are shown. NIL shows each line's characters in the order they are
+stored. Otherwise they are shown in the order they are read, each line a
+paragraph written from left to right (:LEFT-TO-RIGHT), right to left
+(:RIGHT-TO-LEFT), or as its first letter says (:AUTO). On the core's own host,
+it is :AUTO in every buffer.")
   (:method ((host tuatara.runtime:host) buffer)
     (declare (ignore buffer))
     :auto))
@@ -382,7 +401,8 @@ shown is laid out."
             :spares (and spares (window-spare-rows window))
             :hidden (let ((*layout-probe* (and end t))) (window-hidden buffer start (window-width window) height end))
             :prefix (let ((function (tuatara.buffer:buffer-local buffer :line-prefix-function)))
-                      (and function (lambda (line-start continuation) (funcall function buffer line-start continuation))))
+                      (and function
+                           (lambda (line-start continuation) (funcall function buffer line-start continuation))))
             :scale (let ((function (and *row-scaling* (tuatara.buffer:buffer-local buffer :line-scale-function))))
                      (and function (lambda (line-start) (funcall function buffer line-start)))))))
 
@@ -428,12 +448,12 @@ stands between each two. O(log n + HEIGHT)."
 
 (defun window-hidden (buffer start width height &optional end)
   "What a window showing BUFFER from START, WIDTH by HEIGHT, does not show as
-it is, for LAYOUT's HIDDEN: BUFFER's folds, the lines search filters hide as
-far as the window could reach (HIDDEN-IN-REACH), and what it shows in place
-of its text (BUFFER-REPLACEMENTS-FUNCTION, each (START END TEXT FACE)) from
-START on, as far as the window could reach or to END, asked for each
-stretch shown between the folds alone, never the text they hide; one inside
-a fold left out."
+it is, for LAYOUT's HIDDEN. It is BUFFER's folds, the lines search filters
+hide as far as the window could reach (HIDDEN-IN-REACH), and what it shows in
+place of its text (BUFFER-REPLACEMENTS-FUNCTION, each (START END TEXT FACE))
+from START on, as far as the window could reach or to END. The replacements
+are asked for each stretch shown between the folds alone, never the text they
+hide. One inside a fold is left out."
   (let* ((bounds (hidden-bounds buffer))
          (folds (and (tuatara.buffer:buffer-local buffer :folds) (buffer-folds buffer)))
          (folds (if bounds (merge 'list (copy-list folds) (hidden-in-reach bounds start height) #'< :key #'car) folds))
@@ -509,7 +529,9 @@ scroll, and how it shows right-to-left text."
           (window-hscroll window) (window-wrap window) (host-soft-wrap tuatara.runtime:*host* buffer)
           (tab-width-of buffer)
           (tuatara.buffer:buffer-line-ending buffer) (invisible-characters-of buffer) (text-direction-of buffer)
-          (tuatara.buffer:buffer-local buffer :folds) (hidden-bounds buffer) (tuatara.buffer:buffer-local buffer :line-prefix-function)
+          (tuatara.buffer:buffer-local buffer :folds)
+          (hidden-bounds buffer)
+          (tuatara.buffer:buffer-local buffer :line-prefix-function)
           (and *row-scaling* (tuatara.buffer:buffer-local buffer :line-scale-function))
           (tuatara.buffer:buffer-narrowing buffer))))
 
@@ -604,10 +626,11 @@ lines drawn large, all of which can change while LAYOUT-STATE does not."
 (defun kept-layout (window)
   "WINDOW's buffer laid out from its start, as WINDOW-LAYOUT-ROWS does, with
 the rows of its last layout used again while it is laid out alike
-\(LAYOUT-STATE) and may be (LAYOUT-KEPT-P), their faces as laid out: all of them when the start is where
-it was; when the start moved forward to where one of them begins, the rows
-from there, and those after them laid out, where they begin a line; when it
-moved back, the rows before them laid out, where those end where they begin.
+\(LAYOUT-STATE) and may be (LAYOUT-KEPT-P), their faces as laid out.
+All of them are used when the start is where it was. When the start moved
+forward to where one of them begins, the rows from there are used, and those
+after them laid out, where they begin a line. When it moved back, the rows
+before them are laid out, where those end where they begin.
 Kept for the next time (WINDOW-LAID-OUT). Complexity: that of laying out the
 rows the window moved by, where rows are used again."
   (let* ((state (layout-state window))
@@ -758,7 +781,8 @@ the edge.")
   "How many rows of WINDOW are above point's row when that row is in the
 middle of it: half its height, less what more a row drawn large takes."
   (- (floor (window-height window) 2)
-     (1- (window-line-scale window (tuatara.text:rope-line-start (tuatara.buffer:buffer-text (window-buffer window)) point)))))
+     (1- (window-line-scale window
+                            (tuatara.text:rope-line-start (tuatara.buffer:buffer-text (window-buffer window)) point)))))
 
 (defun rows-above-when-below (window point margin)
   "How many rows of WINDOW are above point's row once it has scrolled forward
@@ -770,7 +794,8 @@ MARGIN more, fewer where the text ends before MARGIN rows follow point's."
                        (max 0 (1- (length (window-layout-rows window (window-row-start window point) (1+ margin)))))
                        0)))
         (- (window-height window)
-           (window-line-scale window (tuatara.text:rope-line-start (tuatara.buffer:buffer-text (window-buffer window)) point))
+           (window-line-scale window
+                              (tuatara.text:rope-line-start (tuatara.buffer:buffer-text (window-buffer window)) point))
            (min margin after)))))
 
 (defun margin-start (window rows row margin)
@@ -839,10 +864,11 @@ drawn large."
 (defun window-ensure-point-visible (window)
   "Adjust WINDOW's start and horizontal scroll so that point is shown, then lay
 out. When point is above the window, or within *SCROLL-MARGIN* rows of its
-top, the window scrolls back so point's row is that many rows from the top;
-when below it, or within that many rows of its bottom, forward so point's row
-is that many rows from the bottom, the end of the text no further up than the
-last row. With *SCROLL-RECENTER*, point's row goes to the middle instead.
+top, the window scrolls back so point's row is that many rows from the top.
+When point is below it, or within that many rows of its bottom, the window
+scrolls forward so point's row is that many rows from the bottom, the end of
+the text no further up than the last row. With *SCROLL-RECENTER*, point's row
+goes to the middle instead.
 Where lines are cut off at the edge, it scrolls sideways until the character
 at point shows whole. Returns the rows. Complexity: that of a layout, and
 O(*SCREEN-COLUMN-REACH* + log n) for the columns of point's line, however
@@ -895,7 +921,8 @@ long it is."
                                      (when (<= next (window-start window)) (return rows))
                                      (setf (window-start window) next))))
                                 (t
-                                 (let ((start (cond ((or (window-scaling-p window) (buffer-hides-p (window-buffer window)))
+                                 (let ((start (cond ((or (window-scaling-p window)
+                                                         (buffer-hides-p (window-buffer window)))
                                                      ;; lines drawn large count for their heights, hidden ones for none
                                                      (rows-back window point above))
                                                     ((tuatara.text:rope-indexed-p rope)

@@ -11,7 +11,9 @@
   (is equalp #(1) (tuatara.runtime:run-tasks (vector (lambda () 1))))
   (let ((tasks (coerce (loop for i below 200 collect (let ((i i)) (lambda () (* i i)))) 'simple-vector)))
     (is equalp (coerce (loop for i below 200 collect (* i i)) 'simple-vector) (tuatara.runtime:run-tasks tasks))
-    (is equalp (coerce (loop for i below 200 collect (* i i)) 'simple-vector) (tuatara.runtime:run-tasks tasks :parallelism 1)))
+    (is equalp
+        (coerce (loop for i below 200 collect (* i i)) 'simple-vector)
+        (tuatara.runtime:run-tasks tasks :parallelism 1)))
   ;; tasks really run on more than one thread
   (let* ((threads (tuatara.runtime:run-tasks (coerce (loop repeat 64 collect (lambda () (sleep 0.005) sb-thread:*current-thread*)) 'simple-vector))))
     (true (> (length (remove-duplicates (coerce threads 'list))) 1)))
@@ -58,8 +60,11 @@
 (define-test (pool serious-conditions-end-the-batch)
   ;; a task failing with more than an error (a lack of memory, say) still ends its batch: the
   ;; condition is told where the tasks are waited for, and nothing waits for ever
-  (is eq :caught (handler-case (tuatara.runtime:run-tasks (vector (lambda () 1) (lambda () (error 'storage-condition)) (lambda () 3)))
-                   (storage-condition () :caught))))
+  (is eq
+      :caught (handler-case (tuatara.runtime:run-tasks (vector (lambda () 1)
+                                                               (lambda () (error 'storage-condition))
+                                                               (lambda () 3)))
+                (storage-condition () :caught))))
 
 (define-test (pool leaves-room)
   ;; the workers are nine in ten of the processors, at least one: work in the

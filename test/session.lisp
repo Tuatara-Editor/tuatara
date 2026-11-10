@@ -6,13 +6,14 @@
 (define-test session
   :description "With *keep-session* the editor writes the files, directories and windows it shows as it
 stops, for you alone, and opens them again as they were when started without files: points, splits
-and their sizes, the selected window, a file opened safely opened safely again, a file gone left out;
-a session file not of its own kind is left alone, nothing in it evaluated; off, nothing is written.")
+and their sizes, the selected window, a file opened safely opened safely again, a file gone left out.
+A session file not of its own kind is left alone, nothing in it evaluated. Off, nothing is written.")
 
 (defun forget-session-buffers ()
   "Kill every buffer visiting a file or listing a directory, as a new start of the editor has none."
   (dolist (buffer (copy-list tuatara.buffer:*buffers*))
-    (when (or (tuatara.buffer:buffer-file buffer) (tuatara.buffer:buffer-local buffer 'tuatara.defaults::rimu-directory))
+    (when (or (tuatara.buffer:buffer-file buffer)
+              (tuatara.buffer:buffer-local buffer 'tuatara.defaults::rimu-directory))
       (tuatara.buffer:kill-buffer buffer)))
   (setf tuatara.command::*buffer-order* (remove-if-not #'tuatara.command:live-buffer-p tuatara.command::*buffer-order*)))
 
@@ -66,7 +67,8 @@ a session file not of its own kind is left alone, nothing in it evaluated; off, 
       (let ((f (tuatara.frontend.fake:make-fake-frontend :width 120 :height 30)))
         (let ((editor (tuatara.command:run-editor f :setup #'tuatara.defaults:install-defaults :files (list two))))
           (is = 1 (length (tuatara.command:editor-windows editor)))
-          (is string= "two.txt" (tuatara.buffer:buffer-name (tuatara.display:window-buffer (tuatara.command:editor-window editor))))
+          (is string= "two.txt"
+              (tuatara.buffer:buffer-name (tuatara.display:window-buffer (tuatara.command:editor-window editor))))
           (true (tuatara.buffer:find-buffer "one.txt"))
           (true (tuatara.frontend.fake:fake-frame-showing f "of the session kept opened again"))))
       ;; a view kept by the file it shows
@@ -195,7 +197,8 @@ a session file not of its own kind is left alone, nothing in it evaluated; off, 
       (let ((tuatara-user:*keep-session* t))
         (dolist (text (list (format nil "(progn (setf *session-file-evaluated* t))~%")
                             (format nil "tuatara session 1~%frame~%split stacked 2 #.(setf *session-file-evaluated* t) 0.5~%")
-                            (format nil "tuatara session 1~%frame~%window 1 0 file 0 ~a~%window 0 0 file 0 ~a~%" one one)
+                            (format nil
+                                    "tuatara session 1~%frame~%window 1 0 file 0 ~a~%window 0 0 file 0 ~a~%" one one)
                             (format nil "tuatara session 1~%frame~%split stacked 100000 0.5 0.5~%")))
           (forget-session-buffers)
           (alexandria:write-string-into-file text (tuatara.defaults::session-path) :if-exists :supersede)

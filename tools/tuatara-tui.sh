@@ -16,7 +16,8 @@ if image_stale "$root"; then
 fi
 # grep -c reads to the end: with -q it would stop at the first match and, under
 # pipefail, the writer's broken pipe would fail the test (and always use the toolbox)
-if [ "$(ldd "$image" 2>/dev/null | grep -c "not found")" = 0 ] && [ "$(ldconfig -p 2>/dev/null | grep -c "libncursesw.so.6")" != 0 ]; then
+if [ "$(ldd "$image" 2>/dev/null | grep -c "not found")" = 0 ] &&
+  [ "$(ldconfig -p 2>/dev/null | grep -c "libncursesw.so.6")" != 0 ]; then
   exec "$image" "$@"
 else
   # the toolbox passes on only the variables it knows: the request to write the desktop entries named

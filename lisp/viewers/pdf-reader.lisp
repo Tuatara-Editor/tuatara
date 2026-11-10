@@ -140,7 +140,9 @@ stands for), and where it ends. No more than 64 KB of it is read."
   "The (literal string) in OCTETS from I, its escapes and balanced brackets
 read, as text (with RAW, as its octets), and where it ends. No more than
 64 KB of it is read."
-  (let ((n (length octets)) (out (make-array 0 :element-type '(unsigned-byte 8) :adjustable t :fill-pointer 0)) (level 1) (j (1+ i)))
+  (let ((n (length octets)) (out (make-array 0 :element-type '(unsigned-byte 8) :adjustable t :fill-pointer 0))
+        (level 1)
+        (j (1+ i)))
     (loop while (and (< j n) (plusp level) (< (length out) 65536))
           do (let ((x (aref octets j)))
                (cond ((= x 92)
@@ -148,7 +150,9 @@ read, as text (with RAW, as its octets), and where it ends. No more than
                       (when (< j n)
                         (let ((e (aref octets j)))
                           (case (code-char e)
-                            (#\n (vector-push-extend 10 out)) (#\r (vector-push-extend 13 out)) (#\t (vector-push-extend 9 out))
+                            (#\n (vector-push-extend 10 out))
+                            (#\r (vector-push-extend 13 out))
+                            (#\t (vector-push-extend 9 out))
                             (#\b (vector-push-extend 8 out)) (#\f (vector-push-extend 12 out))
                             ((#\Newline #\Return))
                             (t (if (<= 48 e 55)
@@ -187,7 +191,9 @@ and where it ends."
   (let ((n (length octets)) (j (1+ i)))
     (loop while (and (< j n) (not (pdf-delimiter-p (aref octets j)))) do (incf j))
     (values (concatenate 'string "/" (cl-ppcre:regex-replace-all "#([0-9A-Fa-f]{2})" (tuatara.text:octets-latin-1 octets :start (1+ i) :end j)
-                                                                 (lambda (m g) (declare (ignore m)) (string (code-char (parse-integer g :radix 16))))
+                                                                 (lambda (m g)
+                                                                   (declare (ignore m))
+                                                                   (string (code-char (parse-integer g :radix 16))))
                                                                  :simple-calls t))
             j)))
 
@@ -218,7 +224,11 @@ which no PDF writes."
       ;; N G R, white space between each
       (multiple-value-bind (generation after)
           (and (integerp number) (< j end) (pdf-white-p (aref octets j)) (pdf-integer-at octets j end))
-        (let ((r (and generation (loop with k = after while (and (< k end) (pdf-white-p (aref octets k))) do (incf k) finally (return k)))))
+        (let ((r (and generation
+                      (loop with k = after
+                            while (and (< k end) (pdf-white-p (aref octets k)))
+                            do (incf k)
+                            finally (return k)))))
           (if (and r (> r after) (< r end) (= (aref octets r) 82)
                    (or (= (1+ r) end) (pdf-delimiter-p (aref octets (1+ r)))))
               (values (list :ref number generation) (1+ r))
@@ -259,7 +269,8 @@ NUMBER GENERATION); NIL when it is none."
   "True when VALUE is a dictionary: a list of (NAME . VALUE), each NAME
 beginning with a /."
   (and (consp value) (not (eq (first value) :ref))
-       (every (lambda (pair) (and (consp pair) (stringp (car pair)) (plusp (length (car pair))) (char= #\/ (char (car pair) 0))))
+       (every (lambda (pair)
+                (and (consp pair) (stringp (car pair)) (plusp (length (car pair))) (char= #\/ (char (car pair) 0))))
               value)))
 
 (defun pdf-get (dictionary key)
@@ -289,13 +300,13 @@ ends is known, not guessed."
 (declaim (inline pdf-indirect-get))
 (defun pdf-indirect-get (object field)
   "FIELD of OBJECT, an object of a PDF as the file writes it (from
-PDF-INDIRECT-OBJECT-AT, MAP-PDF-WRITTEN-OBJECTS or PDF-PACKED-OBJECT):
-:NUMBER and :GENERATION, its object number and generation; :VALUE, its
-value as PDF-OBJECT-AT reads it; :AT, where it begins (its number), and
-:END, where it ends (after endobj); :STREAM-START and :STREAM-END, where the
-octets of its stream lie in the file, or NIL for one with none; :LENGTH, the
-length its dictionary gives its stream, as written; :PACKED-IN, the number
-of the object stream holding it, :AT and :END then counting in that
+PDF-INDIRECT-OBJECT-AT, MAP-PDF-WRITTEN-OBJECTS or PDF-PACKED-OBJECT).
+:NUMBER and :GENERATION are its object number and generation. :VALUE is its
+value as PDF-OBJECT-AT reads it. :AT is where it begins (its number), and
+:END is where it ends (after endobj). :STREAM-START and :STREAM-END are where
+the octets of its stream lie in the file, or NIL for one with none. :LENGTH is
+the length its dictionary gives its stream, as written. :PACKED-IN is the
+number of the object stream holding it, :AT and :END then counting in that
 stream's decoded octets, else NIL."
   (ecase field
     (:number (pdf-indirect-number object))
@@ -313,7 +324,8 @@ stream's decoded octets, else NIL."
 digit of its number), its number and its generation, as three values; NIL
 when no NUMBER GENERATION stands before P."
   (let ((i (1- p)))
-    (flet ((back-white () (let ((from i)) (loop while (and (>= i 0) (pdf-white-p (aref octets i))) do (decf i)) (< i from)))
+    (flet ((back-white ()
+             (let ((from i)) (loop while (and (>= i 0) (pdf-white-p (aref octets i))) do (decf i)) (< i from)))
            (back-numerals () (let ((to i)) (loop while (and (>= i 0) (<= 48 (aref octets i) 57) (< (- to i) 12)) do (decf i)) (< i to))))
       (when (and (back-white) (back-numerals))
         (let ((generation-start (1+ i)))
@@ -431,25 +443,26 @@ has the rest passed over.")
 
 (defun pdf-eof-lines (octets &optional (objects (pdf-objects-in-file octets)))
   "The %%EOF lines that end the saves of the PDF in OCTETS, as a list of
-\(EOF . END), in order: where its %%EOF is, and where its line ends; at
+\(EOF . END), in order: where its %%EOF is, and where its line ends. At
 most *PDF-MOST-EOF-LINES* outside confirmed streams are read, those within
 one passed over at once. OBJECTS, the objects the file writes in the order
 written (as MAP-PDF-WRITTEN-OBJECTS gives them, a vector), say where its
-streams are; when they are not given, the file is read for them.
+streams are. When they are not given, the file is read for them.
 A %%EOF within a stream whose end is confirmed ends nothing (an attached
 PDF's own), unless it is the first after a cross-reference section of the
-file itself: one the file's chain of sections names (PDF-SECTIONS), or one
-within the stream that a startxref there names at its place in the file,
-or whose entries name the file's own objects where the file writes them
+file itself. That is one the file's chain of sections names (PDF-SECTIONS),
+or one within the stream that a startxref there names at its place in the
+file, or whose entries name the file's own objects where the file writes them
 \(PDF-SECTIONS-WITHIN). Two more values: those kept though they lie within
 a stream whose end is not confirmed, each (EOF . NUMBER), NUMBER the
 stream's object, a stream that may hide a save or a save cut into a
-stream; the streams whose confirmed end such a section gives the lie to,
-the section or the save it ends lying within them, each (OFFSET . NUMBER);
-and the other confirmed streams, no file kept within the PDF, whose data
-holds a %%EOF or object headers (PDF-HOLDS-SAVE-SIGNS-P), each (NUMBER .
-EOF), EOF the first %%EOF in its data or NIL: a save may be hidden in
-them, though nothing of the file names it."
+stream. Next come the streams whose confirmed end such a section gives the
+lie to, the section or the save it ends lying within them, each
+\(OFFSET . NUMBER). Last come the other confirmed streams, no file kept
+within the PDF, whose data holds a %%EOF or object headers
+\(PDF-HOLDS-SAVE-SIGNS-P), each (NUMBER . EOF), EOF the first %%EOF in its
+data or NIL. A save may be hidden in them, though nothing of the file names
+it."
   (let* ((mark (load-time-value (tuatara.text:string-octets "%%EOF")))
          (holding '()) (outside '()) (kept 0) (embedded nil))
     ;; the %%EOF lines outside confirmed streams, those within each passed over at once
@@ -555,10 +568,10 @@ gone through."
 
 (defun pdf-own-saves-p (octets stream)
   "True when each %%EOF in the data of STREAM, a PDF-INDIRECT of the PDF in
-OCTETS, the first 64 of them, follows a startxref there whose number,
-counted from where the data begins, names a cross-reference section that
-lists an object written within that data, as its own: the saves of a file
-kept within the PDF, not the PDF's own."
+OCTETS, the first 64 of them, follows a startxref there. That startxref's
+number, counted from where the data begins, names a cross-reference section
+that lists an object written within that data, as its own. These are the
+saves of a file kept within the PDF, not the PDF's own."
   (let ((start (pdf-indirect-stream-start stream)) (end (pdf-indirect-stream-end stream))
         (mark (load-time-value (tuatara.text:string-octets "%%EOF"))))
     (loop for eof = (tuatara.io:octets-search mark octets :start start :end end)
@@ -778,11 +791,11 @@ where they ended."
 
 (defun map-pdf-cross-reference-stream (function dictionary data)
   "Call FUNCTION with each entry of a cross-reference stream, whose
-DICTIONARY is given and whose decoded octets are DATA, in the order written:
-the object's number, the entry's type (0 free, 1 written in the file, 2 in
-an object stream; 1 when the stream gives no type) and its two fields (an
-offset or object stream's number, and a generation or index; 0 when not
-given), as written; an offset counts from the PDF's header, so that
+DICTIONARY is given and whose decoded octets are DATA, in the order written.
+FUNCTION gets the object's number, the entry's type (0 free, 1 written in the
+file, 2 in an object stream; 1 when the stream gives no type) and its two
+fields (an offset or object stream's number, and a generation or index; 0
+when not given), as written. An offset counts from the PDF's header, so that
 PDF-OFFSET-BASE is added to have it in the file. Stop when FUNCTION returns
 true. NIL when /W gives no field widths
 it can be read by; else how its entries ended: :END, as its /Index (or
@@ -826,7 +839,8 @@ stream's decoding ends at one.")
   "The filters a stream's DICTIONARY names, each (NAME . PARAMETERS), in the
 order they are undone."
   (let ((filters (pdf-array-items (pdf-get dictionary "/Filter")))
-        (parameters (let ((p (pdf-get dictionary "/DecodeParms"))) (if (pdf-dictionary-p p) (list p) (pdf-array-items p)))))
+        (parameters (let ((p (pdf-get dictionary "/DecodeParms")))
+                      (if (pdf-dictionary-p p) (list p) (pdf-array-items p)))))
     (loop for filter in filters for k from 0
           collect (cons filter (let ((p (nth k parameters))) (and (pdf-dictionary-p p) p))))))
 
@@ -862,8 +876,12 @@ PNG's (10 to 15) row by row, or TIFF's (2); DATA itself for none."
                         (setf (aref out (+ at k))
                               (logand 255 (+ x (case kind
                                                  (1 left) (2 up) (3 (floor (+ left up) 2))
-                                                 (4 (let* ((p (- (+ left up) corner)) (pa (abs (- p left))) (pb (abs (- p up))) (pc (abs (- p corner))))
-                                                      (cond ((and (<= pa pb) (<= pa pc)) left) ((<= pb pc) up) (t corner))))
+                                                 (4 (let* ((p (- (+ left up) corner)) (pa (abs (- p left)))
+                                                           (pb (abs (- p up)))
+                                                           (pc (abs (- p corner))))
+                                                      (cond ((and (<= pa pb) (<= pa pc)) left)
+                                                            ((<= pb pc) up)
+                                                            (t corner))))
                                                  (t 0)))))))))))))))
 
 (defun pdf-decoded-out (size limit)
@@ -929,7 +947,11 @@ code early, as standard), as the octets it stands for, at most LIMIT of them."
                      (setf (aref table next) (concatenate 'tuatara.text:octets previous (subseq entry 0 1)))
                      (incf next))
                    (setf previous entry)
-                   (setf width (cond ((>= (+ next early) 2048) 12) ((>= (+ next early) 1024) 11) ((>= (+ next early) 512) 10) (t 9))))))))
+                   (setf width
+                         (cond ((>= (+ next early) 2048) 12)
+                               ((>= (+ next early) 1024) 11)
+                               ((>= (+ next early) 512) 10)
+                               (t 9))))))))
     (coerce out 'tuatara.text:octets)))
 
 (defun pdf-run-length-decoded (data limit)
@@ -939,17 +961,22 @@ code early, as standard), as the octets it stands for, at most LIMIT of them."
           do (let ((length (aref data at)))
                (incf at)
                (cond ((= length 128) (return))
-                     ((< length 128) (loop repeat (1+ length) while (< at n) do (pdf-decoded-put out (aref data at) limit) (incf at)))
-                     (t (when (< at n) (loop repeat (- 257 length) do (pdf-decoded-put out (aref data at) limit)) (incf at))))))
+                     ((< length 128) (loop repeat (1+ length)
+                                           while (< at n)
+                                           do (pdf-decoded-put out (aref data at) limit) (incf at)))
+                     (t (when (< at n)
+                          (loop repeat (- 257 length) do (pdf-decoded-put out (aref data at) limit))
+                          (incf at))))))
     (coerce out 'tuatara.text:octets)))
 
 (defun pdf-stream-octets (dictionary raw &key (limit *pdf-largest-stream*))
   "The octets of the stream whose DICTIONARY is given and whose octets in the
 file are RAW, its filters undone (Flate, LZW, ASCII hex and base-85, run
-length, with their predictors), at most LIMIT of them, as two values: the
-octets, and NIL when every filter was undone; the name of the picture's
-filter it stopped at (*PDF-PICTURE-FILTERS*), the octets then the picture's
-data; or why it could not be decoded, in words, the octets then NIL. A
+length, with their predictors), at most LIMIT of them, as two values. The
+first is the octets. The second is NIL when every filter was undone. It is
+the name of the picture's filter it stopped at (*PDF-PICTURE-FILTERS*), the
+octets then the picture's data, when one stopped it. It is why it could not
+be decoded, in words, the octets then NIL, when decoding failed. A
 stream whose data another file keeps is not read. Nothing in it is run."
   (if (pdf-get dictionary "/F")
       (values nil "its data is kept in another file, which is not read")
@@ -1002,7 +1029,10 @@ DATA, the stream's decoded octets, by its OFFSETS
 (PDF-OBJECT-STREAM-OFFSETS): the one at INDEX among them when it is that
 object, else wherever it is; IN is the object stream's own number. NIL when
 it holds none."
-  (let ((pair (or (and (integerp index) (< -1 index (length offsets)) (eql number (car (aref offsets index))) (aref offsets index))
+  (let ((pair (or (and (integerp index)
+                       (< -1 index (length offsets))
+                       (eql number (car (aref offsets index)))
+                       (aref offsets index))
                   (find number offsets :key #'car))))
     (when (and pair (< (cdr pair) (length data)))
       (multiple-value-bind (value end) (pdf-object-at data (cdr pair))
@@ -1022,15 +1052,15 @@ or does not say where its objects are."
 
 (defvar *pdf-objects-found* nil
   "While one PDF is read through (WITH-PDF-OBJECTS-FOUND), what PDF-FIND-OBJECT
-knows of it, a hash table: under :WRITTEN, where each object is written, by
-\(NUMBER . GENERATION), the last first; under :OBJECT-STREAMS, its object
-streams; under :OBJECTS, every object it writes; under :PACKED, the object
-stream holding each object, by number; under :ENTRIES and :TRAILER, what its
-cross-reference says (PDF-CROSS-REFERENCE), under :DECODED, the object
-streams it names, decoded; under :SCANNED, true once an object was found
-by scanning the file instead; under :ASKED, how many objects were looked
-for; and each object found, by (NUMBER . GENERATION). NIL elsewhere: each
-object is then looked for through the whole file.")
+knows of it, a hash table. Under :WRITTEN is where each object is written, by
+\(NUMBER . GENERATION), the last first. Under :OBJECT-STREAMS are its object
+streams, and under :OBJECTS every object it writes. Under :PACKED is the
+object stream holding each object, by number. Under :ENTRIES and :TRAILER is
+what its cross-reference says (PDF-CROSS-REFERENCE). Under :DECODED are the
+object streams it names, decoded. Under :SCANNED it is true once an object
+was found by scanning the file instead. Under :ASKED it is how many objects
+were looked for. Each object found is there too, by (NUMBER . GENERATION).
+NIL elsewhere: each object is then looked for through the whole file.")
 
 (defparameter *pdf-most-objects-found* 200
   "The most objects of one PDF looked for while it is read through
@@ -1231,10 +1261,10 @@ pass *PDF-OBJECT-STREAMS-READ* octets."
 
 (defun pdf-find-object (octets number generation)
   "The object NUMBER GENERATION of the PDF in OCTETS, as a PDF-INDIRECT, or
-NIL: where its cross-reference sections say it is (PDF-CROSS-REFERENCE);
-when they say nothing of it, or cannot be read, the last one of them
-written in the file, else the one an object stream holds
-\(PDF-OBJECTS-WRITTEN), and then :SCANNED is noted as true in what is
+NIL. It is found where its cross-reference sections say it is
+\(PDF-CROSS-REFERENCE). When they say nothing of it, or cannot be read, the
+last one of them written in the file is taken, else the one an object stream
+holds (PDF-OBJECTS-WRITTEN), and then :SCANNED is noted as true in what is
 known of the file. While the PDF is read through (WITH-PDF-OBJECTS-FOUND),
 where objects are is found once for all, and past *PDF-MOST-OBJECTS-FOUND*
 objects looked for, none is found."

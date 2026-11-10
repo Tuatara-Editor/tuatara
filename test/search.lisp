@@ -135,18 +135,32 @@ newlines and some multibyte characters."
              (dolist (p '("\\d+" "[a-z]+,\\d" "^[^,]*" "é中" "z$" "😀." "(ab)+c" "(?<=q)z+" "Qz" "q[a-z]*,x"))
                (is equal (regex-oracle s p) (triples (tuatara.syntax:regex-search-all rope p)) "pattern ~s" p))))
   ;; a match longer than a window's overlap is found whole
-  (let* ((s (concatenate 'string (make-string 70000 :initial-element #\b) "x" (make-string 10000 :initial-element #\a) "y"))
+  (let* ((s (concatenate 'string
+                         (make-string 70000 :initial-element #\b) "x"
+                         (make-string 10000 :initial-element #\a) "y"))
          (rope (tuatara.text:string->rope s)))
     (is equal '((70000 80002)) (mapcar (lambda (m) (subseq m 0 2)) (tuatara.syntax:regex-search-all rope "xa+y")))
     (is equal '((0 70000)) (mapcar (lambda (m) (subseq m 0 2)) (tuatara.syntax:regex-search-all rope "b+"))))
   ;; octets that are not UTF-8 decode one by one as raw bytes' characters, as the display shows them
   (let ((rope (tuatara.text:octets->rope
-               (coerce (concatenate '(vector (unsigned-byte 8)) (to-octets "ab") #(#x80) (to-octets "cd") #(#xE4 #xB8) (to-octets "ef é"))
+               (coerce (concatenate '(vector (unsigned-byte 8))
+                                    (to-octets "ab")
+                                    #(#x80)
+                                    (to-octets "cd")
+                                    #(#xE4 #xB8)
+                                    (to-octets "ef é"))
                        'tuatara.text:octets))))
     (is equal '((0 2) (3 5) (7 9)) (mapcar (lambda (m) (subseq m 0 2)) (tuatara.syntax:regex-search-all rope "[a-z]+")))
-    (is equal '((2 3)) (mapcar (lambda (m) (subseq m 0 2)) (tuatara.syntax:regex-search-all rope (string (code-char #xDC80)))))
-    (is equal '((5 6)) (mapcar (lambda (m) (subseq m 0 2)) (tuatara.syntax:regex-search-all rope (string (code-char #xDCE4)))))
-    (is equal '((2 3) (5 6) (6 7)) (mapcar (lambda (m) (subseq m 0 2)) (tuatara.syntax:regex-search-all rope (format nil "[~c-~c]" (code-char #xDC80) (code-char #xDCFF)))))
+    (is equal
+        '((2 3))
+        (mapcar (lambda (m) (subseq m 0 2)) (tuatara.syntax:regex-search-all rope (string (code-char #xDC80)))))
+    (is equal
+        '((5 6))
+        (mapcar (lambda (m) (subseq m 0 2)) (tuatara.syntax:regex-search-all rope (string (code-char #xDCE4)))))
+    (is equal
+        '((2 3) (5 6) (6 7))
+        (mapcar (lambda (m) (subseq m 0 2))
+                (tuatara.syntax:regex-search-all rope (format nil "[~c-~c]" (code-char #xDC80) (code-char #xDCFF)))))
     (is equal '((10 12)) (mapcar (lambda (m) (subseq m 0 2)) (tuatara.syntax:regex-search-all rope "é"))))
   ;; BOUND: the pattern sees nothing past it
   (let ((rope (tuatara.text:string->rope "aaa bbb")))
@@ -171,8 +185,12 @@ newlines and some multibyte characters."
   ;; STOP gives up between waves
   (let* ((rope (tuatara.text:string->rope (make-string 50000 :initial-element #\a)))
          (tuatara.syntax:*serial-window* 1000) (tuatara.syntax:*parallel-piece* 1000))
-    (is equal '(nil :stopped) (multiple-value-list (tuatara.syntax:regex-search-forward rope "b+" :stop (constantly t))))
-    (is equal '(nil :stopped) (multiple-value-list (tuatara.syntax:regex-search-backward rope "b+" :stop (constantly t))))
+    (is equal
+        '(nil :stopped)
+        (multiple-value-list (tuatara.syntax:regex-search-forward rope "b+" :stop (constantly t))))
+    (is equal
+        '(nil :stopped)
+        (multiple-value-list (tuatara.syntax:regex-search-backward rope "b+" :stop (constantly t))))
     (is equal '(nil :stopped) (multiple-value-list (tuatara.syntax:search-forward rope "b" :stop (constantly t))))
     (is equal '(nil :stopped) (multiple-value-list (tuatara.syntax:search-backward rope "b" :stop (constantly t))))
     (false (tuatara.syntax:regex-search-forward rope "b+" :stop (constantly nil)))))
@@ -319,7 +337,8 @@ newlines and some multibyte characters."
 (define-test (search searches-read-into-kept-blocks)
   ;; a search, and a walk over a line's columns, read the text into blocks kept for that,
   ;; not into new ones each time: a key of an incremental search makes next to nothing
-  (let ((rope (tuatara.text:string->rope (format nil "~{~a~%~}" (loop for i below 3000 collect (format nil "line ~d of the kea" i))))))
+  (let ((rope (tuatara.text:string->rope (format nil "~{~a~%~}"
+                                                 (loop for i below 3000 collect (format nil "line ~d of the kea" i))))))
     (flet ((consed (function)
              (funcall function)
              (loop repeat 3
@@ -328,7 +347,8 @@ newlines and some multibyte characters."
                               (- (tuatara.bench::bytes-consed) before)))))
       (dolist (way (list (lambda () (tuatara.syntax:search-forward rope "zzzq"))
                          (lambda () (tuatara.syntax:search-backward rope "zzzq"))
-                         (lambda () (tuatara.text:map-line-slices (lambda (&rest line) (declare (ignore line))) rope 0 1 0 10))))
+                         (lambda ()
+                           (tuatara.text:map-line-slices (lambda (&rest line) (declare (ignore line))) rope 0 1 0 10))))
         (let ((consed (consed way)))
           (true (< consed 1024) "consed ~:d octets" consed)))
       (let ((consed (consed (lambda () (tuatara.syntax:search-all rope "zzzq")))))
@@ -348,11 +368,16 @@ newlines and some multibyte characters."
                 "pattern ~s" p)
             ;; only counted, nothing kept: the same number
             (is = (length (regex-oracle s p))
-                (nth-value 2 (tuatara.syntax:collect-matches #'mapper 0 (tuatara.text:rope-octet-length rope) :threads 4 :keep nil))
+                (nth-value 2
+                           (tuatara.syntax:collect-matches #'mapper 0
+                                                           (tuatara.text:rope-octet-length rope)
+                                                           :threads 4
+                                                           :keep nil))
                 "count of ~s" p)))))
     ;; a needle that overlaps itself, in runs longer than a piece
-    (let* ((s (with-output-to-string (o) (loop repeat 300 do (write-string (make-string (+ 1 (random 2500)) :initial-element #\a) o)
-                                                               (write-char #\b o))))
+    (let* ((s (with-output-to-string (o)
+                (loop repeat 300 do (write-string (make-string (+ 1 (random 2500)) :initial-element #\a) o)
+                                      (write-char #\b o))))
            (rope (tuatara.text:string->rope s))
            (serial '()))
       (tuatara.syntax:map-literal-matches (lambda (a b m g) (declare (ignore m g)) (push (list a b) serial) nil)
@@ -364,7 +389,11 @@ newlines and some multibyte characters."
             (mapcar (lambda (m) (subseq m 0 2))
                     (tuatara.syntax:collect-matches #'mapper 0 (tuatara.text:rope-octet-length rope) :threads 4)))
         (is = (length serial)
-            (nth-value 2 (tuatara.syntax:collect-matches #'mapper 0 (tuatara.text:rope-octet-length rope) :threads 4 :keep nil))))
+            (nth-value 2
+                       (tuatara.syntax:collect-matches #'mapper 0
+                                                       (tuatara.text:rope-octet-length rope)
+                                                       :threads 4
+                                                       :keep nil))))
       ;; a match longer than a piece, counted without keeping it
       (let ((scanner (tuatara.syntax:compile-regex "a+")))
         (is = (length (regex-oracle s "a+"))
@@ -407,7 +436,8 @@ newlines and some multibyte characters."
 
 (define-test (search sign-fades-on-one-thread)
   ;; a sign lit again and again, as each key of a search lights it, is faded by one thread
-  (flet ((faders () (count "tuatara sign fading" (sb-thread:list-all-threads) :key #'sb-thread:thread-name :test #'equal)))
+  (flet ((faders ()
+           (count "tuatara sign fading" (sb-thread:list-all-threads) :key #'sb-thread:thread-name :test #'equal)))
     (let ((editor (tuatara.command:make-editor (tuatara.frontend.fake:make-fake-frontend)))
           (tuatara.defaults::*sign-lit-seconds* 0.3))
       (dotimes (i 20) (tuatara.defaults::note-sign-work :searching editor))
@@ -445,7 +475,8 @@ newlines and some multibyte characters."
                (chunk (let ((c (make-array size :element-type '(unsigned-byte 8))))
                         (dotimes (i size c) (setf (aref c i) (aref (sb-ext:string-to-octets "aAbB-zZ") (random 7))))))
                (fold (zerop (random 2)))
-               (needle (tuatara.syntax::needle-octets (coerce (loop repeat (+ 1 (random 4)) collect (char "abBz-" (random 5))) 'string) fold))
+               (needle (tuatara.syntax::needle-octets (coerce (loop repeat (+ 1 (random 4))
+                                                                    collect (char "abBz-" (random 5))) 'string) fold))
                (from (random size))
                (below (+ from (random (- (1+ size) from)))))
           (is eql (naive chunk needle fold from below size nil)

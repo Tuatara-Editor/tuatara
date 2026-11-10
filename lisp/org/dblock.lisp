@@ -38,14 +38,16 @@ one), words (symbols, as strings), ?x characters and ( lists ) of them,
 \(2 . ?t) a pair; a quote before one is passed over. NIL for what cannot be
 read."
   (let ((i 0) (n (length text)))
-    (labels ((blank () (loop while (and (< i n) (member (char text i) '(#\Space #\Tab #\Newline #\Return #\'))) do (incf i)))
+    (labels ((blank ()
+               (loop while (and (< i n) (member (char text i) '(#\Space #\Tab #\Newline #\Return #\'))) do (incf i)))
              (item ()
                (blank)
                (when (< i n)
                  (let ((c (char text i)))
                    (cond ((char= c #\()
                           (incf i)
-                          (loop collect (progn (blank) (if (and (< i n) (char/= (char text i) #\))) (item) (loop-finish)))
+                          (loop collect (progn (blank)
+                                               (if (and (< i n) (char/= (char text i) #\))) (item) (loop-finish)))
                                 into items
                                 finally (incf i)
                                         (let ((items (remove :none items)))
@@ -67,7 +69,8 @@ read."
                                               (incf i))
                                              (t (write-char d out)))))))
                          (t (let* ((start i)
-                                   (end (or (position-if (lambda (d) (member d '(#\Space #\Tab #\Newline #\Return #\( #\) #\")))
+                                   (end (or (position-if (lambda (d)
+                                                           (member d '(#\Space #\Tab #\Newline #\Return #\( #\) #\")))
                                                          text :start i)
                                             n))
                                    (word (subseq text start end)))
@@ -77,7 +80,9 @@ read."
                                      (or (org-known-keyword (subseq word 1)) word))
                                     ;; a number of a size numbers come in; longer, a word, read in no time
                                     ((and (<= (length word) 18) (every #'digit-char-p word)) (parse-integer word))
-                                    ((and (< 1 (length word) 19) (char= (char word 0) #\-) (every #'digit-char-p (subseq word 1)))
+                                    ((and (< 1 (length word) 19)
+                                          (char= (char word 0) #\-)
+                                          (every #'digit-char-p (subseq word 1)))
                                      (parse-integer word))
                                     ((and (= (length word) 2) (char= (char word 0) #\?)) (char word 1))
                                     (t word)))))))))
@@ -129,7 +134,12 @@ their writers say how far they have got (DBLOCK-PROGRESS) and learn whether
 they are to stop (DBLOCK-CHECK-STOP).")
 
 (defparameter *dblock-carried-settings*
-  '(*org-now* *org-agenda-files* *org-agenda-file-functions* tuatara-user:*default-directory* *formatted-file-directory* *org-tags-column*)
+  '(*org-now*
+    *org-agenda-files*
+    *org-agenda-file-functions*
+    tuatara-user:*default-directory*
+    *formatted-file-directory*
+    *org-tags-column*)
   "The settings dynamic blocks are made with, carried to the thread that makes
 them as they are on the editor's when they are asked for
 \(TUATARA.RUNTIME:CARRY-SETTINGS).")
@@ -142,17 +152,16 @@ in when they are made, the editor free meanwhile, P lit in the mode line
 
 (defstruct (dblock-job (:include tuatara.runtime:job) (:constructor make-dblock-job (buffer pieces words count))
                        (:copier nil))
-  "Dynamic blocks of BUFFER made again, a job (TUATARA.RUNTIME:JOB). PIECES
-are the blocks, each (BEGIN START END FIRST WRITER PARAMS POSITION): anchors
-at the start of its #+BEGIN: line, of its text and of its #+END: line, which
-follow the edits made meanwhile; FIRST its #+BEGIN: line as it was, line end
-and all; WRITER and PARAMS what makes its text; POSITION where it began, a
-character of the parse. WORDS say what the job does, for the list of jobs;
-COUNT, when the job is all the buffer's blocks, how many there are, said once
-they are put in. TEXTS hold each block's new text in order, NIL for one left
-as it was; MESSAGES what the writers said (a cell, as *MESSAGES-KEPT* takes
-it); DONE how many blocks are made and PART how far the one under way has
-got, from 0 to 1."
+  "Dynamic blocks of BUFFER made again, a job (TUATARA.RUNTIME:JOB). PIECES are
+the blocks, each (BEGIN START END FIRST WRITER PARAMS POSITION): anchors at the
+start of its #+BEGIN: line, of its text and of its #+END: line, which follow the
+edits made meanwhile. FIRST its #+BEGIN: line as it was, line end and all.
+WRITER and PARAMS what makes its text. POSITION where it began, a character of
+the parse. WORDS say what the job does, for the list of jobs; COUNT, when the
+job is all the buffer's blocks, how many there are, said once they are put in.
+TEXTS hold each block's new text in order, NIL for one left as it was; MESSAGES
+what the writers said (a cell, as *MESSAGES-KEPT* takes it); DONE how many
+blocks are made and PART how far the one under way has got, from 0 to 1."
   pieces words count (texts '()) (messages (list nil)) (done 0) (part 0))
 
 (setf (documentation 'dblock-job-p 'function) "True when OBJECT is a DBLOCK-JOB.")
@@ -248,12 +257,12 @@ and says why."
 
 (defun dblock-start (parse blocks &key count)
   "Make BLOCKS again (as DBLOCK-BLOCKS gives them) of PARSE, the ORG-PARSE of
-its buffer as it is now, each by the writer its #+BEGIN: line names, on a
-thread of their own, as a job of the buffer: put in at once when they are
-made within *DBLOCK-WAIT* seconds, else once they are made, as the job is
-taken in, the editor free meanwhile. A job running in the buffer already has
-this one wait its turn. COUNT, when BLOCKS are all of the buffer's, how many,
-said once they are put in."
+its buffer as it is now, each by the writer its #+BEGIN: line names, on a thread
+of their own, as a job of the buffer. They are put in at once when they are made
+within *DBLOCK-WAIT* seconds, else once they are made, as the job is taken in,
+the editor free meanwhile. A job running in the buffer already has this one wait
+its turn. COUNT, when BLOCKS are all of the buffer's, how many, said once they
+are put in."
   (let* ((buffer (org-parse-buffer parse))
          (text (org-parse-text parse))
          (words (if count "Making the dynamic blocks again" "Making a dynamic block again")))
@@ -270,7 +279,8 @@ said once they are put in."
                                            (tuatara.text:make-anchor version (org-parse-octet parse end) :bias :after)
                                            (subseq text begin content)
                                            writer
-                                           (append (dblock-read-params params) (list :name name :content (subseq text content end)))
+                                           (append (dblock-read-params params)
+                                                   (list :name name :content (subseq text content end)))
                                            begin)))
              (job (make-dblock-job buffer pieces words count)))
         (let ((sources (dblock-snapshot-sources)))
@@ -312,7 +322,8 @@ text, as it was, or its #+END: line is no longer there."
            (string= first (remove #\Return (tuatara.text:rope-string rope :start b :end s)))
            (string= (getf params :content) (remove #\Return (tuatara.text:rope-string rope :start s :end e)))
            (cl-ppcre:scan (org-re *org-dynamic-block-end-re*)
-                          (remove #\Return (tuatara.text:rope-string rope :start e :end (tuatara.text:rope-line-end rope e))))
+                          (remove #\Return
+                                  (tuatara.text:rope-string rope :start e :end (tuatara.text:rope-line-end rope e))))
            (values s e)))))
 
 (defmethod tuatara.runtime:job-take-in ((job dblock-job))
@@ -490,13 +501,15 @@ while *CLOCKTABLE-CLOCKS* holds them."
                           (case (org-node-type child)
                             (headline)
                             (clock
-                             (multiple-value-bind (started stopped duration) (org-read-clock-line text (org-node-begin child))
+                             (multiple-value-bind (started stopped duration)
+                                 (org-read-clock-line text (org-node-begin child))
                                (cond (stopped
                                       (let ((ts (org-read-ts started)) (te (org-read-ts stopped)))
                                         (when (and ts te) (push (cons (org-ts-time ts) (org-ts-time te)) found))))
                                      ((and duration (null started))
                                       (let ((colon (position #\: duration)))
-                                        (push (+ (* 60 (parse-integer duration :end colon)) (parse-integer duration :start (1+ colon)))
+                                        (push (+ (* 60 (parse-integer duration :end colon))
+                                                 (parse-integer duration :start (1+ colon)))
                                               found))))))
                             (t (walk child))))))
                (walk headline))
@@ -518,10 +531,10 @@ for no bound), a time given alone counted whole."
 (defun clocktable-block (block now &key (wstart 1) (mstart 1))
   "The time a clock table's :block covers as three values, its start and end
 \(universal times) and what the caption says of it (the year 2026): today,
-yesterday, thisweek, lastweek, thismonth,
-lastmonth, thisyear, lastyear, today-N and the like, 2026, 2026-03, 2026-03-01,
-2026-W10, untilnow; a week beginning on the day WSTART (Monday 1, Sunday 7)
-and a month on its day MSTART. NIL for a block it does not know."
+yesterday, thisweek, lastweek, thismonth, lastmonth, thisyear, lastyear, today-N
+and the like, 2026, 2026-03, 2026-03-01, 2026-W10, untilnow. A week beginning on
+the day WSTART (Monday 1, Sunday 7) and a month on its day MSTART. NIL for a
+block it does not know."
   (let* ((word (string-downcase (princ-to-string block)))
          (today (org-today now)))
     (multiple-value-bind (year month) (day-date today)
@@ -533,7 +546,8 @@ and a month on its day MSTART. NIL for a block it does not know."
                          (format-day "week %G-W%V" first)))
                (month-range (y mo)
                  ;; from the month's day MSTART to the next month's, a day past the month's end rolled over into the next
-                 (values (day-universal-time (day-number y mo mstart)) (day-universal-time (day-number y (1+ mo) mstart))
+                 (values (day-universal-time (day-number y mo mstart))
+                         (day-universal-time (day-number y (1+ mo) mstart))
                          (format-day "%B %Y" (day-number y mo 1))))
                (year-range (y)
                  (values (day-universal-time (day-number y 1 1)) (day-universal-time (day-number (1+ y) 1 1))
@@ -560,7 +574,9 @@ and a month on its day MSTART. NIL for a block it does not know."
                 ((cl-ppcre:scan "^\\d{4}-\\d{2}$" word)
                  (month-range (parse-integer word :end 4) (parse-integer word :start 5)))
                 ((eql (nth-value 3 (written-date-at word 0 (length word) :iso)) (length word))
-                 (multiple-value-bind (y m d) (written-date-at word 0 (length word) :iso) (day-range (day-number y m d))))
+                 (multiple-value-bind (y m d)
+                     (written-date-at word 0 (length word) :iso)
+                   (day-range (day-number y m d))))
                 ((cl-ppcre:scan "^\\d{4}-w\\d{2}$" word)
                  (week-range (iso-week-monday (parse-integer word :end 4) (parse-integer word :start 6))))
                 (t (values nil nil nil))))))))
@@ -618,14 +634,13 @@ text after its planning line, else the first inactive one; NIL for none."
 
 (defun clocktable-rows (tree text file maxlevel tstart tend &key root match timestamp)
   "The rows of a clock table of TREE (TEXT its parse, FILE its path),
-CLOCKTABLE-ENTRY objects: MINUTES those clocked on the headline and all under
-it within TSTART and TEND, the headlines with none left out, those deeper than
-MAXLEVEL counted in the ones above; with ROOT, only that headline's subtree;
-with MATCH (an Org match, as :match gives it), only the clocks of the
-headlines it selects, the headlines above them shown with their time; with
-TIMESTAMP, each entry's timestamp found. Every headline is read
-\(ORG-WALK-ENTRIES), those under COMMENT and archived ones too. Two values: the
-rows and the minutes of them all."
+CLOCKTABLE-ENTRY objects: MINUTES those clocked on the headline and all under it
+within TSTART and TEND, the headlines with none left out, those deeper than
+MAXLEVEL counted in the ones above. With ROOT, only that headline's subtree.
+With MATCH (an Org match, as :match gives it), only the clocks of the headlines
+it selects, the headlines above them shown with their time. With TIMESTAMP, each
+entry's timestamp found. Every headline is read \(ORG-WALK-ENTRIES), those under
+COMMENT and archived ones too. Two values: the rows and the minutes of them all."
   (let ((predicate (and match (org-match-predicate match)))
         (own (make-hash-table :test 'eq))
         (sums (make-hash-table :test 'eq))
@@ -636,7 +651,8 @@ rows and the minutes of them all."
                                   (clocktable-minutes headline text tstart tend)
                                   0))
                         (when (<= (agenda-entry-level entry) maxlevel)
-                          (push (make-clocktable-entry :level (agenda-entry-level entry) :title (agenda-entry-title entry)
+                          (push (make-clocktable-entry :level (agenda-entry-level entry)
+                                                       :title (agenda-entry-title entry)
                                                        :minutes 0 :headline headline :tags (agenda-entry-tags entry)
                                                        :category (agenda-entry-category entry)
                                                        :timestamp (and timestamp (clocktable-headline-timestamp entry)))
@@ -829,7 +845,8 @@ cut to 40), :tcolumns, :filetitle, a hundredths column (:formula %)."
                   do (format out "|-~%")
                      (when multifile
                        (format out "| ~a ~:[~;| ~]| ~:[~;| ~]~:[~;| ~]~a*~a* | *~a*|~a~:[~;~:* ~a |~]~%"
-                               (or (and filetitle (clocktable-file-title file)) (if file (tuatara.io:native-file-name file) ""))
+                               (or (and filetitle (clocktable-file-title file))
+                                   (if file (tuatara.io:native-file-name file) ""))
                                level? timestamp tags
                                (bars (length properties)) (clocktable-word params "File time")
                                (clocktable-time minutes) (bars (1- time-columns))
@@ -843,8 +860,12 @@ cut to 40), :tcolumns, :filetitle, a hundredths column (:formula %)."
                                               (format nil "[[~a][~a]]" (aref groups 0) (tuatara.display:shorten-string (aref groups 1) narrow :ellipsis "..."))
                                               (tuatara.display:shorten-string headline narrow :ellipsis "...")))))
                                 (flet ((field (text)
-                                         (format nil (cond ((not emph) "~a |") ((= level 1) "*~a* |") ((= level 2) "/~a/ |") (t "~a |")) text)))
-                                  (format out "|~:[~;|~]~:[~;~:*~d|~]~:[~;~:*~a|~]~:[~;~:*~a|~]~{~a|~}~a~a~a~a~a~:[~;~:*~a |~]~%"
+                                         (format nil (cond ((not emph) "~a |")
+                                                           ((= level 1) "*~a* |")
+                                                           ((= level 2) "/~a/ |")
+                                                           (t "~a |")) text)))
+                                  (format out
+                                          "|~:[~;|~]~:[~;~:*~d|~]~:[~;~:*~a|~]~:[~;~:*~a|~]~{~a|~}~a~a~a~a~a~:[~;~:*~a |~]~%"
                                           multifile
                                           (and level? level)
                                           (and timestamp (or stamp ""))
@@ -891,7 +912,8 @@ or of the first H:MM in it; 0 for none)."
     (#\t (let ((stamp (cl-ppcre:scan-to-strings *org-one-timestamp-scanner* cell)))
            (cond ((and stamp (org-read-ts stamp)) (org-ts-time (org-read-ts stamp)))
                  ((cl-ppcre:scan "^(?:[0-9]+d(?: [0-9]+:[0-9]{2})?|[0-9]+:[0-9]{2})$" cell)
-                  (multiple-value-bind (match groups) (cl-ppcre:scan-to-strings "^(?:([0-9]+)d)? ?(?:([0-9]+):([0-9]{2}))?$" cell)
+                  (multiple-value-bind (match groups)
+                      (cl-ppcre:scan-to-strings "^(?:([0-9]+)d)? ?(?:([0-9]+):([0-9]{2}))?$" cell)
                     (declare (ignore match))
                     (flet ((int (i) (if (aref groups i) (parse-integer (aref groups i)) 0)))
                       (+ (* 1440 (int 0)) (* 60 (int 1)) (int 2)))))
@@ -926,7 +948,8 @@ block's, kept) worked out and written under them, aligned, each column as wide a
   (let* ((rows (clocktable-sorted (clocktable-rows-of lines) (getf params :sort)))
          (columns (loop for row in rows unless (eq row :rule) maximize (length row)))
          (rows (loop for row in rows
-                     collect (if (eq row :rule) row (append row (make-list (- columns (length row)) :initial-element "")))))
+                     collect (if (eq row :rule) row (append row
+                                                            (make-list (- columns (length row)) :initial-element "")))))
          (model (make-org-table-model :indent "" :rows rows :row -1 :field 0 :offset 0 :newline t))
          (formula (getf params :formula))
          ;; a formula of the block's, or the old block's #+TBLFM: line kept, as Org keeps it
@@ -956,12 +979,12 @@ your home folder."
         folders))
 
 (defun org-archive-files-of (path text &optional (agenda (org-agenda-file-paths)))
-  "The archive files of the Org file at PATH (native; TEXT its text):
-the file its #+ARCHIVE: setting
-names before the ::, %s standing for the file's name, NAME_archive beside it
-without one, and the files its :ARCHIVE: properties name; of those, the
-regular files that exist, standing in the file's folder or under it or
-among AGENDA's files, since a file must not have the editor read elsewhere."
+  "The archive files of the Org file at PATH (native; TEXT its text): the file
+its #+ARCHIVE: setting names before the ::, %s standing for the file's name,
+NAME_archive beside it without one, and the files its :ARCHIVE: properties name.
+Of those, the regular files that exist, standing in the file's folder or under
+it or among AGENDA's files, since a file must not have the editor read
+elsewhere."
   (let* ((folder (tuatara.io:parent-path path))
          (name (tuatara.io:native-file-name path))
          (locations (cons (or (org-file-keyword text "ARCHIVE") "%s_archive::")
@@ -991,13 +1014,12 @@ among AGENDA's files, since a file must not have the editor read elsewhere."
 
 (defun clocktable-scope-files (scope buffer)
   "The files a clock table's SCOPE names, as native paths: the agenda's for
-agenda, with their archive files for agenda-with-archives; the buffer's own
-file with its archives for file-with-archives (ORG-ARCHIVE-FILES-OF); of a
-list, each name read from the folder of BUFFER's file (the block's own),
-those that are agenda files or stand beside that file (in its folder or
-under it, links followed); another is left out and said, since a file must
-not have the editor read what it names. NIL for the scopes within the
-buffer."
+agenda, with their archive files for agenda-with-archives. The buffer's own file
+with its archives for file-with-archives (ORG-ARCHIVE-FILES-OF). Of a list, each
+name read from the folder of BUFFER's file (the block's own), those that are
+agenda files or stand beside that file (in its folder or under it, links
+followed). Another is left out and said, since a file must not have the editor
+read what it names. NIL for the scopes within the buffer."
   (cond ((listp scope)
          (let* ((agenda (org-agenda-file-paths))
                 (file (tuatara.buffer:buffer-file buffer))
@@ -1087,7 +1109,9 @@ timestamp as written; NIL for none."
       (let* ((tstart (if block bstart (clocktable-param-time (getf params :tstart))))
              (tend (if block bend (clocktable-param-time (getf params :tend))))
              (buffer (current-buffer))
-             (files (memo-values *clocktable-parses* (cons :files scope) (lambda () (clocktable-scope-files scope buffer))))
+             (files (memo-values *clocktable-parses*
+                                 (cons :files scope)
+                                 (lambda () (clocktable-scope-files scope buffer))))
              (tables
                (if files
                    (loop for path in files
@@ -1148,10 +1172,9 @@ on; year, the next year's first day."
 (defun clocktable-steps (params)
   "The clock tables of PARAMS one for each :step (day, week, semimonth, month,
 quarter, year) of its :block, or from its :tstart to its :tend: each under a
-line saying its step and
-first day, those with no time left out with :stepskip0 (an empty line when
-all are, and after the last one written when those after it are); the
-block's old text when it has neither a block nor both times."
+line saying its step and first day, those with no time left out with :stepskip0
+\(an empty line when all are, and after the last one written when those after it
+are). The block's old text when it has neither a block nor both times."
   (let* ((step (string-downcase (princ-to-string (getf params :step))))
          (title (cond ((string= step "day") "Daily report: ")
                       ((string= step "week") "Weekly report starting on: ")
@@ -1165,7 +1188,9 @@ block's old text when it has neither a block nor both times."
          (skip0 (clocktable-flag params :stepskip0)))
     (multiple-value-bind (bstart bend words) (if block (clocktable-block-of params (org-now)) (values nil nil nil))
       ;; without a start, from the year Org was born, as Org has it
-      (let ((start (or (and block bstart) (clocktable-param-time (getf params :tstart)) (day-universal-time (day-number 2003 1 1))))
+      (let ((start (or (and block bstart)
+                       (clocktable-param-time (getf params :tstart))
+                       (day-universal-time (day-number 2003 1 1))))
             (end (if block bend (clocktable-param-time (getf params :tend)))))
         (cond ((null title)
                (message "The clock table's :step ~a is not one Org knows: day, week, semimonth, month, quarter or year" step)
@@ -1187,11 +1212,13 @@ block's old text when it has neither a block nor both times."
                                          (let ((next (clocktable-step-next start step wstart mstart)))
                                            ;; a step that gets nowhere would go on for ever
                                            (when (<= next start)
-                                             (message "The clock table's steps go nowhere from ~a" (org-timestamp-text start :clock nil))
+                                             (message "The clock table's steps go nowhere from ~a"
+                                                      (org-timestamp-text start :clock nil))
                                              (return))
                                            (multiple-value-bind (text total)
                                                (clocktable-one (list* :header "" :step nil :block nil
-                                                                      :tstart (org-timestamp-text start) :tend (org-timestamp-text (min end next))
+                                                                      :tstart (org-timestamp-text start)
+                                                                      :tend (org-timestamp-text (min end next))
                                                                       params))
                                              (setf last-skipped (and skip0 (zerop total)))
                                              (unless last-skipped

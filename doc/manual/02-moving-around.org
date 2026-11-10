@@ -1,0 +1,382 @@
+#+title: Moving around
+#+language: en
+
+* Moving around
+
+How to put the cursor where you want it.
+
+Before you can change text you have to get to it. This chapter lists every way
+Tuatara has of moving the cursor: by character, word, line, sentence and
+paragraph, to the start or end of the text, to a line you name, and back to a
+place you left. It also covers counts, which repeat a move, and the marks that
+let you return. For each part it gives the keys and the settings that change
+how the move behaves. Scrolling and recentring are in chapter 1.
+
+Keys are written as chapter 1 explains: ~C-x~ is Control and x, ~M-x~ is Alt
+and x, ~RET~ is Return. The tables say "none" for a command that has no key
+and can only be run by name with ~M-x~.
+
+** Two sets of keys
+
+Tuatara has two sets of keys for moving. They do the same jobs, and you may use
+either one, or both.
+
+The first set is the letter keys of NORMAL state: ~h~, ~j~, ~k~, ~l~ and a
+few more. They need no Control or Alt, so your hands stay on the letters. They
+work only in NORMAL state, because in INSERT state a letter is text.
+
+The second set uses Control and Alt, as Emacs does: ~C-f~, ~M-f~, ~C-a~ and
+so on. These work in both states. They are the keys to reach for while you are
+typing in INSERT state and do not want to leave it. The arrow keys, ~<home>~ and
+~<end>~ work in both states as well. With =*modal-editing*= set to =nil= the
+second set is all there is.
+
+A move never changes the text. If a move cannot go further, such as ~l~
+(non-modal: ~C-f~) at the very end of the text, the cursor stays where it is.
+
+The mode line shows the line and the column of the cursor, =L3 C4=, and both
+count the way chapter 1 describes: the first line is 1 and the first column
+is 0.
+
+** By character and by line
+
+~h~ and ~l~ (non-modal: ~C-b~, ~C-f~) move one character left and right. ~j~ and
+~k~ (non-modal: ~C-n~, ~C-p~) move one line down and up. At the end of a line,
+~l~ goes on to the start of the next one, and ~h~ at the start of a line goes
+back to the end of the one above.
+
+When you move down or up, Tuatara tries to keep the column you started from.
+If the next line is shorter, the cursor goes to its end. When you go on
+pressing ~j~ or ~k~ (non-modal: ~C-n~, ~C-p~), the cursor returns to the
+original column as soon as a line is long enough, so a short line in the middle
+does not pull you off your column. Any other key, even ~h~ (non-modal: ~C-b~),
+forgets the column.
+
+If you have turned on soft wrap (~C-x T l~), a long line shows as several rows
+on the screen. ~j~ and ~k~ (non-modal: ~C-n~, ~C-p~) then move one row, not one
+whole line.
+
+In the hex view, which shows the bytes of a file, ~h~ and ~l~ (non-modal: ~C-b~,
+~C-f~) move one byte instead of one character.
+
+#+begin_try Try it, with a recipe
+1. Press ~C-x C-f~, type =~/scones.txt= and press ~RET~. Press ~i~ and type
+   these five lines, ending each but the last with ~RET~: =Scones=, =2 cups
+   flour=, =4 tsp baking powder=, =1 cup milk=, =Mix well and bake for twelve
+   minutes=. Press ~C-g~ to go back to NORMAL state.
+2. Press ~g g~ (non-modal: ~M-<~) to go to the top. The mode line says =L1 C0=.
+3. Press ~j j~. You are on line 3 (=L3 C0=). Press ~l l l~ and watch the column
+   go to 3. Press ~h~ (non-modal: ~C-b~) once to see it come back to 2.
+4. Press ~j j~ to go to the last line, then ~g l~ (non-modal: ~C-e~) for its
+   end. The column is 36, the length of that line.
+5. Press ~k~ (non-modal: ~C-p~). The line above is shorter, so the cursor goes
+   to its end, at column 10. Press ~j~ (non-modal: ~C-n~). The cursor is back at
+   column 36.
+6. Press ~C-u 3 k~. The echo area shows =C-u 3-= while Tuatara waits for the
+   key, then the cursor moves up three lines at once.
+#+end_try
+
+*** Commands
+
+| Modal | Non-modal        | Command           | What it does                    |
+|-------+------------------+-------------------+---------------------------------|
+| ~l~   | ~C-f~, ~<right>~ | =forward-char=    | Moves one character on. A count moves that many, or back when it is negative. In the hex view, one byte. |
+| ~h~   | ~C-b~, ~<left>~  | =backward-char=   | Moves one character back.       |
+| ~j~   | ~C-n~, ~<down>~  | =next-line=       | Moves down one line, keeping the column when it can. Where long lines wrap, one row. |
+| ~k~   | ~C-p~, ~<up>~    | =previous-line=   | Moves up one line, in the same way. |
+| none  | ~<down-mouse-1>~ | =mouse-set-point= | Puts the cursor where you click with the first mouse button, in the window you click. |
+
+In a rectangle (chapter 5), ~l~ and ~h~ (non-modal: ~C-f~, ~C-b~) move the
+corner of the rectangle at the cursor along the line, and do not run on to the
+next line.
+
+** By word
+
+~w~ (non-modal: ~M-f~) moves to the end of the next word. If the cursor is in
+the gap between two words, it first passes the gap and then the next word. ~b~
+(non-modal: ~M-b~) moves to the start of the word before the cursor. A count
+does it that many times. A negative count reverses the direction.
+
+~W~ and ~B~ (non-modal: ~C-M-f~, ~C-M-b~) move over a whole bracketed group or a
+quoted piece of text in one step. In a program, they move over one expression as
+the language reads it. Elsewhere they move over a bracketed group or a symbol.
+At a closing bracket they stop, because the expression around the cursor ends
+there. Chapter 13 describes moving over the parts of a program.
+
+Words are looked for no further than 64 MB away, so one stray key in a huge
+file does not make Tuatara wait. If the limit is reached, Tuatara says so.
+
+*** Commands
+
+| Modal | Non-modal | Command         | What it does                      |
+|-------+-----------+-----------------+-----------------------------------|
+| ~w~   | ~M-f~     | =forward-word=  | Moves to the end of the next word. A negative count moves back. |
+| ~b~   | ~M-b~     | =backward-word= | Moves to the start of the word before. A negative count moves on. |
+| ~W~   | ~C-M-f~   | =forward-sexp=  | Moves forward over one balanced expression, a bracketed group, a string or a word. |
+| ~B~   | ~C-M-b~   | =backward-sexp= | Moves back over one balanced expression. |
+
+** Within a line
+
+Figure 2.1 shows where the keys for the line and the word land when the cursor
+is on the f of =flour=.
+
+#+caption: Figure 2.1. Where keys take the cursor from the f of flour.
+#+name: fig-line
+#+begin_example
+ Mix the flour and the milk.
+ ^   ^   ^    ^             ^
+ g h b   here w             g l
+#+end_example
+
+~g h~ goes to the start of the line, and ~g l~ goes to its end, just before the
+line break. Where soft wrap shows a long line as several rows, they go to the
+start and the end of the row the cursor is on, and ~C-a~ and ~C-e~ do the same.
+
+~M-m~ goes to the first character of the line that is not a space or a tab.
+This is the place to start when the line is indented.
+
+*** Commands
+
+| Modal | Non-modal       | Command               | What it does                |
+|-------+-----------------+-----------------------+-----------------------------|
+| ~g h~ | ~C-a~, ~<home>~ | =beginning-of-line=   | Moves to the start of the line, or of the row where long lines wrap. In the hex view, to the start of the row of bytes. |
+| ~g l~ | ~C-e~, ~<end>~  | =end-of-line=         | Moves to the end of the line, before its line break. |
+| none  | ~M-m~           | =back-to-indentation= | Moves to the first character that is not a space or a tab. |
+
+** By sentence and paragraph
+
+A sentence ends at a full stop, a question mark, an exclamation mark, an
+ellipsis (…) or an interrobang (‽) that is followed by a space or the end of a
+line. Closing quote marks and brackets after the stop belong to the sentence.
+A full stop after an abbreviation such as =Dr.= or =e.g.= does not end it.
+Tuatara knows a long list of those. You can add your own, or take one away that
+you would rather have end a sentence.
+
+Some people type two spaces after the end of a sentence. If you do, set
+=*sentence-end-double-space*= to =t=, and a sentence then ends only where
+two spaces, a tab or a line break follow the stop. A file can say which it uses
+with a line =sentence-end-double-space: t= in its Local Variables block, and
+that wins for that file.
+
+A paragraph ends at a blank line. ~M-}~ moves to the start of the blank line
+after the paragraph, or to the end of the text if there is none, and ~M-{~
+moves to the start of the blank line before the paragraph, or to the start of
+the text.
+
+The sentence and paragraph moves have no letter keys in NORMAL state, but the
+Alt keys work there. A count does the move that many times, and a negative
+count goes the other way.
+
+#+begin_try Try it, with a letter
+1. Press ~C-x C-f~, type =~/letter-to-napier.txt= and press ~RET~. Press ~i~
+   and type =Dear Napier,= and ~RET~ ~RET~. Then type =Thank you for the
+   weekend. The cake was lovely. We got home at six.= and ~RET~ ~RET~. Then type
+   =Please send the photos when you can. Dr. Taupo says hello.= Press ~C-g~.
+2. Press ~g g~ (non-modal: ~M-<~). Press ~M-}~. The cursor goes to the blank
+   line after the first paragraph (=L2 C0=). Press ~j~ (non-modal: ~C-n~) to go
+   to the start of the second paragraph.
+3. Press ~M-e~. The cursor moves to just after =weekend.=. Press ~M-e~ again,
+   and it goes after =lovely.=. Press ~M-a~ to go back to the start of that
+   sentence.
+4. Press ~M-}~ to go to the blank line after this paragraph. Press ~M-{~ and
+   watch the cursor go back up.
+5. Press ~g e~ (non-modal: ~M->~), then ~M-a~. The cursor goes to the start of
+   =Dr. Taupo says hello.=. The full stop after =Dr= did not end a sentence.
+#+end_try
+
+*** Commands
+
+| Modal | Non-modal | Command              | What it does                            |
+|-------+-----------+----------------------+-----------------------------------------|
+| none  | ~M-e~     | =forward-sentence=   | Moves to the end of the sentence, or of the paragraph's text. |
+| none  | ~M-a~     | =backward-sentence=  | Moves to the start of the sentence.     |
+| none  | ~M-}~     | =forward-paragraph=  | Moves to the start of the blank line after the paragraph. |
+| none  | ~M-{~     | =backward-paragraph= | Moves to the start of the blank line before the paragraph. |
+
+*** Settings
+
+| Setting                          | Standard | What it changes                |
+|----------------------------------+----------+--------------------------------|
+| =*sentence-end-double-space*=    | =nil=    | Set to =t= for two spaces after the end of a sentence. Filling keeps the two spaces too. |
+| =*extra-sentence-abbreviations*= | =()=     | Abbreviations of your own whose full stop ends no sentence, as in =(setf *extra-sentence-abbreviations* '("Ph.D." "Inc."))=. |
+| =*removed-sentence-abbreviations*= | =()=   | Abbreviations from Tuatara's list that should end a sentence after all, such as ="St."=. |
+
+** To the start or the end of the text
+
+~g g~ (non-modal: ~M-<~) goes to the very start of the buffer and ~g e~
+(non-modal: ~M->~) goes to its end. If the buffer is narrowed (~C-x x n~), they
+go to the start and end of the part shown. In the hex view, they go to the first
+and last byte.
+
+These two moves leave the mark behind at the place you left, so that you can go
+back (see below). They do not do it while a selection is showing, nor when
+you give a count.
+
+*** Commands
+
+| Modal | Non-modal | Command               | What it does           |
+|-------+-----------+-----------------------+------------------------|
+| ~g g~ | ~M-<~     | =beginning-of-buffer= | Moves to the start of the buffer. |
+| ~g e~ | ~M->~     | =end-of-buffer=       | Moves to the end of the buffer. |
+
+** To a line
+
+~:~ asks for a line number in the minibuffer, and ~RET~ takes you to the start
+of that line. ~M-g g~ and ~M-g M-g~ do the same, and they work in both states.
+You may group the digits as the mode line does, =100,000,000=. The mark is left
+where you were, unless a selection is showing.
+
+In a large file whose lines are still being counted, a line in the first 64 MB
+is found at once. A line further in waits until the count has reached it. In
+the hex view the same keys ask for a byte offset instead, and a number that
+starts with =0x= is read as hexadecimal.
+
+If the line you ask for is outside the part of a narrowed buffer, Tuatara
+widens the buffer and says so.
+
+Tuatara has no command that asks for a column. To get to a column, go to the
+start of the line and press ~l~ (non-modal: ~C-f~) with a count, as in
+~C-u 12 l~, which works when the line is long enough.
+
+*** Commands
+
+| Modal | Non-modal          | Command     | What it does                       |
+|-------+--------------------+-------------+------------------------------------|
+| ~:~   | ~M-g g~, ~M-g M-g~ | =goto-line= | Asks for a line number and goes to the start of that line. In the hex view, asks for an offset. |
+
+** Scrolling and recentring
+
+The keys that scroll the window and put the cursor's line in the middle are
+listed in chapter 1: ~C-v~ and ~M-v~ scroll by nearly a screenful, ~C-l~ and
+~z z~ recentre, and the mouse wheel scrolls the window it is over. The settings
+=*scroll-margin*= and =*scroll-recenter*= are described there too. They decide
+how the window follows the cursor when one of the moves in this chapter takes
+the cursor out of sight.
+
+** Counts
+
+Most moves in this chapter take a count: you say how many times to do
+the move. Press ~C-u~, type the number, and then press the key of the move. In
+NORMAL state, ~C-u 5 j~ moves five lines down. The echo area shows =C-u 5-=
+while Tuatara waits for the key.
+
+~C-u~ with no number means 4, and ~C-u C-u~ means 16. A minus sign after ~C-u~
+makes the count negative, so ~C-u - 2 w~ moves back two words, as ~b~
+(non-modal: ~M-b~) would. A number you type after ~C-u C-u~ starts a new count
+of its own.
+
+~.~ in NORMAL state runs the last command again, with the count it had. Press
+~.~ after ~C-u 3 j~ and the cursor goes three more lines down.
+
+Other chapters use the same count for other things, such as how many times to
+insert a character. The count is always taken by the key that follows it.
+
+#+begin_try Try it, with a long letter
+1. Open any file that has more than 30 lines. Press ~g g~ (non-modal: ~M-<~) to
+   go to the top.
+2. Press ~C-u 3 0 j~. The cursor is on line 31.
+3. Press ~C-u C-u k~. You have gone 16 lines up, to line 15.
+4. Press ~C-u - 2 w~ to move back two words.
+5. Press ~j~ (non-modal: ~C-n~), then ~.~. The last command, ~j~, runs once
+   more.
+#+end_try
+
+*** Commands
+
+| Modal | Non-modal | Command              | What it does                            |
+|-------+-----------+----------------------+-----------------------------------------|
+| none  | ~C-u~     | =universal-argument= | Starts a count. Alone it is 4, twice it is 16, digits give a number and a minus sign negates. |
+| ~.~   | none      | =repeat=             | Runs the last command again with its count. |
+
+** Marks and going back
+
+The mark is a place that Tuatara remembers, and that stays where it is while the
+cursor moves on. The text between the mark and the cursor is the region, drawn
+in the =:region= face. The jumps in this chapter leave the mark where the cursor
+was, so a long jump can be taken back.
+
+Each buffer keeps the marks it has had in a mark ring, which holds the last 16.
+Tuatara also keeps a global mark ring, with the marks of the buffers you set
+marks in.
+
+Tuatara keeps a second list as well: the places the cursor was at before each
+move, ten for each buffer. ~S~ goes back to the place before the cursor's last
+move, and ~S~ again goes further back, round the list. It is meant for taking
+back a key that jumped to the wrong place. The echo area says =Position 2 of
+7= so you know how far back you are. A count before ~S~ skips that many places.
+
+Registers and bookmarks keep a place for longer. A register (~C-x r p~, then a
+character) keeps the place until Tuatara quits, and ~C-x r j~ with the same
+character goes back to it, even after the text above it has changed. A
+bookmark (~C-x m m~, then a name) is kept for good, and ~C-x m b~ goes to one by
+its name.
+
+#+begin_try Try it, with a long list
+1. Open a file of more than 30 lines. Press ~g g~ (non-modal: ~M-<~), then ~:~
+   (non-modal: ~M-g g~), type =30= and press ~RET~. The echo area says
+   =Mark set= and you are on line 30.
+2. Press ~g e~ (non-modal: ~M->~) to go to the end. Press ~S~. You are on the
+   place before the jump, line 30. Press ~S~ again, and you go further back.
+3. Press ~C-u C-SPC~. The cursor goes to the mark, line 30, where you pressed
+   ~g e~. Press ~C-u C-SPC~ once more and you are back at line 1.
+4. Press ~C-x r p~, then ~a~. Press ~g e~. Press ~C-x r j~, then ~a~. The cursor
+   goes back to where you set the register.
+5. Press ~C-SPC~ at line 1, then ~j j j~, and the region is shown. Press
+   ~C-x C-x~. The cursor and the mark swap places. Press ~C-g~ to drop the
+   region.
+#+end_try
+
+*** Commands
+
+| Modal | Non-modal               | Command                   | What it does                      |
+|-------+-------------------------+---------------------------+-----------------------------------|
+| ~S~   | none                    | =jump-back=               | Goes to a place the cursor was before, and further back each time you press it. |
+| none  | ~C-SPC~                 | =set-mark-command=        | Sets the mark at the cursor and shows the region. Pressed again at once, it hides the region, and once more shows it. With ~C-u~, goes back to the mark, as =pop-to-mark-command= does. |
+| none  | ~C-u C-SPC~             | =pop-to-mark-command=     | Goes to the mark and takes the mark before it from the ring, so the next press goes further back. |
+| none  | ~C-x C-SPC~             | =pop-global-mark=         | Goes to the newest mark of the global ring, in its buffer, and so back through the buffers where you set marks. |
+| none  | ~C-x C-x~               | =exchange-point-and-mark= | Swaps the cursor and the mark.    |
+| none  | ~M-x push-mark-command~ | =push-mark-command=       | Sets the mark and shows the region. When the mark is at the cursor already, only shows the region. |
+| none  | ~C-x r p~               | =register-point=          | Asks for a character and keeps the cursor's place under it. |
+| none  | ~C-x r j~               | =register-jump=           | Asks for a character and goes to the place kept under it. |
+| none  | ~C-x m m~               | =bookmark-set=            | Keeps the place under a name that you give, for good. |
+| none  | ~C-x m b~               | =bookmark-jump=           | Goes to a bookmark by its name.   |
+
+*** Settings
+
+| Setting                          | Standard | What it changes                |
+|----------------------------------+----------+--------------------------------|
+| =*mark-ring-max*=                | =16=     | How many marks each buffer keeps, and the global ring. The oldest goes first. |
+| =*set-mark-command-repeat-pop*=  | =nil=    | Set to =t= for ~C-SPC~ pressed right after ~C-u C-SPC~ to go on back to the mark before, instead of setting a mark. |
+
+*** Faces
+
+| Face       | Standard | What it paints                                  |
+|------------+----------+-------------------------------------------------|
+| =:region=  | theme    | The text between the mark and the cursor.       |
+
+** Going to the next place in a list
+
+Some commands make a list of places for you to visit: the errors of a program
+that was built, the lines that a search through files found, and the problems
+that a language server reports. Chapters 13 and 6 describe how those lists are
+made. Two keys take you through the list one place at a time, from any buffer. A
+place in a file opens that file at the line.
+
+*** Commands
+
+| Modal | Non-modal | Command          | What it does                              |
+|-------+-----------+------------------+-------------------------------------------|
+| none  | ~M-g n~   | =next-place=     | Goes to the next place of the last list.  |
+| none  | ~M-g p~   | =previous-place= | Goes to the place before the one gone to last. |
+
+** In help, lists and other read-only buffers
+
+The windows that show help, the =*Messages*= log and similar read-only text are
+in what the mode line calls SUPPORT state. The reading keys of NORMAL state
+work there too: ~h~, ~j~, ~k~, ~l~, ~w~, ~W~, ~b~, ~B~, ~g g~, ~g e~, ~g h~,
+~g l~, ~S~, ~:~ and ~z z~. They move the cursor and change nothing.
+
+A list that a command made, such as the list of buffers or of the files in a
+folder, may use some of these letters for its own purposes. In a list ~h~ closes
+the window, and ~g~ starts a move, so the list is made again with ~r~. The
+chapter for each list says what its keys do.

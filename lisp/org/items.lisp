@@ -16,7 +16,9 @@
   (when (org-property item :checkbox)
     (let* ((begin (org-node-begin item))
            (line-end (string-line-end text begin))
-           (after-bullet (+ begin (- (length (org-line-at text begin)) (length (string-left-trim " 	" (org-line-at text begin))))
+           (after-bullet (+ begin
+                            (- (length (org-line-at text begin))
+                               (length (string-left-trim " 	" (org-line-at text begin))))
                             (length (string-right-trim " " (org-property item :bullet))))))
       (search "[" text :start2 after-bullet :end2 line-end))))
 
@@ -47,16 +49,18 @@ many of those are done, as two values."
         (when (eq (org-property child :todo-type) 'done) (incf done))))
     (values total done)))
 
-(defun org-cookie-counts (node)
+(defun org-cookie-counts (node &optional (added 0))
   "What the statistics cookies of NODE, an item or a headline, count, as two
 values, all and done: a headline's TODO sub-headlines, or with none, the
-checkboxes right under it; an item's checkboxes right under it."
+checkboxes right under it; an item's checkboxes right under it. ADDED
+checkboxes, not ticked, are counted beside those, for an item being put in."
   (multiple-value-bind (total done) (if (eq (org-node-type node) 'headline)
                                         (org-headline-todo-counts node)
                                         (values 0 0))
     (if (plusp total)
         (values total done)
-        (org-checkbox-counts node))))
+        (multiple-value-bind (boxes ticked) (org-checkbox-counts node)
+          (values (+ boxes added) ticked)))))
 
 (defun org-cookie-text (value done total)
   "A statistics cookie written as VALUE is, a share ([66%]) or a count
@@ -85,36 +89,37 @@ NODE, of TEXT, say DONE of TOTAL, leaving out those that already do."
         unless (string= new value)
           collect (list (org-node-begin cookie) (+ (org-node-begin cookie) (length value)) new)))
 
-(defun org-statistics-edits (text item)
-  "The edits that bring up to date what depends on ITEM's checkbox: the
-checkbox of each item above it and the cookies of it and the headline above,
-as a list of (FROM TO NEW), characters of TEXT."
+(defun org-statistics-edits (text start &key (added 0))
+  "The edits that bring up to date the cookies and checkbox of START, a node
+of TEXT, and of each item and the headline above it, as a list of (FROM TO
+NEW), characters of TEXT. ADDED checkboxes, not ticked, are counted under the
+first item or headline met, for items being put in there."
   (let ((edits '()))
-    (loop for node = (org-node-parent item) then (org-node-parent node)
+    (loop for node = start then (org-node-parent node)
           while node
           when (member (org-node-type node) '(item headline))
-            do (multiple-value-bind (boxes ticked) (org-cookie-counts node)
-                 (when (plusp boxes)
-                   (setf edits (append (org-cookie-edits node text ticked boxes) edits))
-                   (when (and (eq (org-node-type node) 'item) (org-property node :checkbox))
-                     (let ((at (org-checkbox-position node text)))
-                       (when at
-                         (let ((state (cond ((= ticked boxes) "[X]") ((zerop ticked) "[ ]") (t "[-]"))))
-                           (setf (getf (org-node-properties node) :checkbox)
-                                 (cond ((string= state "[X]") 'on) ((string= state "[ ]") 'off) (t 'trans)))
-                           (push (list at (+ at 3) state) edits)))))))
+            do (multiple-value-bind (boxes ticked) (org-cookie-counts node added)
+                 (setf added 0)
+                 (setf edits (append (org-cookie-edits node text ticked boxes) edits))
+                 (when (and (plusp boxes) (eq (org-node-type node) 'item) (org-property node :checkbox))
+                   (let ((at (org-checkbox-position node text)))
+                     (when at
+                       (let ((state (cond ((= ticked boxes) "[X]") ((zerop ticked) "[ ]") (t "[-]"))))
+                         (setf (getf (org-node-properties node) :checkbox)
+                               (cond ((string= state "[X]") 'on) ((string= state "[ ]") 'off) (t 'trans)))
+                         (push (list at (+ at 3) state) edits))))))
           when (eq (org-node-type node) 'headline) do (loop-finish))
     edits))
 
 (defun org-apply-edits (parse edits &key point final)
   "Make EDITS, (FROM TO NEW) of the characters of PARSE (an ORG-PARSE), in its
-buffer in one step to undo, each its own edit of the text, so that what
-stands between them (folds, the clock's line, the windows' points) stays
-where it is; then point at the
-character POINT, moved past the edits before it, or, with FINAL, taken as it
-is in the text after. In a buffer whose lines end with a carriage return and
-a newline, each newline put in goes in as both."
-  (let ((edits (stable-sort (remove-if (lambda (edit) (and (= (first edit) (second edit)) (zerop (length (third edit))))) edits)
+buffer in one step to undo, each its own edit of the text, so that what stands
+between them (folds, the clock's line, the windows' points) stays where it is.
+Then point at the character POINT, moved past the edits before it, or, with
+FINAL, taken as it is in the text after. In a buffer whose lines end with a
+carriage return and a newline, each newline put in goes in as both."
+  (let ((edits (stable-sort (remove-if (lambda (edit)
+                                         (and (= (first edit) (second edit)) (zerop (length (third edit))))) edits)
                             #'< :key #'first)))
     (when edits
       (let ((buffer (org-parse-buffer parse))
@@ -143,7 +148,7 @@ the task's keyword."
          (old (org-property item :checkbox)))
     (setf (getf (org-node-properties item) :checkbox) state)
     (org-apply-edits parse (append (list (list at (+ at 3) (ecase state (off "[ ]") (trans "[-]") (on "[X]"))))
-                                   (org-statistics-edits text item)
+                                   (org-statistics-edits text (org-node-parent item))
                                    (org-checkbox-state-edits item text old state))
                      :point position)
     (org-summary-todo (org-parse-buffer parse) (org-node-begin item))))
@@ -213,7 +218,9 @@ list at the margin. Checkboxes and text are kept."
                  (kind (cond ((cl-ppcre:scan "^[0-9]+\\.$" current) "1.")
                              ((cl-ppcre:scan "^[0-9]+\\)$" current) "1)")
                              (t current)))
-                 (choices (if (zerop indent) (remove "*" *org-list-bullet-cycle* :test #'string=) *org-list-bullet-cycle*))
+                 (choices (if (zerop indent)
+                              (remove "*" *org-list-bullet-cycle* :test #'string=)
+                              *org-list-bullet-cycle*))
                  (next (or (second (member kind choices :test #'string=)) (first choices))))
             (org-apply-edits
              parse
@@ -249,9 +256,10 @@ headline it is on counts (`org-cookie-counts'), point left at POSITION."
 
 (define-command org-ctrl-c-ctrl-c ()
   "Do what Org's C-c C-c does where point is: on a dynamic block's #+BEGIN:
-line, make the block again (\\[org-dblock-update]); on an item with a checkbox, tick
-it or clear it, the counts above brought up to date; on a statistics cookie,
-bring it up to date; in a table, align it; on its #+TBLFM: line, work its formulas out; on a CLOCK: line, write its duration again."
+line, make the block again (\\[org-dblock-update]). On an item with a checkbox,
+tick it or clear it, the counts above brought up to date. On a statistics
+cookie, bring it up to date. In a table, align it. On its #+TBLFM: line, work
+its formulas out. On a CLOCK: line, write its duration again."
   (with-org-structure (parse buffer tree text position)
     (let ((cookie (org-cookie-at tree position))
           (item (org-current-item tree text position)))
@@ -274,7 +282,8 @@ bring it up to date; in a table, align it; on its #+TBLFM: line, work its formul
 (defun org-src-block-at (tree position)
   "The source block of TREE holding the character POSITION, from its
 #+begin_src line to its #+end_src line, or NIL."
-  (org-node-at tree position (lambda (node) (and (eq (org-node-type node) 'src-block) (org-before-blank-p node position)))))
+  (org-node-at tree position (lambda (node)
+                               (and (eq (org-node-type node) 'src-block) (org-before-blank-p node position)))))
 
 (defun org-context-keys (editor prefix)
   "For \\`C-c' in an Org buffer: what the cursor is on, as
@@ -318,7 +327,8 @@ pairs writes, make it the checkbox [ ] and a space, point after them
            (after (tuatara.buffer:buffer-string buffer :start p :end end)))
       (when (and (member after '("" "]") :test #'string=)
                  (cl-ppcre:scan "^(?:[ \\t]*(?:[-+]|[0-9]+[.)])|[ \\t]+\\*) \\[$" before))
-        (tuatara.buffer:buffer-edit buffer (vector (tuatara.text:make-edit (1- p) end (tuatara.text:string-octets "[ ] ")))
+        (tuatara.buffer:buffer-edit buffer
+                                    (vector (tuatara.text:make-edit (1- p) end (tuatara.text:string-octets "[ ] ")))
                                     :group t)
         (goto (+ p 3))))))
 
@@ -336,3 +346,53 @@ keyword change that (ORG-TODO-RETURN)."
   (setf *enter-dwim-functions*
         (append (remove-if (lambda (f) (member f '(org-checkbox-return org-todo-return))) *enter-dwim-functions*)
                 (list 'org-checkbox-return 'org-todo-return))))
+
+;;; Cookies kept up to date as checkbox items are killed
+
+(defun org-killed-checkbox-items (tree start end)
+  "The items with a checkbox of TREE that hold a character from START below
+END, each before the items under it."
+  (let ((found '()))
+    (labels ((walk (node)
+               (org-children-in-range node start end
+                                      (lambda (child)
+                                        (when (and (eq (org-node-type child) 'item) (org-property child :checkbox))
+                                          (push child found))
+                                        (walk child)))))
+      (walk tree))
+    (nreverse found)))
+
+(defmethod mode-kill-follow-up ((mode org-mode) buffer start end)
+  "Once checkbox items are killed in an Org buffer, the statistics cookies and
+checkboxes above them count without them. Done only when the buffer's parse of
+its text as it is now is at hand, never waited for."
+  (let ((parse (and (or (<= (tuatara.buffer:buffer-size buffer) *org-parse-at-once*) (org-parse-current-p buffer))
+                    (org-parse-now buffer))))
+    (when parse
+      (let* ((text (org-parse-text parse))
+             (from (org-parse-char parse start))
+             (to (org-parse-char parse end))
+             (killed (remove-if-not (lambda (item)
+                                      (let ((at (org-checkbox-position item text)))
+                                        (and at (< at to) (> (+ at 3) from))))
+                                    (org-killed-checkbox-items (org-parse-tree parse) from to)))
+             (kept (loop for item in killed
+                         append (loop for node = item then (org-node-parent node)
+                                      while node
+                                      collect (cons node (org-property node :checkbox))
+                                      until (eq (org-node-type node) 'headline))))
+             (edits '()))
+        ;; the counts are made as if the items were gone, the parse left as it was after
+        (unwind-protect
+             (progn
+               (dolist (item killed)
+                 (setf (getf (org-node-properties item) :checkbox) nil))
+               ;; those under first, so that an item above counts the boxes below it as they will be
+               (dolist (item (reverse killed))
+                 (dolist (edit (org-statistics-edits text (org-node-parent item)))
+                   (unless (and (< (first edit) to) (> (second edit) from))
+                     (setf edits (cons edit (remove (first edit) edits :key #'first)))))))
+          (loop for (node . checkbox) in kept
+                do (setf (getf (org-node-properties node) :checkbox) checkbox)))
+        (when edits
+          (lambda () (org-apply-edits parse edits)))))))

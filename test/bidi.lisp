@@ -262,7 +262,8 @@ held by nothing else."
          (shown (tuatara.display:joined-arabic (tuatara.display:row-string row) (tuatara.display:row-spans row))))
     (is string= (letters #xFE90 #xFE98 #xFEDB " " #xFE90 #xFE98 #xFEDB) (string-left-trim " " shown))
     ;; the text itself as stored
-    (is string= (letters #x628 #x62A #x643 " " #x628 #x62A #x643) (string-left-trim " " (tuatara.display:row-string row))))
+    (is string= (letters #x628 #x62A #x643 " " #x628 #x62A #x643)
+        (string-left-trim " " (tuatara.display:row-string row))))
   ;; a lone letter, and stored order: left as it is
   (is string= (letters "a " #x628) (tuatara.display:joined-arabic (letters "a " #x628) '())))
 

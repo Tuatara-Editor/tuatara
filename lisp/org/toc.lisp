@@ -102,7 +102,8 @@ table of contents: those of *ORG-STANDARD-TODO-KEYWORDS*, or the keywords of
 #+TODO: lines among KEYWORDS; its group the stars and spaces before it, which
 stay."
   (let ((custom (loop for (nil . line) in keywords
-                      for groups = (nth-value 1 (cl-ppcre:scan-to-strings "(?i)^#\\+(TODO|SEQ_TODO|TYP_TODO):(.*)$" line))
+                      for groups = (nth-value 1
+                                              (cl-ppcre:scan-to-strings "(?i)^#\\+(TODO|SEQ_TODO|TYP_TODO):(.*)$" line))
                       when groups
                         append (remove "" (cl-ppcre:split "[ \\f\\t\\n\\r\\v|]+" (aref groups 1)) :test #'string=))))
     (cl-ppcre:create-scanner
@@ -178,7 +179,8 @@ written as Markdown links, the quote a fenced block."
             (unless leave-states (toc-edit lines (toc-states-scanner keywords) "\\1"))
             (setf lines (toc-drop-subtrees lines (lambda (text) (and (cl-ppcre:scan "^\\*+ +COMMENT +" text) 0))))
             (setf lines (toc-drop-subtrees lines (lambda (text)
-                                                   (let ((tag (find-if (lambda (tag) (cl-ppcre:scan "(?i)^noexport([@_][0-9])?$" tag))
+                                                   (let ((tag (find-if (lambda (tag)
+                                                                         (cl-ppcre:scan "(?i)^noexport([@_][0-9])?$" tag))
                                                                        (toc-line-tags text))))
                                                      (and tag (if (> (length tag) 8) (digit-char-p (char tag 9)) 0))))))
             (toc-edit lines (cl-ppcre:create-scanner "^(\\*+ +)\\[#.\\] +") "\\1")
@@ -196,9 +198,13 @@ written as Markdown links, the quote a fenced block."
                                                                  heading "")
                      for target = (if (string= style "org") visible (toc-gh-anchor heading taken))
                      collect (list (if markdown
-                                       (format nil "~a-~a[~a](~a)" (make-string (* 2 (1- stars)) :initial-element #\Space)
+                                       (format nil
+                                               "~a-~a[~a](~a)"
+                                               (make-string (* 2 (1- stars)) :initial-element #\Space)
                                                (subseq text stars spaces) visible target)
-                                       (format nil "~a-~a[[~a][~a]]" (make-string (* 2 (1- stars)) :initial-element #\Space)
+                                       (format nil
+                                               "~a-~a[[~a][~a]]"
+                                               (make-string (* 2 (1- stars)) :initial-element #\Space)
                                                (subseq text stars spaces) target visible))
                                    target (toc-line-position line) (toc-line-last line)))
                (toc-line-position tagged)
@@ -264,12 +270,12 @@ Markdown), at or after the character FROM (a line's start) begins, or NIL."
 
 (defun toc-place (text headline &optional (mark #\*))
   "Where the table of contents goes in TEXT under the headline beginning at the
-character HEADLINE, three values: the start and end of the
-text it replaces, from the line after the headline (past its drawers and the
-blank lines after each) to the end of the line before the next line beginning
-with MARK, a star (a # in Markdown); what goes before it, a line end when the
-headline is the last line and has none; and true when a line end goes after
-it, the next headline being right under the drawers."
+character HEADLINE, three values. The start and end of the text it replaces,
+from the line after the headline (past its drawers and the blank lines after
+each) to the end of the line before the next line beginning with MARK, a star (a
+# in Markdown). What goes before it, a line end when the headline is the last
+line and has none. And true when a line end goes after it, the next headline
+being right under the drawers."
   (let* ((n (length text))
          (line-end (or (position #\Newline text :start headline) n))
          (lead (if (= line-end n) (string #\Newline) ""))
@@ -429,7 +435,8 @@ visited. True when point is on a link."
                      (message "No heading here for ~a" target))))
               ((open-address-p target) (open-address target))
               ((string= target "") (message "The link leads nowhere"))
-              (t (visit-path (tuatara.io:native (tuatara.io:expand-path (subseq target 0 (or (position #\# target) (length target)))
+              (t (visit-path (tuatara.io:native (tuatara.io:expand-path (subseq target 0 (or (position #\# target)
+                                                                                             (length target)))
                                                                         :directory (buffer-directory buffer))))))
         t))))
 

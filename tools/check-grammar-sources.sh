@@ -44,7 +44,8 @@ stops=() reports=() watches=() diffs=()
 
 # the manifest's rows NAME URL COMMIT, those named on the command line or all
 rows() {
-  grep -v '^#' "$root/syntax/grammars.tsv" | grep -v '^[[:space:]]*$' | while IFS=$'\t' read -r name url commit license subpath; do
+  grep -v '^#' "$root/syntax/grammars.tsv" | grep -v '^[[:space:]]*$' |
+    while IFS=$'\t' read -r name url commit license subpath; do
     [ "$name" = tree-sitter-cli ] && continue
     if [ $# -gt 0 ]; then
       for wanted in "$@"; do [ "$wanted" = "$name" ] && printf '%s\t%s\t%s\n' "$name" "$url" "$commit"; done
@@ -56,7 +57,8 @@ rows() {
 
 # the pin and the repository of NAME in the manifest as git HEAD has it, or nothing
 committed_pin() {
-  { git -C "$root" show HEAD:syntax/grammars.tsv 2>/dev/null || true; } | awk -F'\t' -v n="$1" '$1 == n { print $3, $2 }'
+  { git -C "$root" show HEAD:syntax/grammars.tsv 2>/dev/null || true; } |
+    awk -F'\t' -v n="$1" '$1 == n { print $3, $2 }'
 }
 
 # a JSON answer of GitHub's API for the path $1, or nothing

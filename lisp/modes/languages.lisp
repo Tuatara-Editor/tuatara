@@ -42,7 +42,9 @@ they inherit is put in, are not used: NIL, and said."
       (let ((size (ignoring-errors-reported ("reading ~a" path)
                     (with-open-file (in path :element-type '(unsigned-byte 8)) (file-length in)))))
         (if (or (null size) (> size *rules-largest*))
-            (progn (rules-failed "The rules ~a are larger than ~:d characters: not used" (namestring path) *rules-largest*)
+            (progn (rules-failed "The rules ~a are larger than ~:d characters: not used"
+                                 (namestring path)
+                                 *rules-largest*)
                    nil)
             (let ((text (cl-ppcre:regex-replace-all
                          *query-inherits* (uiop:read-file-string path :external-format :utf-8)
@@ -74,22 +76,22 @@ for one of Tuatara's grammars are said as they are taken."
 (defstruct (language (:constructor make-language (name doc grammar modes rules indents indent textobjects
                                                   injections injection-names locals definitions tags))
                      (:copier nil))
-  "A language, of code or of text: its NAME (a symbol such as RUST), DOC, the GRAMMAR
-it is parsed with (the name of its grammar file), the MODES that edit it, its
-colouring RULES (their text), the STYLE set for it (:RICH, :SPARSE or :NONE;
-NIL for the one set for its modes, LANGUAGE-COLOURING), the LEVEL set for its
-sparse style (NIL for 3), and QUERY, the rules compiled when first
-needed (:FAILED when they could not be); its indentation rules, INDENTS (their
-text), the columns of one level of INDENT, and INDENT-QUERY, those rules
-compiled when first needed; the rules for selecting its functions, types,
-parameters and comments, TEXTOBJECTS (their text), with TEXTOBJECT-QUERY,
-those compiled when first needed; and its rules for text in other languages,
-INJECTIONS, with INJECTION-QUERY, and INJECTION-NAMES, a regular expression
-for the names other languages' rules call it by; its rules for local names,
-LOCALS, with LOCALS-QUERY; DEFINITIONS, the rules naming what
-\\[beginning-of-defun] and \\[end-of-defun] move between, with DEFINITIONS-QUERY;
-and TAGS, the rules naming its definitions and headings for \\[buffer-outline],
-with TAGS-QUERY."
+  "A language, of code or of text. NAME is a symbol such as RUST. DOC is its
+documentation string. GRAMMAR is the name of the grammar file it is parsed with.
+MODES are the modes that edit it. RULES is the text of its colouring rules.
+STYLE is the style set for it (:RICH, :SPARSE or :NONE; NIL for the one set for
+its modes, LANGUAGE-COLOURING). LEVEL is the level set for its sparse style (NIL
+for 3). QUERY is the rules compiled when first needed (:FAILED when they could
+not be). INDENTS is the text of its indentation rules, INDENT the columns of one
+level, and INDENT-QUERY those rules compiled when first needed. TEXTOBJECTS is
+the text of the rules for selecting its functions, types, parameters and
+comments, with TEXTOBJECT-QUERY, those compiled when first needed. INJECTIONS is
+its rules for text in other languages, with INJECTION-QUERY. INJECTION-NAMES is
+a regular expression for the names other languages' rules call it by. LOCALS is
+its rules for local names, with LOCALS-QUERY. DEFINITIONS is the rules naming
+what \\[beginning-of-defun] and \\[end-of-defun] move between, with
+DEFINITIONS-QUERY. TAGS is the rules naming its definitions and headings for
+\\[buffer-outline], with TAGS-QUERY."
   (name nil :read-only t)
   (doc "" :read-only t)
   (grammar "" :read-only t)
@@ -120,23 +122,36 @@ with TAGS-QUERY."
       (documentation 'language-grammar 'function) "The name of the grammar the language is parsed with."
       (documentation 'language-modes 'function) "The major modes that edit the language."
       (documentation 'language-rules 'function) "The text of the language's colouring rules, or NIL."
-      (documentation 'language-style 'function) "How the language is set to be coloured: :RICH, :SPARSE, :NONE, or NIL for as its modes are."
-      (documentation 'language-level 'function) "How much the sparse style is set to colour, from 1 (least) to 4 (all, as rich), or NIL for 3."
+      (documentation 'language-style 'function)
+      "How the language is set to be coloured: :RICH, :SPARSE, :NONE, or NIL for as its modes are."
+      (documentation 'language-level 'function)
+      "How much the sparse style is set to colour, from 1 (least) to 4 (all, as rich), or NIL for 3."
       (documentation 'language-query 'function) "The compiled colouring rules, :FAILED, or NIL before they are needed."
       (documentation 'language-indents 'function) "The text of the language's indentation rules, or NIL."
       (documentation 'language-indent 'function) "The columns of one level of indentation."
-      (documentation 'language-indent-query 'function) "The compiled indentation rules, :FAILED, or NIL before they are needed."
-      (documentation 'language-textobjects 'function) "The text of the rules for selecting the language's functions, types, parameters and comments, or NIL."
-      (documentation 'language-textobject-query 'function) "Those rules compiled, :FAILED, or NIL before they are needed."
-      (documentation 'language-injections 'function) "The text of the language's rules for text in other languages, or NIL."
-      (documentation 'language-injection-names 'function) "A regular expression for the names other languages' rules call this one by, or NIL."
-      (documentation 'language-injection-query 'function) "The rules for text in other languages compiled, :FAILED, or NIL before they are needed."
+      (documentation 'language-indent-query 'function)
+      "The compiled indentation rules, :FAILED, or NIL before they are needed."
+      (documentation 'language-textobjects 'function)
+      "The text of the rules for selecting the language's functions, types, parameters and comments, or NIL."
+      (documentation 'language-textobject-query 'function)
+      "Those rules compiled, :FAILED, or NIL before they are needed."
+      (documentation 'language-injections 'function)
+      "The text of the language's rules for text in other languages, or NIL."
+      (documentation 'language-injection-names 'function)
+      "A regular expression for the names other languages' rules call this one by, or NIL."
+      (documentation 'language-injection-query 'function)
+      "The rules for text in other languages compiled, :FAILED, or NIL before they are needed."
       (documentation 'language-locals 'function) "The text of the language's rules for local names, or NIL."
-      (documentation 'language-locals-query 'function) "The rules for local names compiled, :FAILED, or NIL before they are needed."
-      (documentation 'language-definitions 'function) "The text of the rules naming the language's definitions, each captured as @definition, or NIL."
-      (documentation 'language-definitions-query 'function) "Those rules compiled, :FAILED, or NIL before they are needed."
-      (documentation 'language-tags 'function) "The text of the rules naming the language's definitions and headings, or NIL."
-      (documentation 'language-tags-query 'function) "The rules naming definitions and headings compiled, :FAILED, or NIL before they are needed.")
+      (documentation 'language-locals-query 'function)
+      "The rules for local names compiled, :FAILED, or NIL before they are needed."
+      (documentation 'language-definitions 'function)
+      "The text of the rules naming the language's definitions, each captured as @definition, or NIL."
+      (documentation 'language-definitions-query 'function)
+      "Those rules compiled, :FAILED, or NIL before they are needed."
+      (documentation 'language-tags 'function)
+      "The text of the rules naming the language's definitions and headings, or NIL."
+      (documentation 'language-tags-query 'function)
+      "The rules naming definitions and headings compiled, :FAILED, or NIL before they are needed.")
 
 (defvar *languages* '()
   "Every language, the most recently defined first.")
@@ -168,16 +183,15 @@ a symbol of its defaults' package."
 
 (defun register-language (name doc grammar modes &key (indent 4) more-textobjects injection-names definitions queries)
   "Record language NAME with DOC, GRAMMAR and MODES, reading its colouring,
-indentation, selection and injection rules, one level of indentation being
-INDENT columns, MORE-TEXTOBJECTS the text of selection rules of its own,
-added to those read, INJECTION-NAMES a regular expression for the names
-other languages' rules call it by, and DEFINITIONS the text of the rules
-naming its definitions; a language defined again keeps the style and level
-chosen for it. One of Tuatara's own languages is never replaced from
-elsewhere (an init file, a package): that is refused, said, and NIL
-returned; a package adds languages of its own. This keeps a package from
-replacing one by mistake; it is no guard against one meaning to, as a
-package runs Lisp with all the rights Tuatara has."
+indentation, selection and injection rules. One level of indentation is INDENT
+columns. MORE-TEXTOBJECTS is the text of selection rules of its own, added to
+those read. INJECTION-NAMES is a regular expression for the names other
+languages' rules call it by. DEFINITIONS is the text of the rules naming its
+definitions. A language defined again keeps the style and level chosen for it.
+One of Tuatara's own languages is never replaced from elsewhere (an init file, a
+package): that is refused, said, and NIL returned. A package adds languages of
+its own. This keeps a package from replacing one by mistake; it is no guard
+against one meaning to, as a package runs Lisp with all the rights Tuatara has."
   (let ((old (find-language name)))
     (when (and old (own-language-p old) (not (own-language-name-p name)))
       (message "~(~a~) is one of Tuatara's own languages: a package or an init file adds languages, it does not replace them (~(~a~) left as it is)"
@@ -285,10 +299,10 @@ a thread of the background (*RULES-QUIET*)."
     (:text-objects language-textobject-query language-textobjects "selection"
      "The selection rules of ~(~a~) do not work: ~a" disable-unused-patterns))
   "The kinds of a language's rules that are compiled when first needed, each
-\(KIND KEPT SOURCE LABEL FAILURE AFTER): KEPT reads the rules compiled (and,
-with SETF, keeps them), SOURCE reads their text, LABEL names them to the
-compiler, FAILURE says they do not work given the language's name and the
-error, and AFTER, when given, is called with the rules once compiled.")
+\(KIND KEPT SOURCE LABEL FAILURE AFTER). KEPT reads the rules compiled (and, with
+SETF, keeps them). SOURCE reads their text. LABEL names them to the compiler.
+FAILURE says they do not work given the language's name and the error. AFTER,
+when given, is called with the rules once compiled.")
 
 (defvar *rules-unanswered* (make-hash-table :test 'eq :synchronized t)
   "For each language whose rules the program compiling them did not answer
@@ -437,12 +451,13 @@ rich, and level 3."
     (values (or style :rich) (or level 3))))
 
 (defun colouring-of (name)
-  "What (set-colouring NAME ...) colours: T for every buffer; :CSV for CSV and
-TSV (csv, tsv, or a mode made from csv-mode); the language called NAME, or that
-of the major mode called NAME; the name of a major mode that colours by rules
-of its own (MODE-OWN-COLOURING), as org-mode; else, for a major mode that edits
-no language itself, the mode's name when a language or CSV is edited in a mode
-made from it, :NOTHING when none is; NIL for a name that is none of these."
+  "The target of (set-colouring NAME ...), what it colours. It is T for every
+buffer, and :CSV for CSV and TSV (csv, tsv, or a mode made from csv-mode). It is
+the language called NAME, or that of the major mode called NAME. It is the name
+of a major mode that colours by rules of its own (MODE-OWN-COLOURING), as
+org-mode. Else, for a major mode that edits no language itself, it is the mode's
+name when a language or CSV is edited in a mode made from it, and :NOTHING when
+none is. It is NIL for a name that is none of these."
   (let ((mode (and (not (eq name t)) (find (string name) (mode-names) :key #'symbol-name :test #'string-equal))))
     (cond ((eq name t) t)
           ((or (member (string name) '("csv" "tsv") :test #'string-equal)
@@ -460,22 +475,21 @@ made from it, :NOTHING when none is; NIL for a name that is none of these."
 (defun tuatara-user:set-colouring (language style &key level)
   "Colour LANGUAGE (rust, bash, lisp), or the language of a major mode
 (rust-mode), in STYLE: :rich, the default, colours everything its rules name;
-:sparse colours only some kinds of thing, and LEVEL says how much: 1 comments and strings, 2 also keywords and functions, 3
-(the default) also types and constants, 4 everything; :none colours nothing.
-Every mode of the language goes with it. CSV and TSV (csv, csv-mode, tsv-mode)
-are coloured their own way, without levels: :rich each column in its own
-colour; :sparse only the separators, the quoted fields and the lines that
-start with #; :none nothing.
-Org (org-mode) colours by rules of its own, at the same styles and levels:
-level 1 its headlines, comments and keyword lines, 2 also TODO keywords, tags,
-emphasis, links, lists and code, 3 also dates. LANGUAGE may also be a major
-mode the modes of languages are made from, as prog-mode or text-mode (Org
-too), for all of them, or T for every buffer. What is set
-for a language itself comes first, then what is set for the nearest mode its
-mode is made from, then what is set for every buffer. For example, in the init
-file: (set-colouring 'rust :sparse), (set-colouring 'csv-mode :sparse),
-(set-colouring 'prog-mode :sparse), (set-colouring 'org-mode :sparse :level 2),
-(set-colouring t :sparse)."
+:sparse colours only some kinds of thing, and LEVEL says how much: 1 comments
+and strings, 2 also keywords and functions, 3 (the default) also types and
+constants, 4 everything; :none colours nothing. Every mode of the language goes
+with it. CSV and TSV (csv, csv-mode, tsv-mode) are coloured their own way,
+without levels: :rich each column in its own colour; :sparse only the
+separators, the quoted fields and the lines that start with #; :none nothing.
+Org (org-mode) colours by rules of its own, at the same styles and levels: level
+1 its headlines, comments and keyword lines, 2 also TODO keywords, tags,
+emphasis, links, lists and code, 3 also dates. LANGUAGE may also be a major mode
+the modes of languages are made from, as prog-mode or text-mode (Org too), for
+all of them, or T for every buffer. What is set for a language itself comes
+first, then what is set for the nearest mode its mode is made from, then what is
+set for every buffer. For example, in the init file: (set-colouring 'rust
+:sparse), (set-colouring 'csv-mode :sparse), (set-colouring 'prog-mode :sparse), (set-colouring
+'org-mode :sparse :level 2), (set-colouring t :sparse)."
   (let ((found (colouring-of language)))
     (cond ((null found)
            (refuse "No language or major mode called ~(~a~); the languages are csv, ~{~(~a~)~^, ~}."
@@ -501,7 +515,8 @@ file: (set-colouring 'rust :sparse), (set-colouring 'csv-mode :sparse),
 indent by levels: \\<normal>\\[indent-selection-or-line] and a new line's
 indentation use it. For example, in the init file: (set-indentation 'c 2)."
   (let ((found (find-language language)))
-    (unless found (refuse "No language called ~(~a~); there are ~{~(~a~)~^, ~}." language (mapcar #'language-name *languages*)))
+    (unless found
+      (refuse "No language called ~(~a~); there are ~{~(~a~)~^, ~}." language (mapcar #'language-name *languages*)))
     (unless (and (integerp columns) (<= 1 columns 16))
       (refuse "The columns must be a whole number from 1 to 16, not ~s." columns))
     (setf (language-indent found) columns)))
@@ -616,7 +631,9 @@ Returns the thread, or NIL."
                  (lambda ()
                    (unwind-protect
                         (let ((*rules-quiet* t))
-                          (language-compiled-query language :colouring) (language-compiled-query language :injection) (language-compiled-query language :locals))
+                          (language-compiled-query language :colouring)
+                          (language-compiled-query language :injection)
+                          (language-compiled-query language :locals))
                      (sb-ext:atomic-incf (car tuatara.syntax:*rules-generation*))
                      (ignoring-errors-reported ("waking the editor for new rules")
                        (tuatara.runtime:host-wake tuatara.runtime:*host*)))))))
@@ -660,12 +677,12 @@ LEVEL, or NIL when that style leaves them plain."
          face)))
 
 (defun language-for-injection (name)
-  "The language a rule for text in another language means by NAME: the one of
-that name, else one with a grammar of that name (the grammar's own language
-first), else the first whose
-injection names match all of NAME; for (:SHEBANG LINE) the language of the
-mode a file beginning with LINE gets, for (:FILENAME NAME) that of the mode a
-file called NAME gets; NIL when this editor has none."
+  "The language a rule for text in another language means by NAME. It is the one
+of that name, else one with a grammar of that name (the grammar's own language
+first), else the first whose injection names match all of NAME. For (:SHEBANG
+LINE) it is the language of the mode a file beginning with LINE gets, and for
+\(:FILENAME NAME) that of the mode a file called NAME gets. It is NIL when this
+editor has none."
   (let ((known (gethash name *injection-languages*)))
     (if known
         (and (not (eq known :none)) known)
@@ -748,7 +765,8 @@ buffer; the style each starts in is set in the init file with set-colouring."
                  (setf *colouring-rules* (cons (list name style level) (remove name *colouring-rules* :key #'first)))
                  (message "~a colouring: ~(~a~)" (tuatara.modes:mode-lighter name) style)))
               ((null language)
-               (message "~a is not in the mode of a language this editor colours" (tuatara.buffer:buffer-name (current-buffer))))
+               (message "~a is not in the mode of a language this editor colours"
+                        (tuatara.buffer:buffer-name (current-buffer))))
               (t
                (setf (language-style language) (next (language-colouring language mode)))
                (message "~@(~a~) colouring: ~(~a~)" (language-name language) (language-style language))))))))

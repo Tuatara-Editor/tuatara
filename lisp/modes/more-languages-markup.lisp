@@ -1,4 +1,5 @@
-;;;; lisp/modes/more-languages-markup.lisp --- The markup, documents, style sheets and templates Helix knows, in major modes named as Emacs's.
+;;;; lisp/modes/more-languages-markup.lisp --- The markup, documents, style sheets and templates Helix knows, in major
+;;;; modes named as Emacs's.
 ;;;; Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
 ;;;;
 ;;;; Each language is parsed with the grammar and coloured, indented and
@@ -15,7 +16,12 @@
   :lighter "XML"
   :block-comment ("<!--" "-->")
   :extensions ("ascx" "atom" "axaml" "axml" "bpmn" "checkstyle" "cpt" "csl" "dita" "ditamap" "dtml" "fods" "fodt" "fxml" "gir" "glif" "gml" "gpx" "iml" "isml" "itermcolors" "jmx" "kml" "launch" "menu" "mobileconfig" "mpd" "musicxml" "mxml" "ncx" "nuspec" "opml" "osc" "osm" "plist" "policy" "pt" "publishsettings" "pubxml" "rbxlx" "rbxmx" "resx" "rng" "rss" "shproj" "smil" "storyboard" "sublime-snippet" "svg" "terminal" "tld" "tmx" "ui" "vcxproj" "wixproj" "wsdl" "wxi" "wxs" "xaml" "xbl" "xib" "xlf" "xliff" "xml" "xmp" "xoml" "xpdl" "xrc" "xsd" "xsl" "xul")
-  :patterns ("/[^/]*\\.csproj\\.user$" "/[^/]*\\.pubxml\\.user$" "/[^/]*\\.vbproj\\.user$" "/[^/]*\\.vcxproj\\.filters$" "/[^/]*\\.tm[Ll]anguage$" "/[^/]*\\.tm[Pp]references$" "/[^/]*\\.tm[Tt]heme$"))
+  :patterns ("/[^/]*\\.csproj\\.user$" "/[^/]*\\.pubxml\\.user$"
+                                       "/[^/]*\\.vbproj\\.user$"
+                                       "/[^/]*\\.vcxproj\\.filters$"
+                                       "/[^/]*\\.tm[Ll]anguage$"
+                                       "/[^/]*\\.tm[Pp]references$"
+                                       "/[^/]*\\.tm[Tt]heme$"))
 
 (define-language xml
   "XML documents, parsed with tree-sitter-xml."
@@ -354,7 +360,12 @@
 
 (define-language mail
   "Email messages saved as files (.eml): their headers and body, parsed with tree-sitter-mail."
-  :grammar "mail" :modes (eml-mode) :indent 4 :queries "mail" :injection-names "mail|eml|email" :definitions :textobjects)
+  :grammar "mail"
+  :modes (eml-mode)
+  :indent 4
+  :queries "mail"
+  :injection-names "mail|eml|email"
+  :definitions :textobjects)
 
 (define-major-mode markdoc-mode text-mode
   "Markdoc documents."

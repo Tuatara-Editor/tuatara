@@ -16,10 +16,10 @@
 (define-major-mode ielm-mode lisp-mode
   "Lisp typed to the running editor and evaluated there.
 \\<ielm-mode>\\[ielm-return] after a whole expression evaluates it and puts what
-it printed and its values after it, then a new prompt; \\[ielm-return] on an
-earlier input evaluates it again; \\[ielm-send-input] evaluates the input as it
-is; \\[ielm-previous-input] and \\[ielm-next-input] bring back earlier inputs;
-\\[ielm-kill-input] takes the input away; \\[ielm-change-working-buffer] chooses
+it printed and its values after it, then a new prompt. \\[ielm-return] on an
+earlier input evaluates it again. \\[ielm-send-input] evaluates the input as it
+is. \\[ielm-previous-input] and \\[ielm-next-input] bring back earlier inputs.
+\\[ielm-kill-input] takes the input away. \\[ielm-change-working-buffer] chooses
 the working buffer, the one the Lisp typed sees as current. \\[ielm-tab] and
 \\[completion-at-point] complete names."
   :lighter "IELM" :modal-class :excluded :interactive nil)
@@ -160,7 +160,10 @@ no prompt is found, or no expression follows."
         (when prompt
           (let* ((from (+ line prompt))
                  (to (min (tuatara.buffer:buffer-size buffer) (+ from (* 1024 1024))))
-                 (first (find 0 (lisp-elements (tuatara.text:rope-octets (tuatara.buffer:buffer-text buffer) :start from :end to))
+                 (first (find 0
+                              (lisp-elements (tuatara.text:rope-octets (tuatara.buffer:buffer-text buffer)
+                                                                       :start from
+                                                                       :end to))
                               :key #'third)))
             (return (and first (< (+ from (second first)) to)
                          (tuatara.buffer:buffer-string buffer :start (+ from (first first)) :end (+ from (second first))))))))
@@ -254,7 +257,8 @@ which are no Lisp, and colour its prompts over them."
                              for start = (tuatara.display:row-start row)
                              when (and (not (tuatara.display:row-continuation-p row)) (status-line-p buffer start))
                                collect (cons start (tuatara.display:row-end row)))))
-            (remove-if (lambda (span) (find-if (lambda (line) (and (<= (car line) (first span)) (< (first span) (cdr line)))) plain))
+            (remove-if (lambda (span)
+                         (find-if (lambda (line) (and (<= (car line) (first span)) (< (first span) (cdr line)))) plain))
                        (call-next-method)))
           (loop for row across rows
                 for start = (tuatara.display:row-start row)

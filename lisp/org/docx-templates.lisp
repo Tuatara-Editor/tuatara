@@ -342,7 +342,8 @@ it holds or taken away, the two marks' paragraphs taken away."
     (loop for (p . rest) on paragraphs
           for text in texts
           for i from 0
-          do (multiple-value-bind (match groups) (cl-ppcre:scan-to-strings "^\\{\\{\\{([#^])([A-Za-z][-\\w]*)\\}\\}\\}$" text)
+          do (multiple-value-bind (match groups)
+                 (cl-ppcre:scan-to-strings "^\\{\\{\\{([#^])([A-Za-z][-\\w]*)\\}\\}\\}$" text)
                (when match
                  (let* ((name (string-downcase (aref groups 1)))
                         (end (position (format nil "{{{/~a}}}" name) texts :start (1+ i) :test #'string-equal)))
@@ -371,7 +372,8 @@ holding only {{{NAME:path}}} as that picture."
        (concatenate
         'string
         ;; the note's text and contents begin a page when the paragraph that held them did
-        (if (and (member text '("{{{body}}}" "{{{contents}}}") :test #'string=) (search "<w:pageBreakBefore/>" paragraph-xml))
+        (if (and (member text '("{{{body}}}" "{{{contents}}}") :test #'string=)
+                 (search "<w:pageBreakBefore/>" paragraph-xml))
             "<w:p><w:r><w:br w:type=\"page\"/></w:r></w:p>"
             "")
         (multiple-value-bind (name way size) (docx-place text)
@@ -410,9 +412,11 @@ where its places are."
 and footers, sorted, each once (TEMPLATE-PLACES)."
   (template-places (docx-template-text parts)))
 
-(defparameter *latex-only-places* '("packages" "latex_header" "font_fallbacks" "fonts" "engine" "created" "latex_class" "latex_class_options"
-                                    "secnumdepth" "tocdepth" "toc" "maketitle" "pdfauthor" "pdftitle" "pdfsubject" "pdfkeywords"
-                                    "pdflang" "pdfcreator")
+(defparameter *latex-only-places*
+  '("packages" "latex_header" "font_fallbacks" "fonts" "engine" "created" "latex_class" "latex_class_options"
+    "secnumdepth" "tocdepth" "toc" "maketitle" "pdfauthor" "pdftitle"
+    "pdfsubject" "pdfkeywords"
+    "pdflang" "pdfcreator")
   "The places only a LaTeX template has use for, never asked of a Word one.")
 
 (defun docx-pair-notes (name parts directory)
@@ -439,11 +443,15 @@ and the width its text has."
     (when sections
       (let* ((section (subseq document (car (car (last sections))) (cdr (car (last sections)))))
              (references (format nil "~{~a~}" (mapcar (lambda (e) (subseq section (car e) (cdr e)))
-                                                     (append (xml-elements section "w:headerReference") (xml-elements section "w:footerReference")))))
+                                                      (append (xml-elements section "w:headerReference")
+                                                              (xml-elements section "w:footerReference")))))
              (size (xml-element section "w:pgSz"))
              (margins (xml-element section "w:pgMar"))
-             (page (concatenate 'string (if size (subseq section (car size) (cdr size)) "") (if margins (subseq section (car margins) (cdr margins)) ""))))
-        (setf (docx-section *docx*) (list :references references :page page :title-page (and (search "<w:titlePg" section) t)))
+             (page (concatenate 'string
+                                (if size (subseq section (car size) (cdr size)) "")
+                                (if margins (subseq section (car margins) (cdr margins)) ""))))
+        (setf (docx-section *docx*)
+              (list :references references :page page :title-page (and (search "<w:titlePg" section) t)))
         (let ((width (docx-page-number page "w:pgSz" "w:w"))
               (left (docx-page-number page "w:pgMar" "w:left"))
               (right (docx-page-number page "w:pgMar" "w:right")))
@@ -501,10 +509,14 @@ the template's."
                     (and end (mapcar #'parse-integer (cl-ppcre:all-matches-as-strings "(?<=<w:lvl w:ilvl=\")\\d+" (subseq numbering at end))))))))))
     (setf (getf (docx-section *docx*) :design) design))
   ;; its text's size, what the sizes of tables and code are parts of
-  (let ((size (nth-value 1 (cl-ppcre:scan-to-strings "(?s)<w:rPrDefault>.*?<w:sz w:val=\"(\\d+)\"" (or (docx-part-text parts "word/styles.xml") "")))))
+  (let ((size (nth-value 1
+                         (cl-ppcre:scan-to-strings "(?s)<w:rPrDefault>.*?<w:sz w:val=\"(\\d+)\""
+                                                   (or (docx-part-text parts "word/styles.xml") "")))))
     (when size (setf *docx-base-size* (parse-integer (aref size 0)))))
   ;; its font's width, a monospaced one installed here measured
-  (let ((font (nth-value 1 (cl-ppcre:scan-to-strings "(?s)<w:rPrDefault>.*?<w:rFonts[^>]*w:ascii=\"([^\"]+)\"" (or (docx-part-text parts "word/styles.xml") "")))))
+  (let ((font (nth-value 1
+                         (cl-ppcre:scan-to-strings "(?s)<w:rPrDefault>.*?<w:rFonts[^>]*w:ascii=\"([^\"]+)\""
+                                                   (or (docx-part-text parts "word/styles.xml") "")))))
     (setf *docx-character-ratio* (or (and font (font-character-ratio (aref font 0))) 3/5)))
   (let ((numbering (docx-part-text parts "word/numbering.xml")) (top 2))
     (when numbering
@@ -522,12 +534,11 @@ the template's."
     (if at (concatenate 'string (subseq xml 0 at) addition (subseq xml at)) (concatenate 'string xml addition))))
 
 (defun docx-template-document (parts body)
-  "The document part of a Word document made from the template PARTS, BODY
-the note's text written: the template's document filled, BODY in its place,
-the text's own last section in place of the template's last when a break
-ends it and nothing follows it in the template; with sections in the text,
-the first page the first section's, and what follows columns going on on
-their page."
+  "The document part of a Word document made from the template PARTS, BODY the
+note's text written: the template's document filled, BODY in its place, the
+text's own last section in place of the template's last when a break ends it and
+nothing follows it in the template. With sections in the text, the first page
+the first section's, and what follows columns going on on their page."
   (let* ((document (docx-fill-xml (docx-part-text parts "word/document.xml")))
          ;; the text's own last section, when a break ends it and nothing follows it in the template,
          ;; in place of the template's last (no empty section after it)
@@ -579,7 +590,8 @@ the note's."
   (let ((theirs (docx-part-text parts "word/numbering.xml")) (ours (docx-numbering)))
     (if (null theirs)
         ours
-        (let ((abstracts (format nil "~{~a~}" (mapcar (lambda (e) (subseq ours (car e) (cdr e))) (xml-elements ours "w:abstractNum"))))
+        (let ((abstracts (format nil "~{~a~}" (mapcar (lambda (e) (subseq ours (car e) (cdr e)))
+                                                      (xml-elements ours "w:abstractNum"))))
               (nums (format nil "~{~a~}" (mapcar (lambda (e) (subseq ours (car e) (cdr e))) (xml-elements ours "w:num")))))
           ;; Word wants every abstractNum before the first num
           (let* ((first-num (search "<w:num " theirs))
@@ -605,9 +617,13 @@ and the pictures and links the note adds."
   (let* ((theirs (or (docx-part-text parts "word/_rels/document.xml.rels")
                      (docx-relationships "")))
          ;; the parts of ours the template lacks a relation to, newest first as DOCX-RELATIONS-XML takes them
-         (needed (remove nil (list (and (not (search "/relationships/footnotes\"" theirs)) (list "rIdTuataraFootnotes" "footnotes" "footnotes.xml" nil))
-                                   (and (not (search "/relationships/numbering\"" theirs)) (list "rIdTuataraNumbering" "numbering" "numbering.xml" nil))
-                                   (and (not (search "/relationships/styles\"" theirs)) (list "rIdTuataraStyles" "styles" "styles.xml" nil))))))
+         (needed (remove nil
+                         (list (and (not (search "/relationships/footnotes\"" theirs))
+                                    (list "rIdTuataraFootnotes" "footnotes" "footnotes.xml" nil))
+                               (and (not (search "/relationships/numbering\"" theirs))
+                                    (list "rIdTuataraNumbering" "numbering" "numbering.xml" nil))
+                               (and (not (search "/relationships/styles\"" theirs))
+                                    (list "rIdTuataraStyles" "styles" "styles.xml" nil))))))
     (docx-merge-into theirs "</Relationships>"
                      (concatenate 'string (docx-relations-xml needed) (docx-relations-xml (docx-relations *docx*))))))
 
@@ -617,11 +633,14 @@ own, with those of the pictures and parts Tuatara adds."
   (let ((theirs (docx-part-text parts "[Content_Types].xml")))
     (docx-merge-into theirs "</Types>"
                      (format nil "~{~a~}"
-                             (remove nil (list (and (not (search "Extension=\"png\"" theirs)) "<Default Extension=\"png\" ContentType=\"image/png\"/>")
-                                               (and (not (search "Extension=\"jpeg\"" theirs)) "<Default Extension=\"jpeg\" ContentType=\"image/jpeg\"/>")
-                                               (and (not (search "/word/numbering.xml" theirs)) "<Override PartName=\"/word/numbering.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.wordprocessingml.numbering+xml\"/>")
-                                               (and (not (search "/word/footnotes.xml" theirs)) "<Override PartName=\"/word/footnotes.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.wordprocessingml.footnotes+xml\"/>")
-                                               (and (not (search "/docProps/core.xml" theirs)) "<Override PartName=\"/docProps/core.xml\" ContentType=\"application/vnd.openxmlformats-package.core-properties+xml\"/>")))))))
+                             (remove nil
+                                     (list (and (not (search "Extension=\"png\"" theirs))
+                                                "<Default Extension=\"png\" ContentType=\"image/png\"/>")
+                                           (and (not (search "Extension=\"jpeg\"" theirs))
+                                                "<Default Extension=\"jpeg\" ContentType=\"image/jpeg\"/>")
+                                           (and (not (search "/word/numbering.xml" theirs)) "<Override PartName=\"/word/numbering.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.wordprocessingml.numbering+xml\"/>")
+                                           (and (not (search "/word/footnotes.xml" theirs)) "<Override PartName=\"/word/footnotes.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.wordprocessingml.footnotes+xml\"/>")
+                                           (and (not (search "/docProps/core.xml" theirs)) "<Override PartName=\"/docProps/core.xml\" ContentType=\"application/vnd.openxmlformats-package.core-properties+xml\"/>")))))))
 
 (defun docx-template-other-parts (parts)
   "The parts of the template PARTS a Word document made from it takes as they

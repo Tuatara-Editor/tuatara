@@ -12,7 +12,9 @@ starts the editor with it on.")
 
 (defparameter *test-debug-log*
   (setf tuatara.runtime:*debug-log-path*
-        (namestring (merge-pathnames (format nil "tuatara-debug-test-~36r.log" (random (expt 36 8) (make-random-state t)))
+        (namestring (merge-pathnames (format nil
+                                             "tuatara-debug-test-~36r.log"
+                                             (random (expt 36 8) (make-random-state t)))
                                      (uiop:temporary-directory))))
   "Where the tests' debug log goes: never the debug log of the editor in use.")
 
@@ -48,7 +50,8 @@ reports not yet shown."
              (true (cl-ppcre:scan "(?m)^ +[0-9]+\\.[0-9]{3}  \\S.* debug +debug mode on: Tuatara " text) "~a" text)))
          ;; again: off, said too
          (drain-debug-reports)
-         (multiple-value-bind (f editor) (run-keys "M-x d e b u g - m o d e RET M-x d e b u g - m o d e RET" :text "" :width 100)
+         (multiple-value-bind (f editor)
+             (run-keys "M-x d e b u g - m o d e RET M-x d e b u g - m o d e RET" :text "" :width 100)
            (declare (ignore f editor))
            (false tuatara.runtime:*debug-on*)
            (true (search "debug mode off" (tuatara.buffer:buffer-string (tuatara.buffer:find-buffer "*Debug*"))))))
@@ -104,7 +107,8 @@ reports not yet shown."
   ;; C-h E shows *Debug*
   (multiple-value-bind (f editor) (run-keys "C-h E" :text "" :width 80 :height 20)
     (declare (ignore f))
-    (is string= "*Debug*" (tuatara.buffer:buffer-name (tuatara.display:window-buffer (tuatara.command:editor-window editor)))))
+    (is string= "*Debug*"
+        (tuatara.buffer:buffer-name (tuatara.display:window-buffer (tuatara.command:editor-window editor)))))
   ;; *debug-mode* in the init file starts the editor with it on
   (unwind-protect
        (let ((tuatara-user:*debug-mode* t))
@@ -136,8 +140,9 @@ reports not yet shown."
       (unwind-protect
            (let ((tuatara.runtime:*debug-log-path* (namestring log))
                  (tuatara.runtime::*debug-log-begun* nil))
-             (multiple-value-bind (f editor) (run-keys "M-x d e b u g - m o d e RET i x C-g C-e M-x b e g i n n i n g - o f - l i n e RET"
-                                                       :text "abc" :width 100)
+             (multiple-value-bind (f editor)
+                 (run-keys "M-x d e b u g - m o d e RET i x C-g C-e M-x b e g i n n i n g - o f - l i n e RET"
+                           :text "abc" :width 100)
                (declare (ignore f editor))
                (let ((text (tuatara.buffer:buffer-string (tuatara.buffer:find-buffer "*Debug*"))))
                  (true (search "command    end-of-line (C-e)" text) "~a" text)
@@ -160,12 +165,14 @@ reports not yet shown."
          (ignore-errors (tuatara.runtime:reporting-errors ("sorting ~a" "a test") (error "a sort gone wrong")))
          (let ((texts (loop for report = (sb-concurrency:dequeue tuatara.runtime:*debug-reports*)
                             while report collect (fourth report))))
-           (true (find-if (lambda (text) (and (search "sorting a test failed: a sort gone wrong" text) (search "    (" text)))
+           (true (find-if (lambda (text)
+                            (and (search "sorting a test failed: a sort gone wrong" text) (search "    (" text)))
                           texts)
                  "~a" texts)))
     (drain-debug-reports))
   (unwind-protect
-       (multiple-value-bind (f editor) (run-keys "M-x d e b u g - m o d e RET M-: ( e r r o r SPC \" o o p s \" ) RET" :text "" :width 100)
+       (multiple-value-bind (f editor)
+           (run-keys "M-x d e b u g - m o d e RET M-: ( e r r o r SPC \" o o p s \" ) RET" :text "" :width 100)
          (declare (ignore f editor))
          (let ((text (tuatara.buffer:buffer-string (tuatara.buffer:find-buffer "*Debug*"))))
            (true (search "evaluating Lisp: oops" text) "~a" text)))

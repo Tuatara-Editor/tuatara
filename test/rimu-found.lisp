@@ -19,7 +19,8 @@ then has KEYS typed."
   (let ((start (get-internal-real-time)))
     (labels ((check ()
                (let ((f (tuatara.command:editor-frontend tuatara.command:*editor*)))
-                 (if (and (not (searches-done)) (< (- (get-internal-real-time) start) (* 20 internal-time-units-per-second)))
+                 (if (and (not (searches-done))
+                          (< (- (get-internal-real-time) start) (* 20 internal-time-units-per-second)))
                      (progn (sleep 0.02) (tuatara.frontend.fake:fake-queue-action f #'check))
                      ;; one tick more, for the job to be taken in
                      (progn (tuatara.frontend.fake:fake-queue-action f (lambda () nil))
@@ -187,7 +188,8 @@ Returns the frontend and the editor."
           (run-keys (list (lambda ()
                             (tuatara.defaults::rimu-show-paths
                              (list (list (concatenate 'string box "other.txt"))
-                                   (list (concatenate 'string box "notes.txt") (concatenate 'string box "deep/again.txt")))
+                                   (list (concatenate 'string box "notes.txt")
+                                         (concatenate 'string box "deep/again.txt")))
                              :name "*given*" :words "Three files given" :safe t))
                           (after-searches "g r")
                           (after-searches "C-l"))

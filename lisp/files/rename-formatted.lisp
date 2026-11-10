@@ -50,7 +50,9 @@ keywords, as two values."
   "True when LINE can be one of a text file's header, either a field (a name and a
 colon, as title: and tags:) or a line of dashes under them."
   (let ((colon (position #\: line)))
-    (or (and colon (plusp colon) (every (lambda (c) (or (alphanumericp c) (char= c #\_) (char= c #\-))) (subseq line 0 colon)))
+    (or (and colon
+             (plusp colon)
+             (every (lambda (c) (or (alphanumericp c) (char= c #\_) (char= c #\-))) (subseq line 0 colon)))
         (and (plusp (length line)) (every (lambda (c) (char= c #\-)) (string-trim " " line))))))
 
 (defun header-lines-end (lines style)
@@ -116,7 +118,10 @@ of both ends, left as it is."
                     (let ((at (position-if (lambda (line) (header-prefix-p title-prefix line)) header)))
                       (when at
                         (setf header (append (subseq header 0 (1+ at))
-                                             (list (concatenate 'string keywords-prefix " " (header-keywords style (name-keywords keywords))))
+                                             (list (concatenate 'string
+                                                                keywords-prefix
+                                                                " "
+                                                                (header-keywords style (name-keywords keywords))))
                                              (subseq header (1+ at)))))))
                   (format nil "~{~a~^~%~}" (append header (subseq lines end)))))))))))
 

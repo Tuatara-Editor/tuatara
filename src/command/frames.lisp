@@ -154,16 +154,18 @@ for, and those of the session kept.")
 
 (defun open-frame (editor &key buffer (select t) then)
   "Open another frame of EDITOR beside the frame worked in, showing BUFFER,
-else the buffer of the window worked in, and with SELECT make it the one
-worked in, brought before the others; returns it. Where the display shows
-one frame at a time, as a terminal does, the new frame takes turns on it with
-the others (FRAME-TAKING-TURNS-P): with SELECT it is shown in their place.
+else the buffer of the window worked in. With SELECT make it the one worked
+in, brought before the others. Returns it.
+Where the display shows one frame at a time, as a terminal does, the new frame
+takes turns on it with the others (FRAME-TAKING-TURNS-P): with SELECT it is
+shown in their place.
 A client of an editor running in the background in a window of its own is
-asked for another window, and NIL returned at once: the frame opens when the
-window comes (OPEN-FRAME-ASKED-FOR), and the echo area says so meanwhile;
-one that shows as many windows as it may, or has as many still to come, is
-asked for none, and that is said. THEN, a function of the frame, is called
-with it once it is open, at once or when its window comes."
+asked for another window, and NIL returned at once. The frame opens when the
+window comes (OPEN-FRAME-ASKED-FOR), and the echo area says so meanwhile. One
+that shows as many windows as it may, or has as many still to come, is asked
+for none, and that is said.
+THEN, a function of the frame, is called with it once it is open, at once or
+when its window comes."
   (let* ((here (editor-frontend editor))
          (another (tuatara.frontend:frontend-another here))
          (window (editor-window editor))
@@ -328,12 +330,12 @@ look that is due may be taken."
 (defun paint-other-frames (editor &key now)
   "Paint each frame of EDITOR shown on a display of its own beside the one
 worked in whose text may have changed since it was painted
-\(FRAME-SHOWN-CHANGED-P), a setting changed moving the display generation on
-\(LOOK-AT-SETTINGS), at most every *FRAME-AT-LEAST-EVERY* milliseconds, or
-with NOW at once, and never while keys wait: returns NIL, or the seconds
-after which it wants to be asked again, a frame or a look having waited for
-its turn. With one frame, or only frames waiting their turn on the display
-of the one worked in (FRAME-TAKING-TURNS-P), nothing is done."
+\(FRAME-SHOWN-CHANGED-P), or a setting changed moving the display generation on
+\(LOOK-AT-SETTINGS). It paints at most every *FRAME-AT-LEAST-EVERY*
+milliseconds, or with NOW at once, and never while keys wait. Returns NIL, or
+the seconds after which it wants to be asked again, a frame or a look having
+waited for its turn. With one frame, or only frames waiting their turn on the
+display of the one worked in (FRAME-TAKING-TURNS-P), nothing is done."
   (let ((frames (editor-frames editor)))
     (when (rest frames)
       (let* ((current (editor-frame editor))
@@ -451,9 +453,9 @@ answered."
 (defun run-free-frames-deferred (editor asking)
   "Do what waits to be done in the frames of EDITOR whose question does not
 wait (FRAME-DEFERRED), each with its frame the one worked in, oldest first in
-each frame, until none waits; but not in those taking turns on the display
-of ASKING, the frame whose question is answered (FRAME-TAKING-TURNS-P),
-whose work waits for it, so that the display goes over to another frame only
+each frame, until none waits. This is not done in those taking turns on the
+display of ASKING, the frame whose question is answered (FRAME-TAKING-TURNS-P).
+Their work waits for it, so that the display goes over to another frame only
 when you go there."
   (loop for frame = (find-if (lambda (frame)
                                (and (frame-deferred frame) (not (frame-held frame))
@@ -465,21 +467,21 @@ when you go there."
 
 (defun run-inside-question (editor frame event)
   "Handle EVENT, done in FRAME, one of EDITOR's frames, while the frame worked
-in asks a question; with no EVENT, only take in work in the background. With
-the variables of the question as they are outside every command
+in asks a question. With no EVENT, only take in work in the background.
+With the variables of the question as they are outside every command
 \(*QUESTION-VARIABLES*), EVENT runs in FRAME as the command loop runs it, a
-question of its own asked in turn; then, as between commands, what work in
-the background has for the editor is taken in (TAKE-IN-BACKGROUND), but for
-the jobs a waiting question holds back (HOST-JOB-WAITS-P), and what waits to
-be done in the frames whose question does not wait is done
-\(RUN-FREE-FRAMES-DEFERRED). The frame asking is the one worked in again
-after, its question going on, and the frames whose text changed are painted.
+question of its own asked in turn. Then, as between commands, what work in the
+background has for the editor is taken in (TAKE-IN-BACKGROUND), but for the
+jobs a waiting question holds back (HOST-JOB-WAITS-P). What waits to be done in
+the frames whose question does not wait is done (RUN-FREE-FRAMES-DEFERRED).
+The frame asking is the one worked in again after, its question going on, and
+the frames whose text changed are painted.
 Meanwhile the buffers the question is about, the one its command works in and
 *BUFFERS-ASKED-ABOUT*, are held as it asks about them
-\(*BUFFERS-HELD-BY-QUESTIONS*). That question is given up, as \\`C-g' gives
-it up, when what ran stopped the editor or killed a buffer the question is
-about; when it closed the frame asking, once the question reads on
-\(READ-EVENT)."
+\(*BUFFERS-HELD-BY-QUESTIONS*). That question is given up, as \\`C-g' gives it
+up, when what ran stopped the editor or killed a buffer the question is about.
+When what ran closed the frame asking, the question is given up once it reads
+on (READ-EVENT)."
   (let ((asking (editor-frame editor))
         (about (adjoin (current-buffer) *buffers-asked-about*))
         (this-command (editor-this-command editor))

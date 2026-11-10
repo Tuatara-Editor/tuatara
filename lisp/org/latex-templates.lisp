@@ -55,7 +55,10 @@ than a name: it holds a /, starts with ~ or ends with .tex."
 PATH stands in DIRECTORY or a folder in it, in your own templates' folder, or
 in one of *EXPORT-TRUSTED-FOLDERS*, links followed, so that a note given to
 you cannot make its export take in a file of yours from elsewhere."
-  (path-in-folders-p path (list* (or directory (tuatara.io:home-directory)) (latex-templates-directory) *export-trusted-folders*)))
+  (path-in-folders-p path
+                     (list* (or directory (tuatara.io:home-directory))
+                            (latex-templates-directory)
+                            *export-trusted-folders*)))
 
 (defun latex-template-for (value directory)
   "The template VALUE names, what a note's #+template: says: a file's
@@ -121,7 +124,8 @@ place, as in \\title{{{{title}}}}, stays a brace."
                                           (closing (format nil "{{{/~a}}}" key))
                                           (stop (search closing template :start2 after :test #'char-equal))
                                           (present (let ((v (funcall field key :text))) (and v (plusp (length v))))))
-                                     (unless stop (refuse "The template has ~a with no {{{/~a}}}" (subseq template i after) key))
+                                     (unless stop
+                                       (refuse "The template has ~a with no {{{/~a}}}" (subseq template i after) key))
                                      (when (if (char= (getf place :condition) #\#) present (not present))
                                        (fill-from after stop out))
                                      (setf i (+ stop (length closing)))))

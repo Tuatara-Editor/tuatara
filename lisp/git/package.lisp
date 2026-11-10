@@ -14,7 +14,11 @@
                 #:ask-project-trust #:buffer-in-mode #:buffer-private-folder #:check-not-saving #:column-text
                 #:commands-for-buffers #:commands-for-mode #:conflict-look-through #:delete-private-folder
                 #:diff-files #:diff-mode #:drop-selection #:entry-lines #:entry-member #:show-file-metadata
-                #:folder-holds-evidence-p #:ssh-askpass-window-p #:follow-directories-for #:forget-abandoned-folders #:fresh-made-buffer
+                #:folder-holds-evidence-p
+                #:ssh-askpass-window-p
+                #:follow-directories-for
+                #:forget-abandoned-folders
+                #:fresh-made-buffer
                 #:git-commit-mode #:git-rebase-mode #:goto-shown #:kill-text #:killed-job-buffer-p #:rimu-archive-list
                 #:list-entry-at #:list-folded #:list-section-at #:list-step-entry #:list-toggle-all-folds
                 #:list-toggle-fold #:make-owned-folder #:make-rimu-listing #:marked-directory #:new-private-folder
@@ -32,12 +36,12 @@
                 #:save-buffer-with-care #:save-buffers-kill-editor #:say-in-background #:sectioned-pieces
                 #:set-made-text #:rimu-set-column #:show-list-text #:shown-file #:special-mode #:table-list-rows
                 #:text-columns #:list-toggle-section #:trash-changed #:view-made-text #:visit-path)
-  (:documentation "Git from the editor: every git command run, never through a shell nor on the
-editor's thread, with what keeps a repository not trusted from running anything
-of its own; and the status, log, commits, branches, history and the rest of
-the git command, as git users expect them; and rimu's git column and its lists of a
-folder as a commit left it. Other parts of the editor run git through what is
-exported here.")
+  (:documentation "Git from the editor. Every git command is run, never
+through a shell nor on the editor's thread, with what keeps a repository not
+trusted from running anything of its own. It has the status, log, commits,
+branches, history and the rest of the git command, as git users expect them,
+and rimu's git column and its lists of a folder as a commit left it. Other
+parts of the editor run git through what is exported here.")
   (:export #:install-git
            ;; running git, for the change gutter, rimu, trust and packages
            #:run-git #:run-git-program #:*git-safety* #:git-network-environment #:git-failure-words #:git-hash-p

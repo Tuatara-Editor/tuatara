@@ -222,3 +222,10 @@ text, a rectangle or a number in, C-x r j goes back to a place, C-x r + adds, C-
           (let ((editor (nth-value 1 (run-keys (format nil "C-u C-x C-f C-a C-k ~a RET C-x r i n" (rimu-typed plain))
                                                :width 200))))
             (is string= "one" (session-text editor))))))))
+
+(define-test (registers question-gone-once-answered)
+  (with-clean-registers
+    (dolist (keys '("C-x r p a C-x r j a" "C-SPC M-f C-x r s a C-x r i a" "C-x r p a C-x r s a"))
+      (let ((f (run-keys keys :text "one two" :width 60 :height 8)))
+        (false (some (lambda (row) (search "register: " row)) (tuatara.frontend.fake:fake-screen f))
+               "~a" keys)))))

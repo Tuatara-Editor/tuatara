@@ -1,0 +1,591 @@
+#+title: Packages
+#+language: en
+
+* Packages
+
+Adding to Tuatara what not everyone needs, and keeping it up to date.
+
+Tuatara does a lot by itself, but some things are wanted by only a few
+people. One person reads Outlook mailboxes, another keeps a calendar in step
+with a phone, another wants a different set of colours. Putting all of that in
+the editor would make it larger and slower for everyone. So these things are
+kept apart, as packages, and you add the ones you want. This chapter explains
+what a package is, how you name one in your init file, how Tuatara fetches and
+checks it, and how you update it, switch it off or get rid of it. The end of
+the chapter describes the packages the project publishes.
+
+The init file is the file where you tell Tuatara how you like things. Chapter
+20 covers it. Here you only add a line or two to it, which the steps show.
+Every key in this chapter is pressed in NORMAL state unless it starts with
+~C-x~ or ~C-c~, which work in both states.
+
+** What a package is
+
+A package is a folder of Lisp files that adds something to Tuatara: a
+command, a way of opening a kind of file, a set of colours. Lisp is the
+language Tuatara is written in. You do not need to read it to use a package,
+but you can, and Tuatara offers to show it to you before it runs anything.
+
+A package lives in one of two places. Most live in a git repository on the
+internet, which is a folder of files with a history of every change made to
+it. Tuatara fetches the version you ask for into a folder of its own. The
+other kind is a folder on your own disk, which suits something you wrote
+yourself. Tuatara calls the place a package comes from its source.
+
+A package does three things for you that a loose file of code would not.
+Tuatara compiles it, which turns the Lisp into a form the computer runs fast,
+and it does this in the background while you go on typing. It loads the
+package at every start, in a few thousandths of a second, from the compiled
+form. And it checks who signed the version it fetched, so that a changed
+package does not slip in unnoticed.
+
+** Naming a package in your init file
+
+You name a package with a line in your init file. The line says what the
+package is called and where it comes from:
+
+#+begin_src lisp
+(load-package "themes"
+              :source "https://github.com/Tuatara-Editor/tuatara-themes")
+#+end_src
+
+=load-package= is the whole interface. The name comes first, in quotes, and
+the rest are keywords, each followed by its value. Only the keywords you need
+are written. Tuatara reads the init file when it starts, fetches the package
+the first time, and asks you about it (see "The first load" below).
+
+If you use a source for several packages, give it a short name once with
+=package-source=, and use that name after =:source=:
+
+#+begin_src lisp
+(package-source "mine" "~/Projects/my-packages/")
+(load-package "hello" :source "mine")
+#+end_src
+
+An address that begins with =https://= or =ssh=, or a folder on your disk
+(=~/= means your home folder), is accepted. An address that begins with
+=http://= or =git://= is refused, because anyone on the way could read it and
+change what is sent. Section "Sources that are not encrypted" says how to
+allow one on a network you trust.
+
+*** The keywords
+
+#+caption: Table 19.1. What can follow the name in a =load-package= line.
+| Keyword            | What it says                                            |
+|--------------------+---------------------------------------------------------|
+| =:source=          | Where the package comes from: the name given with       |
+|                    | =package-source=, an address, or a folder.              |
+| =:version=         | Which version to fetch: a tag, a branch or a commit.    |
+|                    | Left out, or ="release"=, it is the newest tag. With    |
+|                    | ="latest"= it is the newest commit, and it is also the  |
+|                    | one taken when the repository has no tag yet. A whole   |
+|                    | 40-character commit keeps the package at that commit.   |
+| =:folder=, =:file= | The package's folder inside the source, and its first   |
+|                    | file, when they are not the package's name. The folder  |
+|                    | is =NAME/=, else the top of the source. The file is     |
+|                    | =NAME.lisp=, else =load.lisp=.                          |
+| =:signers=         | The fingerprints of the keys that must have signed it.  |
+| =:plain t=         | Allows an =http://= or =git://= address.                |
+| =:disabled t=      | Leaves the whole line out, as if it were not there.     |
+| =:if FORM=         | Leaves the line out when =FORM= gives =nil=. It is how  |
+|                    | one init file serves two machines.                      |
+| =:defer t=         | Loads the package once Tuatara has started, not while   |
+|                    | the init file is read.                                  |
+| =:after "other"=   | Loads it only after the package or group =other= has.   |
+| =:commands=        | Loads it when one of these commands is first run.       |
+| =:modes=           | Loads it when a buffer first takes one of these modes.  |
+| =:init=, =:config= | Forms run before the package loads, and after it. Its   |
+|                    | settings and keys go after =:config=.                   |
+
+A form is a piece of Lisp in brackets, such as =(setf *garamond-mode-line*
+nil)=. =:config= takes any number of them, one after another. This is the
+place for a package's settings, since they exist only once the package has
+loaded:
+
+#+begin_src lisp
+(load-package "garamond"
+              :source "https://github.com/Tuatara-Editor/tuatara-garamond"
+              :config
+              (setf *garamond-mode-line* nil))
+#+end_src
+
+=:defer=, =:after=, =:commands= and =:modes= are for starting quickly. A
+package you use once a week does not have to be ready at the first frame. With
+=:commands= or =:modes= it waits until you ask for it. Even then you do not
+have to remember to load it: running one of its commands loads it first.
+
+=load-package= with no =:source= loads nothing. It groups settings and keys
+under a name, the way the starter init file does for ="keys"= and ="looks"=.
+Tuatara also corrects a misspelt name: a name a letter or two away from a
+package it knows is an error that names the one it thinks you meant.
+
+*** The first load
+
+The first time Tuatara meets a package it fetches it, in the background, and
+asks before it compiles and loads it:
+
+#+begin_example
+Compile and load the package themes from https://github.com/...? (y, n, or v to view its source)
+#+end_example
+
+You answer with one key, with no =RET=. ~y~ goes on. ~n~ leaves the package
+unloaded, and Tuatara asks again at the next start. ~v~ lists the package's
+folder so that you can read its source first, opened safely so that nothing in
+it runs. ~C-g~ means "not now" and also asks again next time. Any other key
+puts =Answer y, n or v.= before the question and asks again. Keys you typed
+before the question appeared are thrown away, so a key meant for your text can
+never answer it.
+
+After ~y~ the compiling happens in a second copy of Tuatara that has no window
+and runs apart from your editor. You can keep working. ~C-x j~ lists the job
+and ~C-x J~ stops it. When it is done, the package loads in one step, between
+two of your commands, so no command ever runs with a package half loaded.
+
+If you trust your sources and want no question, set
+=*package-ask-before-loading*= to =nil=.
+
+** The package manager
+
+~M-x package-manager~ shows the packages your init file loads from a source,
+one line each, in a buffer called =*Packages*=. It works as the buffer list
+of chapter 7 does: you move over the lines, mark some, and act on the marked
+ones.
+
+#+caption: Figure 19.1. The package manager, with its README beside it.
+#+name: fig-package-manager
+#+begin_example
+ M Name        Version  Commit   State     Signed by      Source
+ - ----        -------  ------   -----     ---------      ------
+   themes      v0.3     4c1e9a0  loaded    Aroha Ngata    https://github.com/T…
+ > kitty       v0.2     b07d332  loaded    Aroha Ngata    https://github.com/T…
+   hello       folder            loaded    unsigned       ~/Projects/my-pack…
+   outlook     v1.1     91ac7e5  unloaded  Aroha Ngata    https://github.com/T…
+
+   4 packages, 3 loaded
+#+end_example
+
+The columns are the mark, the name, the version (=folder= for a folder of
+your disk), the first letters of the commit, what became of the package this
+session, who signs its source's versions, and the source. The state is one of
+=loaded=, =fetching=, =failed=, =refused=, =declined=, =kept=, =unloaded=,
+=removed= and =not fetched=. A package that is not loaded is drawn in the
+faint colour, as in the figure. =declined= means you said no at the question.
+=refused= means its code uses a name this Tuatara does not have, because the
+package is newer than your Tuatara or a newer Tuatara renamed something. A
+refused package is never run, and the reason shows beside the list where the
+README would be. The README of the package under the cursor shows beside the
+list, or below it when the window is narrow. ~P~ turns it off and on.
+
+The keys are those of the lists you already know, with a few of its own.
+
+#+caption: Table 19.2. Keys in the package manager.
+| Modal | Non-modal          | What it does                                            |
+|-------+--------------------+---------------------------------------------------------|
+| none  | ~RET~, ~l~         | Lists the package's folder, to read its source.         |
+| none  | ~o~                | The same, in another window.                            |
+| none  | ~n~, ~p~           | Go to the next package, and the one before.             |
+| none  | ~m~, ~u~, ~U~, ~t~ | Mark, unmark, unmark all, swap the marks.               |
+| none  | ~f~                | Fetches the marked packages again (see "Updating").     |
+| none  | ~L~                | Loads the marked ones.                                  |
+| none  | ~K~                | Unloads the marked ones from the running editor.        |
+| none  | ~R~                | Removes them: unloads them and keeps them from loading. |
+| none  | ~d~, then ~x~      | Marks for deletion, then deletes what is kept of them.  |
+| none  | ~D~                | Deletes what is kept of the marked ones.                |
+| none  | ~h~, ~q~           | Closes the list.                                        |
+
+With nothing marked, each of these acts on the package on the cursor's line.
+
+~M-x package-scan~ reads your init file again for =load-package= lines that
+have a =:source=, loads each package that is not loaded, as at a start, and
+then shows the package manager. It is what you run after adding a line to the
+init file, when you do not want to restart Tuatara.
+
+#+begin_try Try it, adding the themes package
+1. Press ~C-x C-f~, type =~/.config/tuatara/init.lisp= and press ~RET~. This
+   is your init file.
+2. Press ~g~ then ~e~ to go to the end. Press ~o~ to open a new line and
+   type:
+   =(load-package "themes" :source "https://github.com/Tuatara-Editor/tuatara-themes")=
+3. Press ~C-g~ and then ~C-x C-s~ to save.
+4. Run ~M-x package-scan~. =*Packages*= opens with a line for =themes=. In a
+   moment the question appears. Press ~v~ to look at the source, then ~q~ to
+   come back, and answer ~y~. If the line says =failed= and the echo row says
+   the package is refused because of a signer, your keyring lacks the key
+   that signed it. Import it as described under "Signatures and trust", run
+   ~M-x package-update~ and try again.
+5. The echo row says the package is compiled and loaded. The line in the list
+   now says =loaded=.
+6. Run ~M-x load-theme~. The list now includes fourteen more themes. Choose
+   =nord= and press ~RET~. The colours change at once.
+#+end_try
+
+*** Commands of the package manager
+
+#+table: commands package-manager package-scan
+
+** Updating
+
+A package fetched from a repository keeps the version you first took. When its
+author publishes a newer one, ~M-x package-update~ looks again. It asks each
+repository for the version the =load-package= line wants (the newest tag, the
+newest commit, or the tag, branch or commit you named), fetches what is new in
+the background and, when it is a different commit from the one you have, asks
+the question of the first load again. Packages that are already up to date
+are said to be so. Folders of your own disk are left alone, since you change
+those yourself.
+
+~M-x package-update-marked~, or ~f~ in the package manager, does the same for
+only the packages you marked, or for the one on the line.
+
+A package can say, in a comment at the top of its first file, the oldest
+Tuatara it works with: =;;;; Needs: Tuatara 0.91.0=. Tuatara reads that line
+without running anything. If the newest version needs a newer Tuatara than
+yours, Tuatara looks back through the earlier versions for the newest that
+fits, says which one it took, and loads that. If none fits, the version you
+have stays. A package that says nothing loads in any Tuatara.
+
+Tuatara keeps the version it took and the one before it, each with its
+compiled files. When a new version fails to load, because it cannot be
+compiled or uses a name your Tuatara lacks, the one before it is loaded in its
+place, and a message tells you so once.
+
+#+begin_try Try it, updating everything
+1. Run ~M-x package-update~. The echo row says it is fetching.
+2. Press ~C-x j~ to see the job. When it finishes, packages with nothing new
+   are said to be up to date.
+3. If a package has a new commit, the question of the first load appears for
+   it. Press ~v~ to read what changed, ~q~ to come back, then ~y~.
+4. Open ~M-x package-manager~. The Version and Commit columns show what you
+   have now.
+5. To update only some: press ~m~ on two packages, then ~f~. Only those two
+   are fetched again.
+#+end_try
+
+*** Commands for updating
+
+#+table: commands package-update package-update-marked
+
+** Signatures and trust
+
+Code you load runs with all your rights. That is true of any editor's
+extensions. So Tuatara asks who signed each version, as one way of noticing
+when something has changed hands.
+
+The author signs a tag or a commit with a key, using GPG or SSH. Tuatara asks
+git who signed the one it fetched. Git does the checking, with =gpg= and your
+keyring for a GPG signature and with =ssh-keygen= for an SSH one, and nothing
+in the repository is run to do it. The question at the first load says who
+signed the version, and your ~y~ makes that signer the one Tuatara remembers
+for the source. The memory is kept in a file called =package-trust= beside the
+packages, which you can read. This is called trust on first use: you decide
+once, and Tuatara holds the source to that decision.
+
+From then on:
+
+- A version signed by the same key is taken.
+- A version signed by another key, or unsigned when the versions before it
+  were signed, or whose signature does not check out, is refused. The version
+  you have keeps running.
+- A source whose first version was unsigned goes on having unsigned versions
+  taken, since nobody has to sign. The first signed version makes its signer
+  the one remembered.
+
+A refusal says what changed:
+
+#+begin_example
+The package tally from https://example.org/tally.git is refused: unsigned,
+and the versions taken before were signed by Ann Author (key SHA256:...).
+The version loaded now is kept; M-x package-trust-again trusts its source
+anew, as the first time
+#+end_example
+
+Sometimes the change is honest: the author has a new key, or moved the
+project. Then you decide, as at the first time. ~M-x package-trust-again~
+asks which package, forgets who signed its source, and fetches it again. The
+question names the new signer, and your ~y~ makes it the one remembered. Think
+before you press it. If you do not know why the key changed, ask the author.
+
+A version signed with a GPG key your keyring lacks is refused, and Tuatara
+remembers the key's fingerprint. Import the key with ~M-x gpg-import-keys~ and
+run ~M-x package-update~. Versions signed by that key, or by the key it
+belongs to, are then taken.
+
+#+table: commands package-trust-again gpg-import-keys
+
+*** Naming the signers yourself
+
+If you know whose keys you want, say so, and only versions signed by them are
+taken, from the very first:
+
+#+begin_src lisp
+(package-source "mine" "https://example.org/my-packages.git"
+                :signers '("SHA256:hdVZ5mzqXcO1EQf8N4u9MJvZb7TfsHkLqR2wPaXyC0s"))
+#+end_src
+
+An SSH key's fingerprint is what =ssh-keygen -lf KEY.pub= prints. A GPG key's
+is the 40 hexadecimal digits that =gpg --fingerprint= shows. A key's short ID
+is refused, and so is a signing subkey's fingerprint: give the key's own.
+=load-package= takes =:signers= as well. Names in the init file always decide
+for their source, and =package-trust-again= does not change that.
+
+*** Sources that are not encrypted
+
+A server inside your organisation may speak only =http://=. You can allow it
+for one package at a time:
+
+#+begin_src lisp
+(load-package "tally" :source "http://git.example.org/tally.git" :plain t)
+#+end_src
+
+Whoever controls the network between you and that server can hand you an older
+version of the package than the newest, one with a bug that has since been
+fixed. A signature does not stop that, because the old version is genuinely
+signed. Use =:plain t= only on a network you trust. The =Signed by= column of
+the package manager says =unencrypted= for these sources.
+
+*** Settings
+
+#+table: settings *package-check-signatures*
+
+=*package-check-signatures*= is =t=, and you should leave it so. Setting it to
+=nil= makes every version of every source be taken, signed by anyone or by no
+one, and nothing is remembered. That is only for a machine whose sources are
+trusted some other way. =M-x check-health= says when signatures are not
+checked.
+
+** Unloading and removing
+
+A package can be taken out of Tuatara in three steps, each going further than
+the one before.
+
+~M-x package-unload~ (~K~ in the package manager) takes the package out of
+the running editor: its commands, keys, modes, settings and hooks, and any
+work it has in the background, which is stopped. A buffer in one of its modes
+is put in the mode its file calls for, so nothing you typed is lost. The
+package's code stays on the disk and its =load-package= line stays in your
+init file, so it loads again at the next start. Use it for a package that is
+misbehaving, or to try Tuatara without it for the afternoon.
+
+~M-x package-remove~ (~R~) unloads it and keeps it from loading at the next
+start as well, without changing your init file. Tuatara remembers in its state
+folder that you removed the package, passes the =load-package= line over at
+each start and says so once in =*Messages*=. Its code stays on the disk, so
+bringing it back is quick.
+
+~M-x package-delete~ (~D~, or ~d~ then ~x~) unloads and removes it and then
+deletes what Tuatara keeps of it: the versions fetched and their compiled
+files. For a package from a folder of your own disk only the compiled files go.
+Your folder is never touched. It asks first, with the size of what goes:
+
+#+begin_example
+Unload, remove and delete the package hello, 1.2 MB? (y or n, then RET)
+#+end_example
+
+~M-x package-load~ (~L~) goes the other way. It loads a package again by its
+=load-package= line, as at the start. That works for one you unloaded, one you
+removed (it is then no longer removed), and one you deleted (it is fetched
+again). In the package manager each of these four acts on the packages you
+marked, or on the one on the line. Elsewhere the commands ask which package.
+
+To stop a package for good, also take its line out of your init file, or put
+=;;= in front of it, or add =:disabled t= to the line. Unloading alone does
+not do that. A deleted package that is still named in the init file comes back
+at the next start.
+
+#+begin_try Try it, removing a package you no longer use
+1. Run ~M-x package-manager~ and press ~j~ (non-modal: ~C-n~) until the cursor
+   is on =kitty=.
+2. Press ~R~. The package is unloaded and its state reads =removed=.
+3. Restart Tuatara and open the package manager again. =kitty= is still there
+   but is not loaded and was not asked about.
+4. Press ~L~ on its line. It loads again.
+5. To free the disk space as well, press ~D~. The question names the size.
+   Answer ~y~ and then ~RET~. Remove the =load-package= line from your init
+   file when you are sure you are done with it.
+#+end_try
+
+*** Commands for unloading and removing
+
+#+table: commands package-unload package-remove package-delete package-load
+
+*** Clearing out sources no longer used
+
+Tuatara keeps what it fetches until you say otherwise. When you rename a
+source or stop using one, the old copies stay in the packages folder.
+~M-x package-remove-unused~ finds them: every source that no =package-source=
+names and no =load-package= fetches from, and every package of a source you
+still use that no =load-package= names. A =load-package= turned off with
+=:disabled t=, or left out by =:if=, still counts as used.
+
+It lists what would go in =*Help*=, each with its size, and asks once.
+Answer ~n~ and nothing is touched. Answer ~y~ and the folders are deleted in
+the background. Each is looked at again just before it goes, so a source you
+name in the meantime stays. Only Tuatara's own packages folder is searched. A
+folder of your own disk named as a source is never touched. If your init file
+stopped at an error when Tuatara started, the command does nothing until the
+file reads through, since everything after the error would look unused.
+
+#+table: commands package-remove-unused
+
+*** Where packages are kept
+
+Tuatara keeps what it fetches in =~/.local/share/tuatara/packages/=, or under
+=$XDG_DATA_HOME= when you have set that. =*packages-directory*= puts them
+somewhere else. It must be a folder you made yourself, and while it is missing
+nothing is fetched or loaded from it. =*package-size-limit*= is the most a
+package may take on the disk while it is fetched, its history and files
+together. A fetch that grows past it is stopped and its files deleted. The
+standard is 512 MiB. =*package-sources*= holds the sources named with
+=package-source=. Set them with that function and not by hand.
+
+#+table: settings *package-sources* *packages-directory* *package-size-limit* *package-ask-before-loading*
+
+** What a package needs: check-health
+
+Some packages need a program that is not part of Tuatara. csvdt needs csvdt,
+outlook needs readpst, kitty needs kitty. Tuatara does not install these. It
+looks for them, and ~M-x check-health~ reports what it found. The report has a
+section for Tuatara and a section for each package that is loaded, in a buffer
+called =*Health*=. A check that passed is drawn in one colour, one that failed
+in another, and a value that is missing in the faint one. When a package does
+not work, this is the first place to look: it says that a program is not found
+and, for some, where to get it.
+
+#+caption: Figure 19.2. Part of a health report.
+#+name: fig-health
+#+begin_example
+Package csvdt
+  csvdt           found     /home/aroha/.local/bin/csvdt
+Package outlook
+  readpst         not found     install libpst
+  weasyprint      found     /usr/bin/weasyprint
+#+end_example
+
+The check also tells you when signatures are not checked. It runs in the
+background, so the report comes when it is ready.
+
+#+table: commands check-health
+
+#+table: faces :list-good :list-bad :list-dim
+
+** The packages the project publishes
+
+The project's packages are not part of the editor. Each is a repository of its
+own, =https://github.com/Tuatara-Editor/tuatara-NAME=, for the name of the
+package. You load one with its address as the source, no =package-source=
+line needed. Each package's README, in its repository, gives the steps and
+the settings, and its settings show in =C-h v= once it is loaded. Every package
+puts its commands under a prefix of its own, ~C-c~ and a letter.
+
+*** palimpsest
+
+A PDF can be saved over and over, and each save can leave the earlier text in
+the file. palimpsest takes a PDF apart into every save it holds, from the
+original to the latest edit, and looks for the signs of editing that examiners
+of documents know. It reads the file's own bytes and runs nothing in it, and it
+never changes the file. ~M-x palimpsest~ examines the PDF you are looking at,
+or asks for one. The report is made in the background and lists findings with
+the strongest first. In the report, ~C-c p~ is the prefix for its other
+commands, such as saving a revision as a PDF of its own.
+
+*** csvdt
+
+csvdt is a separate program that converts the times and durations in CSV
+records. The csvdt package runs it on a CSV buffer, a selection or the lines
+you banked, and shows the result in =*csvdt output*=. The buffer the records
+came from is never changed. In a CSV or TSV buffer its commands are under
+~C-c v~: ~C-c v r~ runs what you chose, and ~C-c v ?~ says what a run would
+cover without running it. You install csvdt yourself.
+
+*** csv-columns
+
+csv-columns rearranges the columns of every record the way awk's =print=
+does. ~C-c r a~ asks for the columns, counted from 0, so that =$0,$2,$1= swaps
+the second and third. It needs nothing installed. A large file is done in the
+background, and each run is one step to undo.
+
+*** facematch
+
+facematch ranks candidate photos by how probable it is that they show the
+person in one or more master photos. You mark photos in the folder view, then
+~C-c f f~ runs the comparison, in the background and shut in Tuatara's
+sandbox. The comparing engine is a separate program that you download from its
+release page, check against the list of sums beside it, and name in
+=*facematch-program*=. Tuatara never downloads it for you.
+
+*** garamond
+
+Some writers put two spaces after a full stop, others one. garamond keeps the
+spacing a document asks for, which the document says in its own =Local
+Variables:= block. The mode line shows =2S= or =1S=, and typing one space after
+a sentence becomes two where the document wants two. ~M-x garamond-mode~
+turns it on by hand. It needs nothing installed.
+
+*** kitty
+
+kitty opens windows of the kitty terminal, which Tuatara starts itself, so
+that you get its fast drawing, its ligatures and its pictures. ~M-x kitty~
+opens one in the current folder. ~M-x kitty-input~ types the selection or
+the current line into it, and ~M-x kitty-text~ brings its text, scrollback
+included, into a buffer you can search. You install kitty yourself.
+
+*** outlook
+
+outlook opens Outlook items (=.msg=), saved mail (=.eml=) and mailboxes
+(=.pst=, =.ost=) as messages, read only. It was made for looking at mail as
+evidence: nothing in a message runs, and attachments open only when you ask,
+from private copies. In a message, ~P~ shows it as it looks, ~O~ opens an
+attachment in the desktop's own program after asking, and ~C-c o~ is the
+prefix for the same commands. In a mailbox, ~C~ copies messages out. It needs
+readpst and WeasyPrint.
+
+*** caldav
+
+caldav shares Tuatara's agenda with GNOME Calendar, Thunderbird and phones,
+through a CalDAV server (Radicale, or EteSync through its local bridge). The
+calendars are kept in one Org file, and only what is under a calendar's
+heading is synced. The password is never in your init file: it is in the
+desktop's keyring. In Org files and the agenda its commands are under
+~C-c s~, with ~C-c s s~ syncing now. Its README sets a server up step by step.
+
+*** themes
+
+themes adds fourteen colour themes, each a dark or light version of a palette
+you may know from other editors: catppuccin-mocha, catppuccin-latte, dracula,
+nord, one-dark, solarized-dark, solarized-light, tokyo-night,
+tokyo-night-light, rose-pine, rose-pine-dawn, everforest-dark,
+everforest-light and kanagawa-wave. It needs nothing installed.
+
+~M-x load-theme~ lists every theme, with a description beside each, and
+applies the one you choose. To have one at every start, put it after the
+package line:
+
+#+begin_src lisp
+(load-package "themes"
+              :source "https://github.com/Tuatara-Editor/tuatara-themes")
+(load-theme 'catppuccin-mocha)
+#+end_src
+
+~M-x toggle-light-dark-theme~ switches between a light and a dark theme. The
+standard pair is Tuatara's own two, and =*light-theme*= and =*dark-theme*=
+name others. If the window follows the desktop's light or dark style, these
+two are the ones it switches between. Any =set-face= line in your init file
+stays on top of a theme.
+
+#+begin_src lisp
+(setf *dark-theme* 'tokyo-night
+      *light-theme* 'tokyo-night-light)
+#+end_src
+
+#+table: commands load-theme toggle-light-dark-theme
+
+#+table: settings *light-theme* *dark-theme*
+
+** Writing a package of your own
+
+A package is a folder of Lisp files and can be small: one command in one file
+is enough. How to write one, which parts of Tuatara it may use, and how to
+publish it, is the subject of the developer handbook. To try a folder of your
+own on your disk, name it with =package-source= and load it as the lines near
+the start of this chapter show. Tuatara compiles it and asks about it like any
+other.

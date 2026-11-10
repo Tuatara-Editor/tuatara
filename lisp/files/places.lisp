@@ -18,7 +18,8 @@ The places are the file places in $XDG_STATE_HOME/tuatara/
 \(~/.local/state/tuatara/), readable by you alone.")
 
 (defvar *save-place-limit* 400
-  "How many files' places are kept, the latest first.")
+  "How many files' places are kept, the latest first, 400 as standard. Raise
+it to come back to the place in more files; lower it to forget sooner.")
 
 (defun parse-saved-place-line (line)
   "The entry of the places LINE writes, (PATH . OFFSET): the octet point was

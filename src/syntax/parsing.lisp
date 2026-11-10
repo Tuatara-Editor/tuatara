@@ -60,13 +60,13 @@ or NIL for no limit."
 
 (defvar *syntax-memory-limit* (* 256 1024 1024)
   "The octets of memory a parse of a text may take, and
-*SYNTAX-MEMORY-PER-OCTET* more for each octet of it, but never more than a
-quarter of the machine's, nor more than half of what the program parsing
-may still take (*SYNTAX-HELPER-MEMORY*); a parse that takes more is
-given up, and its buffer shows no syntax colours: a grammar can go wrong on
-a text and build without end, which would take all the memory there is. A
-parse under way when memory runs short is given up too, and its text parsed
-again at its next edit once memory is back. NIL for no limit.")
+*SYNTAX-MEMORY-PER-OCTET* more for each octet of it. It is never more than a
+quarter of the machine's, nor more than half of what the program parsing may
+still take (*SYNTAX-HELPER-MEMORY*). A parse that takes more is given up, and
+its buffer shows no syntax colours: a grammar can go wrong on a text and
+build without end, which would take all the memory there is. A parse under way
+when memory runs short is given up too, and its text parsed again at its next
+edit once memory is back. NIL for no limit.")
 
 (defvar *syntax-memory-per-octet* 256
   "The octets of memory a parse may take for each octet of text, on top of
@@ -115,7 +115,8 @@ where the parse was asked for (HELPER-SETTINGS), for the thread parsing."
   (slow nil)
   (refresh nil))
 
-(setf (documentation 'make-parse-job 'function) "A PARSE-JOB of ROPE from tree OLD, stopped by the flag CANCEL, waking HOST when done."
+(setf (documentation 'make-parse-job 'function) "A PARSE-JOB of ROPE from tree OLD, stopped by the
+flag CANCEL, waking HOST when done."
       (documentation 'parse-job-p 'function) "True when OBJECT is a PARSE-JOB."
       (documentation 'parse-job-rope 'function) "The text the job parses."
       (documentation 'parse-job-old 'function) "The job's copy of the tree it starts from, or NIL."
@@ -126,11 +127,15 @@ where the parse was asked for (HELPER-SETTINGS), for the thread parsing."
       (documentation 'parse-job-obsolete 'function) "True when the job's tree is no longer of use."
       (documentation 'parse-job-started 'function) "When the job started, in internal time units."
       (documentation 'parse-job-ended 'function) "When the job's parse ended, in internal time units, or NIL before."
-      (documentation 'parse-job-fault 'function) "The condition when the grammar's own code failed while reading, or NIL."
+      (documentation 'parse-job-fault 'function) "The condition when the grammar's own code failed
+while reading, or NIL."
       (documentation 'parse-job-limit 'function) "The seconds the job's parse may take, or NIL for no limit."
       (documentation 'parse-job-budget 'function) "The octets of memory the job's parse may take, or NIL for no limit."
-      (documentation 'parse-job-slow 'function) "Why the job's parse was given up: :SLOW when it took too long, :MEMORY when it took too much memory, :SHORT when the editor's memory ran short; else NIL."
-      (documentation 'parse-job-refresh 'function) "True when the job parses afresh a text left alone, which an edit stops.")
+      (documentation 'parse-job-slow 'function) "Why the job's parse was given up: :SLOW when it
+took too long, :MEMORY when it took too much memory, :SHORT when the editor's
+memory ran short; else NIL."
+      (documentation 'parse-job-refresh 'function) "True when the job parses afresh a text left
+alone, which an edit stops.")
 
 (defstruct (syntax (:constructor %make-syntax (buffer grammar parser)) (:copier nil))
   "The syntax tree of BUFFER's text in GRAMMAR, parsed by PARSER, both held
@@ -189,29 +194,44 @@ were (LOG-EDIT)."
       (documentation 'syntax-parser 'function) "The tree-sitter parser (a PARSER), or NIL while there is none."
       (documentation 'syntax-tree 'function) "The newest syntax tree, a foreign pointer, or NIL."
       (documentation 'syntax-rope 'function) "The text the tree matches."
-      (documentation 'syntax-current 'function) "True when the tree was parsed from its text rather than edited to match it."
+      (documentation 'syntax-current 'function) "True when the tree was parsed from its text rather
+than edited to match it."
       (documentation 'syntax-job 'function) "The parse running, or NIL."
       (documentation 'syntax-edits 'function) "Edits made since the running parse began, newest first."
       (documentation 'syntax-generation 'function) "A number that changes whenever the tree does."
-      (documentation 'syntax-broken 'function) "True when the text could not be parsed; :SLOW when parsing it took too long, :MEMORY when it took too much memory, :SHORT when the editor's memory ran short, the text then parsed again at its next edit once memory is back."
+      (documentation 'syntax-broken 'function) "True when the text could not be parsed; :SLOW when
+parsing it took too long, :MEMORY when it took too much memory, :SHORT when the
+editor's memory ran short, the text then parsed again at its next edit once
+memory is back."
       (documentation 'syntax-too-big 'function) "True while the text is too large to parse."
-      (documentation 'syntax-last-update 'function) "How long the last parse after an edit took, in internal time units, or NIL."
+      (documentation 'syntax-last-update 'function) "How long the last parse after an edit took, in
+internal time units, or NIL."
       (documentation 'syntax-edited 'function) "When the text was last edited, in internal time units, or NIL."
-      (documentation 'syntax-patched 'function) "True when the tree was brought up to date by parses after edits since it was last parsed afresh."
-      (documentation 'syntax-fresh-cost 'function) "How long the last parse of the text afresh took, in internal time units, or NIL."
-      (documentation 'syntax-no-refresh 'function) "True once a parse afresh of the text was given up: it is not tried again."
-      (documentation 'syntax-cache 'function) "The colours worked out lately, each with what it was for, as KEPT-COLOURS keeps them."
-      (documentation 'syntax-capture-table 'function) "The table colours are sorted out in, used again (*CAPTURE-TABLE*)."
+      (documentation 'syntax-patched 'function) "True when the tree was brought up to date by parses
+after edits since it was last parsed afresh."
+      (documentation 'syntax-fresh-cost 'function) "How long the last parse of the text afresh took,
+in internal time units, or NIL."
+      (documentation 'syntax-no-refresh 'function) "True once a parse afresh of the text was given
+up: it is not tried again."
+      (documentation 'syntax-cache 'function) "The colours worked out lately, each with what it was
+for, as KEPT-COLOURS keeps them."
+      (documentation 'syntax-capture-table 'function) "The table colours are sorted out in, used
+again (*CAPTURE-TABLE*)."
       (documentation 'syntax-edit-log 'function) "The latest edits, the generation each made and its batch (LOG-EDIT)."
       (documentation 'syntax-edits-logged 'function) "How many edits were logged (LOG-EDIT)."
-      (documentation 'syntax-local-room 'function) "The room local names are sorted out in, used again (*LOCAL-ROOM*), or NIL."
-      (documentation 'syntax-injected-colours 'function) "The colours of texts in other languages kept by their text (*INJECTED-COLOURS*), or NIL."
-      (documentation 'syntax-injected 'function) "The trees of text in other languages kept for the colours, as (GENERATION . TABLE), or NIL."
+      (documentation 'syntax-local-room 'function) "The room local names are sorted out in, used
+again (*LOCAL-ROOM*), or NIL."
+      (documentation 'syntax-injected-colours 'function) "The colours of texts in other languages
+kept by their text (*INJECTED-COLOURS*), or NIL."
+      (documentation 'syntax-injected 'function) "The trees of text in other languages kept for the
+colours, as (GENERATION . TABLE), or NIL."
       (documentation 'syntax-worker 'function) "The thread that parses the text, or NIL while none is needed."
       (documentation 'syntax-next 'function) "The parse handed to the parse thread and not yet taken up, or NIL."
       (documentation 'syntax-ending 'function) "True once the parse thread is to end."
-      (documentation 'syntax-lock 'function) "The lock guarding the running parse's result and what the parse thread is given."
-      (documentation 'syntax-done 'function) "Signalled when a parse finishes, and when the parse thread is given work.")
+      (documentation 'syntax-lock 'function) "The lock guarding the running parse's result and what
+the parse thread is given."
+      (documentation 'syntax-done
+                     'function) "Signalled when a parse finishes, and when the parse thread is given work.")
 
 (defmethod print-object ((syntax syntax) stream)
   (print-unreadable-object (syntax stream :type t :identity t)
@@ -253,11 +273,11 @@ each is in the offsets of the text the ones before it made."
                         start-point (point-at rope old-end) (point-after start-point insert)))))
 
 (defun ensure-helper (syntax)
-  "Make ready to parse SYNTAX's text: when its helper has ended (the trees
+  "Make ready to parse SYNTAX's text. When its helper has ended (the trees
 that one held are gone, so the text is then parsed afresh) or is no longer
 the one for its buffer (a project you trust, or no longer), let go of it and
-of all it held, so that the next parse starts another (RUN-PARSE-JOB), off
-the editor's own thread."
+of all it held. The next parse then starts another (RUN-PARSE-JOB), off the
+editor's own thread."
   (let ((helper (syntax-helper syntax)))
     (when (and helper
                (or (not (helper-alive helper))
@@ -375,7 +395,8 @@ out: the memory they hold comes back only when the editor starts again."
 it), as let go, left half way when memory ran out, and say so in the debug
 log."
   (let ((count (1+ (sb-ext:atomic-incf (car **parsers-let-go**)))))
-    (tuatara.runtime:debug-report :parse "a ~a parser reading ~a let go, memory having run out within it (~d this session)"
+    (tuatara.runtime:debug-report :parse
+                                  "a ~a parser reading ~a let go, memory having run out within it (~d this session)"
                                   (grammar-name grammar) what count)))
 
 (defun run-parse-job (syntax job)
@@ -385,7 +406,8 @@ parsing ending as it parsed, is recorded as the job's fault, for CATCH-UP to
 deal with; the editor carries on."
   (let ((tree (handler-case
                   (progv *helper-setting-names* (parse-job-settings job)
-                  (tuatara.runtime:reporting-errors ("parsing ~a with ~a" (tuatara.buffer:buffer-name (syntax-buffer syntax))
+                  (tuatara.runtime:reporting-errors ("parsing ~a with ~a"
+                                                     (tuatara.buffer:buffer-name (syntax-buffer syntax))
                                                      (grammar-name (syntax-grammar syntax)))
                     (multiple-value-bind (tree why unusable)
                         ;; the helper started here, not in the editor's own thread
@@ -530,7 +552,9 @@ another parse if the tree is not current."
          :parse "~a in ~a: ~:d octets ~a in ~,1f ms~a"
          (grammar-name (syntax-grammar syntax)) (tuatara.buffer:buffer-name (syntax-buffer syntax))
          (tuatara.text:rope-octet-length (parse-job-rope job))
-         (cond ((parse-job-refresh job) "parsed afresh, left alone") ((parse-job-old job) "parsed after edits") (t "parsed"))
+         (cond ((parse-job-refresh job) "parsed afresh, left alone")
+               ((parse-job-old job) "parsed after edits")
+               (t "parsed"))
          (/ (* 1000.0 (- (or (parse-job-ended job) (get-internal-real-time)) (parse-job-started job)))
             internal-time-units-per-second)
          (cond (tree (if edits (format nil ", ~d edit~:p made meanwhile" (length edits)) ""))
@@ -637,7 +661,9 @@ afresh of a text left alone (REFRESH-SYNTAX), whose tree is current already."
         do (let ((limit (min deadline (+ (parse-job-started job) wait))))
              ;; a wait may end early, without the job finished: wait again until the limit
              (sb-thread:with-mutex ((syntax-lock syntax))
-               (tuatara.runtime:wait-on-until (syntax-done syntax) (syntax-lock syntax) (lambda () (parse-job-finished job))
+               (tuatara.runtime:wait-on-until (syntax-done syntax)
+                                              (syntax-lock syntax)
+                                              (lambda () (parse-job-finished job))
                                               (max 0 (tuatara.runtime:seconds-left limit))))
              (unless (job-finished-p syntax job) (return))
              (catch-up syntax))))

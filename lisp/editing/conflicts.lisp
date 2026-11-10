@@ -62,9 +62,9 @@ and END (>>>>>>>)."
 (defun conflict-map-markers (rope function &key (start 0) (end (tuatara.text:rope-octet-length rope)) cancel)
   "Call FUNCTION with the character of each marker line of ROPE (the
 character <, |, = or >) from octet START, a line's start, below END, a
-line's start or the end of ROPE, and the octet it starts at, in order: a
-line of seven of one of them, ended there or, but for =======, followed by
-a space and a name. Read 64 KB at a time into a block on the stack, so that
+line's start or the end of ROPE, and the octet it starts at, in order. A
+marker line is a line of seven of one of them, ended there or, but for
+=======, followed by a space and a name. Read 64 KB at a time into a block on the stack, so that
 none of it is garbage; stopped, returning NIL, once CANCEL's car turns true,
 else T.
 Complexity: O(END - START), little more than finding the newlines."
@@ -264,12 +264,16 @@ touched + the conflicts among them); for a whole text, O(conflicts)."
                   (setf (tuatara.buffer:buffer-local buffer 'conflict-list)
                         (remove-if (lambda (c) (member c broken)) conflicts)))))
             (let ((markers '()))
-              (conflict-map-markers rope (lambda (kind at) (declare (ignore kind)) (push at markers)) :start start :end end)
+              (conflict-map-markers rope
+                                    (lambda (kind at) (declare (ignore kind)) (push at markers))
+                                    :start start
+                                    :end end)
               (when markers
                 (conflict-put buffer version (conflict-find-all rope :start start :end end))
                 (multiple-value-bind (from below) (conflict-index-range buffer start end)
                   (let ((held (loop for i from from below below
-                                    nconc (multiple-value-bind (a b c d) (conflict-places buffer (svref (conflict-list buffer) i))
+                                    nconc (multiple-value-bind (a b c d)
+                                              (conflict-places buffer (svref (conflict-list buffer) i))
                                             (remove nil (list a b c d))))))
                     (when (set-difference markers held)
                       (setf left-over t)))))))))
@@ -304,7 +308,8 @@ already; while one is edited, look again when its time is up."
                                          internal-time-units-per-second)))
                            (cond ((not (tuatara.buffer:live-buffer-p buffer)) t)
                                  ((or (< quiet *conflict-pause*) (tuatara.buffer:buffer-local buffer 'conflict-job))
-                                  (setf soonest (min (or soonest *conflict-pause*) (max 0.05 (- *conflict-pause* quiet))))
+                                  (setf soonest
+                                        (min (or soonest *conflict-pause*) (max 0.05 (- *conflict-pause* quiet))))
                                   nil)
                                  (t (conflict-look-through buffer) t))))
                        *conflict-rescans*))
@@ -321,8 +326,10 @@ once done, the conflicts as CONFLICT-FIND-ALL gives them."
   tell go)
 
 (setf (documentation 'conflict-job-p 'function) "True when OBJECT is a CONFLICT-JOB."
-      (documentation 'conflict-job-tell 'function) "Whether a look for conflicts says what it found: T, :FOUND only when some are, NIL."
-      (documentation 'conflict-job-go 'function) "Where point was when the conflicts were asked for, to go to the first, or NIL.")
+      (documentation 'conflict-job-tell 'function)
+      "Whether a look for conflicts says what it found: T, :FOUND only when some are, NIL."
+      (documentation 'conflict-job-go 'function)
+      "Where point was when the conflicts were asked for, to go to the first, or NIL.")
 
 (tuatara.runtime:define-job-words conflict-job
   :doing "Looking for conflicts"
@@ -649,11 +656,12 @@ whole conflicts, looked through in the background when it is shown (up to
 *CONFLICT-MARKERS-MAX-BYTES*); edits are followed, so that undo brings a
 conflict back; a lone ======= line is none.
 \\<*conflict-keymap*>\\[conflict-next] and \\[conflict-previous] go to the next conflict and the one
-before; \\[conflict-keep-first-side] keeps the first side, \\[conflict-keep-second-side] the second, \\[conflict-keep-both-sides]
-both, \\[conflict-keep-base] the base, each one change to undo, point going on
-to the next; \\[conflict-show-sides-diff] shows how the sides differ. Once none is left, it
-says how to stage the file in git. With a count, on when it is positive,
-off when it is zero or less."
+before; \\[conflict-keep-first-side] keeps the first side,
+\\[conflict-keep-second-side] the second, \\[conflict-keep-both-sides] both,
+\\[conflict-keep-base] the base, each one change to undo, point going on to the
+next; \\[conflict-show-sides-diff] shows how the sides differ. Once none is
+left, it says how to stage the file in git. With a count, on when it is
+positive, off when it is zero or less."
   (let* ((buffer (current-buffer))
          (on (switched-by-count (conflict-markers-on-p buffer))))
     (setf (tuatara.buffer:buffer-local buffer 'conflict-off) (not on))

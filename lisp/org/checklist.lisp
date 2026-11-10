@@ -91,10 +91,10 @@ cookies are kept up to date either way.")
 (defun org-summary-todo (buffer position)
   "After a checkbox or a sub-headline's TODO keyword changed at the character
 POSITION of BUFFER's parse: the cookies of the headline it is under brought up
-to date from its TODO sub-headlines, and that headline made done, with
-CLOSED:, or not, as all it counts are done or not
-\(*ORG-TODO-FOLLOWS-CHECKBOXES*); then the same for the headline above it
-when this one changed; point kept where it is."
+to date from its TODO sub-headlines, and that headline made done, with CLOSED:,
+or not, as all it counts are done or not \(*ORG-TODO-FOLLOWS-CHECKBOXES*). Then
+the same for the headline above it when this one changed. Point kept where it
+is."
   (let* ((parse (org-parse-now buffer))
          (text (and parse (org-parse-text parse)))
          (headline (and parse (org-current-headline (org-parse-tree parse) position))))

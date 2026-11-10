@@ -8,30 +8,32 @@
 (defstruct (mapping (:constructor %make-mapping (sap length path fd resources
                                                 &aux (sources (list (list 0 length fd 0)))))
                     (:copier nil))
-  "A memory-mapped file: SAP addresses LENGTH octets of PATH, read-only, outside
-the Lisp heap, mapped from the open file descriptor (FD), which the mapping
-keeps (so saving can copy straight from it). SOURCES lists, in order, the
-stretches (START END FD DELTA) its octets are read from: those from START
-below END come from FD at START + DELTA; RETARGET-MAPPING-RANGE moves one
-stretch to another file. LIVE turns false when the mapping is closed.
+  "A memory-mapped file. SAP addresses LENGTH octets of PATH, read-only,
+outside the Lisp heap, mapped from the open file descriptor (FD), which the
+mapping keeps (so saving can copy straight from it).
+SOURCES lists, in order, the stretches (START END FD DELTA) its octets are
+read from. Those from START below END come from FD at START + DELTA.
+RETARGET-MAPPING-RANGE moves one stretch to another file. LIVE turns false when
+the mapping is closed.
 RESOURCES is a cons whose car lists every (ADDRESS LENGTH FD) the mapping has
-held; RETARGET-MAPPING adds one when the octets are moved to a snapshot, and
+held. RETARGET-MAPPING adds one when the octets are moved to a snapshot, and
 RETARGET-MAPPING-RANGE one with no ADDRESS, as the octets it moves lie within
-a region listed already. WANTED is the stretch (START . END) of its octets
-a window shows and reads ahead (READ-AHEAD), which a pass reading the file
-through leaves in memory (WITH-READ-PASS); SEEN, where in the mapping the
-octets a window showed last began; ASKED, the stretch (START . END) asked
-about last outside a pass (ASK-ABSENT); RELEASING, held while pieces of it
-are let go of, which closing it waits for (LET-GO-RELEASED); PIECES, of
-each piece passes reading it through hold (HOLD-PIECE), how many hold it and
-which of its pages the system held before; HOLES, the stretches (START . END)
-of a file still arriving from elsewhere that are not here yet, read as
-zeros by the system, which reading them refuses (NOT-ARRIVED), a new list
-each time, never changed in place; TORN, true when the file changed where it
-was read from while it came, so that what is here is no one version of it,
-and any read of it is refused. Of a large mapping
-\(*LARGE-MAPPING-OCTETS*) the system reads in no more than is asked
-\(LARGE-MAPPING-ADVICE): its readers ask (NOTE-READ, READ-AHEAD)."
+a region listed already.
+WANTED is the stretch (START . END) of its octets a window shows and reads
+ahead (READ-AHEAD), which a pass reading the file through leaves in memory
+\(WITH-READ-PASS). SEEN is where in the mapping the octets a window showed last
+began. ASKED is the stretch (START . END) asked about last outside a pass
+\(ASK-ABSENT). RELEASING is held while pieces of it are let go of, which
+closing it waits for (LET-GO-RELEASED). PIECES is, of each piece passes
+reading it through hold (HOLD-PIECE), how many hold it and which of its pages
+the system held before.
+HOLES is the stretches (START . END) of a file still arriving from elsewhere
+that are not here yet, read as zeros by the system, which reading them refuses
+\(NOT-ARRIVED), a new list each time, never changed in place. TORN is true when
+the file changed where it was read from while it came, so that what is here is
+no one version of it, and any read of it is refused.
+Of a large mapping (*LARGE-MAPPING-OCTETS*) the system reads in no more than
+is asked (LARGE-MAPPING-ADVICE): its readers ask (NOTE-READ, READ-AHEAD)."
   (sap (sb-sys:int-sap 0) :type sb-sys:system-area-pointer)
   (length 0 :type fixnum :read-only t)
   (path nil :read-only t)
@@ -53,7 +55,8 @@ and any read of it is refused. Of a large mapping
       (documentation 'mapping-path 'function) "The mapped file's path."
       (documentation 'mapping-fd 'function) "The open descriptor the mapped octets came from when last moved whole."
       (documentation 'mapping-sources 'function) "The stretches (START END FD DELTA) a mapping's octets are read from."
-      (documentation 'mapping-resources 'function) "A cons whose car lists the (ADDRESS LENGTH FD) the mapping holds, ADDRESS NIL for a descriptor alone."
+      (documentation 'mapping-resources 'function) "A cons whose car lists the (ADDRESS LENGTH FD)
+the mapping holds, ADDRESS NIL for a descriptor alone."
       (documentation 'mapping-live 'function) "True until the mapping is closed with CLOSE-MAPPING."
       (documentation 'mapping-wanted 'function) "The stretch (START . END) of a mapping a window shows and reads ahead."
       (documentation 'mapping-seen 'function) "Where in the mapping the octets a window showed last began."
@@ -175,7 +178,8 @@ again and the error signalled, FD left open."
                          (lambda (e)
                            (declare (ignore e))
                            (multiple-value-bind (was at) (mapping-source mapping start)
-                             (tuatara.runtime:ignoring-errors-reported ("mapping ~a where it was" (mapping-path mapping))
+                             (tuatara.runtime:ignoring-errors-reported ("mapping ~a where it was"
+                                                                        (mapping-path mapping))
                                (sb-posix:mmap address (- end start) sb-posix:prot-read flags was at))))))
           (sb-posix:mmap address (- end start) sb-posix:prot-read flags fd (+ start delta)))
         (large-mapping-advice mapping start end)
@@ -302,13 +306,13 @@ after reading them, the last read: the pieces several threads read side by
 side, or one reread soon, are let go of only once well behind.")
 
 (defstruct (read-pass (:constructor make-read-pass ()) (:copier nil))
-  "A pass reading large mapped files through once (WITH-READ-PASS): for each
-mapping read, a PASSAGE, made as it is first read; LOCK held while they
-change; USERS, how many tasks of other threads read in it (READ-PASS-TASK);
-ENDED true once the work it was begun for is done, FINISHED once that and
-its tasks are, everything it asked for let go of. Locks are taken in this
-order: a pass's LOCK, a mapping's RELEASING (MAPPING-RELEASING), then
-**MAPPING-LOCK**."
+  "A pass reading large mapped files through once (WITH-READ-PASS). For each
+mapping read, it holds a PASSAGE, made as it is first read. LOCK is held while
+they change. USERS is how many tasks of other threads read in it
+\(READ-PASS-TASK). ENDED is true once the work it was begun for is done,
+FINISHED once that and its tasks are, everything it asked for let go of. Locks
+are taken in this order: a pass's LOCK, a mapping's RELEASING
+\(MAPPING-RELEASING), then **MAPPING-LOCK**."
   (passages '() :type list)
   (users 0 :type fixnum)
   (ended nil :type boolean)
@@ -316,13 +320,14 @@ order: a pass's LOCK, a mapping's RELEASING (MAPPING-RELEASING), then
   (lock (sb-thread:make-mutex :name "tuatara read pass") :read-only t))
 
 (defstruct (passage (:constructor make-passage (pass mapping)) (:copier nil))
-  "What PASS, a READ-PASS, has read of MAPPING: PIECES, a table from the number of
-each piece of +READ-PIECE+ it has asked for to its state, :AHEAD (asked for,
-not read yet), :READ or :LET-GO; KEPT, the numbers of the pieces read and not
-let go of, the last read first; LETTING, those let go of and not yet given
-back (LET-GO-PIECES); LAST, the piece read last; FRESH, what the system held
-of pieces about to be asked for, taken before the pass's lock (PIECE-IN-MEMORY). The pieces
-themselves are held for all passes together (HOLD-PIECE)."
+  "What PASS, a READ-PASS, has read of MAPPING. PIECES is a table from the
+number of each piece of +READ-PIECE+ it has asked for to its state, :AHEAD
+\(asked for, not read yet), :READ or :LET-GO. KEPT is the numbers of the pieces
+read and not let go of, the last read first. LETTING is those let go of and
+not yet given back (LET-GO-PIECES). LAST is the piece read last. FRESH is what
+the system held of pieces about to be asked for, taken before the pass's lock
+\(PIECE-IN-MEMORY). The pieces themselves are held for all passes together
+\(HOLD-PIECE)."
   (pass nil :type read-pass :read-only t)
   (mapping nil :type mapping :read-only t)
   (pieces (make-hash-table :synchronized t) :read-only t)
@@ -365,15 +370,15 @@ the work it was begun for may be cut short first."
 (pushnew 'read-pass-task tuatara.runtime:*task-wrappers*)
 
 (defmacro with-read-pass (() &body body)
-  "Run BODY as a pass reading large mapped files through once: what it reads
+  "Run BODY as a pass reading large mapped files through once. What it reads
 of a large mapping (*LARGE-MAPPING-OCTETS*) through its spans, on this thread
 and the tasks it runs, is asked of the disk a piece at a time ahead of the
-reading, and let go of again once well behind it and when BODY is done, the
+reading. It is let go of again once well behind it and when BODY is done, the
 system letting go too of the pages it did not hold before and no window wants
-\(MAPPING-WANTED); meanwhile the system reads in no more of the mapping than
-is asked. So a file larger than the memory read through leaves in memory what
-was there, the program's own memory and other programs' included. Within
-another pass, BODY reads in that one."
+\(MAPPING-WANTED). Meanwhile the system reads in no more of the mapping than is
+asked. So a file larger than the memory read through leaves in memory what was
+there, the program's own memory and other programs' included. Within another
+pass, BODY reads in that one."
   `(call-with-read-pass (lambda () ,@body)))
 
 (defun call-with-read-pass (function)
@@ -531,11 +536,11 @@ one is let go of, and again when it has ended; NIL before.")
 
 (defun hold-piece (mapping piece held)
   "Note that a pass holds PIECE of MAPPING, a piece of +READ-PIECE+, until
-FORGET-PIECES: the first to hold it keeps HELD (PIECE-IN-MEMORY, taken
-before any pass asked for it) in MAPPING-PIECES, and one taking it while it
-is let go of, or soon after (TAKE-LATE-LOOK), keeps what was held before, so
-that passes reading it side by side or one after another let go of what none
-of them found there. Called with **MAPPING-LOCK** held."
+FORGET-PIECES. The first to hold it keeps HELD (PIECE-IN-MEMORY, taken before
+any pass asked for it) in MAPPING-PIECES. One taking it while it is let go
+of, or soon after (TAKE-LATE-LOOK), keeps what was held before. So passes
+reading it side by side or one after another let go of what none of them
+found there. Called with **MAPPING-LOCK** held."
   (let ((entry (or (gethash piece (mapping-pieces mapping))
                    (setf (gethash piece (mapping-pieces mapping)) (cons 0 (or (take-late-look mapping piece) held))))))
     (incf (car entry))))

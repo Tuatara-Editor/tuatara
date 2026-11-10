@@ -239,10 +239,14 @@ while the selection is active; a form feed as <FF>."
 
 (define-test (simple case-change-of-another-length)
   ;; a letter whose other case takes more or fewer octets: point ends after the word changed
-  (loop for (text keys expected) in (list (list (format nil "<POINT>~cx yz" (code-char #x2C65)) "M-u" (format nil "~cX<POINT> yz" (code-char #x23A)))
-                                          (list (format nil "<POINT>~cbc then" (code-char #x250)) "M-u" (format nil "~cBC<POINT> then" (code-char #x2C6F)))
-                                          (list (format nil "<POINT>~cbc then" (code-char #x23A)) "M-l" (format nil "~cbc<POINT> then" (code-char #x2C65)))
-                                          (list (format nil "<POINT>~cbc then" (code-char #x2C65)) "M-c M-c" (format nil "~cbc Then<POINT>" (code-char #x23A))))
+  (loop for (text keys expected) in (list (list (format nil "<POINT>~cx yz" (code-char #x2C65)) "M-u"
+                                                (format nil "~cX<POINT> yz" (code-char #x23A)))
+                                          (list (format nil "<POINT>~cbc then" (code-char #x250)) "M-u"
+                                                (format nil "~cBC<POINT> then" (code-char #x2C6F)))
+                                          (list (format nil "<POINT>~cbc then" (code-char #x23A)) "M-l"
+                                                (format nil "~cbc<POINT> then" (code-char #x2C65)))
+                                          (list (format nil "<POINT>~cbc then" (code-char #x2C65)) "M-c M-c"
+                                                (format nil "~cbc Then<POINT>" (code-char #x23A))))
         do (multiple-value-bind (plain point mark) (point-and-mark-text text)
              (let ((editor (nth-value 1 (session-in nil plain keys :point point :mark mark :width 100))))
                (is string= expected (text-with-marks (session-buffer editor)) "~s then ~a" text keys)))))
@@ -403,7 +407,9 @@ is refused, the text left as it was.")
                (if (uiop:string-prefix-p "ERROR " expected)
                    (progn (is string= (subseq expected 6) (echo-text f) "~s then ~a" text keys)
                           (is string= plain (session-text editor) "~s then ~a" text keys))
-                   (is string= expected (text-with-marks (session-buffer editor)) "~s then ~a~@[ in ~(~a~)~]" text keys mode))))))
+                   (is string= expected
+                       (text-with-marks (session-buffer editor))
+                       "~s then ~a~@[ in ~(~a~)~]" text keys mode))))))
 
 (defparameter *kill-cases*
   '(
@@ -591,7 +597,8 @@ results expected and what the kill ring then holds first; \"ERROR ...\" for what
                    (progn (is string= (subseq expected 6) (echo-text f) "~s then ~a" text keys)
                           (is string= plain (session-text editor) "~s then ~a" text keys))
                    (progn (is string= expected (text-with-marks (session-buffer editor)) "~s then ~a" text keys)
-                          (is equal kill (first (tuatara.command:editor-kill-ring editor)) "~s then ~a: the kill" text keys)))))))
+                          (is equal kill
+                              (first (tuatara.command:editor-kill-ring editor)) "~s then ~a: the kill" text keys)))))))
 
 (define-test (simple counting-words)
   ;; lines, sentences, words and characters, sentences two spaces apart (and one space
@@ -615,18 +622,26 @@ And a third." 6 3 10 51)
                                  ("Wait… what‽  Go." 1 2 3 16)
                                  ("" 0 0 0 0))
         do (let ((rope (tuatara.text:string->rope text)))
-             (is equal counts (multiple-value-list (tuatara.defaults::count-text rope 0 (tuatara.text:rope-octet-length rope) :double-space t))
+             (is equal counts
+                 (multiple-value-list (tuatara.defaults::count-text rope 0
+                                                                    (tuatara.text:rope-octet-length rope)
+                                                                    :double-space t))
                  "~s" text)))
   ;; one space apart, as sentences are by default, a full stop and a blank end a sentence
   (loop for (text . counts) in '(("One. Two. Three." 1 3 3 16) ("One.  Two." 1 2 2 10) ("Dr. Smith. Yes" 1 2 3 14))
         do (let ((rope (tuatara.text:string->rope text)))
-             (is equal counts (multiple-value-list (tuatara.defaults::count-text rope 0 (tuatara.text:rope-octet-length rope)))
+             (is equal counts
+                 (multiple-value-list (tuatara.defaults::count-text rope 0 (tuatara.text:rope-octet-length rope)))
                  "~s" text)))
   ;; M-= says them, of the selection or the whole buffer
   (is string= "Buffer has 2 lines, 3 sentences, 9 words, and 48 characters"
       (echo-text (session-in nil (format nil "Hello there, world. This is it.~%Second line here") "M-=" :width 100)))
   (is string= "Region has 1 line, 1 sentence, 2 words, and 12 characters"
-      (echo-text (session-in nil (format nil "Hello there, world. This is it.~%Second line here") "M-=" :point 0 :mark 12 :width 100)))
+      (echo-text (session-in nil
+                             (format nil "Hello there, world. This is it.~%Second line here") "M-="
+                             :point 0
+                             :mark 12
+                             :width 100)))
   ;; a count that takes a while goes on in the background, said when it ends; C-x ... stops one
   (let ((tuatara.defaults::*count-wait* 0) (tuatara.defaults::*count-piece* 8)
         (text (with-output-to-string (o) (dotimes (i 200) (format o "Word ~d here.  " i)))))
@@ -643,13 +658,17 @@ And a third." 6 3 10 51)
                                    (#(#xA9 120 #xC3) 1 1 1 3)
                                    (#(120 #xF0 #x9F 32 #xFF) 1 1 1 5))
         do (let ((rope (tuatara.text:octets->rope (coerce octets '(vector (unsigned-byte 8))))))
-             (is equal counts (multiple-value-list (tuatara.defaults::count-text rope 0 (tuatara.text:rope-octet-length rope)))
+             (is equal counts
+                 (multiple-value-list (tuatara.defaults::count-text rope 0 (tuatara.text:rope-octet-length rope)))
                  "~s" octets)))
   (loop for (text . counts) in '(("Dr.  Smith went home.  He slept." 1 2 6 32)
                                  ("I met Mr.  Rotorua, e.g.  at noon.  Then." 1 2 9 41)
                                  ("End.  Dr.  Ann.  Taranaki." 1 3 4 26))
         do (let ((rope (tuatara.text:string->rope text)))
-             (is equal counts (multiple-value-list (tuatara.defaults::count-text rope 0 (tuatara.text:rope-octet-length rope) :double-space t))
+             (is equal counts
+                 (multiple-value-list (tuatara.defaults::count-text rope 0
+                                                                    (tuatara.text:rope-octet-length rope)
+                                                                    :double-space t))
                  "~s" text))))
 
 (define-test (simple counted-alike-in-any-pieces)
@@ -694,7 +713,9 @@ thread (*rewrite-threshold* 0)."
     (let ((mode 'tuatara.defaults::lisp-mode))
       (is string= (format nil ";; (foo)~%;;   (bar)~%") (both "V j C" (format nil "(foo)~%  (bar)~%") mode))
       (is string= (format nil "(foo)~%  (bar)~%") (both "V j C" (format nil ";; (foo)~%;;   (bar)~%") mode))
-      (is string= (format nil "  ;; (foo)~%~%  ;;   (bar)~%") (both "V j j C" (format nil "  (foo)~%~%    (bar)~%") mode))
+      (is string=
+          (format nil "  ;; (foo)~%~%  ;;   (bar)~%")
+          (both "V j j C" (format nil "  (foo)~%~%    (bar)~%") mode))
       (is string= (format nil ";; ;; a~%;; (b)~%") (both "V j C" (format nil ";; a~%(b)~%") mode))
       (is string= (format nil "(foo)~%  (bar)~%")
           (large-text '("V j C" "u") (format nil "(foo)~%  (bar)~%") :mode mode))))
@@ -1054,7 +1075,6 @@ stands around takes it off).")
                                                     (tuatara.defaults::fundamental-mode . nil))))
           (is equal '() (marked (run-keys "" :text text :width 40 :height 9) 1))
           (is equal '(0) (marked (run-keys "SPC t |" :text text :width 40 :height 9) 1)))))))
-
 
 (define-test (simple huge-counts)
   ;; a count of billions stops at once where the text ends, the editor never held up

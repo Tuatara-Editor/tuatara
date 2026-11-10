@@ -1,6 +1,8 @@
 #+title: Tuatara
 #+subtitle: An editor in Common Lisp, after the ideas of Emacs
 
+Read the manual: [[https://tuatara-editor.github.io/tuatara/][tuatara-editor.github.io/tuatara]].
+
 * What Tuatara is
 
 An editor built on Emacs's design: a small core with everything else built on
@@ -8,10 +10,10 @@ it, buffers as the universal container, every key bound to a named command, and
 nothing off limits to the person using it. Unlike Emacs, whose core is written
 in C, Tuatara is Lisp throughout, the core included.
 
-It is *not* compatible with Emacs Lisp or Emacs packages. It keeps the ideas, not
-the code. In exchange it gets real parallel threads, a text model that handles
-files of many gigabytes and half a million cursors, and one language from the
-rope up to the init file.
+It is *not* compatible with Emacs Lisp or Emacs packages. It keeps the ideas,
+not the code. In exchange it gets real parallel threads, a text model that
+handles files of many gigabytes and half a million cursors, and one language
+from the rope up to the init file.
 
 - Language :: Common Lisp, compiled by SBCL.
 - Platform :: Linux. A window of its own (GTK 4), or any terminal (ncurses).
@@ -48,12 +50,12 @@ rope up to the init file.
   request); a file opened safely is never decrypted.
 - The session kept, as an option (=*keep-session*=): the files, directories and
   windows opened again as they were at the next start.
-- =M-x show-file-metadata= shows what a file is and says of itself, read by Tuatara
-  alone (no other program): kind by contents, owner, permissions, its four times,
-  SHA-256, extended attributes (where a download came from); a photograph's
-  EXIF with its GPS position and thumbnail (JPEG, HEIC, PNG, WebP, TIFF),
-  XMP and its edit history, a PDF's information, saves and scripts, MP3 and
-  FLAC tags, a video's times and place, an Office file's account of itself.
+- =M-x show-file-metadata= shows what a file is and says of itself, read by
+  Tuatara alone (no other program): kind by contents, owner, permissions, its
+  four times, SHA-256, extended attributes (where a download came from); a
+  photograph's EXIF with its GPS position and thumbnail (JPEG, HEIC, PNG, WebP,
+  TIFF), XMP and its edit history, a PDF's information, saves and scripts, MP3
+  and FLAC tags, a video's times and place, an Office file's account of itself.
 - A terminal in a buffer (=M-x terminal=, on the terminal library of Ghostty),
   with its history as text, the mouse, links and pictures.
 - Help over the live editor: every command, variable and face has its
@@ -113,10 +115,10 @@ rope up to the init file.
    them in the hex view; =... | tuatara -= reads standard input into a buffer
    opened safely, the terminal staying the keyboard; =tuatara --tutor= starts in
    the tutor; =tuatara -Q= (=--no-init=) starts without the init file and
-   packages, what Tuatara keeps between sessions kept apart for that session
-   and the real one neither read nor changed. After =--= every argument is a
-   file's name. Options may stand anywhere before =--=, =--safe= and =--hex= holding for every
-   file of the call. =tuatara --help= lists the rest.
+   packages, what Tuatara keeps between sessions kept apart for that session and
+   the real one neither read nor changed. After =--= every argument is a file's
+   name. Options may stand anywhere before =--=, =--safe= and =--hex= holding
+   for every file of the call. =tuatara --help= lists the rest.
 
 5. *First steps.* =M-x tuatara-tutor= teaches the keys by editing a text with
    them (=M-x= is Alt and x). =M-x check-health= says which of the programs
@@ -202,7 +204,8 @@ no time and no space, and a save shares the blocks of what did not change
 wherever it can. Elsewhere they are whole copies, kept in Tuatara's cache
 directory when it has room.
 
-To build it from source, and to work on it, see [[file:HACKING.org][HACKING.org]]; to contribute,
+To build it from source, and to work on it, see
+[[file:HACKING.org][HACKING.org]]; to contribute,
 [[file:CONTRIBUTING.md][CONTRIBUTING.md]].
 
 ** What to install beside it
@@ -288,7 +291,7 @@ redefine any of it.
 
 * Status
 
-Version 0.90.21, a pre-release: in daily use by its author, its parts tested
+Version 0.90.22, a pre-release: in daily use by its author, its parts tested
 (=tools/test.sh=, about 225,000 checks), its interfaces still changing until
 1.0.0, the first stable release.
 
@@ -342,9 +345,10 @@ Tuatara says where its ideas come from:
   lists' bullets.
 - Denote, by Protesilaos Stavrou :: the names of files with formatted names
   (=C-x n f=, =C-x n n= and the rest under =C-x n=).
-- denote-org and denote-sequence, also by Protesilaos Stavrou :: the dynamic blocks
-  of files with formatted names, links, backlinks, their text and their
-  sequences, written as denote-org writes them (=lisp/org/formatted-blocks.lisp=).
+- denote-org and denote-sequence, also by Protesilaos Stavrou :: the dynamic
+  blocks of files with formatted names, links, backlinks, their text and their
+  sequences, written as denote-org writes them
+  (=lisp/org/formatted-blocks.lisp=).
 - consult, vertico, orderless, marginalia and Corfu :: the look and feel of
   completion, and the buffer's outline (=M-g o=).
 - eglot, Flymake and ElDoc :: how language servers look and feel: what they
@@ -400,8 +404,8 @@ Tuatara says where its ideas come from:
   (=lisp/help/notifications.lisp=).
 - The file program :: a file's kind told by its first octets, never by its
   name (=src/io/kinds.lisp=).
-- PDF (ISO 32000) :: the structure of a PDF read by =M-x show-file-metadata=: its
-  objects, cross-reference tables, streams and filters, and page content
+- PDF (ISO 32000) :: the structure of a PDF read by =M-x show-file-metadata=:
+  its objects, cross-reference tables, streams and filters, and page content
   (=lisp/viewers/pdf-reader.lisp=).
 - RARLAB's RAR 5.0 format description :: the rar archives the tests make, laid
   out as it describes (=test/rimu-operations.lisp=).

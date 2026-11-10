@@ -56,14 +56,15 @@ job running long enough to act while it runs.")
   "A stretch of a job's scope from START below END, beginning at a line start,
 or where a match of the pieces before ends (MEND-SEAMS). ALLOWED is the first
 offset a match may start at under the one-per-line rule, START unless such a
-match came before; DONE is how far its worker has got; REACH, where the last
-match its worker passed over ends, -1 before one, and ALLOWED-AFTER the first
-offset the match after its end may start at; TALLIES, what it counted (TALLY); MATCHES and LINES, how many matches it
-replaced and on how many lines; LENGTH, the octets it wrote; WRITER, the
-writer of its worker's unnamed file (PIECE-WRITER), and FROM, where in that
-file its output begins, until the job maps it as ROPE; CHECKPOINTS, triples of
-the input offset, the output offset within the piece and the first offset a
-match may start at under the one-per-line rule, noted along the way."
+match came before. DONE is how far its worker has got. REACH is where the last
+match its worker passed over ends, -1 before one, and ALLOWED-AFTER is the first
+offset the match after its end may start at. TALLIES is what it counted (TALLY).
+MATCHES and LINES are how many matches it replaced and on how many lines. LENGTH
+is the octets it wrote. WRITER is the writer of its worker's unnamed file
+\(PIECE-WRITER), and FROM is where in that file its output begins, until the job
+maps it as ROPE. CHECKPOINTS are triples of the input offset, the output offset
+within the piece and the first offset a match may start at under the
+one-per-line rule, noted along the way."
   (start 0 :type fixnum) (end 0 :type fixnum) (done 0 :type fixnum)
   (allowed 0 :type fixnum) (reach -1 :type fixnum) (allowed-after 0 :type fixnum) (tallies '())
   (matches 0 :type fixnum) (lines 0 :type fixnum) (length 0 :type fixnum)
@@ -72,48 +73,48 @@ match may start at under the one-per-line rule, noted along the way."
 
 (defstruct (rewrite (:include tuatara.runtime:job) (:constructor %make-rewrite) (:copier nil))
   "A replacement or count running in the background over BUFFER, a job
-\(TUATARA.RUNTIME:JOB). BASE is the
-version it reads and ROPE its text; LOW and HIGH bound the scope and WORDS name
-it; MAPPER finds the matches of a piece (one left as it is told as passed
-over, PASS-OVER) and EXPAND gives a match's replacement as octets; ALL is true with the g flag; COUNT-ONLY for the n flag. PIECES are
-rewritten by the pool's workers under the job's thread. TRACKER holds the edits made to the buffer since BASE (DIRTY records, or :ALL),
-noted by TRACKER-FUNCTION; RESULT is the text rewritten, once done;
-DIRECTORY is where the unnamed files go, FILES those files, one a worker
-\(PIECE-FILES). CHECKPOINT and HOOK are
-*REWRITE-CHECKPOINT* and *REWRITE-PIECE-HOOK* as the job began, since the
-workers run on other threads. DOING, for work other than a replacement, names
-it in the list of jobs and in questions (Cutting), and REPORT, a function of the
-job, how it ended (:DONE, :NONE, :STOPPED or :FAILED), the changes made, the
-seconds taken and the changes kept as edited meanwhile, says so; for a count,
-done, it says what to say in place of the count, or NIL. RUNNER, when
-not NIL, rewrites a piece in place of REWRITE-PIECE-RUN: a function of the job
-and the piece making the same text, faster for work of its own kind.
+\(TUATARA.RUNTIME:JOB). BASE is the version it reads and ROPE its text; LOW and
+HIGH bound the scope and WORDS name it; MAPPER finds the matches of a piece (one
+left as it is told as passed over, PASS-OVER) and EXPAND gives a match's
+replacement as octets; ALL is true with the g flag; COUNT-ONLY for the n flag.
+PIECES are rewritten by the pool's workers under the job's thread. TRACKER holds
+the edits made to the buffer since BASE (DIRTY records, or :ALL), noted by
+TRACKER-FUNCTION; RESULT is the text rewritten, once done; DIRECTORY is where
+the unnamed files go, FILES those files, one a worker (PIECE-FILES). CHECKPOINT
+and HOOK are *REWRITE-CHECKPOINT* and *REWRITE-PIECE-HOOK* as the job began,
+since the workers run on other threads. DOING, for work other than a
+replacement, names it in the list of jobs and in questions (Cutting), and
+REPORT, a function of the job, how it ended (:DONE, :NONE, :STOPPED or :FAILED),
+the changes made, the seconds taken and the changes kept as edited meanwhile,
+says so. For a count, done, it says what to say in place of the count, or NIL.
+RUNNER, when not NIL, rewrites a piece in place of REWRITE-PIECE-RUN: a function
+of the job and the piece making the same text, faster for work of its own kind.
 COUNTING, once every piece is written, is the cons INDEX-ROPE reports on as it
 counts the lines of the text written: the octets counted and the octets to
 count. SHADE, when not NIL, gives the text the job changes, shaded as it goes,
 for a job that changes less than its scope (a rectangle's columns): a function
 of the job and the offsets FROM and TO of the text shown, returning (START END
-FACE) ranges; by default the scope's pieces are shaded (JOB-SHADING). WHAT,
-when not NIL, says in full what the job does, for the list of jobs; VERB,
-what it does as a verb, for when it fails (Could not VERB), and LEAVES what
-stopping it leaves (Stopped: LEAVES), when not the replacement's. JOINS, when not
-NIL, is the buffer's undo stack as a change made before the job left it (the
-typing at a split's places in sight): the job's change joins that one for undo.
-SINCE is the buffer's undo stack as the job began (JOINS when given): its
-change stands there in the undo history, before the changes made meanwhile
-\(TUATARA.BUFFER:BUFFER-TAKE-IN-JOB-RESULT); unless SESSION, for a job that
+FACE) ranges; by default the scope's pieces are shaded (JOB-SHADING). WHAT, when
+not NIL, says in full what the job does, for the list of jobs; VERB, what it
+does as a verb, for when it fails (Could not VERB), and LEAVES what stopping it
+leaves (Stopped: LEAVES), when not the replacement's. JOINS, when not NIL, is
+the buffer's undo stack as a change made before the job left it (the typing at a
+split's places in sight): the job's change joins that one for undo. SINCE is the
+buffer's undo stack as the job began (JOINS when given): its change stands there
+in the undo history, before the changes made meanwhile
+\(TUATARA.BUFFER:BUFFER-TAKE-IN-JOB-RESULT). Unless SESSION, for a job that
 writes out of sight what typing at places in sight still goes on writing (a
 split's, a block's rows), its change joins that typing on top, one change for
-undo with it. PREPARE, when not NIL, a function of the job,
-runs on the job's thread before the pieces are rewritten, to learn what their
-rewriting needs to know of the whole scope. GOAL, when not NIL, a function of the
-buffer with the job's text taken in, gives where point goes then, as the same
-work done at once leaves it; only when point is still at POINT, where it was
-when the job began, and nothing was edited meanwhile. HIDDEN-LEFT, when not
-NIL, is a cons whose car counts the matches left alone because a fold hides
-them (HIDDEN-LEFT-WORDS). LIGHTS-MATCHES, true for a replacement whose MAPPER
-only finds matches, keeping no count of its own, has the matches still to
-change shaded rather than the whole stretch (JOB-MATCH-SHADING)."
+undo with it. PREPARE, when not NIL, a function of the job, runs on the job's
+thread before the pieces are rewritten, to learn what their rewriting needs to
+know of the whole scope. GOAL, when not NIL, a function of the buffer with the
+job's text taken in, gives where point goes then, as the same work done at once
+leaves it; only when point is still at POINT, where it was when the job began,
+and nothing was edited meanwhile. HIDDEN-LEFT, when not NIL, is a cons whose car
+counts the matches left alone because a fold hides them (HIDDEN-LEFT-WORDS).
+LIGHTS-MATCHES, true for a replacement whose MAPPER only finds matches, keeping
+no count of its own, has the matches still to change shaded rather than the
+whole stretch (JOB-MATCH-SHADING)."
   base rope (low 0) (high 0) words what verb leaves joins since session prepare goal point hidden-left
   mapper expand all count-only doing report runner (lights-matches nil)
   (pieces #()) (counting nil) (shade nil)
@@ -188,10 +189,10 @@ E was passed over and left as it is: a scan goes on past it all the same."
   "A function of a match's TEXT and GROUPS giving its replacement as octets, the
 text REPLACEMENT-TEXT-FUNCTION gives, as RUN-SUBSTITUTION makes it: the same
 text encoded once and its octets given again, so that a replacement the match
-does not enter makes nothing however many matches there are. (An expander may
+does not enter makes nothing however many matches there are. An expander may
 also give, for a replacement too large to hold, a cons of its length in octets
-and a function of a writer \(TUATARA.IO:WRITER) that writes it:
-REPLACEMENT-LENGTH.) As a second value, the TEXTS a scan is to give it
+and a function of a writer (TUATARA.IO:WRITER) that writes it
+\(REPLACEMENT-LENGTH). As a second value, the TEXTS a scan is to give it
 \(TUATARA.SYNTAX:MATCHED-TEXT), one of NIL, T, or MATCH-CASE-KIND when only the
 match's letter case counts, so that no match's text is copied. A line break
 written in REPLACEMENT is NEWLINE, the buffer's."
@@ -428,8 +429,10 @@ ends, the files not mapped by then are closed."
                ((rewrite-count-only job) (setf (rewrite-status job) :done))
                (t (let* ((ropes (piece-files-ropes (rewrite-files job)
                                                    (loop for piece across pieces
-                                                         collect (list (rewrite-piece-writer piece) (rewrite-piece-from piece)
-                                                                       (+ (rewrite-piece-from piece) (rewrite-piece-length piece))))))
+                                                         collect (list (rewrite-piece-writer piece)
+                                                                       (rewrite-piece-from piece)
+                                                                       (+ (rewrite-piece-from piece)
+                                                                          (rewrite-piece-length piece))))))
                          (written (apply #'tuatara.text:splice-rope (rewrite-rope job) (rewrite-low job) (rewrite-high job) ropes))
                          (counting (cons 0 0)))
                     (loop for piece across pieces for rope in ropes do (setf (rewrite-piece-rope piece) rope))
@@ -662,7 +665,9 @@ to be made again on (TUATARA.BUFFER:BUFFER-TAKE-IN-JOB-RESULT)."
               (lambda (r)
                 (tuatara.text:make-edit (getf r :out-start) (getf r :out-end)
                                         (and (< (getf r :base-start) (getf r :base-end))
-                                             (tuatara.text:rope-octets base :start (getf r :base-start) :end (getf r :base-end)))))
+                                             (tuatara.text:rope-octets base
+                                                                       :start (getf r :base-start)
+                                                                       :end (getf r :base-end)))))
               regions)))))
 
 (defun rewrite-maps (job regions)
@@ -721,11 +726,17 @@ edited meanwhile as they are now, unless the buffer may no longer take it
                              (tuatara.text:apply-edits (rewrite-result job) (coerce edits 'simple-vector))
                              (rewrite-result job))))
              ;; made read-only, or turned to the hex view, while it ran: the change is not forced on it
-             (when (result-refused-p buffer (format nil "~:[the replacement ~a~;~:*~(~a~) ~a~]" (rewrite-doing job) (rewrite-words job))
+             (when (result-refused-p buffer
+                                     (format nil
+                                             "~:[the replacement ~a~;~:*~(~a~) ~a~]"
+                                             (rewrite-doing job)
+                                             (rewrite-words job))
                                      (- (tuatara.text:rope-octet-length final) (tuatara.buffer:buffer-size buffer)))
                (return-from rewrite-take-in 0))
              (multiple-value-bind (forward backward) (rewrite-maps job regions)
-               (let ((unmoved (and (rewrite-goal job) (null edits) (eql (rewrite-point job) (tuatara.buffer:buffer-point buffer)))))
+               (let ((unmoved (and (rewrite-goal job)
+                                   (null edits)
+                                   (eql (rewrite-point job) (tuatara.buffer:buffer-point buffer)))))
                  (tuatara.display:call-keeping-window-starts
                   (buffer-windows buffer)
                   (lambda ()
@@ -830,7 +841,8 @@ meanwhile, at a cost that does not grow with the typing."
                                       from to nil))
                            (if edited
                                (loop for (start . end) in stretches
-                                     collect (cons (job-position-read job start :before) (job-position-read job end :after)))
+                                     collect (cons (job-position-read job start :before)
+                                                   (job-position-read job end :after)))
                                stretches)
                            (rewrite-all job) :low (rewrite-low job))
         (unless slow
@@ -900,7 +912,9 @@ gigabytes). A count changes nothing, and is not shown."
 
 (defmethod tuatara.runtime:job-percent ((job rewrite))
   "How far a replacement has gone, counting first and then replacing, as a percentage."
-  (tuatara.runtime:two-phase-percent (rewrite-progress job) (rewrite-counting job) :halves (not (rewrite-count-only job))))
+  (tuatara.runtime:two-phase-percent (rewrite-progress job)
+                                     (rewrite-counting job)
+                                     :halves (not (rewrite-count-only job))))
 
 (defmethod tuatara.runtime:job-state-words ((job rewrite))
   "What a replacement is doing now, and how far it has gone, in words."
@@ -937,13 +951,13 @@ stretch from S to E, the ends of both included."
 
 (defun changes-in-view (rope finder stretches all &key (low 0))
   "What a replacement changes within STRETCHES, (START . END) of ROPE's text
-shown, as (START END) ranges in order: the matches FINDER finds, a function
-of (FUNCTION FROM TO) calling FUNCTION with each match's start and end from
-FROM below TO; without ALL the first on each line only, looked for from the
-line's start (not before LOW, where the replacement begins); a match of no
-length shown on the character after it. As a second value :SLOW, the ranges
-NIL, when the pattern is too slow on this text to tell them. The one way the
-shading of a replacement, running or waiting, finds what it marks."
+shown, as (START END) ranges in order. They are the matches FINDER finds, a
+function of (FUNCTION FROM TO) calling FUNCTION with each match's start and end
+from FROM below TO. Without ALL, only the first on each line is shown, looked
+for from the line's start (not before LOW, where the replacement begins). A
+match of no length is shown on the character after it. As a second value :SLOW,
+the ranges NIL, when the pattern is too slow on this text to tell them. The one
+way the shading of a replacement, running or waiting, finds what it marks."
   (multiple-value-bind (ranges cut)
       (tuatara.runtime:stoppable-work ((list nil) :slow tuatara.runtime:*slow-call-seconds*)
         (let ((out '()) (size (tuatara.text:rope-octet-length rope)))
@@ -1018,7 +1032,9 @@ the editor answering keys meanwhile."
                                            (if skip
                                                (lambda (function from to halt)
                                                  (funcall mapper (lambda (s e m g)
-                                                                   (if (spans-meet-p skip s s) (pass-over function s e) (funcall function s e m g)))
+                                                                   (if (spans-meet-p skip s s)
+                                                                       (pass-over function s e)
+                                                                       (funcall function s e m g)))
                                                           from to halt))
                                                mapper))
                                  :joins joins :report report :lights-matches (not count-only)
@@ -1089,9 +1105,9 @@ when it holds it, else the text read now."
 (defun map-piece-lines (function rope start end crlf &optional halt)
   "Call FUNCTION with (LINE LINE-END ROPE BLOCK BLOCK-START BLOCK-END) for each
 line of ROPE starting from START below END, read a block at a time (carriage
-return and line feed (CRLF) when a carriage return before a newline ends
-them), the block one of a megabyte kept for reading into
-(TUATARA.TEXT:WITH-OCTET-BLOCK), which FUNCTION must not keep; stop when HALT,
+return and line feed (CRLF) when a carriage return before a newline ends them).
+The block is one of a megabyte kept for reading into
+\(TUATARA.TEXT:WITH-OCTET-BLOCK), which FUNCTION must not keep. Stop when HALT,
 checked now and then, answers true."
   (let ((n 0))
     (declare (type fixnum n))
@@ -1107,21 +1123,21 @@ checked now and then, answers true."
 (defun start-line-job (buffer from to per-line &key doing what verb leaves report announce prepare goal)
   "Rewrite the lines of BUFFER from the one starting at FROM to the one ending
 at TO, in the background on all but two cores, as PER-LINE says, a line at a
-time: a function of (FUNCTION LINE LINE-END NEXT ROPE BLOCK BLOCK-START
-BLOCK-END) called for each line, its start, its end (before the line's end, that is
-its newline, or with carriage return and line feed (CRLF) the carriage
-return), the next line's start, and the text with the octets read around the
-line (BLOCK-OCTET reads them), which calls FUNCTION with (START END NIL
-OCTETS) for each change it makes, in order, within the line and its line end.
-DOING names the work in a word, WHAT in full, for the list of jobs; VERB as a
-verb, for when it fails, and LEAVES what stopping it leaves (REWRITE); REPORT
-says how it ended; ANNOUNCE, the work in words, is said to go on in the
-background as it starts (SAY-IN-BACKGROUND); PREPARE, when given, runs first
-on the job's thread (REWRITE); GOAL, when given, a function of FROM as the job
-starts, gives the job's GOAL (REWRITE). One change for undo, edits made
-meanwhile kept, \\[stop-job] stops it. Returns the job, or :QUEUED when
-another job runs or waits in BUFFER, or its lines are still being counted: it
-then waits its turn, FROM and TO followed meanwhile."
+time. PER-LINE is a function of (FUNCTION LINE LINE-END NEXT ROPE BLOCK
+BLOCK-START BLOCK-END) called for each line. It is given the line's start, its
+end (before the line's end, that is its newline, or with carriage return and
+line feed (CRLF) the carriage return), the next line's start, and the text with
+the octets read around the line (BLOCK-OCTET reads them). It calls FUNCTION with
+\(START END NIL OCTETS) for each change it makes, in order, within the line and
+its line end. DOING names the work in a word and WHAT names it in full, for the
+list of jobs. VERB names it as a verb, for when it fails, and LEAVES says what
+stopping it leaves (REWRITE). REPORT says how it ended. ANNOUNCE, the work in
+words, is said to go on in the background as it starts (SAY-IN-BACKGROUND).
+PREPARE, when given, runs first on the job's thread (REWRITE). GOAL, when given,
+a function of FROM as the job starts, gives the job's GOAL (REWRITE). One change
+for undo, edits made meanwhile kept, \\[stop-job] stops it. Returns the job, or
+:QUEUED when another job runs or waits in BUFFER, or its lines are still being
+counted: it then waits its turn, FROM and TO followed meanwhile."
   (when (queue-if-busy buffer what (list (cons from :before) (cons to :after))
                        (lambda (from to) (start-line-job buffer from to per-line :doing doing :what what
                                                                                     :verb verb :leaves leaves

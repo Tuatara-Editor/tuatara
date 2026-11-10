@@ -109,7 +109,8 @@ or one longer than *RIMU-LINK-LIMIT*, is not in it."
           do (loop with at = 0
                    while (and octets (< at (length octets)))
                    do (let* ((end (or (position 10 octets :start at) (return)))
-                             (header (uiop:split-string (tuatara.text:octets-string octets :start at :end end) :separator '(#\Space)))
+                             (header (uiop:split-string (tuatara.text:octets-string octets :start at :end end)
+                                                        :separator '(#\Space)))
                              (size (and (= 3 (length header)) (parse-integer (third header) :junk-allowed t))))
                         (setf at (1+ end))
                         (when size
@@ -141,16 +142,17 @@ the HASH of the commit shown, NIL until its history is read."
   (rimu-read-at-commit (git-rewound-top source) (git-rewound-hash source) directory))
 
 (defun rimu-read-at-commit (top hash directory)
-  "DIRECTORY, a native name ending in / within the repository at TOP, as the
-commit HASH left it, a RIMU-LISTING: what it held as git keeps it, each with
-its kind and permissions, a file its size and a link where it leads, all
-changed when that commit was made and owned by you, with no inode; why not,
-when it held no such folder then. A name no file in a folder can have (., ..
-or one holding a /) is left out."
+  "A RIMU-LISTING of DIRECTORY, a native name ending in / within the repository
+at TOP, as the commit HASH left it. It holds what the folder held as git keeps
+it, each with its kind and permissions, a file its size and a link where it
+leads, all changed when that commit was made and owned by you, with no inode. It
+gives why not, when the commit held no such folder then. A name no file in a
+folder can have (., .. or one holding a /) is left out."
   (let* ((folder (subseq directory (length top)))
-         (made (* 1000000000 (or (parse-integer (git-job-try nil top (list "log" "-1" "--format=%ct" "--end-of-options" hash))
-                                                :junk-allowed t)
-                                 0)))
+         (made (* 1000000000
+                  (or (parse-integer (git-job-try nil top (list "log" "-1" "--format=%ct" "--end-of-options" hash))
+                                     :junk-allowed t)
+                      0)))
          (uid (sb-posix:getuid))
          (gid (sb-posix:getgid))
          (rows '()))
@@ -168,7 +170,9 @@ or one holding a /) is left out."
                 (destructuring-bind (mode type object &optional size)
                     (remove "" (uiop:split-string (subseq line 0 tab) :separator '(#\Space)) :test #'string=)
                   (let ((name (subseq line (1+ tab))))
-                    (when (and (plusp (length name)) (not (member name '("." "..") :test #'string=)) (not (find #\/ name)))
+                    (when (and (plusp (length name))
+                               (not (member name '("." "..") :test #'string=))
+                               (not (find #\/ name)))
                       (push (list name (or (parse-integer mode :radix 8 :junk-allowed t) #o100644) type object
                                   (or (and size (parse-integer size :junk-allowed t)) 0))
                             rows))))))))

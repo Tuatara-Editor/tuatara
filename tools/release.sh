@@ -49,7 +49,8 @@ tools/terminal-library.sh
 # library, and the same Lisp libraries
 stamp="$root/build/release/.built-from"
 wanted="$(git rev-parse HEAD) $(cat "$0" tools/lisp-archives.sh tools/lisp-archives.sha256 tools/build-image.lisp tools/build-image.sh tools/inside.sh build/grammars/.built-from \
-            build/terminal/.built-from "$(dirname "$(find_quicklisp_setup)")/dists/quicklisp/distinfo.txt" | sha256sum | cut -c1-16)"
+            build/terminal/.built-from "$(dirname "$(find_quicklisp_setup)")/dists/quicklisp/distinfo.txt" | sha256sum |
+              cut -c1-16)"
 if [ -z "$(git status --porcelain --untracked-files=no)" ] &&
    [ -f "$stamp" ] && [ "$(cat "$stamp")" = "$wanted" ] && [ -x build/release/tuatara/tuatara ] &&
    [ -f build/release/tuatara-sources.tar.zst ]; then

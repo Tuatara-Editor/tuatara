@@ -74,7 +74,11 @@
     ("cat-file" :options ("-e" "-p" "-t" "-s" "--batch" "--batch-check" "--batch=" "--batch-check=" "-z" "-Z"
                           "--buffer" "--follow-symlinks" "--batch-all-objects" "--unordered"))
     ("rev-parse" :options ("--verify" "-q" "--quiet" "--absolute-git-dir" "--git-dir" "--git-common-dir"
-                           "--show-toplevel" "--show-prefix" "--show-cdup" "--is-inside-work-tree" "--is-bare-repository"
+                           "--show-toplevel"
+                           "--show-prefix"
+                           "--show-cdup"
+                           "--is-inside-work-tree"
+                           "--is-bare-repository"
                            "--is-inside-git-dir" "--abbrev-ref" "--abbrev-ref=" "--short" "--short=" "--symbolic"
                            "--symbolic-full-name" "--path-format=" "--show-object-format" "--show-object-format="
                            "--end-of-options" "--sq" "--all" "--branches" "--tags" "--remotes" "--not" "--revs-only"
@@ -165,11 +169,12 @@ allows."
 
 (defun git-reading-refusal (arguments)
   "Why git is not run with ARGUMENTS in a repository not trusted, in one
-sentence; NIL when they only read: no option before the command but those
-of *GIT-LINE-OPTIONS-ALLOWED*; a command of *GIT-READING-OPTIONS* (with its
-first word for one of several parts) given only the options listed for it,
-each in a word of its own, whose values ask for no signature and no name
-mapped; names to branch and tag only when listing; git config only reading."
+sentence. NIL when they only read. They only read when all of these hold.
+There is no option before the command but those of *GIT-LINE-OPTIONS-ALLOWED*.
+A command of *GIT-READING-OPTIONS* (with its first word for one of several
+parts) is given only the options listed for it, each in a word of its own,
+whose values ask for no signature and no name mapped. Names to branch and tag
+come only when listing. git config is only reading."
   (let* ((words (git-command-words arguments))
          (leading (remove-if (lambda (word) (member word *git-line-options-allowed* :test #'string=))
                              (ldiff arguments words)))
@@ -197,11 +202,17 @@ mapped; names to branch and tag only when listing; git config only reading."
                              (let ((value (pop rest)))
                                (cond ((null value) (setf refusal (format nil "~a is given no value" word)))
                                      ((git-value-refused value)
-                                      (setf refusal (format nil "~a in what git is given asks for more than reading" (git-value-refused value)))))))
+                                      (setf refusal
+                                            (format nil
+                                                    "~a in what git is given asks for more than reading"
+                                                    (git-value-refused value)))))))
                             ((not (git-option-allowed-p word options))
                              (setf refusal (format nil "git ~a is not given ~a here, where git only reads" key word)))
                             ((git-value-refused word)
-                             (setf refusal (format nil "~a in what git is given asks for more than reading" (git-value-refused word))))
+                             (setf refusal
+                                   (format nil
+                                           "~a in what git is given asks for more than reading"
+                                           (git-value-refused word))))
                             ((string= word "--end-of-options") (setf ended t)))))
            (cond (refusal)
                  ((and plain (not (getf spec :plain t)))
@@ -276,15 +287,15 @@ or NIL when it has none git could read."
 ;;; Its shadow
 
 (defstruct (git-shadow (:constructor make-git-shadow (folder)) (:copier nil))
-  "A shadow of a repository not trusted, in FOLDER: STATE, the state of what
-it was copied from (GIT-REPOSITORY-STATE); FOLDERS, the folders of its
-references, whose stamps tell when one was written; SETTINGS, the extensions
-it was given, (NAME VALUE) each; ELSEWHERE, the folders of objects outside
-the repository its alternates name; COPIED, the octets copied into it so
-far; INDEX-STAMPS and LOGS-STAMPS, the state of the index and of the logs
-copied into it last, :NONE before; USERS, how many runs of git use it now;
-RETIRED, true once a newer shadow took its place, deleted when the last run
-using it is done."
+  "A shadow of a repository not trusted, in FOLDER. STATE is the state of what
+it was copied from (GIT-REPOSITORY-STATE). FOLDERS are the folders of its
+references, whose stamps tell when one was written. SETTINGS are the
+extensions it was given, (NAME VALUE) each. ELSEWHERE are the folders of
+objects outside the repository its alternates name. COPIED is the octets
+copied into it so far. INDEX-STAMPS and LOGS-STAMPS are the state of the index
+and of the logs copied into it last, :NONE before. USERS is how many runs of
+git use it now. RETIRED is true once a newer shadow took its place, deleted
+when the last run using it is done."
   folder (state :none) (folders '()) settings (elsewhere '()) (copied 0)
   (index-stamps :none) (logs-stamps :none) (users 0) retired)
 
@@ -385,9 +396,9 @@ opened. NIL when ROOT is not there."
 
 (defun git-repository-state (folder common folders)
   "What a shadow of the repository whose own folders are FOLDER and COMMON is
-made again by: the state of its HEAD, settings, packed references, shallow
-commits, patterns left out and reference table, and of FOLDERS, the folders
-of its references, which change whenever one is written (git writes a
+made again by. It is the state of its HEAD, settings, packed references,
+shallow commits, patterns left out and reference table, and of FOLDERS, the
+folders of its references. These change whenever one is written (git writes a
 reference to a new name, then renames it over the old)."
   (list (git-file-row (tuatara.io:path-join folder "HEAD"))
         (mapcar (lambda (name) (git-file-row (tuatara.io:path-join common name)))
@@ -482,7 +493,8 @@ format newer than 1, or one needing an extension that is neither one of
                                 (cond ((and read (member (string-downcase value) (rest read) :test #'string=))
                                        (list (list name (string-downcase value))))
                                       ((member name *git-extensions-left-out* :test #'string=) '())
-                                      (t (git-refuse-reading top "it needs git's extension ~a = ~a, which is not read here"
+                                      (t (git-refuse-reading top
+                                                             "it needs git's extension ~a = ~a, which is not read here"
                                                              name value))))))))))
 
 (defun git-shadow-settings-text (settings)
@@ -513,7 +525,8 @@ must be a folder. GIT-REFUSED otherwise."
                      (when (tuatara.io:path-kind alternates :follow nil)
                        (when (>= depth *git-alternates-deepest*)
                          (git-refuse-reading top "its alternates name others more than ~d deep" *git-alternates-deepest*))
-                       (dolist (line (uiop:split-string (git-small-file top alternates "alternates") :separator '(#\Newline)))
+                       (dolist (line (uiop:split-string (git-small-file top alternates "alternates")
+                                                        :separator '(#\Newline)))
                          (let ((line (string-trim '(#\Space #\Return #\Tab) line)))
                            (cond ((or (zerop (length line)) (char= (char line 0) #\#)))
                                  ((char= (char line 0) #\")
@@ -612,7 +625,8 @@ place in one (@{...}); NIL for one that reads none."
   (let ((command (first words)))
     (cond ((equal command "stash") :stash)
           ((equal command "reflog") :all)
-          ((some (lambda (word) (or (member word '("-g" "--walk-reflogs") :test #'string=) (search "@{" word))) (rest words))
+          ((some (lambda (word) (or (member word '("-g" "--walk-reflogs") :test #'string=) (search "@{" word)))
+                 (rest words))
            :all))))
 
 (defun retire-git-shadow (shadow)
@@ -735,7 +749,8 @@ of show."
     (let ((extra (rest (assoc command *git-commands-taking-no-programs* :test #'string=))))
       (cond (extra (list* command (append extra more)))
             ((and (string= command "stash") (equal (first more) "show"))
-             (list* command "show" (append (rest (assoc "show" *git-commands-taking-no-programs* :test #'string=)) (rest more))))
+             (list* command "show" (append (rest (assoc "show" *git-commands-taking-no-programs* :test #'string=))
+                                           (rest more))))
             (t words)))))
 
 (defparameter *git-blame-options-taking-values* '("-L")
@@ -822,13 +837,13 @@ when it is there, or there is none."
 
 (defun call-git-reading (top directory arguments function)
   "Call FUNCTION with the arguments, the environment and the folder to run in
-that git reads the repository at TOP with, not trusted, ARGUMENTS asked for
-in DIRECTORY: refused first when they do not only read (GIT-READING-REFUSAL,
-GIT-REFUSED signalled); then run on its shadow (TAKE-GIT-SHADOW), the index
-copied for a command that reads it and the logs for one that reads them,
-with the attributes of the empty tree and the options of GIT-READING-WORDS;
-blame and shortlog run from an empty folder, as their raw forms. The shadow
-is let go of once FUNCTION returns."
+that git reads the repository at TOP with, not trusted, ARGUMENTS asked for in
+DIRECTORY. They are refused first when they do not only read
+\(GIT-READING-REFUSAL, GIT-REFUSED signalled). Then they run on its shadow
+\(TAKE-GIT-SHADOW), the index copied for a command that reads it and the logs
+for one that reads them, with the attributes of the empty tree and the options
+of GIT-READING-WORDS. Blame and shortlog run from an empty folder, as their
+raw forms. The shadow is let go of once FUNCTION returns."
   (let ((refusal (git-reading-refusal arguments)))
     (when refusal
       (error 'git-refused :operation (or (first (git-command-words arguments)) "") :path top

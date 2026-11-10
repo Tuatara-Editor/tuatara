@@ -11,7 +11,8 @@
 
 (defvar *differences-limit* (* 64 1024 1024)
   "The most octets of differences shown (64 MB); when there are more, none
-are shown, and that is said.")
+are shown, and that is said. Raise it to see larger differences, at the cost of
+the memory of all of them; lower it to refuse them sooner.")
 
 (defun sandbox-seen-directory (path)
   "The directory a program shut in the sandbox is shown to see the file or
@@ -67,9 +68,14 @@ job; ROPE, those found."
   (let ((old (differences-job-old job)) (new (differences-job-new job)) (rope (differences-job-rope job)))
     (show-reading-result job old
                          (if (and rope (zerop (tuatara.text:rope-octet-length rope)))
-                             (format nil "No differences: ~a and ~a are the same.~%" (abbreviated-path old) (abbreviated-path new))
+                             (format nil
+                                     "No differences: ~a and ~a are the same.~%"
+                                     (abbreviated-path old)
+                                     (abbreviated-path new))
                              rope)
-                         (format nil "~~a and ~a could not be compared: ~~a~~%" (cl-ppcre:regex-replace-all "~" (abbreviated-path new) "~~")))))
+                         (format nil
+                                 "~~a and ~a could not be compared: ~~a~~%"
+                                 (cl-ppcre:regex-replace-all "~" (abbreviated-path new) "~~")))))
 
 (defun show-differences (old new)
   "Show the differences between OLD and NEW, two files or folders, in a buffer
@@ -82,7 +88,10 @@ two others of the same names is left as it is."
                                         (tuatara.buffer:unique-buffer-name name)
                                         name)
                                     'diff-mode
-                                    (format nil "Comparing ~a with ~a...~%" (abbreviated-path old) (abbreviated-path new)))))
+                                    (format nil
+                                            "Comparing ~a with ~a...~%"
+                                            (abbreviated-path old)
+                                            (abbreviated-path new)))))
     (setf (tuatara.buffer:buffer-local buffer 'compared) (list old new)
           (buffer-given-directory buffer) (tuatara.io:parent-path new))
     (tuatara.runtime:start-job-thread

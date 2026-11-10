@@ -70,7 +70,9 @@ shown; one in them, nothing."
   "Where a program run on copies of files (RUN-ON-COPIES) sees the copies.")
 
 (defvar *copy-name-scanner*
-  (cl-ppcre:create-scanner (format nil "~a[A-Za-z]+-[0-9]+(?:\\.[A-Za-z0-9]{1,5})?" (cl-ppcre:quote-meta-chars *copies-place*)))
+  (cl-ppcre:create-scanner (format nil
+                                   "~a[A-Za-z]+-[0-9]+(?:\\.[A-Za-z0-9]{1,5})?"
+                                   (cl-ppcre:quote-meta-chars *copies-place*)))
   "What finds the name of a copy (COPY-FILE-NAME) in *COPIES-PLACE* in a
 program's words.")
 
@@ -144,8 +146,9 @@ being the job's."
                                                            (max tuatara-user:*sandbox-total-memory* memory))))
              (multiple-value-bind (output outcome said)
                  (apply #'tuatara.io:sandbox-run run (apply arguments seen)
-                        :directories (append (list (cons (string-right-trim "/" folder) (string-right-trim "/" *copies-place*)))
-                                             shown directories)
+                        :directories
+                        (append (list (cons (string-right-trim "/" folder) (string-right-trim "/" *copies-place*)))
+                                shown directories)
                         :memory memory :cancel cancel
                         (alexandria:remove-from-plist keys :directories :memory :cancel))
                (values output outcome said names)))
@@ -164,7 +167,8 @@ the run went, SECONDS-SETTING the setting's symbol holding its seconds."
                                            (if (plusp (length said)) said (format nil "~a ended without a report" label)))
                               names))))
 
-(defun run-on-copies-for-report (program groups arguments &rest keys &key label missing seconds-setting &allow-other-keys)
+(defun run-on-copies-for-report
+    (program groups arguments &rest keys &key label missing seconds-setting &allow-other-keys)
   "Run the program PROGRAM names, a name or a path (USER-PROGRAM-PATH; an
 error saying MISSING when it is not there), on private copies of files, as
 RUN-ON-COPIES does with GROUPS, ARGUMENTS and the rest of KEYS, for at most

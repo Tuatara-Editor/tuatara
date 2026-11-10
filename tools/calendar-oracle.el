@@ -18,7 +18,9 @@
   (dolist (case calendar-oracle-cases)
     (let ((calendar-week-start-day (nth 2 case)))
       (insert (format "== %d %d %d\n" (nth 0 case) (nth 1 case) (nth 2 case)))
-      (insert (with-temp-buffer (setq indent-tabs-mode nil) (calendar-generate (nth 1 case) (nth 0 case)) (buffer-string)))
+      (insert (with-temp-buffer (setq indent-tabs-mode nil)
+                                (calendar-generate (nth 1 case) (nth 0 case))
+                                (buffer-string)))
       (insert "\n==\n"))))
 
 (setq command-line-args-left nil)

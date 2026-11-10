@@ -92,15 +92,18 @@ neutrals (:BN)."
 (defstruct (bidi-scratch (:constructor make-bidi-scratch ()) (:copier nil))
   "The room the levels of a paragraph are worked out in, kept from one
 paragraph to the next so that working them out makes no garbage once it is
-large enough: for each of up to SIZE characters, their CLASSES as written,
-their TYPES as the rules change them, their CODES, their LEVELS and the
-EXPLICIT levels the embeddings give them, the index of the end or beginning
-of the isolate each begins or ends (MATCH), the level run it is in (RUN-OF),
-and STACK, room for a stack; for each level run its RUN-FIRST and RUN-LAST
-characters; for the isolating run sequence worked on, the indices of its
+large enough.
+For each of up to SIZE characters it holds their CLASSES as written, their
+TYPES as the rules change them, their CODES, their LEVELS and the EXPLICIT
+levels the embeddings give them. It holds the index of the end or beginning of
+the isolate each begins or ends (MATCH), the level run it is in (RUN-OF), and
+STACK, room for a stack.
+For each level run it holds its RUN-FIRST and RUN-LAST characters.
+For the isolating run sequence worked on, it holds the indices of its
 characters (SEQUENCE), their classes (TS) and each opening bracket's closing
-one (PARTNER); for a line, the levels it is shown at (LINE) and the order
-\(ORDER). The embeddings' stack and the brackets' are of fixed size."
+one (PARTNER).
+For a line, it holds the levels it is shown at (LINE) and the order (ORDER).
+The embeddings' stack and the brackets' are of fixed size."
   (size 0 :type fixnum)
   (classes #() :type simple-vector)
   (types #() :type simple-vector)
@@ -130,14 +133,16 @@ one (PARTNER); for a line, the levels it is shown at (LINE) and the order
       (documentation 'bidi-scratch-codes 'function) "The codes of the characters."
       (documentation 'bidi-scratch-levels 'function) "The levels worked out for the characters."
       (documentation 'bidi-scratch-explicit 'function) "The levels the embeddings give the characters."
-      (documentation 'bidi-scratch-match 'function) "For each isolate's beginning or end, the index of the other; -1 for none."
+      (documentation 'bidi-scratch-match 'function) "For each isolate's beginning or end, the index
+of the other; -1 for none."
       (documentation 'bidi-scratch-run-of 'function) "For each character, the level run it is in."
       (documentation 'bidi-scratch-stack 'function) "Room for a stack of indices."
       (documentation 'bidi-scratch-run-first 'function) "For each level run, its first character."
       (documentation 'bidi-scratch-run-last 'function) "For each level run, its last character."
       (documentation 'bidi-scratch-sequence 'function) "The indices of the characters of the sequence worked on."
       (documentation 'bidi-scratch-ts 'function) "The classes of the characters of the sequence worked on."
-      (documentation 'bidi-scratch-partner 'function) "For each opening bracket of the sequence, its closing one's place; -1 else."
+      (documentation 'bidi-scratch-partner 'function) "For each opening bracket of the sequence, its
+closing one's place; -1 else."
       (documentation 'bidi-scratch-line 'function) "The levels a line's characters are shown at."
       (documentation 'bidi-scratch-order 'function) "The order a line's characters are shown in."
       (documentation 'bidi-scratch-stack-level 'function) "The embeddings' stack: levels."
@@ -463,13 +468,13 @@ directions before and after the sequence."
 (defun resolve-levels (scratch n paragraph-level &key brackets)
   "Work out the levels of the first N characters of SCRATCH, whose classes
 and codes are filled in, into its LEVELS, as the Unicode Bidirectional
-Algorithm resolves them: PARAGRAPH-LEVEL 0 for a paragraph written from left
-to right, 1 from right to left, NIL from its first letter (0 when it has
-none); with BRACKETS, the paired brackets by their codes. A character
-removed from the working out (an embedding, an override or their end, a
-boundary neutral) takes the level of the one before it, an end of embedding
-that of the one after it. Returns the paragraph's level. Makes no garbage.
-Complexity: O(n), but for brackets O(n × 63)."
+Algorithm resolves them. PARAGRAPH-LEVEL 0 is for a paragraph written from
+left to right, 1 from right to left, NIL from its first letter (0 when it has
+none). With BRACKETS, the paired brackets are found by their codes. A
+character removed from the working out (an embedding, an override or their
+end, a boundary neutral) takes the level of the one before it, an end of
+embedding that of the one after it. Returns the paragraph's level. Makes no
+garbage. Complexity: O(n), but for brackets O(n × 63)."
   (let* ((classes (bidi-scratch-classes scratch))
          (types (bidi-scratch-types scratch))
          (levels (bidi-scratch-levels scratch))
@@ -668,13 +673,13 @@ O(TO - FROM)."
 
 (defstruct (bidi-paragraph (:constructor make-bidi-paragraph ()) (:copier nil))
   "A stretch of a line worked out for showing right-to-left text, its arrays
-used again for another once ROPE is not the text shown: the octets from
-START below END of ROPE, as DIRECTION (:AUTO, :LEFT-TO-RIGHT,
-:RIGHT-TO-LEFT) said; COUNT characters, where each begins (BYTES), their
-bidirectional CLASSES and resolved LEVELS, and the LEVEL of the paragraph, 1
-for a line written from right to left. STORED is true when the stretch, far
-into a long line, is shown in the order stored, as what comes before it
-cannot be told."
+used again for another once ROPE is not the text shown. It holds the octets
+from START below END of ROPE, as DIRECTION (:AUTO, :LEFT-TO-RIGHT,
+:RIGHT-TO-LEFT) said. It holds COUNT characters, where each begins (BYTES),
+their bidirectional CLASSES and resolved LEVELS, and the LEVEL of the
+paragraph, 1 for a line written from right to left. STORED is true when the
+stretch, far into a long line, is shown in the order stored, as what comes
+before it cannot be told."
   (rope nil)
   (start 0 :type fixnum)
   (end 0 :type fixnum)
@@ -695,17 +700,19 @@ cannot be told."
       (documentation 'bidi-paragraph-bytes 'function) "The offset each character of the PARAGRAPH begins at, in order."
       (documentation 'bidi-paragraph-classes 'function) "The bidirectional class of each character of the PARAGRAPH."
       (documentation 'bidi-paragraph-levels 'function) "The level each character of the PARAGRAPH is shown at."
-      (documentation 'bidi-paragraph-level 'function) "The level of the PARAGRAPH: 0 from left to right, 1 from right to left."
+      (documentation 'bidi-paragraph-level 'function) "The level of the PARAGRAPH: 0 from left to
+right, 1 from right to left."
       (documentation 'bidi-paragraph-stored 'function) "True when the PARAGRAPH is shown in the order stored.")
 
 (defstruct (bidi-cache (:constructor make-bidi-cache ()) (:copier nil))
-  "What a window keeps of right-to-left text from one layout to the next: the
-PARAGRAPHS worked out of ROPE, the text it last showed, those of a text
-before free to be filled again (NEXT, the one to fill when none is); the
-SCRATCH they are worked out in; whether right-to-left text was found
-between SCAN-FROM and SCAN-TO of SCAN-ROPE (SCAN-FOUND); and the room a row
-is put in order in, with its STRING, FACES, CHARS and BYTES copied, and UNITS, five
-numbers for each character shown with the marks on it."
+  "What a window keeps of right-to-left text from one layout to the next.
+PARAGRAPHS are those worked out of ROPE, the text it last showed, and those of
+a text before free to be filled again (NEXT, the one to fill when none is).
+SCRATCH is the room they are worked out in. SCAN-FOUND is whether
+right-to-left text was found between SCAN-FROM and SCAN-TO of SCAN-ROPE. The
+rest is the room a row is put in order in, with its STRING, FACES, CHARS and
+BYTES copied, and UNITS, five numbers for each character shown with the marks
+on it."
   (rope nil)
   (paragraphs (make-array 0 :adjustable t :fill-pointer 0) :type vector)
   (next 0 :type fixnum)
@@ -949,9 +956,10 @@ passed over), or NIL (none)."
   "STRING, a row as drawn, with each Arabic letter of a run of right-to-left
 text in the order it is read (the characters SPANS, lists (START END FACE),
 give :RIGHT-TO-LEFT) as the form of Arabic Presentation Forms-B that joins it
-to the letters beside it, as text is joined where it is written: a run's
-order turned round, so that the letter written before stands at its right.
-STRING itself, unchanged, when nothing in it is joined; it is never longer."
+to the letters beside it, as text is joined where it is written. A run's
+order is turned round, so that the letter written before stands at its right.
+Returns STRING itself, unchanged, when nothing in it is joined. The result is
+never longer."
   (if (notany (lambda (span) (right-to-left-face-p (third span))) spans)
       string
       (let ((shaped nil))
@@ -972,7 +980,8 @@ STRING itself, unchanged, when nothing in it is joined; it is never longer."
                                                       (member (joining i start end 1) '(:dual :causing))))
                                          (after (and (member own '(:dual :causing))
                                                      (member (joining i start end -1) '(:dual :right :causing))))
-                                         (form (or (svref forms (cond ((and before after) 3) (before 1) (after 2) (t 0)))
+                                         (form (or (svref forms
+                                                          (cond ((and before after) 3) (before 1) (after 2) (t 0)))
                                                    (svref forms 0))))
                                     (unless shaped (setf shaped (copy-seq string)))
                                     (setf (char shaped i) (code-char form))))))))

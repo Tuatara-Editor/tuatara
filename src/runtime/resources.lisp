@@ -42,7 +42,8 @@ program: BESIDE (a directory name ending in /) beside the program, as a
 release lays it out, then SOURCE in the source tree (*SOURCE-TREE*); with
 EXISTING, only those that exist."
   (let ((all (remove nil (list (and sb-ext:*runtime-pathname*
-                                    (merge-pathnames beside (uiop:pathname-directory-pathname sb-ext:*runtime-pathname*)))
+                                    (merge-pathnames beside
+                                                     (uiop:pathname-directory-pathname sb-ext:*runtime-pathname*)))
                                (and *source-tree* (merge-pathnames source *source-tree*))))))
     (if existing (remove-if-not #'uiop:directory-exists-p all) all)))
 
@@ -53,9 +54,11 @@ EXISTING, only those that exist."
 after piece on several cores makes no new ones: MAKE, a function of none,
 makes one when none is kept; KEEP-P, a function of one, says whether one given
 back is worth keeping."
-  (make nil :type function) (keep-p nil :type function) (items '()) (lock (sb-thread:make-mutex :name "tuatara spares")))
+  (make nil :type function) (keep-p nil :type function) (items '()) (lock (sb-thread:make-mutex :name
+                                                                                                "tuatara spares")))
 
-(setf (documentation 'make-spares 'function) "Return SPARES that makes each with MAKE and keeps those KEEP-P is true of."
+(setf (documentation 'make-spares 'function) "Return SPARES that makes each with MAKE and keeps
+those KEEP-P is true of."
       (documentation 'spares-p 'function) "True when OBJECT is a SPARES."
       (documentation 'spares-make 'function) "The function of none making one of SPARES when none is kept."
       (documentation 'spares-keep-p 'function) "The function saying whether one given back to SPARES is kept."

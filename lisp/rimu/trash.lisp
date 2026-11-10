@@ -13,17 +13,22 @@
 (in-package #:tuatara.defaults)
 
 (define-major-mode rimu-trash-mode sectioned-list-mode
-  "What is in the trash (\\[rimu-trash]), as the buffer list (\\[buffers]) has its buffers, a
-section for your own trash and one for each drive's, a line each thing:
-its mark, name, when it went there and where it was. \\<support>\\[next-line] and \\[previous-line]
-move, \\<rimu-trash-mode>\\[list-visit] or \\`RET' opens the thing on the line safely, to look at
-\(on a heading, folds or unfolds its section), \\[list-visit-other] in another window,
-\\[quit-window] or \\`h' returns; \\[list-toggle-fold] folds or unfolds the section, \\[list-toggle-all-folds] all of them;
-\\[list-mark-entry] marks a thing (>), \\[list-mark-for-deletion] marks it for deletion (D), \\[list-unmark-entry] unmarks
-it, \\[list-unmark-all] unmarks them all, \\[list-toggle-marks] swaps marked and unmarked; \\[rimu-trash-restore] puts the marked things (the one on the
-line when none is) back where they were, after asking, \\[list-delete-marked] deletes them for
-good, after asking, \\[list-execute] those marked for deletion; \\[rimu-trash-empty] empties the
-trash (asked twice); \\[revert-buffer] lists it again, marks kept."
+  "What is in the trash (\\[rimu-trash]), as the buffer list (\\[buffers]) has
+its buffers, a section for your own trash and one for each drive's, a line
+each thing: its mark, name, when it went there and where it was.
+\\<support>\\[next-line] and \\[previous-line] move.
+\\<rimu-trash-mode>\\[list-visit] or \\`RET' opens the thing on the line
+safely, to look at \(on a heading, folds or unfolds its section),
+\\[list-visit-other] in another window. \\[quit-window] or \\`h' returns.
+\\[list-toggle-fold] folds or unfolds the section, \\[list-toggle-all-folds]
+all of them. \\[list-mark-entry] marks a thing (>), \\[list-mark-for-deletion]
+marks it for deletion (D), \\[list-unmark-entry] unmarks it,
+\\[list-unmark-all] unmarks them all, \\[list-toggle-marks] swaps marked and
+unmarked. \\[rimu-trash-restore] puts the marked things (the one on the line
+when none is) back where they were, after asking, \\[list-delete-marked]
+deletes them for good, after asking, \\[list-execute] those marked for
+deletion. \\[rimu-trash-empty] empties the trash (asked twice).
+\\[revert-buffer] lists it again, marks kept."
   :lighter "Trash" :interactive nil)
 
 (defvar *rimu-trash-keymap* (mode-keymap 'rimu-trash-mode)
@@ -63,7 +68,9 @@ looked at again just before they are changed, each trash once."
   "RAW, a field of /proc/self/mounts, its \\NNN (a space, a tab, a line feed, a
 backslash, in octal) made the characters again."
   (cl-ppcre:regex-replace-all "\\\\([0-7]{3})" raw
-                              (lambda (match code) (declare (ignore match)) (string (code-char (parse-integer code :radix 8))))
+                              (lambda (match code)
+                                (declare (ignore match))
+                                (string (code-char (parse-integer code :radix 8))))
                               :simple-calls t))
 
 (defparameter *mounts-file* "/proc/self/mounts"
@@ -124,7 +131,8 @@ file, a link followed, never a named pipe or a device, at most
                                                         :limit *trash-info-limit* :too-large (constantly nil))))
                           (lines (and text (uiop:split-string text :separator '(#\Newline))))
                           (path (loop for line in lines
-                                      when (uiop:string-prefix-p "Path=" line) return (tuatara.io:percent-decoded (subseq line 5))))
+                                      when (uiop:string-prefix-p "Path=" line)
+                                      return (tuatara.io:percent-decoded (subseq line 5))))
                           (date (loop for line in lines
                                       when (uiop:string-prefix-p "DeletionDate=" line) return (subseq line 13))))
                      (when path
@@ -333,7 +341,8 @@ it went, or NIL (said why)."
 (defun trash-restore-question (things refused)
   "The question whether to put THINGS back, where they go said; REFUSED, each
 \(THING . WHY), those left in the trash (TRASH-RESTORE-REFUSAL)."
-  (let ((folders (remove-duplicates (mapcar (lambda (thing) (abbreviated-path (tuatara.io:parent-path (trashed-path thing)))) things)
+  (let ((folders (remove-duplicates (mapcar (lambda (thing)
+                                              (abbreviated-path (tuatara.io:parent-path (trashed-path thing)))) things)
                                     :test #'string= :from-end t)))
     (format nil "~a?~@[ (left in the trash: ~{~a~^; ~})~]"
             (list-question "Put back" "thing" things
@@ -395,7 +404,8 @@ background (TRASH-DELETE-THINGS); they cannot be put back."
            (message "Not deleted: the trash on that drive has links in it or is not yours"))
           ((yes-or-no-p* (format nil "~a for good? It cannot be put back."
                                  (list-question "Delete" "thing" things
-                                                :name-of (lambda (thing) (tuatara.io:native-file-name (trashed-path thing))))))
+                                                :name-of (lambda (thing)
+                                                           (tuatara.io:native-file-name (trashed-path thing))))))
            (trash-delete-things things list)))))
 
 (define-command rimu-trash-restore ()

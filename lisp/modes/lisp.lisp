@@ -68,7 +68,9 @@ the octets below END are read."
                    ((and (= b 35) (= (at (1+ i)) 124))                                   ; #| |#
                     (setf i (nested-comment-end #'at i n)))
                    ((= b 40) (push (or prefix i) opens) (setf prefix nil) (incf i))    ; (
-                   ((= b 41) (when opens (let ((open (pop opens))) (when collect (push (list open (1+ i) (length opens)) elements)))) ; )
+                   ((= b 41) (when opens
+                               (let ((open (pop opens)))
+                                 (when collect (push (list open (1+ i) (length opens)) elements)))) ; )
                     (setf prefix nil) (incf i))
                    ((= b 34)                                                             ; "..."
                     (let ((j (1+ i)))
@@ -526,7 +528,8 @@ it is."
   (multiple-value-bind (start end) (top-level-form-bounds (current-buffer) (point))
     (if start
         (evaluate-and-report (current-buffer)
-                             (defvar-again (current-buffer) (tuatara.buffer:buffer-string (current-buffer) :start start :end end)))
+                             (defvar-again (current-buffer)
+                                 (tuatara.buffer:buffer-string (current-buffer) :start start :end end)))
         (message "No top-level form around point"))))
 
 (define-command eval-region ()

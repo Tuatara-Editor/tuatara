@@ -10,7 +10,8 @@ comments count for nothing; M-x show-paren-mode switches it.")
 
 (define-test (show-paren partners)
   (flet ((partner (text at &optional spans)
-           (multiple-value-list (tuatara.defaults::counted-partner (tuatara.text:string->rope text) (coerce spans 'simple-vector)
+           (multiple-value-list (tuatara.defaults::counted-partner (tuatara.text:string->rope text)
+                                                                   (coerce spans 'simple-vector)
                                                                    at (find (char text at) "([{") 0 (length text)))))
     (is equal '(8 t) (partner "(a (b) c)" 0))
     (is equal '(5 t) (partner "(a (b) c)" 3))
@@ -55,8 +56,12 @@ comments count for nothing; M-x show-paren-mode switches it.")
     ;; a shell case pattern's parenthesis pairs with nothing
     (false (ranges 'tuatara.defaults::bash-mode (format nil "case x in~%  a) echo;;~%esac~%") 13))
     ;; C's brackets of every kind
-    (is equal '((8 9 :paren-match) (23 24 :paren-match)) (ranges 'tuatara.defaults::c-mode "int f() { return a[0]; }" 8))
-    (is equal '((20 21 :paren-match) (18 19 :paren-match)) (ranges 'tuatara.defaults::c-mode "int f() { return a[0]; }" 21))))
+    (is equal
+        '((8 9 :paren-match) (23 24 :paren-match))
+        (ranges 'tuatara.defaults::c-mode "int f() { return a[0]; }" 8))
+    (is equal
+        '((20 21 :paren-match) (18 19 :paren-match))
+        (ranges 'tuatara.defaults::c-mode "int f() { return a[0]; }" 21))))
 
 (define-test (show-paren highlighted)
   (flet ((typed (text) (fresh-start (format nil "o ~a" (key-string text)) :width 80)))

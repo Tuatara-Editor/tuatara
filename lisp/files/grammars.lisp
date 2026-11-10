@@ -201,7 +201,8 @@ the disk: the file is looked at when the grammar is loaded."
   "A descriptor open for reading on NAME.so in the folder of grammars you add,
 and its size: a plain file there, not a link (never followed); NIL when
 there is none such."
-  (let* ((path (uiop:native-namestring (merge-pathnames (format nil "~a.so" name) (tuatara.syntax:user-grammar-directory))))
+  (let* ((path (uiop:native-namestring (merge-pathnames (format nil "~a.so" name)
+                                                        (tuatara.syntax:user-grammar-directory))))
          (fd (handler-case (sb-posix:open path (logior sb-posix:o-rdonly sb-posix:o-nofollow #o2000000))
                (sb-posix:syscall-error () nil))))
     (when fd
@@ -236,13 +237,13 @@ stays off."
   nil)
 
 (defun store-user-grammar (name)
-  "Keep NAME.so of the folder of grammars you add as turned on: its octets,
-read through a descriptor on the file itself, written as a new file of yours
-alone in USER-GRAMMAR-STORE, on the disk before it takes the place of the
-copy kept before, and the SHA-256 of those octets kept between sessions;
-the program running grammars loads that copy. The sum, or NIL when the file
-is not a plain file there, is larger than *USER-GRAMMAR-LARGEST*, or could
-not be kept (a full disk, the folder no use), said once."
+  "Keep NAME.so of the folder of grammars you add as turned on. Its octets are
+read through a descriptor on the file itself and written as a new file of
+yours alone in USER-GRAMMAR-STORE, on the disk before it takes the place of
+the copy kept before. The SHA-256 of those octets is kept between sessions.
+The program running grammars loads that copy. The sum, or NIL when the file is
+not a plain file there, is larger than *USER-GRAMMAR-LARGEST*, or could not be
+kept (a full disk, the folder no use), said once."
   (multiple-value-bind (fd size) (open-user-grammar name)
     (when fd
       (let ((octets (unwind-protect (ignoring-errors-reported ("reading the ~a grammar" name)
@@ -341,14 +342,15 @@ other languages coloured again by the grammars on."
           (language-words language) (substitute-command-keys "\\[turn-on-grammar]") (language-name language)))
 
 (defun ask-to-turn-on-grammar (language)
-  "Ask whether to turn LANGUAGE's grammar on, answered by one key pressed
-once the question is shown (READ-ANSWER-KEY; keys typed before are thrown
-away): y keeps it on and parses the buffers in it, n keeps it off and says
-how to turn it on later; any other key says which keys answer and asks
-again; \\`C-g' is \"not now\", not asked again in this session, and nothing
-kept."
+  "Ask whether to turn LANGUAGE's grammar on, answered by one key pressed once
+the question is shown (READ-ANSWER-KEY; keys typed before are thrown away).
+Pressing y keeps it on and parses the buffers in it, n keeps it off and says
+how to turn it on later. Any other key says which keys answer and asks again.
+\\`C-g' is \"not now\", not asked again in this session, and nothing kept."
   (let* ((words (language-words language))
-         (answer (handler-case (read-answer-key (format nil "Turn on the ~a grammar? (y or n) " words) '(#\y #\n) :fresh t)
+         (answer (handler-case (read-answer-key (format nil "Turn on the ~a grammar? (y or n) " words)
+                                                '(#\y #\n)
+                                                :fresh t)
                    (quit () nil))))
     (case answer
       (#\y (note-grammar-answer language t)
@@ -444,7 +446,8 @@ asking; \\[turn-off-grammar] turns one off again."
   (let ((language (read-grammar-language "Turn on the grammar of: " nil)))
     (when language
       (note-grammar-answer language t)
-      (setf *grammars-not-now* (remove (string-downcase (symbol-name (language-name language))) *grammars-not-now* :test #'string=))
+      (setf *grammars-not-now*
+            (remove (string-downcase (symbol-name (language-name language))) *grammars-not-now* :test #'string=))
       (grammars-changed)
       (message "The ~a grammar is on" (language-words language)))))
 

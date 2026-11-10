@@ -1,4 +1,5 @@
-;;;; lisp/editing/own-files.lisp --- Tuatara's own data files, and folders of yours that add to them or take their place.
+;;;; lisp/editing/own-files.lisp --- Tuatara's own data files, and folders of yours that add to them or take their
+;;;; place.
 ;;;; Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
 ;;;;
 ;;;; Snippets, capture templates and LaTeX templates come with Tuatara, read

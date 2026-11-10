@@ -48,7 +48,10 @@ with an accented letter."
           ;; what the donor had counted was not read again: the pieces at the changes, a tenth of it at most
           (let ((afresh (cons 0 0)))
             (tuatara.text:index-rope edited :progress afresh)
-            (true (< (cdr progress) (floor (cdr afresh) 10)) "~:d octets read again, ~:d afresh" (cdr progress) (cdr afresh)))
+            (true (< (cdr progress) (floor (cdr afresh) 10))
+                  "~:d octets read again, ~:d afresh"
+                  (cdr progress)
+                  (cdr afresh)))
           (is = (cdr progress) (car progress)))))))
 
 (defun uncounted-sample-octets (random)
@@ -83,12 +86,14 @@ edits are checked against."
 (defun random-edits (rope random)
   "One to six edits of ROPE at character boundaries, sorted and apart, drawn by
 RANDOM: deletions, insertions of characters of every width, or both."
-  (let ((points (sort (remove-duplicates (loop repeat (1+ (random 6 random)) collect (random-boundary rope random))) #'<))
+  (let ((points (sort (remove-duplicates (loop repeat (1+
+                                                       (random 6 random)) collect (random-boundary rope random))) #'<))
         (reach -1) (edits '()))
     (loop for (start next) on points
           for end = (if (and next (zerop (random 2 random))) next start)
           for insert = (and (plusp (random 3 random))
-                            (tuatara.text:string-octets (elt (list "x" "ü" "中" (format nil "new~%") "😀") (random 5 random))))
+                            (tuatara.text:string-octets (elt (list "x" "ü" "中" (format nil "new~%") "😀")
+                                                             (random 5 random))))
           do (when (and (>= start reach) (or (< start end) insert))
                (push (tuatara.text:make-edit start end insert) edits)
                (setf reach end)))
@@ -109,7 +114,12 @@ RANDOM: deletions, insertions of characters of every width, or both."
           (dotimes (round 25)
             (let ((edits (random-edits edited random)))
               (when edits
-                (setf edited (tuatara.text:apply-edits edited (mapcar (lambda (e) (tuatara.text:make-edit (tuatara.text:edit-start e) (tuatara.text:edit-end e) (tuatara.text:edit-insert e))) edits))
+                (setf edited
+                      (tuatara.text:apply-edits edited
+                                                (mapcar (lambda (e)
+                                                          (tuatara.text:make-edit (tuatara.text:edit-start e)
+                                                                                  (tuatara.text:edit-end e)
+                                                                                  (tuatara.text:edit-insert e))) edits))
                       model (edited-octets model edits)))))
           (false (tuatara.text:rope-indexed-p edited))
           (true (tuatara.text:check-rope edited))
@@ -243,7 +253,8 @@ begins."
              ;; kept as it is, and a buffer it is pasted into counts it in the background
              (let ((tuatara-user:*clipboard-size-limit* 8)
                    (tuatara.buffer:*large-edit-octets* 10))
-               (multiple-value-bind (f editor) (run-keys "C-x h M-w C-x b n e w RET C-y" :file path :width 100 :height 12)
+               (multiple-value-bind (f editor)
+                   (run-keys "C-x h M-w C-x b n e w RET C-y" :file path :width 100 :height 12)
                  (let ((b (tuatara.display:window-buffer (tuatara.command:editor-window editor))))
                    (false (tuatara.frontend.fake:fake-frame-showing f "Counting the lines of big.txt"))
                    (is string= "new" (tuatara.buffer:buffer-name b))
@@ -302,7 +313,8 @@ and the editor."
                  (let ((lines (uiop:split-string (tuatara.buffer:buffer-string buffer) :separator (string #\Newline))))
                    (is = 5001 (length lines))
                    (true (every (lambda (line) (or (string= line "") (uiop:string-prefix-p "X" line))) lines)
-                         "~s" (find-if-not (lambda (line) (or (string= line "") (uiop:string-prefix-p "X" line))) lines)))
+                         "~s"
+                         (find-if-not (lambda (line) (or (string= line "") (uiop:string-prefix-p "X" line))) lines)))
                  (tuatara.buffer:kill-buffer buffer))))
         (kill-buffers-visiting dir)))))
 
@@ -869,7 +881,8 @@ go; return what FUNCTION returned."
                          (let ((block (tuatara.text:make-octets 65536)))
                            (loop for at from 0 below (tuatara.text:rope-octet-length rope) by 65536
                                  sum (tuatara.text:rope-copy-into
-                                                      rope at (min (tuatara.text:rope-octet-length rope) (+ at 65536)) block))))
+                                                      rope at (min (tuatara.text:rope-octet-length rope)
+                                                                   (+ at 65536)) block))))
                        "a test reading" nil)))
             (loop repeat 500 until (car cell) do (sleep 0.01))
             (is = (tuatara.text:rope-octet-length rope) (car cell))
@@ -909,10 +922,10 @@ go; return what FUNCTION returned."
 
 (defun run-until-jobs-end (keys path)
   "Type KEYS on the file at PATH, then wait for the work they started in the
-background to end, within a minute, and for the system to hold less than
-eight megabytes of PATH, within fifteen seconds more, as counts of matches started
-alongside end; the pages of PATH the system holds then, its ends left out
-\(PAGES-HELD-INSIDE), and how many there are."
+background to end, within a minute. Then wait for the system to hold less
+than eight megabytes of PATH, within fifteen seconds more, as counts of
+matches started alongside end. Returns the pages of PATH the system holds
+then, its ends left out \(PAGES-HELD-INSIDE), and how many there are."
   (let ((held nil))
     (run-keys (list keys
                     (lambda ()

@@ -16,7 +16,8 @@
 STATE a word: checked out as recorded, not checked out, at another commit,
 or clashing."
   (loop for line in (uiop:split-string text :separator '(#\Newline))
-        for words = (uiop:split-string (string-left-trim '(#\Space) (subseq line (min 1 (length line)))) :separator '(#\Space))
+        for words = (uiop:split-string (string-left-trim '(#\Space) (subseq line (min 1 (length line))))
+                                       :separator '(#\Space))
         when (and (plusp (length line)) (second words))
           collect (list (second words)
                         (case (char line 0)
@@ -55,7 +56,9 @@ for (named after the address when nothing is typed), cloned there."
       (when address
         (let* ((name (let ((base (car (last (tuatara.text:split-words address '(#\/ #\:))))))
                        (if (and base (uiop:string-suffix-p base ".git")) (subseq base 0 (- (length base) 4)) base)))
-               (path (string-trim '(#\Space) (read-string (format nil "Put ~a at: " (escape-controls address)) :initial (or name "")))))
+               (path (string-trim '(#\Space)
+                                  (read-string (format nil "Put ~a at: " (escape-controls address))
+                                               :initial (or name "")))))
           (if (git-inside-path-p path)
               (git-over-network "Adding a submodule" top (list "submodule" "add" "--" address path)
                                 (format nil "Added the submodule ~a" (escape-controls path)))
@@ -80,12 +83,16 @@ at the newest commit of the branch each follows instead."
   (with-git-repository (top)
     (git-ask-submodule "Remove submodule: " top
                        (lambda (path)
-                         (when (yes-or-no-p* (format nil "Remove the submodule ~a and its folder? Changes in it are lost" (escape-controls path)))
+                         (when (yes-or-no-p* (format nil
+                                                     "Remove the submodule ~a and its folder? Changes in it are lost"
+                                                     (escape-controls path)))
                            (start-git-job "Removing a submodule"
                                           (lambda (job)
                                             (git-job-output job top (list "submodule" "deinit" "-f" "--" path))
                                             (git-job-output job top (list "rm" "-f" "--" path)))
-                                          (lambda (text) (declare (ignore text)) (message "Removed the submodule ~a" (escape-controls path)))
+                                          (lambda (text)
+                                            (declare (ignore text))
+                                            (message "Removed the submodule ~a" (escape-controls path)))
                                           :after (lambda () (git-refresh-repository top))))))))
 
 (define-command git-submodule-status ()
@@ -289,7 +296,8 @@ with =b in the subtree menu)."
       (when prefix
         (git-run "Splitting a subtree" top (append (list "subtree" "split" (format nil "--prefix=~a" prefix)) switches)
                  (lambda (text) (format nil "~a split off, ending at ~a" (escape-controls prefix)
-                                        (string-trim '(#\Newline #\Space) (car (last (tuatara.text:split-words text '(#\Newline))))))))))))
+                                        (string-trim '(#\Newline #\Space)
+                                                     (car (last (tuatara.text:split-words text '(#\Newline))))))))))))
 
 (define-menu git-subtree-menu (:title "Subtree" :show git-menu-shows-p :note git-menu-note)
   "Open the subtree menu: bring another repository into a folder, pull its

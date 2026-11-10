@@ -25,7 +25,8 @@ tree, never through every headline."
                         (and (= position (org-node-end node)) (= position (org-node-end tree))))))
              (walk (node)
                (when (eq (org-node-type node) 'headline) (setf found node))
-               (let ((child (find-if (lambda (c) (and (eq (org-node-type c) 'headline) (holds-p c))) (org-node-children node))))
+               (let ((child (find-if (lambda (c) (and (eq (org-node-type c) 'headline) (holds-p c)))
+                                     (org-node-children node))))
                  (when child (walk child)))))
       (walk tree))
     found))
@@ -51,13 +52,13 @@ with it; NIL before the first headline."
 
 (defun org-line-ends-kept (buffer start end text)
   "TEXT, Org's text for BUFFER's octets START below END as an edit leaves it,
-each newline ending a line, with the line ends BUFFER had there: a line of
-TEXT that was a line there ends as it ended (a newline, a carriage return
-and a newline, or a carriage return alone), however the lines moved; a line
-changed ends as the line in its place ended, when there are as many lines as
-before; a new one as BUFFER makes lines (BUFFER-NEWLINE), a carriage return
-it came with before its newline left out. So no line end the
-edit did not make changes, in a file of one kind of line end or of several."
+each newline ending a line, with the line ends BUFFER had there: a line of TEXT
+that was a line there ends as it ended (a newline, a carriage return and a
+newline, or a carriage return alone), however the lines moved. A line changed
+ends as the line in its place ended, when there are as many lines as before. A
+new one as BUFFER makes lines (BUFFER-NEWLINE), a carriage return it came with
+before its newline left out. So no line end the edit did not make changes, in a
+file of one kind of line end or of several."
   (let* ((old (tuatara.buffer:buffer-string buffer :start start :end end))
          (crlf (buffer-crlf-p buffer))
          ;; the lines there as Org reads them, each (TEXT . END): in a CRLF buffer a
@@ -70,7 +71,8 @@ edit did not make changes, in a file of one kind of line end or of several."
                                             (push (cons (subseq old from (1- i)) (coerce '(#\Return #\Newline) 'string)) lines)
                                             (push (cons (subseq old from i) (string #\Newline)) lines))
                                         (setf from (1+ i)))
-                                       ((and (char= c #\Return) (not (and (< (1+ i) n) (char= (char old (1+ i)) #\Newline))))
+                                       ((and (char= c #\Return)
+                                             (not (and (< (1+ i) n) (char= (char old (1+ i)) #\Newline))))
                                         (push (cons (subseq old from i) (string #\Return)) lines)
                                         (setf from (1+ i))))))
                       (nreverse lines)))
@@ -265,7 +267,11 @@ those done, but for those of *ORG-TODO-KEYWORDS-NOT-CYCLED*."
 (defun org-state-note (new old now)
   "The note Org logs of a change of state from OLD to NEW at the universal time NOW, as
   - State \"DONE\"       from \"TODO\"       [2026-10-01 Thu 18:00]."
-  (format nil "- State ~12a from ~12a ~a" (format nil "\"~a\"" new) (format nil "\"~a\"" (or old "")) (org-timestamp-text now)))
+  (format nil
+          "- State ~12a from ~12a ~a"
+          (format nil "\"~a\"" new)
+          (format nil "\"~a\"" (or old ""))
+          (org-timestamp-text now)))
 
 (defun org-entry-lines-with (lines property value)
   "LINES, those of an entry after its headline, with PROPERTY set to VALUE in
@@ -298,11 +304,11 @@ its property drawer, made after its planning line when it has none."
 
 (defun org-log-place (owner text)
   "Where what OWNER logs goes in TEXT, OWNER a headline or a list item with a
-checkbox, as two values: where a :LOGBOOK: drawer is made for it, or a line
-goes with none (the line after a headline's own line, its planning line and
-its properties; after an item's first line); and where the line after the
-first line of its :LOGBOOK: drawer begins, the first drawer of that name in its
-own text (a sub-headline's or a list item's left to them), or NIL when it has none."
+checkbox, as two values: where a :LOGBOOK: drawer is made for it, or a line goes
+with none (the line after a headline's own line, its planning line and its
+properties; after an item's first line). And where the line after the first line
+of its :LOGBOOK: drawer begins, the first drawer of that name in its own text (a
+sub-headline's or a list item's left to them), or NIL when it has none."
   (let* ((*org-text* text)
          (item-p (eq (org-node-type owner) 'item))
          (children (if item-p
@@ -366,7 +372,8 @@ made [ ]) and the counts on the lines of items with checkboxes made nought
 \([0/3], [0%]), and whether a checkbox was cleared, as two values."
   (let ((changed nil))
     (values (mapcar (lambda (line)
-                      (multiple-value-bind (start end) (cl-ppcre:scan "^[ \\t]*(?:[-+*]|[0-9]+[.)])[ \\t]+\\[[ Xx-]\\]" line)
+                      (multiple-value-bind (start end)
+                          (cl-ppcre:scan "^[ \\t]*(?:[-+*]|[0-9]+[.)])[ \\t]+\\[[ Xx-]\\]" line)
                         (declare (ignore start))
                         (cond ((null end) line)
                               (t (unless (char= (char line (- end 2)) #\Space) (setf changed t))
@@ -782,7 +789,9 @@ listed on TO's day, and a task done there done for the time it was."
                (message "~a is cancelled already" (org-occurrence-words from)))
               ((equal from to) (message "~a is where it is already" (org-occurrence-words from)))
               (t (org-log-note parse headline position (org-occurrence-note :moved from to now))
-                 (message "Moved ~a to ~a; the rest of it goes on" (org-occurrence-words from) (org-occurrence-words to))))))))
+                 (message "Moved ~a to ~a; the rest of it goes on"
+                          (org-occurrence-words from)
+                          (org-occurrence-words to))))))))
 
 (defun org-occurrence-choice (verb)
   "For the headline point is under, whose date repeats, ask as VERB (Cancel,
@@ -793,7 +802,9 @@ nothing; \\`C-g' quits. :SERIES unasked when it does not repeat."
   (with-org-structure (parse buffer tree text position)
     (let ((headline (org-current-headline tree position)))
       (if (not (and headline
-                    (org-repeats-in-p text (string-line-end text (org-node-begin headline)) (org-entry-end headline text))))
+                    (org-repeats-in-p text
+                                      (string-line-end text (org-node-begin headline))
+                                      (org-entry-end headline text))))
           :series
           (let ((key (read-key (format nil "~a: t this time~@[ (~a)~], s the series" verb
                                        (and *org-agenda-occurrence* (org-occurrence-words *org-agenda-occurrence*))))))
@@ -1024,9 +1035,9 @@ last line."
 (defun org-insert-heading (todo)
   "Insert a new headline or item for what point is in: in a list, a new item
 after the one point is in and its sub-items, of the same kind (its bullet, the
-next number, a checkbox [ ] when it has one); else a headline of the level
-point is under after its subtree, with
-TODO a task."
+next number, a checkbox [ ] when it has one, counted at once by the cookies
+above). Else a headline of the level point is under after its subtree, with TODO
+a task."
   (with-org-structure (parse buffer tree text position)
     (let ((item (and (not todo) (org-current-item tree text position)))
           (headline (org-current-headline tree position)))
@@ -1038,17 +1049,21 @@ TODO a task."
                                 (+ (org-node-begin item) (- (length (org-line-at text (org-node-begin item)))
                                                             (length (string-left-trim " 	" (org-line-at text (org-node-begin item))))))))
                 (next (cl-ppcre:regex-replace "^(\\d+)" (string-trim " " bullet)
-                                              (lambda (match number) (declare (ignore match)) (princ-to-string (1+ (parse-integer number))))
+                                              (lambda (match number)
+                                                (declare (ignore match))
+                                                (princ-to-string (1+ (parse-integer number))))
                                               :simple-calls t))
                 (new (format nil "~%~a~a ~:[~;[ ] ~]" indent next (org-property item :checkbox)))
                 (after (rest (member item (org-node-children (org-node-parent item))))))
            (org-apply-edits parse
-                            (cons (list end end new)
-                                  (when (digit-char-p (char next 0))
-                                    (loop for each in after
-                                          for n from (1+ (parse-integer next :junk-allowed t))
-                                          when (eq (org-node-type each) 'item)
-                                            append (org-renumber-edit text each n))))
+                            (append (list (list end end new))
+                                    (when (digit-char-p (char next 0))
+                                      (loop for each in after
+                                            for n from (1+ (parse-integer next :junk-allowed t))
+                                            when (eq (org-node-type each) 'item)
+                                              append (org-renumber-edit text each n)))
+                                    (when (org-property item :checkbox)
+                                      (org-statistics-edits text (org-node-parent item) :added 1)))
                             :point end)))
         (headline
          (let* ((level (org-property headline :level))
@@ -1071,11 +1086,10 @@ NUMBER, its . or ) kept; NIL for an item with no number."
       (list (list at digits (princ-to-string number))))))
 
 (define-command org-meta-return ()
-  "A new item or headline after what point is in and all under it: in a list,
-an item of the same kind after the one point is in and all under it (its
-bullet, the next number, [ ] when it has a checkbox); past the list, in a
-section's text or on a headline, a headline of the section's level after its
-subtree."
+  "A new item or headline after what point is in and all under it: in a list, an
+item of the same kind after the one point is in and all under it (its bullet,
+the next number, [ ] when it has a checkbox). Past the list, in a section's text
+or on a headline, a headline of the section's level after its subtree."
   (org-insert-heading nil))
 
 (define-command org-insert-todo-heading ()
@@ -1113,10 +1127,11 @@ being saved (ORG-SAVE-SOON)."
 (defun org-save-changed (buffer was-modified &key existing)
   "Save BUFFER after a command changed it for you (an entry filed into it or
 taken out, a clock's line): an agenda file as the agenda saves one
-\(*ORG-AGENDA-AUTOSAVE-FILES*), any other file when it had no changes of its
-own before (WAS-MODIFIED false, TUATARA.IO:CHANGES-UNSAVED-P, since a change a save
-under way writes is not your own); once that save is done (ORG-SAVE-SOON). With EXISTING, only while its file is still there: one
-taken away meanwhile is not made again."
+\(*ORG-AGENDA-AUTOSAVE-FILES*), any other file when it had no changes of its own
+before (WAS-MODIFIED false, TUATARA.IO:CHANGES-UNSAVED-P, since a change a save
+under way writes is not your own). Once that save is done (ORG-SAVE-SOON). With
+EXISTING, only while its file is still there: one taken away meanwhile is not
+made again."
   (let ((file (tuatara.buffer:buffer-file buffer)))
     (cond ((null file))
           ((and existing (not (eq (tuatara.io:path-kind file) :regular))))

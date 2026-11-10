@@ -102,7 +102,8 @@ first on each line. Gives what it found so far when HALT answers true."
 from its syntax tree, else its lines that look like headings (*OUTLINE-REGEX*)."
   (declare (ignore buffer))
   (let* ((language (mode-language mode))
-         (query (and language (or (language-compiled-query language :tags) (language-compiled-query language :definitions))))
+         (query (and language
+                     (or (language-compiled-query language :tags) (language-compiled-query language :definitions))))
          (lines (regex-outline *outline-regex* #'length)))
     (if query
         (let ((wanted (definition-captures query)))
@@ -136,7 +137,8 @@ semicolons or more, and its top-level forms."
 (macrolet ((lisp-outlines (&rest modes)
              `(progn ,@(loop for mode in modes
                              collect `(defmethod mode-outline ((mode ,mode) buffer)
-                                        "The headings of Lisp: comments of three semicolons or more, and top-level forms (LISP-OUTLINE)."
+                                        "The headings of Lisp: comments of three
+semicolons or more, and top-level forms (LISP-OUTLINE)."
                                         (declare (ignore buffer))
                                         (lisp-outline))))))
   (lisp-outlines lisp-mode emacs-lisp-mode clojure-mode scheme-mode racket-mode fennel-mode janet-mode hy-mode))
@@ -233,10 +235,10 @@ not parsed."
 
 (defun outline-collect (finder rope tree colours faces tab-width &optional buffer)
   "The entries of the headings FINDER, from MODE-OUTLINE, finds in ROPE, whose
-syntax tree is TREE or NIL, as OUTLINE-ENTRIES gives them, their lines
-coloured by the query COLOURS with FACES when it is given: found in a thread
-of the background while the editor waits, \\`C-g' giving up the command; when
-the search does not end at once then, BUFFER's file stays mapped for it
+syntax tree is TREE or NIL, as OUTLINE-ENTRIES gives them, their lines coloured
+by the query COLOURS with FACES when it is given. They are found in a thread of
+the background while the editor waits, \\`C-g' giving up the command. When the
+search does not end at once then, BUFFER's file stays mapped for it
 \(BUFFER-LENT-P) while it ends on its own."
   (let* ((halted nil) (result nil) (failure nil)
          (copy (and tree (tuatara.syntax:copy-tree-pointer tree)))
@@ -359,7 +361,9 @@ was; or, when the choosing is given up, go back as things were."
                  (completing-read "Go to heading: " (outline-table candidates lowest)
                                   :require-match t :filter nil :separator (code-char 0)
                                   :initial (if (and (integerp depth) (<= 1 depth 9)) (format nil "~d " depth) "")
-                                  :select (lambda (shown input) (declare (ignore input)) (outline-selection shown origin))
+                                  :select (lambda (shown input)
+                                            (declare (ignore input))
+                                            (outline-selection shown origin))
                                   :preview (lambda (candidate)
                                              (let ((position (if candidate (first (candidate-value candidate)) origin)))
                                                (setf *outline-shown* (and candidate (cons window position)))

@@ -159,9 +159,11 @@ ended and the PDFs' views are drawn. Returns the frontend and the editor."
     (setf tuatara.defaults::*command-history* '())
     (labels ((busy ()
                (or (some #'tuatara.export::pdf-export-p tuatara.runtime:*jobs*)
-                   (some #'tuatara.export::docx-export-p tuatara.runtime:*jobs*)
+                   (some #'tuatara.export::note-export-p tuatara.runtime:*jobs*)
                    (some (lambda (b) (let ((view (tuatara.defaults::pdf-view-of b)))
-                                       (and view (or (tuatara.defaults::pdf-view-job view) (tuatara.defaults::pdf-view-text-job view)))))
+                                       (and view
+                                            (or (tuatara.defaults::pdf-view-job view)
+                                                (tuatara.defaults::pdf-view-text-job view)))))
                          tuatara.defaults::*pdf-views*)))
              (take (steps start)
                (cond ((and (busy) (< (- (get-internal-real-time) start) (* 30 internal-time-units-per-second)))
@@ -172,8 +174,12 @@ ended and the PDFs' views are drawn. Returns the frontend and the editor."
                       ;; the work it starts begins before the next look
                       (tuatara.frontend.fake:fake-queue-action
                        f (lambda () (take (rest steps) (get-internal-real-time))))))))
-      (tuatara.frontend.fake:fake-queue-action f (lambda () (take (if (listp steps) steps (list steps)) (get-internal-real-time)))))
-    (values f (tuatara.command:run-editor f :files (list (namestring file)) :setup #'tuatara.defaults:install-defaults))))
+      (tuatara.frontend.fake:fake-queue-action f
+                                               (lambda ()
+                                                 (take (if (listp steps) steps (list steps))
+                                                       (get-internal-real-time)))))
+    (values f
+            (tuatara.command:run-editor f :files (list (namestring file)) :setup #'tuatara.defaults:install-defaults))))
 
 (defun refusal-in (file command)
   "What COMMAND says instead of running, in a session visiting FILE, where it
@@ -226,7 +232,8 @@ is not offered by M-x either; NIL when it runs there."
             (true (search "  broken.org:4: Undefined control sequence." text))
             (true (search "    | Some \\nonsense here" text))
             ;; a list of the errors under the program's name, each one entry on all its lines; n goes to the first
-            (is equal '(:engine "xelatex-broken") (tuatara.defaults::list-entry-at errors (tuatara.buffer:buffer-goto-line errors 2)))
+            (is equal '(:engine "xelatex-broken")
+                (tuatara.defaults::list-entry-at errors (tuatara.buffer:buffer-goto-line errors 2)))
             (let ((entry (tuatara.defaults::list-entry-at errors (tuatara.buffer:buffer-goto-line errors 3))))
               (is eq :error (first entry))
               (is eq entry (tuatara.defaults::list-entry-at errors (tuatara.buffer:buffer-goto-line errors 4))))
@@ -240,7 +247,8 @@ is not offered by M-x either; NIL when it runs there."
                             :width 200)
           (declare (ignore f))
           (is string= "broken.org" (current-name editor))
-          (is = 3 (tuatara.buffer:buffer-line-number (tuatara.buffer:find-buffer "broken.org") (session-point editor)))))
+          (is = 3
+              (tuatara.buffer:buffer-line-number (tuatara.buffer:find-buffer "broken.org") (session-point editor)))))
       ;; no program at all: said, nothing started
       (let ((tuatara-user:*latex-engines* (list "no-such-latex-program")))
         (let ((f (export-session file (export-command "org-export-latex-pdf") :width 200)))
@@ -257,7 +265,8 @@ is not offered by M-x either; NIL when it runs there."
                                                                                                       :cell-pixels '(10 20))
         (let ((windows (tuatara.command:editor-windows editor)))
           (is = 2 (length windows))
-          (is string= "notes.org" (tuatara.buffer:buffer-name (tuatara.display:window-buffer (tuatara.command:editor-window editor))))
+          (is string= "notes.org"
+              (tuatara.buffer:buffer-name (tuatara.display:window-buffer (tuatara.command:editor-window editor))))
           (is string= "notes.pdf" (tuatara.buffer:buffer-name (tuatara.display:window-buffer (second windows))))
           (true (> (tuatara.display:area-left (second windows)) 0)))
         (true (tuatara.frontend.fake:fake-frame-showing f "Page 1 of 2")))
@@ -267,7 +276,8 @@ is not offered by M-x either; NIL when it runs there."
                                                                                                       :cell-pixels '(10 20))
         (declare (ignore f))
         (is = 1 (length (tuatara.command:editor-windows editor)))
-        (is string= "notes.pdf" (tuatara.buffer:buffer-name (tuatara.display:window-buffer (tuatara.command:editor-window editor)))))
+        (is string= "notes.pdf"
+            (tuatara.buffer:buffer-name (tuatara.display:window-buffer (tuatara.command:editor-window editor)))))
       ;; exported again: the view shown reads the new PDF, at the same page
       (pdf-forget)
       (let ((tuatara-user:*latex-engines* (list (stand-in-latex dir "xelatex"))))
@@ -276,7 +286,8 @@ is not offered by M-x either; NIL when it runs there."
                                        (lambda ()
                                          ;; the stand-in's PDF made anew with three pages
                                          (alexandria:write-byte-vector-into-file
-                                          (pdf-octets '("New one" "New two" "New three")) (merge-pathnames "stand-in.pdf" dir)
+                                          (pdf-octets '("New one" "New two" "New three"))
+                                          (merge-pathnames "stand-in.pdf" dir)
                                           :if-exists :supersede))
                                        (export-command "org-export-latex-pdf"))
                             :width 200 :cell-pixels '(10 20))
@@ -291,13 +302,16 @@ is not offered by M-x either; NIL when it runs there."
       ;; a file that is neither Org nor LaTeX
       (let ((file (merge-pathnames "notes.txt" dir)))
         (alexandria:write-string-into-file "Text" file)
-        (is equal "org-export-latex-pdf works in Org files only" (refusal-in file 'tuatara.export::org-export-latex-pdf))
-        (is equal "export-latex-compile-pdf works in LaTeX files only" (refusal-in file 'tuatara.export::export-latex-compile-pdf)))
+        (is equal "org-export-latex-pdf works in Org files only"
+            (refusal-in file 'tuatara.export::org-export-latex-pdf))
+        (is equal "export-latex-compile-pdf works in LaTeX files only"
+            (refusal-in file 'tuatara.export::export-latex-compile-pdf)))
       ;; a file opened safely: nothing run
       (let ((file (merge-pathnames "evidence.org" dir))
             (tuatara-user:*safe-directories* (list (namestring dir))))
         (alexandria:write-string-into-file "* Evidence" file)
-        (is equal "org-export-latex-pdf works in Org files only" (refusal-in file 'tuatara.export::org-export-latex-pdf))
+        (is equal "org-export-latex-pdf works in Org files only"
+            (refusal-in file 'tuatara.export::org-export-latex-pdf))
         ;; and called all the same, nothing run
         (export-session file (list (lambda () (tuatara.export::start-latex-export :file))))
         (false (probe-file (merge-pathnames "ran.txt" dir))))
@@ -388,15 +402,23 @@ is not offered by M-x either; NIL when it runs there."
              (progn
                (sb-posix:setenv "XDG_CONFIG_HOME" (namestring dir) 1)
                (ensure-directories-exist (merge-pathnames "tuatara/latex-templates/" dir))
-               (alexandria:write-string-into-file "MINE {{{organisation}}} {{{body}}}" (merge-pathnames "tuatara/latex-templates/report.tex" dir))
+               (alexandria:write-string-into-file "MINE {{{organisation}}} {{{body}}}"
+                                                  (merge-pathnames "tuatara/latex-templates/report.tex" dir))
                (dolist (keyword '("#+template" "#+latex_template" "#+latex_style"))
                  (true (uiop:string-prefix-p "MINE Example Ltd"
-                                             (tuatara.defaults::org-latex-document (format nil named keyword) :file file :enhanced t))))
-               (alexandria:write-string-into-file "ARTICLE OF MINE [{{{latex_class:raw}}}] {{{body}}}" (merge-pathnames "tuatara/latex-templates/article.tex" dir))
-               (true (uiop:string-prefix-p "ARTICLE OF MINE" (tuatara.defaults::org-latex-document (format nil "Text~%") :file file :enhanced t)))
+                                             (tuatara.defaults::org-latex-document (format nil named keyword)
+                                                                                   :file file
+                                                                                   :enhanced t))))
+               (alexandria:write-string-into-file "ARTICLE OF MINE [{{{latex_class:raw}}}] {{{body}}}"
+                                                  (merge-pathnames "tuatara/latex-templates/article.tex" dir))
+               (true (uiop:string-prefix-p "ARTICLE OF MINE"
+                                           (tuatara.defaults::org-latex-document (format nil "Text~%")
+                                                                                 :file file
+                                                                                 :enhanced t)))
                ;; by path: from the note's folder, or ~
                (ensure-directories-exist (merge-pathnames "templates/" dir))
-               (alexandria:write-string-into-file "FORENSIC {{{reference}}} {{{body}}}" (merge-pathnames "templates/forensic.tex" dir))
+               (alexandria:write-string-into-file "FORENSIC {{{reference}}} {{{body}}}"
+                                                  (merge-pathnames "templates/forensic.tex" dir))
                (true (uiop:string-prefix-p "FORENSIC R-9" (tuatara.defaults::org-latex-document
                                                            (format nil "#+template: ./templates/forensic.tex~%#+reference: R-9~%Text~%")
                                                            :file file :enhanced t)))
@@ -411,11 +433,14 @@ is not offered by M-x either; NIL when it runs there."
                (false (search "FORENSIC" (tuatara.defaults::org-latex-document
                                           (format nil "#+template: ./templates/forensic.tex~%Text~%") :file file)))
                ;; LaTeX's own kinds of document keep the enhanced export's look; a class of your own does not
-               (let ((report (tuatara.defaults::org-latex-document (format nil "#+latex_class: report~%* Part~%Text~%") :file file :enhanced t)))
+               (let ((report (tuatara.defaults::org-latex-document (format nil "#+latex_class: report~%* Part~%Text~%")
+                                                                   :file file
+                                                                   :enhanced t)))
                  (true (search "[report]" report))
                  (true (uiop:string-prefix-p "ARTICLE OF MINE" report)))
-               (false (search "ARTICLE OF MINE" (tuatara.defaults::org-latex-document (format nil "#+latex_class: myclass~%Text~%")
-                                                                                      :file file :enhanced t)))
+               (false (search "ARTICLE OF MINE"
+                              (tuatara.defaults::org-latex-document (format nil "#+latex_class: myclass~%Text~%")
+                                                                    :file file :enhanced t)))
                ;; a template there is not, by name or by path
                (flet ((said (keyword-line)
                         (handler-case (progn (tuatara.defaults::org-latex-document (format nil "~a~%Text~%" keyword-line) :file file :enhanced t) "")
@@ -436,7 +461,8 @@ is not offered by M-x either; NIL when it runs there."
       ;; protected text is shown as standard
       (true (search "Ann Napier" latex)))
     ;; protect:t hides it too; redact:nil shows what redact marks
-    (let ((latex (tuatara.defaults::org-latex-document (format nil "#+options: protect:t redact:nil~%~a" text) :enhanced t)))
+    (let ((latex (tuatara.defaults::org-latex-document (format nil "#+options: protect:t redact:nil~%~a" text)
+                                                       :enhanced t)))
       (false (search "Ann Napier" latex))
       (true (search "John Otago" latex)))
     ;; the export as Org makes it does not know them: an error, never the text printed
@@ -467,7 +493,8 @@ is not offered by M-x either; NIL when it runs there."
     ;; where Org reads no macros, refused as the long names are
     (true (search "on line 3 is where Org reads no macros"
                   (handler-case (progn (tuatara.defaults::org-latex-document
-                                        (format nil "Text~%#+begin_example~%{{{R(Bo Raglan)}}}~%#+end_example~%") :enhanced t)
+                                        (format nil "Text~%#+begin_example~%{{{R(Bo Raglan)}}}~%#+end_example~%")
+                                        :enhanced t)
                                        "")
                     (error (e) (princ-to-string e)))))))
 
@@ -544,7 +571,9 @@ is not offered by M-x either; NIL when it runs there."
 (define-test (latex-export cover-title-and-copy)
   ;; the report's cover and facts take #+front_title:, the contents #+title:
   (let ((latex (tuatara.defaults::org-latex-document
-                (format nil "#+title: Mock Report~%#+front_title: Report~%#+template: ~a~%#+reference: R-1~%* One~%" (report-template))
+                (format nil
+                        "#+title: Mock Report~%#+front_title: Report~%#+template: ~a~%#+reference: R-1~%* One~%"
+                        (report-template))
                 :enhanced t)))
     (true (search "\\MakeUppercase{Report}" latex))
     (true (search "Title & Report R-1" latex))
@@ -557,22 +586,29 @@ is not offered by M-x either; NIL when it runs there."
       (unwind-protect
            (progn
              (sb-posix:setenv "XDG_CONFIG_HOME" (namestring dir) 1)
-             (multiple-value-bind (f editor) (export-session file "M-x e x p o r t - l a t e x - t e m p l a t e - c o p y RET a r t i c l e RET" :width 200)
+             (multiple-value-bind (f editor)
+                 (export-session file
+                                 "M-x e x p o r t - l a t e x - t e m p l a t e - c o p y RET a r t i c l e RET"
+                                 :width 200)
                (let ((copy (merge-pathnames "tuatara/latex-templates/article.tex" dir)))
                  (true (probe-file copy))
-                 (is string= (tuatara.defaults::find-latex-template "article" :built-in t) (alexandria:read-file-into-string copy))
+                 (is string= (tuatara.defaults::find-latex-template "article" :built-in t)
+                     (alexandria:read-file-into-string copy))
                  (is string= "article.tex" (tuatara.buffer:buffer-name (tuatara.display:window-buffer (tuatara.command:editor-window editor))))
                  (true (tuatara.frontend.fake:fake-frame-showing f "Copied the export template article.tex to"))
                  ;; a copy of yours is visited, never written over
                  (alexandria:write-string-into-file "mine" copy :if-exists :supersede)
                  (forget-file-buffers)
                  (true (tuatara.frontend.fake:fake-frame-showing
-                        (export-session file "M-x e x p o r t - l a t e x - t e m p l a t e - c o p y RET a r t i c l e RET" :width 200)
+                        (export-session file
+                                        "M-x e x p o r t - l a t e x - t e m p l a t e - c o p y RET a r t i c l e RET"
+                                        :width 200)
                         "is yours already"))
                  (is string= "mine" (alexandria:read-file-into-string copy)))))
         (if old (sb-posix:setenv "XDG_CONFIG_HOME" old 1) (sb-posix:unsetenv "XDG_CONFIG_HOME"))))))
 
 (define-test (latex-export code-wrapped-and-coloured)
+  (true (tuatara.syntax::own-grammar-p "elisp") "elisp grammar not built: run tools/grammars.sh in this tree")
   (let ((text (format nil "#+begin_src emacs-lisp~%(defun hello () \"A string\")~%#+end_src~%~%#+begin_example~%path\\to{x}~%#+end_example~%")))
     ;; the enhanced export: lines that break at the margin, the code in its colours, the rest as written
     (let ((latex (tuatara.defaults::org-latex-document text :enhanced t)))
@@ -619,7 +655,8 @@ is not offered by M-x either; NIL when it runs there."
           (when entry
             (true (search "hieroglyph" (nth (1- (cdr entry)) (uiop:split-string latex :separator '(#\Newline)))))))))
     ;; a note with a look of its own (#+latex_header): Org's layout, fonts as it sets them
-    (let ((latex (tuatara.defaults::org-latex-document (format nil "#+latex_header: \\usepackage{x}~%Text~%") :enhanced t)))
+    (let ((latex (tuatara.defaults::org-latex-document (format nil "#+latex_header: \\usepackage{x}~%Text~%")
+                                                       :enhanced t)))
       (false (search "\\usepackage{parskip}" latex))
       (false (search "\\setmainfont" latex)))
     ;; the export as Org makes it: no chosen fonts, no fallbacks
@@ -637,7 +674,9 @@ is not offered by M-x either; NIL when it runs there."
 
 (define-test (latex-export pictures-made-png)
   ;; the PNG written: its signature, its header's size and kind, the chunks' checks
-  (let* ((image (tuatara.frontend:make-image 2 1 3 (make-array 6 :element-type '(unsigned-byte 8) :initial-contents '(255 0 0 0 255 0))))
+  (let* ((image (tuatara.frontend:make-image 2 1 3 (make-array 6
+                                                               :element-type '(unsigned-byte 8)
+                                                               :initial-contents '(255 0 0 0 255 0))))
          (png (tuatara.defaults::png-octets image)))
     (is equalp #(137 80 78 71 13 10 26 10) (subseq png 0 8))
     (is equalp #(0 0 0 2 0 0 0 1 8 2) (subseq png 16 26))
@@ -651,7 +690,8 @@ is not offered by M-x either; NIL when it runs there."
     (alexandria:write-byte-vector-into-file *tiny-png* (merge-pathnames "photo.png" dir) :if-exists :supersede)
     (let ((file (namestring (merge-pathnames "notes.org" dir)))
           (text (format nil "[[file:drawing.svg]]~%~%[[file:photo.png]]~%~%[[file:broken.svg]]~%")))
-      (multiple-value-bind (latex named map missing notes) (tuatara.defaults::org-latex-document text :file file :enhanced t)
+      (multiple-value-bind (latex named map missing notes)
+          (tuatara.defaults::org-latex-document text :file file :enhanced t)
         (declare (ignore named map missing))
         ;; a PNG or the like as it is; a drawing made into a PNG in the cache, drawn for print
         (true (search (format nil "{~a}" (namestring (merge-pathnames "photo.png" dir))) latex))
@@ -707,15 +747,19 @@ is not offered by M-x either; NIL when it runs there."
     (true (search "on line 1" (refusal (format nil "#+latex_header: % {{{redact(John Otago)}}}~%Text~%"))))
     ;; a style printing a keyword as written (report's logo, a file's name); one it prints as Org text is let be
     (true (search "#+logo: holds {{{redact(...)}}}"
-                  (refusal (format nil "#+template: ~a~%#+reference: {{{redact(R-1)}}}~%#+logo: {{{redact(x)}}}.png~%Text~%" (report-template)))))
+                  (refusal (format nil
+                                   "#+template: ~a~%#+reference: {{{redact(R-1)}}}~%#+logo: {{{redact(x)}}}.png~%Text~%"
+                                   (report-template)))))
     (false (refusal (format nil "#+template: ~a~%#+reference: {{{redact(R-1)}}}~%Text~%" (report-template))))
     ;; where it works: in text, tables, headlines, and a keyword printed as Org text
     (false (refusal (format nil "#+title: About {{{redact(Bo)}}}~%* {{{redact(Bo)}}}~%Text {{{redact(Bo)}}}~%| {{{redact(Bo)}}} |~%")))
     ;; protect shown (protect:nil, as standard): nothing hidden, nothing refused, in a block too
     (false (refusal (format nil "#+begin_src sh~%echo {{{protect(Ann)}}}~%#+end_src~%")))
-    (true (search "on line 3" (refusal (format nil "#+options: protect:t~%#+begin_src sh~%echo {{{protect(Ann)}}}~%#+end_src~%"))))
+    (true (search "on line 3"
+            (refusal (format nil "#+options: protect:t~%#+begin_src sh~%echo {{{protect(Ann)}}}~%#+end_src~%"))))
     ;; a part alone: the line of the whole file
-    (true (search "on line 12" (refusal (format nil "#+begin_example~%{{{redact(Bo)}}}~%#+end_example~%") :lines (vector 11 12 13))))))
+    (true (search "on line 12"
+            (refusal (format nil "#+begin_example~%{{{redact(Bo)}}}~%#+end_example~%") :lines (vector 11 12 13))))))
 
 (define-test (latex-export redactions-read-back)
   ;; hidden text is written one way and read back by the one pattern: as plain
@@ -723,7 +767,8 @@ is not offered by M-x either; NIL when it runs there."
   (let* ((tuatara.defaults::*org-latex* (tuatara.defaults::make-org-latex "" nil nil))
          (hidden (tuatara.defaults::org-latex-redaction "redact" "Bo Raglan")))
     (false (search "Bo Raglan" hidden))
-    (is equalp (list hidden #("9")) (multiple-value-list (cl-ppcre:scan-to-strings tuatara.defaults::*org-redaction-scanner* hidden)))
+    (is equalp (list hidden #("9"))
+        (multiple-value-list (cl-ppcre:scan-to-strings tuatara.defaults::*org-redaction-scanner* hidden)))
     (is string= "About [redacted]" (tuatara.defaults::docx-plain-title (concatenate 'string "About " hidden)))
     (is string= "About nnnnnnnnn" (tuatara.defaults::org-latex-visible-text (concatenate 'string "About " hidden)))
     ;; the Word document's part alone
@@ -741,7 +786,8 @@ is not offered by M-x either; NIL when it runs there."
   (is = 0 (length (tuatara.export::redaction-findings (format nil "{{{protect(Ann Nelson)}}} and Ann Nelson~%") :org)))
   (is = 1 (length (tuatara.export::redaction-findings (format nil "#+options: protect:t~%{{{protect(Ann Nelson)}}} and Ann Nelson~%") :org)))
   ;; a LaTeX file's own commands
-  (is equal '("John Otago") (mapcar #'second (tuatara.export::redaction-findings (format nil "\\R{John Otago} met John Otago.~%") :latex)))
+  (is equal '("John Otago")
+      (mapcar #'second (tuatara.export::redaction-findings (format nil "\\R{John Otago} met John Otago.~%") :latex)))
   (with-test-directory (dir)
     (let ((file (merge-pathnames "leak.org" dir))
           (tuatara-user:*latex-engines* (list (stand-in-latex dir "xelatex"))))
@@ -749,7 +795,8 @@ is not offered by M-x either; NIL when it runs there."
       ;; M-x export-check-redactions: each place listed, n going to it, RET showing it
       (multiple-value-bind (f editor)
           (export-session file (list (export-command "export-check-redactions")
-                                     (lambda () (tuatara.defaults::pop-to-buffer (tuatara.buffer:find-buffer "*Redactions*")))
+                                     (lambda ()
+                                       (tuatara.defaults::pop-to-buffer (tuatara.buffer:find-buffer "*Redactions*")))
                                      "n RET")
                           :width 200)
         (true (tuatara.frontend.fake:fake-frame-showing f "1 place in leak.org shows text hidden elsewhere in it: see *Redactions*"))
@@ -784,7 +831,8 @@ is not offered by M-x either; NIL when it runs there."
 
 (define-test (latex-export export-drawer)
   (with-test-directory (dir)
-    (alexandria:write-byte-vector-into-file (coerce (png-octets 2 2) '(vector (unsigned-byte 8))) (merge-pathnames "pic.png" dir))
+    (alexandria:write-byte-vector-into-file (coerce (png-octets 2 2) '(vector (unsigned-byte 8)))
+                                            (merge-pathnames "pic.png" dir))
     (let ((file (namestring (merge-pathnames "note.org" dir))))
       (let ((latex (tuatara.defaults::org-latex-document *export-drawer-note* :file file :enhanced t)))
         ;; a heading: no number, what is under it in two columns
@@ -811,7 +859,9 @@ is not offered by M-x either; NIL when it runs there."
         (false (search "widths:" (tuatara.defaults::org-latex-document *export-drawer-note* :file file))))
       ;; a picture beside the paragraph after it, that paragraph written once
       (let ((latex (tuatara.defaults::org-latex-document
-                    (format nil ":EXPORT:~%beside: right~%:END:~%[[file:pic.png]]~%~%The words beside it.~%") :file file :enhanced t)))
+                    (format nil ":EXPORT:~%beside: right~%:END:~%[[file:pic.png]]~%~%The words beside it.~%")
+                    :file file
+                    :enhanced t)))
         (true (search "\\begin{minipage}[c]{0.47\\linewidth}" latex))
         (is = 1 (count-matches "The words beside it" latex))
         (true (< (search "The words beside it" latex) (search "includegraphics" latex))))))
@@ -824,7 +874,8 @@ is not offered by M-x either; NIL when it runs there."
 (define-test (latex-export export-drawer-written)
   ;; M-x org-insert-export-drawer: the settings for what point is on, and Org's own exports told to leave it out
   (flet ((after (keys text)
-           (multiple-value-bind (f editor) (run-keys (format nil "M-x o r g - m o d e RET ~a" keys) :text text :width 160 :height 10)
+           (multiple-value-bind (f editor)
+               (run-keys (format nil "M-x o r g - m o d e RET ~a" keys) :text text :width 160 :height 10)
              (declare (ignore f))
              (session-text editor))))
     (let ((text (after "j j M-x o r g - i n s e r t - e x p o r t - d r a w e r RET"
@@ -858,7 +909,8 @@ is not offered by M-x either; NIL when it runs there."
 
 (define-test (latex-export docx-written)
   (with-test-directory (dir)
-    (alexandria:write-byte-vector-into-file (coerce (png-octets 2 2) '(vector (unsigned-byte 8))) (merge-pathnames "pic.png" dir))
+    (alexandria:write-byte-vector-into-file (coerce (png-octets 2 2) '(vector (unsigned-byte 8)))
+                                            (merge-pathnames "pic.png" dir))
     (let* ((file (namestring (merge-pathnames "note.org" dir)))
            (note (format nil "#+title: The Survey~%#+author: {{{P(Ann Nelson)}}}~%#+options: protect:t~%~
                               * Findings~%Subject {{{R(John Otago)}}} met *Bo*.[fn:1] See [[Logons]] and [[*Annex][the annex]].~%~%~
@@ -917,7 +969,8 @@ is not offered by M-x either; NIL when it runs there."
       (let ((f (export-session file (export-command "org-export-docx") :width 200)))
         (true (tuatara.frontend.fake:fake-frame-showing f "Wrote "))
         (true (probe-file (merge-pathnames "survey.docx" dir)))
-        (false (search "Bo Raglan" (docx-text (alexandria:read-file-into-byte-vector (merge-pathnames "survey.docx" dir)))))))))
+        (false (search "Bo Raglan"
+                       (docx-text (alexandria:read-file-into-byte-vector (merge-pathnames "survey.docx" dir)))))))))
 
 (defun write-docx-template (folder document &key (header nil) title-page size)
   "Write a Word template, unpacked, into FOLDER: DOCUMENT its word/document.xml
@@ -974,7 +1027,10 @@ its text's size in half points, when given."
           (true (search "w:w=\"12240\"" all))
           (false (search "John Otago" all))
           ;; the two halves ask for the same places but these: said
-          (true (find-if (lambda (n) (and (search "LaTeX half has no place for" n) (search "{{{copy_to}}}" n) (not (search "{{{contents}}}" n)))) notes))
+          (true (find-if (lambda (n)
+                           (and (search "LaTeX half has no place for" n)
+                                (search "{{{copy_to}}}" n)
+                                (not (search "{{{contents}}}" n)))) notes))
           (let ((path (merge-pathnames "note.docx" dir)))
             (alexandria:write-byte-vector-into-file octets path)
             (is = 0 (nth-value 2 (uiop:run-program (list "unzip" "-tq" (namestring path)) :ignore-error-status t))))))
@@ -984,12 +1040,16 @@ its text's size in half points, when given."
       (write-docx-template (merge-pathnames "raw/" templates) "<w:p><w:r><w:t>{{{reference:raw}}}</w:t></w:r></w:p><w:p><w:r><w:t>{{{body}}}</w:t></w:r></w:p>")
       (true (search "#+reference: holds {{{redact(...)}}}"
                     (handler-case (progn (tuatara.defaults::org-docx-document
-                                          (format nil "#+template: ./templates/raw~%#+reference: {{{redact(R-1)}}}~%Text~%") :file file)
+                                          (format nil
+                                                  "#+template: ./templates/raw~%#+reference: {{{redact(R-1)}}}~%Text~%")
+                                          :file file)
                                          "")
                       (error (e) (princ-to-string e)))))
       ;; a template with no Word half: Tuatara's own look, and said
       (true (find-if (lambda (n) (search "has no Word half" n))
-                     (nth-value 2 (tuatara.defaults::org-docx-document (format nil "#+template: nosuch~%Text~%") :file file)))))))
+                     (nth-value 2
+                                (tuatara.defaults::org-docx-document (format nil "#+template: nosuch~%Text~%")
+                                                                     :file file)))))))
 
 (define-test (latex-export docx-template-pages)
   ;; the note's contents begin a page when their paragraph did; with sections of columns in the
@@ -1000,7 +1060,8 @@ its text's size in half points, when given."
                            "<w:p><w:r><w:t>Cover</w:t></w:r></w:p><w:p><w:pPr><w:pageBreakBefore/></w:pPr><w:r><w:t>{{{contents}}}</w:t></w:r></w:p><w:p><w:r><w:t>{{{body}}}</w:t></w:r></w:p>"
                            :title-page t)
       (let ((all (docx-text (tuatara.defaults::org-docx-document
-                             (format nil "#+template: ./pages~%* One~%:EXPORT:~%columns: 2~%:END:~%Text in two columns.~%")
+                             (format nil
+                                     "#+template: ./pages~%* One~%:EXPORT:~%columns: 2~%:END:~%Text in two columns.~%")
                              :file file))))
         (true (< (search "<w:br w:type=\"page\"/>" all) (search "TOCHeading" all)))
         (let ((first-break (search "<w:sectPr>" all)) (last (search "<w:sectPr>" all :from-end t)))
@@ -1012,10 +1073,14 @@ its text's size in half points, when given."
 (define-test (latex-export docx-template-tables)
   (with-test-directory (dir)
     (let ((file (namestring (merge-pathnames "note.org" dir)))
-          (note (format nil "#+template: ./left~%| ~a | ~a |~%" (make-string 50 :initial-element #\a) (make-string 30 :initial-element #\b))))
+          (note (format nil
+                        "#+template: ./left~%| ~a | ~a |~%"
+                        (make-string 50 :initial-element #\a)
+                        (make-string 30 :initial-element #\b))))
       (write-docx-template (merge-pathnames "left/" dir) "<w:p><w:r><w:t>{{{body}}}</w:t></w:r></w:p>" :size 20)
       ;; centred, as the template's LaTeX half sets tables
-      (alexandria:write-string-into-file "\\documentclass{article}\\begin{document}{{{body}}}\\end{document}" (merge-pathnames "left.tex" dir))
+      (alexandria:write-string-into-file "\\documentclass{article}\\begin{document}{{{body}}}\\end{document}"
+                                         (merge-pathnames "left.tex" dir))
       (true (search "<w:jc w:val=\"center\"/>" (docx-text (tuatara.defaults::org-docx-document note :file file))))
       ;; against the left margin, as its LaTeX half sets them
       (alexandria:write-string-into-file "\\documentclass{article}\\setlength{\\LTleft}{0pt}\\begin{document}{{{body}}}\\end{document}"
@@ -1027,13 +1092,16 @@ its text's size in half points, when given."
       ;; a table's own position before the template's
       (true (search "<w:jc w:val=\"center\"/>"
                     (docx-text (tuatara.defaults::org-docx-document
-                                (format nil "#+template: ./left~%:EXPORT:~%position: center~%:END:~%| a | b |~%") :file file)))))))
+                                (format nil "#+template: ./left~%:EXPORT:~%position: center~%:END:~%| a | b |~%")
+                                :file file)))))))
 
 (define-test (latex-export docx-font-width)
   ;; a font not installed: none measured (Courier New's 0.6 taken); a monospaced one installed: its width
   (false (tuatara.defaults::font-character-ratio "No Such Font Tuatara"))
   (let* ((listed (tuatara.defaults::fontconfig-output "fc-list" ":spacing=mono" "family"))
-         (family (and listed (first (uiop:split-string (first (uiop:split-string listed :separator '(#\Newline))) :separator ",")))))
+         (family (and listed
+                      (first (uiop:split-string (first (uiop:split-string listed :separator '(#\Newline)))
+                                                :separator ",")))))
     (when (and family (plusp (length family)))
       (let ((ratio (tuatara.defaults::font-character-ratio family)))
         (true (and ratio (< 2/5 ratio 7/10)) "~a measured ~a" family ratio)))))
@@ -1046,19 +1114,23 @@ its text's size in half points, when given."
       (flet ((hidden (text) (mapcar #'fourth (tuatara.export::hidden-spans text :org directory))))
         (is equal '("redact") (hidden (format nil "{{{R(Ann)}}} and {{{P(Bo)}}}~%")))
         (is equal '("redact" "protect") (hidden (format nil "#+setupfile: setup.org~%{{{R(Ann)}}} and {{{P(Bo)}}}~%")))
-        (is equal '("protect") (hidden (format nil "#+setupfile: setup.org~%#+options: redact:nil~%{{{R(Ann)}}} and {{{P(Bo)}}}~%")))
+        (is equal '("protect")
+            (hidden (format nil "#+setupfile: setup.org~%#+options: redact:nil~%{{{R(Ann)}}} and {{{P(Bo)}}}~%")))
         (is equal '() (hidden (format nil "#+options: redact:nil~%{{{R(Ann)}}} and {{{P(Bo)}}}~%")))))))
 
 (define-test (latex-export table-width-and-position)
   ;; full: margin to margin, the columns sharing it as their text does; right: against the right margin
   (with-test-directory (dir)
     (let* ((file (namestring (merge-pathnames "note.org" dir)))
-           (note (lambda (drawer) (format nil ":EXPORT:~%~a~%:END:~%| name | a longer column |~%|-~%| x | y |~%" drawer))))
+           (note (lambda (drawer)
+                   (format nil ":EXPORT:~%~a~%:END:~%| name | a longer column |~%|-~%| x | y |~%" drawer))))
       (let ((latex (tuatara.defaults::org-latex-document (funcall note "width: full") :file file :enhanced t)))
         (true (search "\\begin{xltabular}{\\textwidth}" latex))
         (true (search "\\hsize=0.421\\hsize}X" latex))
         (true (search "\\hsize=1.579\\hsize}X" latex)))
-      (let ((latex (tuatara.defaults::org-latex-document (funcall note (format nil "width: 80%~%position: right")) :file file :enhanced t)))
+      (let ((latex (tuatara.defaults::org-latex-document (funcall note (format nil "width: 80%~%position: right"))
+                                                         :file file
+                                                         :enhanced t)))
         (true (search "\\begin{xltabular}{0.800\\linewidth}" latex))
         (true (search "\\setlength{\\LTleft}{\\fill}\\setlength{\\LTright}{0pt}" latex)))
       (let* ((all (docx-text (tuatara.defaults::org-docx-document (funcall note "width: full") :file file)))
@@ -1145,7 +1217,8 @@ its text's size in half points, when given."
                                                                (docx-text (tuatara.defaults::org-docx-document text :file file)))))))
       ;; a narrow column with a space in its cells wraps in neither: as wide as its text, as without the space
       (dolist (key '("a b" "a-b"))
-        (true (search "{@{}l l >{\\raggedright\\arraybackslash\\hsize=1.000\\hsize}X@{}}" (funcall latex (funcall note key)))))
+        (true (search "{@{}l l >{\\raggedright\\arraybackslash\\hsize=1.000\\hsize}X@{}}"
+                      (funcall latex (funcall note key)))))
       (is = (first (funcall columns (funcall note "a-b"))) (first (funcall columns (funcall note "a b"))))
       ;; widths: a length and two equal shares of what is left, in both
       (let ((given (funcall latex (funcall note "a b" "widths: 2cm * *"))))
@@ -1203,7 +1276,10 @@ its text's size in half points, when given."
       (true (search "{|l r|}" (funcall latex "box header")))
       ;; a word it does not take, said
       (true (find-if (lambda (n) (search "lines: dotted is none of top" n))
-                     (nth-value 4 (tuatara.defaults::org-latex-document (funcall note "top dotted") :file file :enhanced t))))))
+                     (nth-value 4
+                                (tuatara.defaults::org-latex-document (funcall note "top dotted")
+                                                                      :file file
+                                                                      :enhanced t))))))
   ;; the tips: what works in both exports, what only in the PDF
   (let ((f (run-keys "M-x d e s c r i b e - e x p o r t - s e t t i n g s RET" :width 160 :height 60)))
     (declare (ignore f))
@@ -1216,13 +1292,15 @@ its text's size in half points, when given."
       (true (search "  \\\\ at the end of a line" help))
       (true (search "  \\newline" help))
       ;; every line within 72 columns
-      (is equal '() (remove-if (lambda (line) (<= (length line) 72)) (uiop:split-string help :separator '(#\Newline)))))))
+      (is equal '()
+          (remove-if (lambda (line) (<= (length line) 72)) (uiop:split-string help :separator '(#\Newline)))))))
 
 (define-test (latex-export more-export-settings)
   ;; a new page, space around, the space between lines, a paragraph's alignment, a picture's position,
   ;; a heading out of the contents: the same in the PDF and the Word document
   (with-test-directory (dir)
-    (alexandria:write-byte-vector-into-file (coerce (png-octets 2 2) '(vector (unsigned-byte 8))) (merge-pathnames "pic.png" dir))
+    (alexandria:write-byte-vector-into-file (coerce (png-octets 2 2) '(vector (unsigned-byte 8)))
+                                            (merge-pathnames "pic.png" dir))
     (let* ((file (namestring (merge-pathnames "note.org" dir)))
            (note (format nil "#+options: toc:t~%* Shown~%Text.~%* Hidden~%:EXPORT:~%contents: no~%new page: before~%:END:~%Intro.~%~%~
                               :EXPORT:~%align: right~%spacing: double~%space before: 1cm~%:END:~%Right words.~%~%~
@@ -1265,24 +1343,32 @@ its text's size in half points, when given."
       ;; the paper turned for them and back after, headers and footers with it
       (true (search "\\newenvironment{tuataralandscape}" latex))
       (is = 2 (count-matches "\\begin{tuataralandscape}" latex))
-      (true (< (search "\\begin{tuataralandscape}" latex) (search "\\section{Wide}" latex) (search "\\end{tuataralandscape}" latex)))
+      (true (< (search "\\begin{tuataralandscape}" latex)
+               (search "\\section{Wide}" latex)
+               (search "\\end{tuataralandscape}" latex)))
       ;; the two tables share their run
       (true (cl-ppcre:scan "(?s)\\\\begin\\{tuataralandscape\\}\\s*\\\\begin\\{longtable\\}.*?a.*?\\\\end\\{longtable\\}\\s*\\\\begin\\{longtable\\}.*?b.*?\\\\end\\{longtable\\}\\s*\\\\end\\{tuataralandscape\\}" latex)))
     (with-test-directory (dir)
-      (let* ((all (docx-text (tuatara.defaults::org-docx-document note :file (namestring (merge-pathnames "n.org" dir)))))
+      (let* ((all (docx-text (tuatara.defaults::org-docx-document note
+                                                                  :file (namestring (merge-pathnames "n.org" dir)))))
              (sections (let ((o '()))
                          (cl-ppcre:do-register-groups (type size) ("<w:sectPr>.*?(?:<w:type w:val=\"(\\w+)\"/>)?<w:pgSz([^>]*)/>" all)
                            (push (list (or type "nextPage") (if (search "landscape" size) :sideways :upright)) o))
                          (nreverse o))))
         ;; each turn on a page of its own; the section after pages turned sideways too; the last upright, the text after
-        (is equal '(("continuous" :upright) ("nextPage" :sideways) ("nextPage" :upright) ("nextPage" :sideways) ("nextPage" :upright)) sections
+        (is equal '(("continuous" :upright)
+                    ("nextPage" :sideways)
+                    ("nextPage" :upright)
+                    ("nextPage" :sideways)
+                    ("nextPage" :upright)) sections
             "~s" sections)
         ;; tables on sideways pages as wide as those pages let them be
         (true (search "<w:pgSz w:w=\"16838\" w:h=\"11906\" w:orient=\"landscape\"/>" all))))
     ;; Org's own export, which reads no :EXPORT: drawers, turns nothing
     (false (search "tuataralandscape}" (tuatara.defaults::org-latex-document note))))
   ;; within a heading turned sideways, a table turned too stays sideways: turned once, in both
-  (let ((note (format nil "* Wide~%:EXPORT:~%page: landscape~%:END:~%Text.~%~%:EXPORT:~%page: landscape~%:END:~%| a |~%")))
+  (let ((note (format nil
+                      "* Wide~%:EXPORT:~%page: landscape~%:END:~%Text.~%~%:EXPORT:~%page: landscape~%:END:~%| a |~%")))
     (let ((latex (tuatara.defaults::org-latex-document note :enhanced t)))
       (is = 1 (count-matches "\\begin{tuataralandscape}" latex))
       (is = 1 (count-matches "\\end{tuataralandscape}" latex)))
@@ -1313,7 +1399,8 @@ its text's size in half points, when given."
 (define-test (latex-export export-file-name-elsewhere)
   ;; #+EXPORT_FILE_NAME keeps the export's own ending, and writing over a file outside the note's
   ;; folder is asked first: no leaves it as it was, yes writes it
-  (is string= "/tmp/x.tex" (tuatara.defaults::org-export-file-name (format nil "#+export_file_name: /tmp/x.conf~%") "/tmp/n.org"))
+  (is string= "/tmp/x.tex"
+      (tuatara.defaults::org-export-file-name (format nil "#+export_file_name: /tmp/x.conf~%") "/tmp/n.org"))
   (with-test-directory (dir)
     (let ((other (merge-pathnames "other/report.docx" dir))
           (file (merge-pathnames "notes/note.org" dir)))
@@ -1340,8 +1427,11 @@ its text's size in half points, when given."
     ;; a subtree exported alone, its headline's EXPORT_FILE_NAME outside: asked too
     (let ((file (merge-pathnames "notes/part.org" dir)) (made (merge-pathnames "elsewhere/part.tex" dir)))
       (alexandria:write-string-into-file
-       (format nil "#+title: Part~%* Findings~%:PROPERTIES:~%:EXPORT_FILE_NAME: ../elsewhere/part~%:END:~%Text.~%") file)
-      (let ((f (export-session file (list (concatenate 'string "j C-u " (export-command "org-export-latex-enhanced")) "n o RET")
+       (format nil
+               "#+title: Part~%* Findings~%:PROPERTIES:~%:EXPORT_FILE_NAME: ../elsewhere/part~%:END:~%Text.~%") file)
+      (let ((f (export-session file
+                               (list (concatenate 'string "j C-u " (export-command "org-export-latex-enhanced"))
+                                     "n o RET")
                                :width (width-for dir))))
         (true (tuatara.frontend.fake:fake-frame-showing f "writes "))
         (false (probe-file made))))
@@ -1401,7 +1491,8 @@ its text's size in half points, when given."
 (define-test (latex-export code-indentation-as-tangled)
   ;; a tab reaches the next eighth column, so a line indented by a tab and one by eight spaces share it all
   (let ((text (format nil "#+begin_src sh~%~cfoo~%        bar~%#+end_src~%" #\Tab)))
-    (true (search (format nil "\\begin{verbatim}~%foo~%bar~%\\end{verbatim}") (tuatara.defaults::org-latex-document text)))
+    (true (search (format nil "\\begin{verbatim}~%foo~%bar~%\\end{verbatim}")
+                  (tuatara.defaults::org-latex-document text)))
     (is string= (format nil "foo~%bar~%")
         (tuatara.defaults::org-block-code (tuatara.defaults::org-src-block-at (tuatara.defaults::org-parse text) 16)))))
 
@@ -1420,7 +1511,8 @@ its text's size in half points, when given."
   ;; Tuatara's own look is a template filled as one of yours is: what the note gives, and nothing for what it does not
   (let ((with (docx-text (tuatara.defaults::org-docx-document
                           (format nil "#+title: T~%#+subtitle: S~%#+author: A~%#+date: 2026-10-07~%* H~%Text.~%"))))
-        (without (docx-text (tuatara.defaults::org-docx-document (format nil "#+options: toc:nil author:nil~%Text.~%")))))
+        (without (docx-text (tuatara.defaults::org-docx-document (format nil
+                                                                         "#+options: toc:nil author:nil~%Text.~%")))))
     (true (search "<w:pStyle w:val=\"Title\"/>" with))
     (true (search ">S</w:t>" with))
     (true (search "<w:pStyle w:val=\"Date\"/>" with))
@@ -1436,7 +1528,8 @@ its text's size in half points, when given."
   (let ((text (docx-text (tuatara.defaults::org-docx-document (format nil "#+title: * Star~%#+author: A. Writer~%Text.~%")))))
     (true (search ">A. Writer<" text))
     (true (search ">* Star<" text)))
-  (let ((latex (tuatara.defaults::org-latex-document (format nil "#+title: * Star~%#+author: A. Writer~%Text.~%") :enhanced t)))
+  (let ((latex (tuatara.defaults::org-latex-document (format nil "#+title: * Star~%#+author: A. Writer~%Text.~%")
+                                                     :enhanced t)))
     (true (search "A. Writer" latex))))
 
 (define-test (latex-export files-from-the-note-folder)
@@ -1448,10 +1541,14 @@ its text's size in half points, when given."
       (ensure-directories-exist (merge-pathnames "sub/" note-folder))
       (ensure-directories-exist outside)
       (dolist (folder (list (merge-pathnames "sub/" note-folder) outside))
-        (alexandria:write-string-into-file (format nil "#+latex_header: \\usepackage{~amark}~%" (if (eq folder outside) "outside" "inside"))
+        (alexandria:write-string-into-file (format nil
+                                                   "#+latex_header: \\usepackage{~amark}~%"
+                                                   (if (eq folder outside) "outside" "inside"))
                                            (merge-pathnames "setup.org" folder))
-        (alexandria:write-byte-vector-into-file (coerce (png-octets 2 2) '(vector (unsigned-byte 8))) (merge-pathnames "pic.png" folder)))
-      (sb-posix:symlink (namestring (merge-pathnames "pic.png" outside)) (namestring (merge-pathnames "link.png" note-folder)))
+        (alexandria:write-byte-vector-into-file (coerce (png-octets 2 2) '(vector (unsigned-byte 8)))
+                                                (merge-pathnames "pic.png" folder)))
+      (sb-posix:symlink (namestring (merge-pathnames "pic.png" outside))
+                        (namestring (merge-pathnames "link.png" note-folder)))
       (sb-posix:symlink (namestring outside) (namestring (merge-pathnames "linked" note-folder)))
       ;; a .. or a folder that is a link, leading out, is not in the note's folder (clock tables and archives ask so too)
       (let ((case (namestring note-folder)))
@@ -1600,7 +1697,8 @@ Shut in.
        (format nil "\\documentclass{article}~%\\usepackage{graphicx}~%\\begin{document}~%\\includegraphics[width=1cm]{~a}~%\\includegraphics{~a}~%\\includegraphics{local.png}~%\\end{document}~%" logo fake)
        tex)
       ;; only when one's own template or setup file names it: never from the note's own text
-      (is equal (list logo) (tuatara.export::latex-picture-files tex (list (format nil "\\includegraphics{~a}" logo) fake)))
+      (is equal (list logo)
+          (tuatara.export::latex-picture-files tex (list (format nil "\\includegraphics{~a}" logo) fake)))
       (false (tuatara.export::latex-picture-files tex '()))
       (false (tuatara.export::latex-picture-files tex (list "an unrelated template")))
       (let ((job (tuatara.export::make-pdf-export nil tex :org :file nil nil nil)))
@@ -1642,7 +1740,8 @@ Shut in.
       (destructuring-bind (&key directories writable overlays)
           (tuatara.export::latex-sandbox-places job tex engine "/build/")
         (true (member folder directories :test #'string=))
-        (true (some (lambda (d) (string= (string-right-trim "/" d) (string-right-trim "/" (namestring dir)))) directories))
+        (true (some (lambda (d)
+                      (string= (string-right-trim "/" d) (string-right-trim "/" (namestring dir)))) directories))
         (is equal '("/build/") writable)
         (is equal '() overlays)
         ;; the pictures an export draws are never shown as a folder
@@ -1661,7 +1760,10 @@ Shut in.
           (let ((directories (getf (tuatara.export::latex-sandbox-places job given engine "/build/") :directories)))
             (true (member given directories :test #'string=))
             (true (member picture directories :test #'string=))
-            (false (find-if (lambda (d) (member (string-right-trim "/" d) (list home (string-right-trim "/" (tuatara.io:parent-path home))) :test #'string=))
+            (false (find-if (lambda (d)
+                              (member (string-right-trim "/" d)
+                                      (list home (string-right-trim "/" (tuatara.io:parent-path home)))
+                                      :test #'string=))
                             directories)
                    "~s" directories))))
       ;; the folders texmf.cnf is looked for in (TEXMFCNF) shown too: a TeX Live in a hidden folder of
@@ -1682,7 +1784,8 @@ Shut in.
           (true (member (format nil "~atexlive/texmf-dist" (namestring dir)) trees :test #'string=))
           (is string= (format nil "~atexlive/texmf-var" (namestring dir)) var)))
       ;; TeX Live's folders as kpsewhich beside it tells them; its cache seen, written apart
-      (let ((real (cdr (first (let ((tuatara-user:*latex-engines* '("lualatex"))) (tuatara.export::latex-engines-found))))))
+      (let ((real (cdr (first (let ((tuatara-user:*latex-engines* '("lualatex")))
+                                (tuatara.export::latex-engines-found))))))
         (when (and real (tuatara.io:find-program (concatenate 'string (tuatara.io:parent-path real) "kpsewhich")))
           (multiple-value-bind (trees var) (tuatara.export::tex-trees real)
             (true (member (string-right-trim "/" (tuatara.io:parent-path real)) trees :test #'string=))
@@ -1698,13 +1801,15 @@ Shut in.
 (define-test (latex-export pictures-only-from-own-templates)
   ;; a note's own raw LaTeX cannot have a file from elsewhere shown to LaTeX: only its template's text is trusted
   (let ((trusted (nth-value 5 (tuatara.defaults::org-latex-document
-                               (format nil "#+latex: \\includegraphics{/elsewhere/passport.pdf}~%Words.~%") :enhanced t))))
+                               (format nil "#+latex: \\includegraphics{/elsewhere/passport.pdf}~%Words.~%")
+                               :enhanced t))))
     (true trusted)
     (false (some (lambda (text) (search "/elsewhere/passport.pdf" text)) trusted))))
 
 (define-test (latex-export docx-footnote-style)
   ;; a footnote's paragraphs take the footnotes' own style
-  (let ((text (docx-text (tuatara.defaults::org-docx-document (format nil "Seen there.[fn:1]~%~%[fn:1] On the log.~%")))))
+  (let ((text (docx-text (tuatara.defaults::org-docx-document (format nil
+                                                                      "Seen there.[fn:1]~%~%[fn:1] On the log.~%")))))
     (let* ((at (search "On the log." text))
            (paragraph (search "<w:p>" text :from-end t :end2 at)))
       (true (search "<w:pStyle w:val=\"FootnoteText\"/>" text :start2 paragraph :end2 at)))))
@@ -1743,33 +1848,38 @@ Shut in.
          (docx-notes (nth-value 2 (tuatara.defaults::org-docx-document text))))
     (dolist (notes (list latex-notes docx-notes))
       (true (find-if (lambda (n) (search "Line 3, an :EXPORT: drawer: spacing: wibble is none of" n)) notes) "~s" notes)
-      (true (find-if (lambda (n) (search "Line 3, an :EXPORT: drawer: align: sideways is none of" n)) notes) "~s" notes))))
+      (true (find-if (lambda (n)
+                       (search "Line 3, an :EXPORT: drawer: align: sideways is none of" n)) notes) "~s" notes))))
 
 (define-test (latex-export table-header-and-alignment)
   ;; the header is the rows above the first rule when rows follow it, in both exports
   (let* ((tuatara.defaults::*org-latex-text* (format nil "| a | 1 |~%|---+---|~%| b | 22 |~%"))
          (table (let ((found nil))
                   (tuatara.defaults::org-walk-tree (tuatara.defaults::org-parse tuatara.defaults::*org-latex-text*)
-                                                    (lambda (node) (when (eq (tuatara.defaults::org-node-type node) 'tuatara.defaults::table)
-                                                                     (setf found (or found node)))))
+                                                    (lambda (node)
+                                                      (when (eq (tuatara.defaults::org-node-type node)
+                                                                'tuatara.defaults::table)
+                                                        (setf found (or found node)))))
                   found)))
     (multiple-value-bind (rows special standard cookies) (tuatara.defaults::org-export-table-shape table)
       (is = 1 (tuatara.defaults::export-table-header rows))
       (false (tuatara.defaults::export-table-header (list (first rows) (second rows))))
-      (is eq :left (tuatara.defaults::table-column-alignment 0 standard cookies))
-      (is eq :right (tuatara.defaults::table-column-alignment 1 standard cookies))
+      (is equalp #(:left :right) (tuatara.defaults::table-column-alignments 2 0 standard cookies))
       (false special))))
 
 (define-test (latex-export picture-caption-at-its-side)
   ;; a picture against a margin has its caption under it, at that side, as the Word document has it
   (with-test-directory (dir)
-    (alexandria:write-byte-vector-into-file (coerce (png-octets 2 2) '(vector (unsigned-byte 8))) (merge-pathnames "pic.png" dir))
+    (alexandria:write-byte-vector-into-file (coerce (png-octets 2 2) '(vector (unsigned-byte 8)))
+                                            (merge-pathnames "pic.png" dir))
     (let* ((file (namestring (merge-pathnames "note.org" dir)))
            (text (format nil ":EXPORT:~%position: right~%width: 30%~%:END:~%#+caption: A red box~%[[file:pic.png]]~%"))
            (latex (tuatara.defaults::org-latex-document text :file file :enhanced t))
            (docx (docx-text (tuatara.defaults::org-docx-document text :file file))))
       (true (search (format nil "\\raggedleft~%\\sbox0{\\includegraphics") latex) "~a" latex)
-      (true (< (search "\\begin{minipage}{\\wd0}" latex) (search "\\caption{A red box}" latex) (search "\\end{minipage}" latex)))
+      (true (< (search "\\begin{minipage}{\\wd0}" latex)
+               (search "\\caption{A red box}" latex)
+               (search "\\end{minipage}" latex)))
       (true (search "<w:pStyle w:val=\"Caption\"/><w:jc w:val=\"right\"/>" docx)))))
 
 (define-test (latex-export annexes-on-a-page-of-their-own)
@@ -1821,7 +1931,8 @@ Shut in.
 (define-test (latex-export link-to-a-part-left-out)
   ;; a link to a heading left out of the export is written as its words, never a reference to no label
   (let ((latex (tuatara.defaults::org-latex-document
-                (format nil "* Kept~%See [[*Hidden][the hidden part]] and [[*Kept]].~%* Hidden :noexport:~%Secret.~%"))))
+                (format nil
+                        "* Kept~%See [[*Hidden][the hidden part]] and [[*Kept]].~%* Hidden :noexport:~%Secret.~%"))))
     (true (search "the hidden part" latex))
     (false (search "Secret" latex))
     (false (cl-ppcre:scan "hyperref\\[[^]]*\\]\\{the hidden part\\}" latex))
@@ -1850,11 +1961,15 @@ Shut in.
       (true (find-if (lambda (n) (search "left as written" n)) notes) "~s" notes))
     ;; one call whose value alone is past the limit: left as it is
     (let ((latex (tuatara.defaults::org-latex-document
-                  (format nil "#+macro: m ~{~a~}~%{{{m(~a)}}}~%" (make-list 100 :initial-element "$1") (make-string 200 :initial-element #\x)))))
+                  (format nil
+                          "#+macro: m ~{~a~}~%{{{m(~a)}}}~%"
+                          (make-list 100 :initial-element "$1")
+                          (make-string 200 :initial-element #\x)))))
       (true (< (length latex) 30000) "~:d characters" (length latex))
       (true (search "m(xxxx" latex)))
     ;; within the limit, macros are put in place as before
-    (true (search "word word" (tuatara.defaults::org-latex-document (format nil "#+macro: e word~%{{{e}}} {{{e}}}~%"))))))
+    (true (search "word word"
+                  (tuatara.defaults::org-latex-document (format nil "#+macro: e word~%{{{e}}} {{{e}}}~%"))))))
 
 (define-test (latex-export setup-file-read-within-a-limit)
   ;; a setup file larger than the limit is not read, and that is said
@@ -1915,7 +2030,8 @@ Shut in.
       (unwind-protect
            (progn (false (tuatara.defaults::docx-template-folder ".." nil))
                   (false (tuatara.defaults::docx-template-folder "." nil))
-                  (is equal (concatenate 'string templates "report/") (tuatara.defaults::docx-template-folder "report" nil)))
+                  (is equal (concatenate 'string templates "report/")
+                      (tuatara.defaults::docx-template-folder "report" nil)))
         (sb-int:unencapsulate 'tuatara.defaults::docx-templates-directory 'test)))))
 
 (define-test (latex-export export-drawer-written-crlf)
@@ -1929,7 +2045,8 @@ Shut in.
       (true (search (crlf (format nil "#+options: toc:nil d:(not \"EXPORT\" \"LOGBOOK\")~%* Head~%:EXPORT:~%")) text) "~s" text))
     (let ((text (after "j j M-x o r g - i n s e r t - e x p o r t - d r a w e r RET"
                        (crlf (format nil "#+title: T~%* Head~%| a | b |~%")))))
-      (true (search (crlf (format nil "#+title: T~%#+options: d:(not \"EXPORT\" \"LOGBOOK\")~%* Head~%")) text) "~s" text)
+      (true (search (crlf (format nil
+                                  "#+title: T~%#+options: d:(not \"EXPORT\" \"LOGBOOK\")~%* Head~%")) text) "~s" text)
       (false (cl-ppcre:scan "[^\\r]\\n" text) "~s" text))))
 
 (define-test (latex-export docx-in-the-note-language)
@@ -2037,7 +2154,8 @@ Shut in.
 (define-test (latex-export docx-picture-stored-once)
   ;; a picture shown twice is stored in the Word document once, each showing its own drawing
   (with-test-directory (dir)
-    (alexandria:write-byte-vector-into-file (coerce (png-octets 2 2) '(vector (unsigned-byte 8))) (merge-pathnames "pic.png" dir))
+    (alexandria:write-byte-vector-into-file (coerce (png-octets 2 2) '(vector (unsigned-byte 8)))
+                                            (merge-pathnames "pic.png" dir))
     (let* ((file (namestring (merge-pathnames "note.org" dir)))
            (text (docx-text (tuatara.defaults::org-docx-document (format nil "[[file:pic.png]]~%~%Text.~%~%[[file:pic.png]]~%") :file file))))
       (true (search "media/image1.png" text))
@@ -2059,8 +2177,8 @@ Shut in.
         (digest "d41d8cd98f00b2040000e9800998ecf8427e0000da39a3ee5e6b4b0d3255bfef95601890"))
     ;; a long span: places to break in a path and a message, and in a digest with none; with
     ;; them taken out, the span is what was written
-    (dolist (span '("~/Projects/palimpsest-practice/hand.pdf"
-                    "Wrote ~/Projects/palimpsest-practice/hand.pdf: 434 octets"
+    (dolist (span '("~/Documents/hand.pdf"
+                    "Wrote ~/Documents/hand.pdf: 434 octets"
                     "tuatara-user:*org-latex-text-characters*"
                     "d41d8cd98f00b2040000e9800998ecf8427e0000da39a3ee5e6b4b0d"))
       (let ((latex (funcall enhanced (format nil "See =~a= here.~%" span))))
@@ -2084,7 +2202,9 @@ Shut in.
          (latex (tuatara.defaults::org-latex-document
                  (format nil "| Written | Means | Pattern | In | Finds |~%|-~%~a~%~a~%" row row) :enhanced t)))
     (true (search (format nil "\\texttt{~a and more}" digest) (latex-without-breaks latex)))
-    (true (< (latex-longest-between-breaks (subseq latex (search "\\midrule" latex) (search "\\bottomrule" latex))) 11))))
+    (true (< (latex-longest-between-breaks (subseq latex
+                                                   (search "\\midrule" latex)
+                                                   (search "\\bottomrule" latex))) 11))))
 
 (define-test (latex-export text-width-from-the-template)
   ;; the enhanced export's own A4 page is the standard; a narrower page has fewer characters across
@@ -2234,3 +2354,22 @@ Shut in.
     (is equal "Droid Sans Fallback" (tuatara.defaults::font-for-character #x6F22 fonts))
     (is equal "Droid Sans Japanese" (tuatara.defaults::font-for-character #x6F22 (subseq fonts 0 1)))
     (is equal nil (tuatara.defaults::font-for-character #x6F23 fonts))))
+
+(define-test (latex-export hiding-calls-found-as-before)
+  (flet ((insides (text) (mapcar #'third (tuatara.export::hidden-spans text :org))))
+    (is equal '("a b") (insides "{{{{R(a b)}}}"))
+    (is equal (list (format nil "a~%b") "two") (insides (format nil "{{{redact(a~%b)}}} {{{r(two)}}}")))
+    (is equal '() (insides "{{{rx(y)}}} {{{p(z)}}} {{{r(no closer"))
+    (is equal '("z") (insides (format nil "#+options: protect:t~%{{{P(z)}}}")))
+    (is equal '("") (insides "{{{r()}}}"))))
+
+(define-test (latex-export hiding-calls-with-no-closer-are-quick)
+  (let ((openings (format nil "~{~a~}" (loop repeat 20000 collect "{{{r("))))
+    (flet ((quickly (function)
+             (true (< (nth-value 1 (measuring (funcall function))) 2) "one pass through the text")))
+      (quickly (lambda () (is equal '() (tuatara.export::hidden-spans openings :org))))
+      (let ((text (format nil "#+title: ~a)}}}~%" openings)))
+        (tuatara.defaults::with-org-note-keywords (text nil)
+          (tuatara.defaults::org-latex-read-options tuatara.defaults::*org-latex*)
+          (quickly (lambda () (tuatara.defaults::org-latex-check-hidden openings openings nil)))
+          (quickly (lambda () (tuatara.defaults::org-latex-check-hidden text text nil))))))))

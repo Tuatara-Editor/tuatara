@@ -63,6 +63,8 @@ to show it."
     (sb-concurrency:enqueue report *debug-reports*)
     (let ((stream *debug-log-stream*))
       (when stream
+        ;; made inside error handlers too: a write that fails in any way is let
+        ;; go, as raising here would hide the error being reported
         (ignore-errors
          (sb-thread:with-mutex (*debug-log-lock*)
            (write-line (debug-report-line report) stream)
@@ -94,10 +96,17 @@ for every descriptor of it duplicated from FD too."
 (defun log-in-use-p (native)
   "True when another session has the log at NATIVE open (OPEN-ROTATED-LOG
 holds a shared lock on it for as long as it writes there)."
-  (let ((fd (ignore-errors (sb-posix:open native sb-posix:o-rdonly))))
+  (let ((fd (handler-case (sb-posix:open native sb-posix:o-rdonly)
+              (sb-posix:syscall-error () nil))))
     (and fd
          (unwind-protect (not (lock-fd fd))
            (sb-posix:close fd)))))
+
+(defun close-fd-quietly (fd)
+  "Close the file descriptor (FD); an error from the system is let go, for use
+where another error is already being handled."
+  (handler-case (sb-posix:close fd)
+    (sb-posix:syscall-error () nil)))
 
 (defun open-rotated-log (native &key rotate (keep 3))
   "A descriptor open for writing at the end of the log at NATIVE, made
@@ -111,10 +120,12 @@ cannot be opened."
   (when (and rotate (not (log-in-use-p native)))
     (flet ((name (n) (if (zerop n) native (format nil "~a.~d" native n))))
       (loop for n from (1- keep) downto 0
-            do (ignore-errors (sb-posix:rename (name n) (name (1+ n)))))))
+            do (handler-case (sb-posix:rename (name n) (name (1+ n)))
+                 (sb-posix:syscall-error () nil)))))
   (let ((fd (sb-posix:open native (logior sb-posix:o-wronly sb-posix:o-creat sb-posix:o-append) #o600)))
-    (handler-bind ((error (lambda (e) (declare (ignore e)) (ignore-errors (sb-posix:close fd)))))
-      (ignore-errors (sb-posix:fchmod fd #o600))
+    (handler-bind ((error (lambda (e) (declare (ignore e)) (close-fd-quietly fd))))
+      (handler-case (sb-posix:fchmod fd #o600)
+        (sb-posix:syscall-error () nil))
       (lock-fd fd :shared t)
       fd)))
 
@@ -124,15 +135,16 @@ alone; the first time in a session, when no other session is writing to it,
 beginning a new one, the logs of the sessions before kept as debug.log.1, the
 one just before, to debug.log.3. NIL when there is no debug log to open."
   (when *debug-log-path*
-    (ignore-errors
-     (let* ((path (pathname *debug-log-path*))
-            (native (sb-ext:native-namestring path)))
-       (ensure-directories-exist path)
-       (let ((fd (open-rotated-log native :rotate (not *debug-log-begun*))))
-         (setf *debug-log-begun* t)
-         (handler-bind ((error (lambda (e) (declare (ignore e)) (ignore-errors (sb-posix:close fd)))))
-           (sb-sys:make-fd-stream fd :output t :external-format :utf-8 :buffering :full
-                                     :auto-close t :file native)))))))
+    (handler-case
+        (let* ((path (pathname *debug-log-path*))
+               (native (sb-ext:native-namestring path)))
+          (ensure-directories-exist path)
+          (let ((fd (open-rotated-log native :rotate (not *debug-log-begun*))))
+            (setf *debug-log-begun* t)
+            (handler-bind ((error (lambda (e) (declare (ignore e)) (close-fd-quietly fd))))
+              (sb-sys:make-fd-stream fd :output t :external-format :utf-8 :buffering :full
+                                        :auto-close t :file native))))
+      ((or file-error sb-posix:syscall-error) () nil))))
 
 (defvar *secret-at-hand* nil
   "True while a secret is in the calls under way (a passphrase, a text to be
@@ -165,9 +177,9 @@ a key, never hold a buffer's text."
 
 (defun failure-words (condition &key said)
   "CONDITION, an error caught, in words, for the debug log or, with SAID true,
-for a message saying what failed: what the condition itself says (\"No such
-file\"), or, while a secret is at hand (*SECRET-AT-HAND* true, as the editor
-makes it around work on a buffer kept secret), only its kind, \"a
+for a message saying what failed. It is what the condition itself says (\"No
+such file\"). While a secret is at hand (*SECRET-AT-HAND* true, as the editor
+makes it around work on a buffer kept secret), it is only its kind, \"a
 file-error\", since what it says could hold the secret. With SAID, a REFUSAL
 keeps its words even then: they are the editor's own. Say a failure through
 it rather than writing the condition into a message yourself, and nothing
@@ -204,7 +216,8 @@ was given."
           (push (handler-case
                     (let ((text (if *secret-at-hand*
                                     (prin1-to-string (list (sb-debug::frame-call frame)))
-                                    (with-output-to-string (s) (sb-debug::print-frame-call frame s :argument-limit 8)))))
+                                    (with-output-to-string (s)
+                                      (sb-debug::print-frame-call frame s :argument-limit 8)))))
                       ;; a call's line of the log: its first 300 characters
                       (substitute #\Space #\Newline (subseq text 0 (min (length text) 300))))
                   (error () "#<a call that cannot be printed>"))
@@ -217,7 +230,9 @@ was given."
                                    lines :end (min 12 (length lines))))
            (lines (if signalled (nthcdr (1+ signalled) lines) lines))
            (call (and stop (cl-ppcre:create-scanner
-                            (let ((name (format nil "(?:[^\\s():]+::?)?~a" (cl-ppcre:quote-meta-chars (symbol-name stop)))))
+                            (let ((name (format nil
+                                                "(?:[^\\s():]+::?)?~a"
+                                                (cl-ppcre:quote-meta-chars (symbol-name stop)))))
                               ;; (STOP ...), or ((LAMBDA () :IN STOP)) and the like
                               (format nil "^\\((?:~a[\\s)]|\\((?:LAMBDA|FLET|LABELS) [^\\n]*:IN ~a\\))" name name)))))
            (end (or (and call (position-if (lambda (line) (cl-ppcre:scan call line)) lines)) (length lines))))
@@ -243,12 +258,12 @@ waits on it while the editor is at rest.")
 
 (defun start-hang-watch (thread &key (while (constantly t)))
   "Watch THREAD, the editor's, from a thread of its own, as long as it lives and
-WHILE, a function of no arguments, is true: once it has been busy with one
+WHILE, a function of no arguments, is true. Once it has been busy with one
 piece of work for *HANG-REPORT-SECONDS* (*EDITOR-BUSY-SINCE*), have it write
 the calls under way in it to the error output, so that a hang leaves a trace
 however it came about. At rest it sleeps until the editor starts work
-\(*EDITOR-BUSY-WAKE*), looking once a minute whether THREAD still lives;
-while the editor works, once a second. Returns the watching thread."
+\(*EDITOR-BUSY-WAKE*), looking once a minute whether THREAD still lives. While
+the editor works, it looks once a second. Returns the watching thread."
   (make-guarded-thread
    (lambda ()
      (let ((reported nil))
@@ -260,15 +275,17 @@ while the editor works, once a second. Returns the watching thread."
                (when (and since (not (eql since reported))
                           (> (seconds-since since) *hang-report-seconds*))
                  (setf reported since)
-                 (ignore-errors
-                  (sb-thread:interrupt-thread
-                   thread
-                   (lambda ()
-                     (let ((lines (backtrace-lines)))
-                       (format *error-output* "~&Tuatara: the editor has been busy for ~d s; the calls under way:~%~{  ~a~%~}"
-                               (round (seconds-since since)) lines)
-                       (finish-output *error-output*)
-                       (queue-debug-report :error (format nil "busy for ~d s:~{~%    ~a~}" (round (seconds-since since)) lines)))))))))))
+                 (handler-case
+                     (sb-thread:interrupt-thread
+                      thread
+                      (lambda ()
+                        (let ((lines (backtrace-lines)))
+                          (format *error-output*
+                                  "~&Tuatara: the editor has been busy for ~d s; the calls under way:~%~{  ~a~%~}"
+                                  (round (seconds-since since)) lines)
+                          (finish-output *error-output*)
+                          (queue-debug-report :error (format nil "busy for ~d s:~{~%    ~a~}" (round (seconds-since since)) lines)))))
+                   (sb-thread:interrupt-thread-error () nil)))))))
    :name "tuatara hang watch"))
 
 (defparameter *error-reports-per-second* 4
@@ -314,9 +331,9 @@ passed (LEFT-OUT-LINES)."
 
 (defun report-error (control arguments condition)
   "Put CONDITION, an error signalled while doing what CONTROL and ARGUMENTS
-say, in the debug log: with the calls under way the first time that kind of
-error comes from that place, as one line after, at most
-*ERROR-REPORTS-PER-SECOND* times a second for each; how many were left out is
+say, in the debug log. The calls under way are written the first time that
+kind of error comes from that place, and one line after, at most
+*ERROR-REPORTS-PER-SECOND* times a second for each. How many were left out is
 said with the next report, or once the second has passed. While a secret is
 at hand (*SECRET-AT-HAND*) only the kind of error and the lengths of the
 strings in ARGUMENTS are written, never the calls, and the place's calls are
@@ -383,7 +400,8 @@ still leaves a trace."
     (cond ((and on (null *debug-log-stream*))
            (setf *debug-log-stream* (open-debug-log)))
           ((and (not on) *debug-log-stream*)
-           (ignore-errors (close *debug-log-stream*))
+           (handler-case (close *debug-log-stream*)
+             (stream-error () nil))
            (setf *debug-log-stream* nil))))
   (setf *debug-on* (and on t)))
 

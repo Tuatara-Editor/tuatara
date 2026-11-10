@@ -35,12 +35,12 @@ client who works in the frame too (JOIN-CLIENT)."
     buffer))
 
 (defvar *tick-functions* '()
-  "Functions of the editor for work going on in the background; each is called
+  "Functions of the editor for work going on in the background. Each is called
 before every redisplay of the command loop and returns when it wants to be
-called again: NIL for not until the next key; T while work of its own runs in
-the background, to be called soon (*TICK-INTERVAL*); or a number of seconds,
-with nothing running, to look again then. The loop waits no longer than the
-soonest for a key. This is how a replacement or a save running in the
+called again. NIL means not until the next key. T means work of its own runs
+in the background, to be called soon (*TICK-INTERVAL*). A number of seconds
+means nothing is running, to look again then. The loop waits no longer than
+the soonest for a key. This is how a replacement or a save running in the
 background shows its progress and is taken in, and how a file changed on disk
 is noticed.")
 
@@ -68,10 +68,10 @@ call soon, as the question will be answered."
 
 (defvar *after-tick-functions* '()
   "Functions of the editor called after *TICK-FUNCTIONS*, each time, and when
-another frame becomes the one worked in (SELECT-FRAME): work taken in from the
+another frame becomes the one worked in (SELECT-FRAME). Work taken in from the
 background may have shown another buffer meanwhile, as another frame shows
-its own, and these bring what follows the buffer shown (the modal state's
-keys) in line before the next key is read, as after a command.")
+its own. These functions bring what follows the buffer shown (the modal
+state's keys) in line before the next key is read, as after a command.")
 
 (defun run-tick-functions (editor)
   "Call *TICK-FUNCTIONS* with EDITOR (CALL-TICK-FUNCTION), then
@@ -332,8 +332,10 @@ first; WAITING is signalled once it waits, GO-ON lets it go on."
 (setf (documentation 'editor-hold-p 'function) "True when OBJECT is an EDITOR-HOLD."
       (documentation 'editor-hold-editor 'function) "The editor an EDITOR-HOLD keeps waiting."
       (documentation 'editor-hold-words 'function) "What the work an EDITOR-HOLD waits for is, in words."
-      (documentation 'editor-hold-stop 'function) "The function asking the work an EDITOR-HOLD waits for to stop, or NIL."
-      (documentation 'editor-hold-state 'function) "Whether the editor of an EDITOR-HOLD has been asked to wait, waits, or was given up."
+      (documentation 'editor-hold-stop 'function) "The function asking the work an EDITOR-HOLD waits
+for to stop, or NIL."
+      (documentation 'editor-hold-state 'function) "Whether the editor of an EDITOR-HOLD has been
+asked to wait, waits, or was given up."
       (documentation 'editor-hold-waiting 'function) "Signalled once the editor of an EDITOR-HOLD waits."
       (documentation 'editor-hold-go-on 'function) "Signalled to let the editor of an EDITOR-HOLD go on.")
 
@@ -358,7 +360,9 @@ waiting going on, said; other keys are kept for after."
            (flet ((say (stopping)
                     (when editor
                       (echo "~a" (if stopping
-                                     (format nil "~a: stopping where it safely can, and waiting for that" (editor-hold-words hold))
+                                     (format nil
+                                             "~a: stopping where it safely can, and waiting for that"
+                                             (editor-hold-words hold))
                                      (format nil "~a is taking long~:[~*~;; ~a stops it where it safely can~]"
                                              (editor-hold-words hold) (editor-hold-stop hold)
                                              (substitute-command-keys "\\`C-g'"))))
@@ -495,17 +499,18 @@ VISIT-STARTUP-FILE does, and return their buffers in order. A file that
 cannot be opened is said in the echo area and left out; the others open."
   (loop for entry in entries
         for buffer = (call-with-guard (lambda () (visit-startup-file entry)) 'visit-startup-file 'visit-startup-files
-                                      :said (lambda (words) (format nil "~a: ~a" (if (consp entry) (first entry) entry) words)))
+                                      :said (lambda (words)
+                                              (format nil "~a: ~a" (if (consp entry) (first entry) entry) words)))
         when buffer collect buffer))
 
 (defun run-editor (frontend &key files (setup nil) buffer start)
   "Start FRONTEND, call SETUP with the editor if given (this is where the
 defaults install keymaps, modes, themes and the init file), then show the
-first of FILES that opens, or BUFFER, or what HOST-STARTUP-BUFFER gives, call
-START, if given, with the editor once that is shown, run the
-command loop, and stop the frontends of its frames when it ends. Setup runs
-before any buffer is shown, so what it installs (major modes, the startup
-buffers) applies to them. Returns the editor."
+first of FILES that opens, or BUFFER, or what HOST-STARTUP-BUFFER gives. Call
+START, if given, with the editor once that is shown. Run the command loop, and
+stop the frontends of its frames when it ends. Setup runs before any buffer is
+shown, so what it installs (major modes, the startup buffers) applies to them.
+Returns the editor."
   (let* ((editor (make-editor frontend))
          ;; the editor is current for the whole session, including SETUP and the
          ;; init file it loads, so MESSAGE and friends work there
@@ -529,7 +534,8 @@ buffers) applies to them. Returns the editor."
                             (host-startup-buffer tuatara.runtime:*host*)
                             (tuatara.buffer:find-buffer "*scratch*")
                             (tuatara.buffer:make-buffer "*scratch*"))))
-             (select-window (tuatara.display:make-window first :width (max 1 width) :height (max 1 (- height 2))) editor)
+             (select-window (tuatara.display:make-window first :width (max 1
+                                                                           width) :height (max 1 (- height 2))) editor)
              (fit-windows editor)
              (note-selected-buffer first)
              ;; let per-command bookkeeping (modal state, gutters) see the buffer now shown

@@ -1,0 +1,980 @@
+#+title: Git
+#+language: en
+
+* Git
+
+Keeping the history of a folder, and working on it with other people.
+
+Git is a program that remembers every version of the files in a folder. You
+tell it when a piece of work is done, and it keeps that state for good, with a
+sentence from you saying what changed. Later you can look at any earlier
+state, see who changed a line and why, try an idea without risk to the work
+that is finished, and share the folder with someone else without mailing files
+back and forth. It is used most for programs, but it works as well for a
+folder of recipes, a set of letters or a small website.
+
+Tuatara does not replace git. It runs the git on your computer for you and
+shows what git says in buffers you can read and act on. Everything starts from
+one buffer, the status, which ~C-x g~ opens. This chapter explains the status
+first, then the daily round of staging and committing, then looking at
+history, branches, sharing with a remote, and the tools for finding out when
+and why something changed.
+
+The examples use a folder of recipes, =~/recipes=, with a text file for each
+recipe. You need git installed, and git needs to know your name once. If you
+have never used it, type these two lines in a terminal, with your own name and
+address:
+
+#+begin_example
+git config --global user.name "Aroha Example"
+git config --global user.email "aroha@example.org"
+#+end_example
+
+** What git keeps
+
+A few words come up on every page of this chapter. They are git's own, and
+the same in every book about it.
+
+A repository is a folder whose history git keeps. Git stores the history in a
+hidden folder called =.git= inside it. Your files stay ordinary files that any
+program can open.
+
+A commit is one saved state of the whole folder, with a message, your name and
+the time. Commits form a chain, each one pointing back to the one before. Every
+commit has a name of its own made of letters and digits, called its hash, such
+as =3f9c2ab=. You rarely type one; you pick the commit from a list.
+
+Staging is how you choose what goes into the next commit. Suppose you fixed
+the oven temperature in one recipe and began a new recipe in the same hour.
+Those are two pieces of work. You stage the fix and commit it, then stage the
+new recipe and commit that. Each commit then says one thing, which makes the
+history easy to read a year later. What is staged is kept in a list that git
+calls the index.
+
+A branch is a line of commits with a name. A new repository has one, usually
+called =main=. You make another when you want to try something, such as
+rewriting every recipe in metric measures, and keep =main= as it is until the
+new work is ready.
+
+A remote is another copy of the repository, most often on a server. You push
+your commits to it and fetch the commits other people pushed.
+
+Figure 15.1 shows the way a change travels.
+
+#+caption: Figure 15.1. From your files to a commit, and on to a remote.
+#+name: fig-git-places
+#+begin_example
+   your files          staged             commits            remote
+ ┌────────────┐     ┌──────────┐     ┌──────────────┐     ┌──────────┐
+ │ scones.txt │  s  │ the next │ c c │ o──o──o──o   │ P p │ a copy   │
+ │ (changed)  │ ──▶ │ commit   │ ──▶ │         main │ ──▶ │ elsewhere│
+ └────────────┘     └──────────┘     └──────────────┘     └──────────┘
+        ▲                u                                      │
+        └────────────────┘ ◀───────────── F u ──────────────────┘
+#+end_example
+
+The keys on the arrows are the ones you press in the status: ~s~ stages, ~u~
+unstages, ~c c~ commits, ~P p~ pushes and ~F u~ pulls. The rest of the
+chapter takes them one at a time.
+
+** The status
+
+~C-x g~ shows the state of the repository that the current file or folder is
+in. It is the place you work with git from. It shows the branch you are on,
+the files that have changed, what is staged, and the latest commits.
+
+The first time you open the status of a project, Tuatara asks whether you
+trust it, because git can run programs that a repository names. Chapter 12
+explains the question and its three answers. For a folder you made yourself,
+answer ~y~ and then type =yes=.
+
+Figure 15.2 shows the status of the recipes after an afternoon's work.
+
+#+caption: Figure 15.2. A status: one new file, one changed, one staged.
+#+name: fig-git-status
+#+begin_example
+Head:     main  Add the scone recipe
+Upstream: origin/main (1 ahead, 0 behind)
+
+▾ Untracked files (1)
+  pavlova.txt
+▾ Unstaged changes (1)
+  modified   scones.txt
+▾ Staged changes (1)
+  modified   bread.txt
+▾ Recent commits (2)
+  3f9c2ab Add the scone recipe
+  81d04e7 Start the recipe folder
+▸ Ignored files
+#+end_example
+
+The first line names the branch and the subject of its last commit. The
+second appears when the branch follows a branch on a remote, its upstream, and
+says how many commits you have that the remote lacks (ahead) and how many it
+has that you lack (behind). When git is in the middle of something, such as a
+merge that stopped, a third line beginning =Doing:= says what and which keys
+go on with it or stop it.
+
+Below are the sections. Each has a heading with a count, and is left out
+when it would be empty.
+
+| Section           | What it holds                                                |
+|-------------------+--------------------------------------------------------------|
+| Unmerged files    | Files with a conflict, while a merge or a rebase has stopped. |
+| Untracked files   | New files that git does not keep yet. A new folder is one line. |
+| Unstaged changes  | Changes to files git keeps, which you have not chosen yet.   |
+| Staged changes    | What the next commit will hold.                              |
+| Stashes           | Work you put aside (see The stash below).                    |
+| Unpushed to ...   | Commits the remote does not have yet.                        |
+| Recent commits    | The latest commits of the branch.                            |
+| Ignored files     | Files git was told to leave alone. Folded until you open it. |
+
+The status is a list in sections, like the buffer list of chapter 7, and the
+same keys fold it. These are the keys in the order you are likely to need
+them.
+
+| Modal    | Non-modal     | What it does                                                    |
+|----------+---------------+-----------------------------------------------------------------|
+| ~j~, ~k~ | ~C-n~, ~C-p~  | Down and up a line.                                             |
+| none     | ~n~, ~p~      | To the next and the previous file, hunk or heading.             |
+| none     | ~TAB~         | Shows a file's changes under it, or hides them. On a heading, folds or opens the section. |
+| none     | ~S-TAB~       | Folds every section, or opens them all.                         |
+| none     | ~RET~, ~l~    | Opens the file at the change, or shows the commit or stash on the line. |
+| none     | ~s~           | Stages the file, the hunk or the selected lines.                |
+| none     | ~u~           | Unstages them.                                                  |
+| none     | ~x~           | Reverses a change, after asking. It cannot be undone.           |
+| none     | ~c~           | Opens the commit menu.                                          |
+| none     | ~L~, ~d~      | Open the log menu and the diff menu.                            |
+| none     | ~b~, ~t~, ~z~ | Open the branch, tag and stash menus.                           |
+| none     | ~m~, ~R~      | Open the merge and rebase menus.                                |
+| none     | ~f~, ~F~, ~P~ | Open the fetch, pull and push menus.                            |
+| none     | ~r~           | Reads the repository again.                                     |
+| none     | ~q~, ~h~      | Closes the status.                                              |
+
+You seldom need ~r~. The status reads itself again when you save a file of the
+repository, and when git changes the repository from anywhere, a terminal
+included. It waits at least =*git-watch-seconds*= between two readings. A file
+made or changed by another program, without git, shows after ~r~.
+
+Staged files have a colour of their own so that you can tell them from the
+ones not staged, a staged deletion has another, and the commits and stashes a
+third. A long section shows its first =*git-section-lines*= files and then a
+line saying how many more there are; ~TAB~ on that line shows more.
+=*git-recent-commits*= sets how many commits the last section lists.
+
+*** Menus
+
+Most keys in the status open a menu, a small panel that lists what you can
+do next, each action with a key. ~c~ opens the commit menu, and ~c~ again
+there starts a commit, so the whole thing is written ~c c~. ~C-g~ closes a
+menu without doing anything, and ~C-h~ in a menu lists every action with its
+description.
+
+Many menus also have switches. A switch changes how the next action runs, and
+its key begins with ~-~. In the push menu, ~- n~ turns on "Only try", and
+the push that follows only reports what it would send. An option is a switch
+that takes a value, and its key begins with ~=~. In the log menu, ~= n~ asks
+how many commits to list.
+
+To keep the menus short, they show the actions used most. =~= in the status
+switches that status between the short menus and the full ones. When this
+chapter names an action you cannot see in a menu, press =~= first. To have the
+full menus always, put this in your init file:
+
+#+begin_example
+(setf *git-menus* :full)
+#+end_example
+
+=*git-slim-actions*= is the list of actions the short menus show, if you
+would sooner add one or two than see them all.
+
+#+begin_try Try it, with a folder of recipes
+1. In a terminal, make the folder and a first recipe:
+   =mkdir ~/recipes && cd ~/recipes && git init && printf 'Scones\n\n2 cups
+   flour\n1 cup milk\n' > scones.txt=.
+2. In Tuatara, open =~/recipes/scones.txt= and press ~C-x g~. Answer the
+   question about trust with ~y~, then type =yes= and ~RET~.
+3. The status opens. The first line says the branch and =(no commit yet)=.
+   =scones.txt= is under Untracked files.
+4. Press ~n~ twice to go to the file's line, then ~l~. The file opens. Press
+   ~C-x g~ to come back.
+5. Press ~TAB~ on the heading Untracked files. The section folds to one line.
+   Press ~TAB~ again to open it.
+6. Press ~q~. The status closes. ~C-x g~ opens it again whenever you want it.
+#+end_try
+
+*** Commands, settings and faces of the status
+
+#+table: commands git git-stage git-unstage git-reverse git-toggle-diff git-visit git-next-section git-previous-section git-toggle-full-menus
+
+#+table: settings *git-recent-commits* *git-section-lines* *git-watch-seconds* *git-menus* *git-slim-actions*
+
+#+table: faces :git-status-branch :git-status-staged :git-status-deleted :git-status-commit
+
+** Staging
+
+Staging is choosing. ~s~ on a file's line moves the file to Staged changes,
+and ~u~ there moves it back. Neither changes the file itself. On a section's
+heading, ~s~ stages every file of the section at once, which is the quick way
+when all of your changes belong together.
+
+*** Hunks and single lines
+
+Often a file holds two changes that deserve a commit each. Press ~TAB~ on the
+file and its changes appear under it. Lines that were added begin with =+=,
+and lines that were taken away begin with =-=. The changes come in groups
+called hunks, each a run of changed lines with a few unchanged lines around
+it, under a line that begins with =@@=.
+
+With the cursor on a hunk, ~s~ stages that hunk alone. For something finer
+still, select lines inside a hunk with ~V~ and then press ~s~: only the
+selected lines are staged. ~u~ works the same way under Staged changes.
+
+A file with a great many changes shows the first =*git-diff-lines*= lines of
+them, then a line saying how many more there are. ~TAB~ on that line shows
+more. Staging the file still takes all of it.
+
+*** Reversing a change
+
+~x~ throws a change away. On a file under Unstaged changes it puts the file
+back to how the last commit has it. On a hunk it removes that hunk's change,
+and with lines selected, those lines. Tuatara asks first and says that it
+cannot be undone, because git never had a copy of the text you are discarding.
+
+A file that is not tracked is treated more gently. ~x~ moves it to the trash,
+and you can put it back from there (chapter 10).
+
+*** From the file itself
+
+You do not have to open the status to stage. In a saved file, with the cursor
+on a changed line, ~M-x git-stage-hunk~ stages the change at the cursor and
+~M-x git-unstage-hunk~ takes it back. ~M-x git-stage-file~ and
+~M-x git-unstage-file~ do the whole file. The same actions are in the file
+menu, described under Blame and the file menu below.
+
+A file in a repository also shows its changes in the gutter, the narrow strip
+at the left of the window. There is a mark beside each line added since the
+last commit, another beside each changed line, and one where lines were
+deleted. The marks are worked out in the background when the file is first
+shown and after each save. ~M-x vc-gutter-mode~ turns them off everywhere, or
+on again. ~M-x vc-gutter-refresh~ works them out anew, which you may want
+after a commit made in a terminal.
+
+#+table: commands git-stage-hunk git-unstage-hunk git-stage-file git-unstage-file vc-gutter-mode vc-gutter-refresh
+
+#+table: settings *git-diff-lines*
+
+#+table: faces :vc-added :vc-changed :vc-deleted
+
+** Committing
+
+When what is staged is one finished piece of work, commit it. ~c c~ opens a
+buffer for the message, with a list of what is staged under it on lines that
+begin with =#=. Those lines are for you to read and are left out of the
+commit. The buffer starts in INSERT state, so you can type at once.
+
+A good message has a short first line that says what changed, such as
+=Lower the oven temperature for scones=. If there is more to say, leave an
+empty line and write a paragraph on why. The lines are filled at
+=*git-commit-fill-column*= as you type.
+
+~C-c C-c~ makes the commit and closes the buffer. ~C-c C-k~ gives the message
+up, and nothing is committed.
+
+#+begin_try Try it, with the recipes
+1. Open the status of =~/recipes= with ~C-x g~. Move to =scones.txt= and press
+   ~s~. The file moves to Staged changes.
+2. Press ~c~, then ~c~. The message buffer opens.
+3. Type =Start the recipe folder=. Press ~C-g~ and then ~C-c C-c~.
+4. The status now has a section Recent commits with your commit in it, and the
+   first line shows its subject.
+5. Open =scones.txt=, add the line =1 pinch salt= at the end and, a few lines
+   up, change =2 cups flour= to =3 cups flour=. Save with ~C-x C-s~ and press
+   ~C-x g~.
+6. Press ~TAB~ on =scones.txt=. Move to the line =+1 pinch salt=, press ~V~ and
+   then ~s~. Only that line is staged.
+7. Press ~c c~, type =Add salt to the scones=, press ~C-g~ and ~C-c C-c~. The
+   change to the flour is still waiting under Unstaged changes.
+#+end_try
+
+*** Changing the last commit
+
+Everyone commits and then sees a spelling mistake. The commit menu has three
+ways to change the last commit, as long as you have not pushed it yet.
+
+| Modal | Non-modal | What it does                                                        |
+|-------+-----------+---------------------------------------------------------------------|
+| none  | ~c a~     | Amend. What is staged goes into the last commit, and you edit its message. |
+| none  | ~c w~     | Reword. Only the message is edited.                                 |
+| none  | ~c e~     | Extend. What is staged goes into the last commit, with the message as it is. |
+
+Use extend when you forgot a file, reword when the message is wrong, and amend
+when both need fixing.
+
+The full menu has two more, for a mistake further back. ~c f~ (fix up) and
+~c s~ (squash) make a small commit that is marked as belonging to an earlier
+one you pick. A later rebase with the switch ~- q~ folds it into that commit.
+Rebasing is described below.
+
+The switches of the commit menu go to git with the commit. ~- a~ commits
+every change to tracked files without staging first. ~- s~ adds a
+=Signed-off-by= line with your name, which some projects ask for.
+
+*** Signing commits
+
+A signed commit carries proof that it was made with your key, so that others
+can check it came from you. Tuatara commits the way git does with your own
+settings, signing included. There is nothing to switch on in Tuatara. You tell
+git once, in a terminal, which key to use and that every commit is to be
+signed:
+
+#+begin_example
+git config --global user.signingkey YOUR-KEY
+git config --global commit.gpgsign true
+#+end_example
+
+From then on ~C-c C-c~ in a message buffer makes a signed commit. Git's own
+manual describes the kinds of key it accepts. A tag can be signed as well: in
+the tag menu, turn on ~- s~ before you make the tag.
+
+Signing and signing off are different things. The switch ~- s~ in the commit
+menu only adds a line of text to the message.
+
+To see which commits are signed, press ~!~ in the status and type
+=log --format="%h %G? %s"=. A =G= before a subject means a good signature and
+an =N= means none.
+
+*** Commands and settings for committing
+
+#+table: commands git-commit-menu git-commit git-commit-finish git-commit-cancel git-commit-amend git-commit-reword git-commit-extend git-commit-fixup git-commit-squash git-commit-mode
+
+#+table: settings *git-commit-fill-column*
+
+** The log and diffs
+
+*** The log
+
+The log is the list of commits, the latest first. ~L L~ in the status lists
+the commits of the branch you are on, a line each: the hash, the date, the
+author, any branch or tag that sits at the commit, and the subject. ~RET~ or
+~l~ on a line shows the commit, with its message and every change it made.
+~q~ closes.
+
+The log menu lists other things too.
+
+| Modal | Non-modal | What it lists                                               |
+|-------+-----------+-------------------------------------------------------------|
+| none  | ~L L~     | The branch you are on.                                      |
+| none  | ~L o~     | Another branch, or any revision you name.                   |
+| none  | ~L f~     | The commits that changed one file: the one on the line, or the current file. |
+| none  | ~L b~     | Every branch, the remotes' included. (Full menu.)           |
+| none  | ~L a~     | Every reference: branches, tags and stashes. (Full menu.)   |
+| none  | ~L r~     | The reflog: where the branch has been, step by step. (Full menu.) |
+
+A revision is any way of naming a commit: a branch name, a tag, a hash, or
+=HEAD=, which is git's word for the commit you are on now.
+
+The switches and options shape the list. ~- g~ draws the graph of branches
+beside the commits, which helps after a merge. ~= a~ keeps one author's
+commits, ~= s~ those whose message contains a word, and ~= d~ and ~= u~ those
+since or until a date; git understands dates such as =2 weeks ago=. The log
+shows =*git-log-length*= commits unless ~= n~ says otherwise.
+
+The reflog is worth knowing about on a bad day. Git records every move of the
+branch, including the ones that seemed to throw commits away. A commit you
+lost by a mistaken reset is still listed there for some weeks, and you can
+check it out or make a branch at it.
+
+#+table: commands git-log-menu git-log git-log-other git-log-file git-log-branches git-log-all git-reflog git-log-show
+
+#+table: settings *git-log-length*
+
+*** Diffs
+
+A diff shows how two states differ, line by line, in the same form as the
+changes under a file in the status. ~d d~ shows everything you have changed
+since the last commit, in a buffer of its own. It is a good thing to read
+through before you commit.
+
+| Modal | Non-modal | What it shows                                             |
+|-------+-----------+-----------------------------------------------------------|
+| none  | ~d d~     | Every change not committed, staged or not.                |
+| none  | ~d s~     | What is staged: the changes the next commit will make.    |
+| none  | ~d u~     | What is not staged. (Full menu.)                          |
+| none  | ~d r~     | How your files differ from a revision you name. (Full menu.) |
+| none  | ~d R~     | What changed between two revisions. (Full menu.)          |
+| none  | ~d c~     | One commit.                                               |
+
+~M-x git-diff-file~ shows the uncommitted changes of the file you are in.
+
+Among the switches, ~- w~ ignores changes in spaces, which helps when a file
+was only re-indented. ~- s~ shows the names of the files and how many lines
+changed in each, without the lines. ~= U~ sets how many unchanged lines are
+shown around each change.
+
+Added and removed lines have their own colours. A diff larger than
+=*differences-limit*= octets is not shown, and Tuatara says so. Comparing two
+files that are not in git is ~M-x diff-files~, described in chapter 9.
+
+#+table: commands git-diff-menu git-diff git-diff-staged git-diff-unstaged git-diff-revision git-diff-range git-diff-commit git-diff-file diff-mode
+
+#+table: settings *differences-limit*
+
+#+table: faces :diff.plus :diff.minus :diff.delta
+
+** Branches and tags
+
+*** Branches
+
+A branch lets you work on something without disturbing what is finished.
+Suppose you want to convert all the recipes to metric measures. It will take a
+week, and in the meantime you still want to fix small things in the recipes
+as they are. Make a branch called =metric=, do the conversion there one commit
+at a time, and go back to =main= whenever you need to.
+
+Going to a branch is called checking it out. Git then changes the files in
+the folder to that branch's state. If a buffer still shows a file's old text
+afterwards, ~M-x revert-buffer~ reads the file again (chapter 9).
+
+| Modal | Non-modal | What it does                                                      |
+|-------+-----------+-------------------------------------------------------------------|
+| none  | ~b c~     | Makes a new branch and checks it out. It asks for the name, then where to start; ~RET~ starts from where you are. |
+| none  | ~b b~     | Checks out a branch or a revision you name.                       |
+| none  | ~b m~     | Renames a branch.                                                 |
+| none  | ~b d~     | Deletes a branch, though never the one you are on.                |
+
+Git refuses to check out another branch when that would overwrite changes you
+have not committed, and Tuatara shows what it said. Commit them first, or put
+them aside with the stash.
+
+Deleting a branch whose commits are on no other branch would lose them.
+Tuatara asks a second time in that case.
+
+If you name a commit or a tag at ~b b~ where a branch was expected, git checks
+out that state with no branch. The status then says =(detached)= on its first
+line. You can look around, but commits made there belong to no branch. Check
+out a branch to return.
+
+The full menu has four more actions. ~b n~ makes a branch without checking
+it out. ~b x~ moves a branch to another commit. ~b u~ sets a branch's
+upstream. ~b s~ is for the day you find you have been committing on =main=
+when you meant to use a branch: it makes a new branch with the commits you
+have not pushed, checks it out, and puts =main= back to where its upstream
+is.
+
+~y~ in the status lists every branch, every branch of the remotes and every
+tag, each with the commit it is at. ~RET~ on a line shows its log.
+
+#+table: commands git-branch-menu git-branch-and-checkout git-checkout git-branch-rename git-branch-delete git-branch-create git-branch-reset git-branch-set-upstream git-branch-spin-off git-show-refs git-refs-log
+
+*** Merging
+
+When the work on a branch is done, you merge it into =main=. Check out =main=,
+then press ~m m~ and name the branch. Git joins the two lines of work and
+makes a commit that records the join. Figure 15.3 shows the shape.
+
+#+caption: Figure 15.3. A branch made, worked on and merged back.
+#+name: fig-git-merge
+#+begin_example
+                 o───o───o   metric
+                ╱         ╲
+   o───o───o───o───────────o   main
+               ▲           ▲
+             b c         m m
+#+end_example
+
+If =main= did not change while you worked on the branch, there is nothing to
+join. Git moves =main= forward to the branch's last commit, which is called a
+fast-forward, and makes no extra commit.
+
+The full menu has two more ways to merge. ~m n~ merges but stops before the
+commit so that you can look first. ~m s~ brings in all of a branch's changes
+as one staged change, for you to commit as a single commit.
+When both branches changed the same lines, the merge stops half way. That is
+a conflict, and it has a section of its own below.
+
+#+table: commands git-merge-menu git-merge git-merge-no-commit git-merge-squash git-merge-continue git-merge-abort
+
+*** Tags
+
+A tag is a name for one commit that never moves. You would tag the state of
+the recipes that you printed for the school fair as =fair-2026=, so that you
+can always get exactly that state back. ~t t~ asks for the revision, offering
+the commit on the cursor's line, and for the name. ~t d~ deletes a tag.
+
+With the switch ~- a~ the tag carries a message of its own, and with ~- s~ it
+is signed. Tags are not sent by an ordinary push. The full push menu sends
+them: ~P t~ every tag, ~P T~ one.
+
+#+table: commands git-tag-menu git-tag-create git-tag-delete
+
+#+begin_try Try it, with the recipes
+1. In the status of =~/recipes=, press ~b c~. Type =metric= and ~RET~, then
+   ~RET~ again to start from where you are. The first line now says =metric=.
+2. Open =scones.txt=, change =1 cup milk= to =250 ml milk= and save. Press
+   ~C-x g~, then ~s~ on the file, ~c c~, type =Milk in millilitres=, ~C-g~ and
+   ~C-c C-c~.
+3. Press ~b b~, type =main= and ~RET~. The first line says =main=, and the
+   commit you just made is not among the recent commits. On this branch the
+   milk is still in cups.
+4. Press ~m m~, type =metric= and ~RET~. The commit is now on =main= too, and
+   the file says =250 ml=.
+5. Press ~L~, then ~- g~ and ~L~. The log shows the commits with the graph
+   beside them. Press ~q~.
+6. Press ~b d~, type =metric= and ~RET~, then answer =y= and ~RET~ to the
+   question. The branch is merged, so it can go.
+#+end_try
+
+** The stash
+
+Sometimes you are half way through a change and need the files clean for a
+moment, for instance to check out =main= and fix a typing mistake someone
+pointed out. The work is not ready for a commit. The stash is a shelf for
+it. ~z z~ asks for a short message, puts every change aside and returns the
+files to the last commit. The stash appears in the status under Stashes.
+
+When you come back, ~z p~ (pop) puts the changes into the files again and
+takes the stash off the shelf. ~z a~ (apply) does the same and keeps the
+stash, for when you want the changes on two branches. ~z d~ drops a stash
+without applying it, and that cannot be undone.
+
+If the files changed in the meantime in the same places, popping can end in
+a conflict. Tuatara then keeps the stash and says so, and nothing is lost.
+
+New files that git does not track yet are left where they are unless you turn
+on the switch ~- u~ first.
+
+The full menu adds ~z i~, which stashes only what is staged, ~z x~, which
+stashes everything and leaves the staged part in place, ~z v~, which shows
+what a stash holds, and ~z b~, which makes a new branch out of a stash.
+
+#+begin_try Try it, with the recipes
+1. Open =~/recipes/scones.txt= and add a line =Serve with jam= at the end.
+   Save, and press ~C-x g~. The file is under Unstaged changes.
+2. Press ~z z~, type =serving note= and ~RET~. The change is gone from the
+   file, and the status has a section Stashes.
+3. Press ~RET~ on the stash to see what it holds, then ~q~.
+4. Press ~z p~ and pick the stash. The line is back in the file and the
+   section Stashes is gone.
+#+end_try
+
+#+table: commands git-stash-menu git-stash git-stash-pop git-stash-apply git-stash-drop git-stash-index git-stash-keep-index git-stash-show git-stash-branch
+
+** Merge conflicts
+
+A conflict happens when two lines of work changed the same lines of a file.
+Git cannot know which is right, so it stops and asks you. It can happen in a
+merge, a rebase, a cherry-pick, or when a stash comes back.
+
+Nothing is broken when this happens. The status says what git is doing on its
+=Doing:= line, with the keys that go on or stop, and it lists the files in
+question first, in a section called Unmerged files. Each line says how the two
+sides differ, for example =both changed=.
+
+Git writes both versions into the file, between marker lines:
+
+#+begin_example
+<<<<<<< HEAD
+2 cups flour
+=======
+300 g flour
+>>>>>>> metric
+#+end_example
+
+The lines after =<<<<<<<= are the first side. In a merge that is the branch
+you are on. The lines after the row of equals signs are the second side, the
+branch being merged in.
+
+To settle a conflict, follow these steps.
+
+1. Press ~RET~ on the file in the status. It opens with the cursor on its
+   first conflict, with the two sides coloured.
+2. For each conflict, decide. ~C-c ^ u~ keeps the first side, ~C-c ^ l~ the
+   second and ~C-c ^ a~ both. ~C-c ^ n~ goes to the next conflict. You can
+   also edit the lines by hand and delete the markers. Chapter 13 describes
+   these keys in full.
+3. Save the file with ~C-x C-s~.
+4. Press ~C-x g~ and then ~s~ on the file. Staging it tells git the file is
+   settled, and it moves to Staged changes.
+5. When no file is left under Unmerged files, finish: ~m c~ commits a merge,
+   ~R c~ goes on with a rebase, and ~A c~ with a cherry-pick.
+
+If you would sooner not deal with it now, ~m a~ stops a merge and puts the
+branch and the files back as they were before it began. ~R a~ and ~A a~ do
+the same for a rebase and a cherry-pick. Each asks first.
+
+#+begin_try Try it, with a conflict made on purpose
+1. In the status of =~/recipes=, press ~b c~, type =grams= and ~RET~ ~RET~. In
+   =scones.txt= change the flour line to =300 g flour=. Save, press ~C-x g~,
+   stage with ~s~ and commit with ~c c~ and the message =Flour in grams=.
+2. Press ~b b~, type =main= and ~RET~. In =scones.txt=, run
+   ~M-x revert-buffer~ if the line still says grams, then change it to
+   =2 cups plain flour=. Save, stage and commit as =Say which flour=.
+3. Press ~m m~, type =grams= and ~RET~. The merge stops. The status shows a
+   =Doing:= line and =scones.txt= under Unmerged files.
+4. Press ~RET~ on the file. If the line says =2 cups plain flour= and has no
+   markers, the buffer is the old one: run ~M-x revert-buffer~. Both versions
+   are there between the markers. Press ~C-c ^ l~ to keep =300 g flour=, then
+   ~C-x C-s~.
+5. Press ~C-x g~, then ~s~ on the file, then ~m c~. If a message buffer
+   opens, press ~C-c C-c~. The merge is done.
+#+end_try
+
+** Rebase, cherry-pick, revert and reset
+
+These four change or reuse commits that already exist. You can work for a long
+time without them. They are here for the day you need one.
+
+*** Rebase
+
+Rebasing makes your commits again on top of another commit, as if you had
+started your work later than you did. The usual reason is that =main= moved on
+while you worked on a branch. A merge would join the two with an extra commit.
+A rebase gives a single straight line instead, which many people find easier
+to read. ~R e~ asks what to rebase on, and ~R u~ rebases on the branch's
+upstream.
+
+If one of your commits clashes with the new base, the rebase stops with a
+conflict. Settle it as described above and press ~R c~ to go on. The full
+menu's ~R s~ leaves that commit out, and ~R a~ stops the whole rebase and
+puts everything back.
+
+~R i~ rebases as a list says, and is the tool for tidying your own commits
+before you share them. It asks which commit to start after, then shows the
+commits after it in a buffer, one per line, the oldest first:
+
+#+begin_example
+pick 81d04e7 Add the pavlova
+pick 5c2e9a1 Fix a typo in the pavlova
+pick 9b7f310 Add the bread
+#+end_example
+
+Change the list to say what you want. Move a line to change the order. Change
+the word =pick= to =reword= to give the commit a new subject, to =squash= or
+=fixup= to fold it into the commit on the line above, or to =drop= to leave it
+out. In the example, changing the second line to =fixup= makes the typo fix
+part of the commit that added the pavlova. ~C-c C-c~ rebases as the list says,
+asking for each new subject first. ~C-c C-k~ gives the list up and nothing
+changes.
+
+One rule keeps you out of trouble: rebase only commits you have not pushed. A
+rebase makes new commits in place of the old ones, and anyone who already has
+the old ones would be left with a history that no longer matches yours.
+
+#+table: commands git-rebase-menu git-rebase-onto git-rebase-upstream git-rebase-interactive git-rebase-todo-finish git-rebase-todo-cancel git-rebase-continue git-rebase-skip git-rebase-abort git-rebase-mode
+
+*** Cherry-pick
+
+A cherry-pick copies one commit from another branch onto the branch you are
+on. You would use it when a branch holds one fix you want now and the rest of
+the branch is not ready. Press ~A A~ in the status and name the commit. A
+branch's name stands for its newest commit, and a commit on the cursor's line
+is offered first. The full menu's ~A n~ brings the commit's changes into your
+files without committing them.
+
+#+table: commands git-cherry-pick-menu git-cherry-pick git-cherry-pick-no-commit git-cherry-pick-continue git-cherry-pick-skip git-cherry-pick-abort
+
+*** Revert
+
+A revert makes a new commit that undoes an earlier one. The earlier commit
+stays in the history, and the new one says that it was taken back. This is the
+safe way to undo something you have already pushed, because nothing that
+others have is rewritten. ~_ _~ asks which commit, offering the one on the
+cursor's line.
+
+#+table: commands git-revert-menu git-revert git-revert-no-commit git-revert-continue git-revert-skip git-revert-abort
+
+*** Reset
+
+A reset moves the branch itself to another commit. The commits after it are
+no longer on the branch. It is the way to take back commits you have not
+pushed. The actions differ in what happens to your files.
+
+| Modal | Non-modal | What it keeps                                                       |
+|-------+-----------+---------------------------------------------------------------------|
+| none  | ~X m~     | Your files as they are. The undone commits' changes show as not staged. |
+| none  | ~X s~     | Your files and what is staged. The changes show as staged. (Full menu.) |
+| none  | ~X K~     | Changes you have not committed; the files otherwise follow. (Full menu.) |
+| none  | ~X H~     | Nothing. Files and index go to the commit, and uncommitted changes are lost. It asks first. |
+| none  | ~X f~     | Puts one file back to how a revision has it, after asking.          |
+
+~X m~ is the one to reach for when you committed too early: the commit is
+gone and its changes are in your files to stage again as you like. ~X H~ is
+for when you want to throw work away, and it does. The reflog can still find
+the commits afterwards, but changes that were never committed are gone.
+
+#+table: commands git-reset-menu git-reset-mixed git-reset-soft git-reset-keep git-reset-hard git-reset-file
+
+** Pulling and pushing
+
+A remote is a second copy of the repository that you exchange commits with. It
+may be on a hosting service, on a server at work, or in a folder on a shared
+drive. A repository you copied from somewhere with =git clone= already has
+one, called =origin=. To give a repository of your own a remote, press ~M a~
+in the status. It asks for a name, and =origin= is the custom for the first,
+then for the address.
+
+Three verbs cover the exchange.
+
+Fetch downloads the commits the remote has and you lack, and changes nothing
+in your files or your branch. It is always safe. ~f u~ fetches from the
+upstream's remote and ~f a~ from every remote. Afterwards the second line of
+the status says how far behind you are.
+
+Pull fetches and then brings the new commits into your branch. ~F u~ pulls
+from the upstream. With no switch it only moves your branch forward when that
+is all there is to do. If you and the remote both have new commits, it stops
+and tells you, and you choose: ~- r~ before ~u~ rebases your commits on
+theirs, and ~- m~ merges theirs into yours. Tuatara never makes a merge you
+did not ask for.
+
+Push sends your commits to the remote. ~P p~ pushes the branch to its
+upstream. The first time, the branch has no upstream yet: press ~P~, turn on
+~- u~, then press ~e~ and name the remote. From then on ~P p~ is enough. If
+the remote has commits you lack, the push is refused. Pull first, then push
+again.
+
+Fetching, pulling and pushing run in the background, so you can go on working.
+The sign =P= at the front of the mode line is lit while they run (chapter 11).
+
+A forced push, ~- f~ or ~- F~, replaces what the remote has with what you
+have. It always asks first, since it can remove other people's commits from
+the remote. Of the two, ~- f~ is the careful one: it refuses if the remote
+has something you have not seen. ~- n~ only tries, and reports what a push
+would send.
+
+Tuatara does not ask for passwords itself. With an address that uses ssh,
+your keys come from the ssh agent of your system. If the server refuses,
+Tuatara shows git's own words.
+
+The remote menu looks after the remotes themselves: ~M a~ adds one and ~M u~
+gives one a new address. The full menu also renames, removes, and forgets
+branches that the remote has deleted.
+
+#+begin_try Try it, with a folder standing in for a server
+1. In a terminal, make an empty repository to play the server:
+   =git init --bare /tmp/recipes-server.git=.
+2. In the status of =~/recipes=, press ~M a~. Press ~RET~ at the name to take
+   =origin=, then type =/tmp/recipes-server.git= and ~RET~ for the address.
+3. Press ~P~, then ~- u~, then ~e~. Type =origin= and ~RET~. The echo area
+   reports the push when it is done, and the status gains a line beginning
+   =Upstream:=.
+4. Make a small change to a recipe, save, stage and commit it. The second
+   line of the status says =1 ahead= and a section lists the commit as not
+   pushed.
+5. Press ~P p~. The section goes, and you are level with the remote again.
+#+end_try
+
+#+table: commands git-remote-menu git-remote-add git-remote-set-address git-remote-rename git-remote-remove git-remote-prune
+
+#+table: commands git-fetch-menu git-fetch git-fetch-remote git-fetch-all
+
+#+table: commands git-pull-menu git-pull git-pull-from
+
+#+table: commands git-push-menu git-push git-push-elsewhere git-push-tags git-push-tag
+
+** Blame and the file menu
+
+*** Who changed each line
+
+Blame answers the question "where did this line come from?". ~M-x git-blame~
+lists the current file a line at a time, and before each line the commit that
+last changed it, its author and its date. ~RET~ or ~l~ on a line shows that
+commit in full, so you can read the message and see what else changed with it.
+~q~ closes. The name is git's and sounds harsher than the tool is. Most often
+the answer is yourself, two years ago, with a good reason in the message.
+
+Blame reads the file as saved, so save first.
+
+*** The file menu
+
+~M-x git-file-menu~ opens a menu of git actions for the file you are in. It
+works from the file's own buffer, without a visit to the status, and from a
+file's line in the status.
+
+| Modal | Non-modal | What it does                                              |
+|-------+-----------+-----------------------------------------------------------|
+| none  | ~s~, ~u~  | Stages the file, and unstages it.                         |
+| none  | ~S~, ~U~  | Stages the hunk at the cursor, and unstages it.           |
+| none  | ~d~       | Shows the file's uncommitted changes.                     |
+| none  | ~L~       | Lists the commits that changed the file.                  |
+| none  | ~b~       | Blame.                                                    |
+| none  | ~r~       | Goes back through the file's history (see Rewind below).  |
+| none  | ~f~       | Puts the file back to how a revision has it, after asking. |
+| none  | ~R~       | Renames the file, in git and on disk. (Full menu.)        |
+| none  | ~D~       | Deletes the file from git and from disk, after asking. (Full menu.) |
+
+Renaming a file through git, with ~R~ here, keeps its history joined to the
+new name, and the buffers that visit the file follow it.
+
+If you use the menu often, give it a key in your init file. Chapter 20 shows
+how.
+
+#+table: commands git-file-menu git-blame git-blame-show git-rename-file git-delete-file
+
+** Rewind: a file as it was
+
+Rewind shows a file as it stood at each commit that changed it, one step at a
+time. It is the quickest way to answer "what did this recipe say before I
+rewrote it?", and to copy a paragraph back out of the past.
+
+Press ~C-x G~ in a file. A new buffer shows the file as its latest commit left
+it, read-only, with the cursor on the line you were on. Then:
+
+| Modal | Non-modal | What it does                                           |
+|-------+-----------+--------------------------------------------------------|
+| none  | ~p~       | Shows the file one commit older.                       |
+| none  | ~n~       | Shows it one commit newer.                             |
+| none  | ~r~       | Lets you choose a commit from the file's log.          |
+| none  | ~c~       | Shows the commit that left the file like this.         |
+| none  | ~C-c w~   | Copies that commit's short hash.                       |
+| none  | ~C-x G~   | Goes back to the file as it is now, on the same line.  |
+| none  | ~q~       | Closes the buffer.                                     |
+
+While you rewind, the mode line says =Rewind= and the commit's hash in the
+warning colour, followed by the commit's date and which of how many it is,
+such as =3/5=. You cannot mistake the old text for the file as it is now.
+
+The text is read-only, but you can select and copy from it as from any
+buffer (chapter 4) and paste into the real file. The history follows the file
+back through a rename. Changes you have not committed are not part of it,
+since they are in no commit.
+
+Rewind works on folders too. Press ~C-x G~ in a folder listing (chapter 10)
+and the listing shows the folder as its latest commit left it, with files
+that have since been deleted. ~p~ and ~n~ step through the commits as before.
+~RET~ on a file there goes through that file's history from that commit, and
+~q~ comes back to the folder. Commands that would change files, such as
+copying or renaming, are refused in such a listing, because the files in it
+are from the past.
+
+#+begin_try Try it, with the recipes
+1. Open =~/recipes/scones.txt=, which by now has several commits. Put the
+   cursor on the flour line.
+2. Press ~C-x G~. The mode line says =Rewind= and a hash. The text is the
+   file as last committed.
+3. Press ~p~ a few times. The flour line changes back through grams and cups.
+   At the oldest commit, the echo area says there is none before it.
+4. Press ~c~ to read the commit that made the version you are looking at,
+   then ~q~ to close it.
+5. Press ~n~ to come forward, then ~C-x G~. You are back in the real file.
+#+end_try
+
+#+table: commands git-rewind git-rewind-older git-rewind-newer git-rewind-to git-rewind-show-commit git-rewind-copy-hash
+
+#+table: faces :mode-line-rewind
+
+** Repositories you only look at
+
+Git can be told by a repository to run programs: hooks, filters and other
+helpers named in the repository's own settings. That is fine in a folder of
+your own and unwise in one a stranger sent you. For this reason the status
+asks before it first opens a project, and one of the answers is ~l~, look
+only.
+
+In a look-only repository you can read the status, the log, diffs, blame and
+rewind as usual. The mode line of every git buffer says =Look only=. The keys
+that would change the repository are dimmed in the menus, and pressing one
+says why it is refused. A repository that holds evidence is always look-only.
+
+Chapter 12 explains the question, how look-only reading works, and
+~M-x trust-project~, which asks again when you have changed your mind.
+
+** Less common work
+
+The status has menus for parts of git that most people need seldom or never.
+They work like the menus above, and ~C-h~ in each lists its actions. This
+section says what each is for, so that you know it is there when the day
+comes.
+
+*** Worktrees
+
+A worktree is a second folder that shows another branch of the same
+repository. With one, you can have =main= open in one folder and =metric= in
+another at the same time, without checking out back and forth. ~Z~ opens the
+menu: ~Z c~ makes a worktree for a new branch, ~Z g~ shows the status of one,
+and ~Z d~ deletes one.
+
+#+table: commands git-worktree-menu git-worktree-branch git-worktree-checkout git-worktree-status git-worktree-move git-worktree-delete
+
+*** Bisect: finding the commit that broke something
+
+Suppose the website looked right last month and looks wrong today, and fifty
+commits lie between. Bisect finds the one at fault by halving. ~B B~ asks for
+a commit that is bad and one that was good. Git checks out a commit in the
+middle. You look, and say ~B g~ for good or ~B b~ for bad, and git halves
+again. After about six answers it names the commit. ~B r~ ends the search
+and returns you to where you were. If a command can tell good from bad, the
+full menu's ~B x~ lets it answer for you.
+
+#+table: commands git-bisect-menu git-bisect-start git-bisect-good git-bisect-bad git-bisect-skip git-bisect-run git-bisect-reset
+
+*** Ignoring files
+
+Some files do not belong in the history: backups, files a program makes as it
+runs, anything private. The ignore menu, ~i~, adds a file or a pattern such as
+=*.bak= to the list of what git leaves alone. ~i t~ writes it in the
+=.gitignore= file at the top of the repository, which is shared with everyone
+who has the repository. ~i p~ keeps the rule on your computer only. The full
+menu's ~i s~ writes it in the =.gitignore= of the current folder. Ignored
+files are listed in the last section of the status.
+
+#+table: commands git-ignore-menu git-ignore-shared git-ignore-folder git-ignore-private
+
+*** Notes on commits
+
+A note is a remark attached to a commit after the fact, without changing the
+commit. ~T T~ writes one, for the commit on the cursor's line or one you
+name.
+
+#+table: commands git-notes-menu git-notes-edit git-notes-remove git-notes-prune
+
+*** Patches and bundles
+
+A patch is a commit written out as a file, to send to someone by mail or on a
+stick. In the patch menu, ~W c~ writes commits as patch files and ~W a~
+applies a patch file to your files. The full menu's ~W s~ saves your
+uncommitted changes as a patch. The menu under ~w~ takes patch files in as
+commits, with their authors and messages: ~w w~ starts, and ~w c~ and ~w a~
+go on or stop when one does not fit.
+
+A bundle is a whole repository in a single file, for carrying to a computer
+that has no network. ~W b~ writes one and ~W v~ checks one, both in the full
+menu.
+
+#+table: commands git-patch-menu git-format-patch git-apply-patch git-save-patch git-bundle-create git-bundle-verify
+
+#+table: commands git-am-menu git-am git-am-continue git-am-skip git-am-abort
+
+*** Repositories inside repositories
+
+A submodule is another repository kept in a folder of yours at one exact
+commit, such as a theme that your website uses and someone else maintains.
+~o~ opens its menu: ~o a~ adds one, and ~o u~ checks them all out after you
+have cloned a repository that has some.
+
+A subtree also brings another repository into a folder, but copies its files
+into your own history, so that people who clone yours need nothing extra. ~O~
+opens its menu.
+
+A sparse checkout goes the other way. It shows only some folders of a large
+repository in your files and leaves the rest in the history. ~>~ opens its
+menu: ~> s~ chooses the folders and ~> d~ brings everything back.
+
+#+table: commands git-submodule-menu git-submodule-add git-submodule-update git-submodule-sync git-submodule-status git-submodule-remove
+
+#+table: commands git-subtree-menu git-subtree-add git-subtree-pull git-subtree-push git-subtree-split
+
+#+table: commands git-sparse-menu git-sparse-set git-sparse-add git-sparse-reapply git-sparse-disable
+
+*** Any git command
+
+For anything the menus do not have, ~!~ in the status asks for the words you
+would type after =git= in a terminal, such as =log --oneline -5=, runs git
+with them in the repository and shows what it printed. No shell is involved,
+so the words go to git exactly as you type them.
+
+#+table: commands git-run-command
+
+Git is one of several things that work on files and text in Tuatara. The next
+chapter, Data, pictures and PDFs, turns to files that are not plain text.

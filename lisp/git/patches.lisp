@@ -88,7 +88,9 @@ asked for: one file to carry it, from which it can be cloned."
     (git-ask-patch-file "Check bundle: "
                         (lambda (path)
                           (git-run "Checking a bundle" top (list "bundle" "verify" path)
-                                   (lambda (text) (declare (ignore text)) (format nil "~a is good" (abbreviated-path path))))))))
+                                   (lambda (text)
+                                     (declare (ignore text))
+                                     (format nil "~a is good" (abbreviated-path path))))))))
 
 (define-menu git-patch-menu (:title "Patch" :show git-menu-shows-p :note git-menu-note)
   "Open the patch menu: write commits as patch files, apply a patch file,

@@ -73,7 +73,8 @@ another file, to the line point is on."
     (if (null link)
         (message "No link to store here: this buffer has no file")
         (progn
-          (setf *org-stored-links* (cons (list link label) (remove link *org-stored-links* :key #'first :test #'string=)))
+          (setf *org-stored-links*
+                (cons (list link label) (remove link *org-stored-links* :key #'first :test #'string=)))
           (message "Stored: ~a" (or label link))))))
 
 (defun org-link-within (link buffer)

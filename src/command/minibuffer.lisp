@@ -73,36 +73,41 @@ For the commands of a question's own keys (READ-STRING's KEYMAP) that end it."
       (funcall *minibuffer-finish*)
       (refuse "The minibuffer is not reading.")))
 
-(defun read-string (prompt &key (initial "") complete select-initial changed update keymap history)
-  "Read a line of text with PROMPT in the echo area. Returns the
-string; signals QUIT when it is given up with \\<minibuffer>\\[minibuffer-cancel]. Runs a
-nested command loop with the minibuffer keymap. A message a key says while it
-reads is shown after the text typed, in brackets, until the next key; one
-said before is not shown. COMPLETE, when given, is a
-function of no arguments that \\[minibuffer-complete] and \\`C-M-i' call to complete the
-word at the minibuffer's cursor (COMPLETE-IN-TEXT). With SELECT-INITIAL, the
-text INITIAL offers is selected, to be taken with \\[minibuffer-finish] or typed over.
+(defun read-string (prompt &key (initial "") complete select-initial changed rewrite update keymap history)
+  "Read a line of text with PROMPT in the echo area. Returns the string.
+Signals QUIT when it is given up with \\<minibuffer>\\[minibuffer-cancel]. Runs
+a nested command loop with the minibuffer keymap. A message a key says while it
+reads is shown after the text typed, in brackets, until the next key. One said
+before is not shown.
+COMPLETE, when given, is a function of no arguments that
+\\[minibuffer-complete] and \\`C-M-i' call to complete the word at the
+minibuffer's cursor (COMPLETE-IN-TEXT). With SELECT-INITIAL, the text INITIAL
+offers is selected, to be taken with \\[minibuffer-finish] or typed over.
 While a choice waits for candidates still coming in the background, the keys
-typed meanwhile are kept to be handled once it is made, as typed; \\`C-g'
+typed meanwhile are kept to be handled once it is made, as typed. \\`C-g'
 stops the question at once.
 A question that acts as it is typed (a search, a list narrowed) gives
-CHANGED, a function of one argument, the text typed: it is called on the
+CHANGED, a function of one argument, the text typed. It is called on the
 editor's thread each time that text changes, by a key, a paste, an earlier
-answer brought back, before the screen is drawn again. It must be quick, a
-few hundredths of a second at most: what takes longer it starts in the
-background (START-JOB-THREAD) and takes in with UPDATE. UPDATE, a function of
-no arguments, is called on the editor's thread before the question is drawn
-each time and whenever the editor is woken (as a job ending wakes it); it
-takes in what the work in the background has done, and returns three values:
-true while such work goes on, the question woken for it, or a number of
-seconds after which to call UPDATE again (work put off while typing goes
-on); the prompt to show
-now (how far the work has got), or NIL to keep the prompt shown; and what the
+answer brought back, before the screen is drawn again. It must be quick, a few
+hundredths of a second at most. What takes longer it starts in the background
+\(START-JOB-THREAD) and takes in with UPDATE.
+REWRITE, a function of the text typed, gives the text to hold in its place,
+the cursor at its end. It is called before CHANGED each time a key or a paste
+makes the text longer with the cursor at its end.
+UPDATE, a function of no arguments, is called on the editor's thread before
+the question is drawn each time and whenever the editor is woken (as a job
+ending wakes it). It takes in what the work in the background has done, and
+returns three values. The first is true while such work goes on, the question
+woken for it, or a number of seconds after which to call UPDATE again (work
+put off while typing goes on). The second is the prompt to show now (how far
+the work has got), or NIL to keep the prompt shown. The third is what the
 question counts, shown before the prompt where a completing read shows its
-count (3/12, \"\" keeping that place empty, NIL for none). \\`C-g' ends the question by signalling QUIT,
-as ever: the caller undoes there what its CHANGED did (with HANDLER-CASE or
-UNWIND-PROTECT). KEYMAP holds the question's own keys, consulted before the
-minibuffer's; a command of it may end the question with FINISH-MINIBUFFER.
+count (3/12, \"\" keeping that place empty, NIL for none).
+\\`C-g' ends the question by signalling QUIT, as ever: the caller undoes there
+what its CHANGED did (with HANDLER-CASE or UNWIND-PROTECT).
+KEYMAP holds the question's own keys, consulted before the minibuffer's. A
+command of it may end the question with FINISH-MINIBUFFER.
 HISTORY, a list of earlier answers, newest first, is gone back through with
 \\[minibuffer-previous-history] and forward with \\[minibuffer-next-history]."
   (let ((editor *editor*)
@@ -137,7 +142,8 @@ HISTORY, a list of earlier answers, newest first, is gone back through with
                                            (member (editor-minibuffer-text editor) (completion-taken completion) :test #'string=))
                                       (return-from reading (editor-minibuffer-text editor)))
                                      ;; nothing typed: the default, at once
-                                     ((and (completion-default completion) (zerop (length (editor-minibuffer-text editor)))
+                                     ((and (completion-default completion)
+                                           (zerop (length (editor-minibuffer-text editor)))
                                            (not (completion-moved completion)))
                                       (return-from reading
                                         (let ((selected (selected-candidate completion)))
@@ -218,7 +224,8 @@ HISTORY, a list of earlier answers, newest first, is gone back through with
                                   (minibuffer-clear))
                                  (binding
                                   (setf (editor-pending editor) '())
-                                  (unless (member binding '(minibuffer-finish minibuffer-submit-input minibuffer-cancel))
+                                  (unless (member binding
+                                                  '(minibuffer-finish minibuffer-submit-input minibuffer-cancel))
                                     (setf *minibuffer-initial-selected* nil))
                                   (case binding
                                     (minibuffer-finish (choose))
@@ -236,6 +243,13 @@ HISTORY, a list of earlier answers, newest first, is gone back through with
                                     (minibuffer-insert typed)
                                     (when *minibuffer-hidden* (wipe-string typed))))
                                  (t (setf (editor-pending editor) '())))))))
+                      (let ((text (editor-minibuffer-text editor)))
+                        (when (and rewrite (> (length text) (length before))
+                                   (= (editor-minibuffer-point editor) (length text)))
+                          (let ((rewritten (funcall rewrite text)))
+                            (unless (string= rewritten text)
+                              (setf (editor-minibuffer-text editor) rewritten
+                                    (editor-minibuffer-point editor) (length rewritten))))))
                       (when (and changed (string/= before (editor-minibuffer-text editor)))
                         (funcall changed (editor-minibuffer-text editor))))))))))
                 (setf answered t))
@@ -279,7 +293,9 @@ own."
                                        (and (eq :running (sb-thread:join-thread thread :timeout wait :default :running))
                                             (sb-thread:thread-alive-p thread)
                                             (or (null deadline) (< (get-internal-real-time) deadline)))))
-                                  :message message :grace grace :stop (and stop (lambda () (funcall stop thread))) :thread thread)
+                                  :message message :grace grace :stop (and stop
+                                                                           (lambda ()
+                                                                             (funcall stop thread))) :thread thread)
       (cond ((not ended) (if running (values nil running) nil))
             ((sb-thread:thread-alive-p thread) (values nil :running))
             (t t)))))
@@ -322,7 +338,9 @@ when given, the debug log. With no editor showing, it simply waits."
     (flet ((running-p (seconds) (funcall running-p seconds))
            (show ()
              (let ((text (format nil "~a ~a" (if (functionp message) (funcall message) message)
-                                 (substitute-command-keys (if stop "(\\`C-g' stops it)" "(\\`C-g' stops waiting)") :marks t))))
+                                 (substitute-command-keys (if stop
+                                                              "(\\`C-g' stops it)"
+                                                              "(\\`C-g' stops waiting)") :marks t))))
                (setf next (tuatara.runtime:deadline-in 1/5))
                (unless (equal text shown)
                  (setf shown text)
@@ -374,31 +392,36 @@ the question is out of any recording of keys: keys being played do not
 answer it, the key pressed is not recorded, and \\`C-g' there leaves the
 recording going; it is for a question no key typed ahead may answer, asked by
 Tuatara of itself. Signals QUIT when the frontend has nothing more to
-deliver."
+deliver. PROMPT leaves the echo area once the key is pressed, unless the
+key said something in its place."
   (let ((replay *read-key-replay*))
     (if (and replay (car replay) (not fresh))
         (pop (car replay))
-        (let ((editor *editor*) (*key-question* t))
+        (let ((editor *editor*) (*key-question* t) (shown nil))
           (flet ((answer ()
+                   (setf shown (editor-message editor))
                    (let* ((event (read-event editor))
                           (key (case (tuatara.frontend:event-kind event)
                                  (:quit (if fresh (error 'quit) (keyboard-quit-signal)))
                                  (t (tuatara.frontend:event-key event)))))
                      (when (and replay (not fresh)) (push key (cdr replay)))
                      key)))
-            (if fresh
-                (call-asked-unasked prompt #'answer)
-                (progn (echo "~a" prompt)
-                       (redisplay-or-say editor)
-                       (answer))))))))
+            (prog1 (if fresh
+                       (call-asked-unasked prompt #'answer)
+                       (progn (echo "~a" prompt)
+                              (redisplay-or-say editor)
+                              (answer)))
+              ;; the question goes once it is answered, unless the answer said something else
+              (when (eq (editor-message editor) shown)
+                (setf (editor-message editor) nil))))))))
 
 (defun call-asked-unasked (prompt function)
   "Call FUNCTION, which reads the answer to a question that comes unasked,
 asked by Tuatara of itself rather than by a command you gave, once PROMPT is
-shown in the echo area; the keys typed until it shows are thrown away
-\(DISCARD-TYPED-AHEAD), so that only keys pressed after it answer it, and the
-question is out of any recording of keys: keys being played do not answer
-it, the keys pressed are not recorded, and \\`C-g' there leaves the recording
+shown in the echo area. The keys typed until it shows are thrown away
+\(DISCARD-TYPED-AHEAD), so that only keys pressed after it answer it. The
+question is out of any recording of keys: keys being played do not answer it,
+the keys pressed are not recorded, and \\`C-g' there leaves the recording
 going. Returns what FUNCTION returns."
   (let* ((editor *editor*)
          (frame (editor-frame editor))
@@ -447,40 +470,47 @@ writes over what cannot be had back asks for a typed answer instead
   (eql #\y (read-answer-key (concatenate 'string prompt " (y or n) ") '(#\y #\n) :fresh fresh)))
 
 (defun completing-read (prompt table &key annotate require-match history (initial "") (separator #\/) (filter t)
-                                         select reselect preview source default keep-order none taken keymap)
-  "Read with completion: PROMPT is shown (a string, or a function of no
-arguments giving it, for a question whose words change while it is open), TABLE is a list of candidates
-(CANDIDATE objects or strings) or a function of the input returning one, and
-the panel shows the matches sorted best first with the current one marked.
-\\<minibuffer>\\[minibuffer-finish] returns the current candidate's value (or the input when
-nothing matches and REQUIRE-MATCH is false); \\[minibuffer-submit-input] returns the
-input as typed; \\[minibuffer-complete] puts the current candidate into the input;
-\\[minibuffer-next-candidate], \\[minibuffer-previous-candidate] and the arrows move; \\[minibuffer-cancel] aborts.
+                                         select reselect preview source default keep-order none taken keymap rewrite)
+  "Read with completion. PROMPT is shown (a string, or a function of no
+arguments giving it, for a question whose words change while it is open).
+TABLE is a list of candidates (CANDIDATE objects or strings) or a function of
+the input returning one. The panel shows the matches sorted best first with
+the current one marked.
+\\<minibuffer>\\[minibuffer-finish] returns the current candidate's value (or
+the input when nothing matches and REQUIRE-MATCH is false).
+\\[minibuffer-submit-input] returns the input as typed.
+\\[minibuffer-complete] puts the current candidate into the input.
+\\[minibuffer-next-candidate], \\[minibuffer-previous-candidate] and the arrows
+move. \\[minibuffer-cancel] aborts.
 HISTORY orders recent inputs first. With a function TABLE, the input is
 matched and completed after its last SEPARATOR (a slash by default, for file
 names), and with FILTER false its candidates are shown as it gives them.
 SELECT, a function of the candidates first shown (a vector), returns the
 index of the one selected at first, and with RESELECT the one selected after
-each change of the input too; PREVIEW is called with the selected
-candidate (NIL when there is none) each time the selection changes, to show
-what choosing it would do. SOURCE, for candidates found in the background
-while the question is open, is called on the editor's thread each time the
-editor is woken, and returns three values: true when TABLE's candidates may
-have changed, true while more may come, and how many there are so far (see
-COMPLETION); the prompt says (listing, 12 so far) meanwhile, and NONE, when
-given, once all have come and there are none. \\[minibuffer-finish]
-before anything can be chosen, more coming, chooses once it has come.
+each change of the input too. PREVIEW is called with the selected candidate
+\(NIL when there is none) each time the selection changes, to show what
+choosing it would do.
+SOURCE, for candidates found in the background while the question is open, is
+called on the editor's thread each time the editor is woken, and returns three
+values. They are true when TABLE's candidates may have changed, true while
+more may come, and how many there are so far (see COMPLETION). The prompt says
+\(listing, 12 so far) meanwhile, and NONE, when given, once all have come and
+there are none. \\[minibuffer-finish] before anything can be chosen, more
+coming, chooses once it has come.
 DEFAULT, when given, is what \\[minibuffer-finish] takes while nothing is
-typed; its candidate comes first then, selected, and the prompt names it,
-Describe function (default car): . With KEEP-ORDER, the candidates that
-match stay in the order TABLE gives them, not sorted best first; with
-KEEP-ORDER :UNTIL-TYPED, only while nothing is typed to match them.
-TAKEN, a list of names not among the candidates, are taken when typed
-whole and \\[minibuffer-finish] is pressed with no candidate chosen by hand.
-KEYMAP holds the question's own keys, as READ-STRING takes it.
+typed. Its candidate comes first then, selected, and the prompt names it,
+Describe function (default car): . With KEEP-ORDER, the candidates that match
+stay in the order TABLE gives them, not sorted best first. With KEEP-ORDER
+:UNTIL-TYPED, they stay so only while nothing is typed to match them.
+TAKEN, a list of names not among the candidates, are taken when typed whole
+and \\[minibuffer-finish] is pressed with no candidate chosen by hand.
+KEYMAP holds the question's own keys, and REWRITE what is typed, as
+READ-STRING takes them.
 Signals QUIT on abort."
   (let* ((editor *editor*)
-         (normalise (lambda (items) (if (every #'candidate-p items) items (mapcar (lambda (c) (if (stringp c) (make-candidate c) c)) items))))
+         (normalise (lambda (items)
+                      (if (every #'candidate-p
+                                 items) items (mapcar (lambda (c) (if (stringp c) (make-candidate c) c)) items))))
          (table (if (functionp table)
                     (lambda (input) (funcall normalise (funcall table input)))
                     (funcall normalise table))))
@@ -492,7 +522,7 @@ Signals QUIT on abort."
       (if source
           (take-in-source editor)
           (setf (completion-listed completion) (and (listp table) (length table))))
-      (read-string (shown-prompt completion) :initial initial :keymap keymap))))
+      (read-string (shown-prompt completion) :initial initial :keymap keymap :rewrite rewrite))))
 
 (defun completing-read-value (prompt candidates &rest keys)
   "Read with completion as COMPLETING-READ does, KEYS given to it, and return

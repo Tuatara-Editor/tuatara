@@ -4,7 +4,11 @@
 (in-package #:tuatara.tests)
 
 (define-test search-results
-  :description "The lines found by a search of files listed in a buffer: the text after path:line: changed and written back into the files, a line only while the file still holds what was found, nothing written in evidence, a file that may not be written or a read-only buffer, changes thrown away, many files at once, a file open in a buffer changed there.")
+  :description "The lines found by a search of files listed in a buffer. The text after
+path:line: is changed and written back into the files, a line only while the
+file still holds what was found. Nothing is written in evidence, a file that
+may not be written or a read-only buffer. Changes are thrown away. Many files
+are changed at once. A file open in a buffer is changed there.")
 
 (defun found-candidate (path line text)
   "The candidate a search of files lists for the line LINE of the file PATH, holding TEXT."
@@ -276,7 +280,9 @@ shown, by an ordinary change of the buffer."
                           (lambda (function &rest arguments)
                             (setf (car entered) t)
                             (let ((cancel (getf (nthcdr 3 arguments) :cancel)))
-                              (loop repeat (* bound 100) until (or (car release) (and cancel (car cancel))) do (sleep 0.01)))
+                              (loop repeat (* bound 100)
+                                    until (or (car release) (and cancel (car cancel)))
+                                    do (sleep 0.01)))
                             (apply function arguments)))
       (unwind-protect
            (multiple-value-bind (f editor)
@@ -328,7 +334,8 @@ shown, by an ordinary change of the buffer."
            (b (put-file (merge-pathnames "b.txt" dir) (format nil "kiwi and kiwi~%rest~%")))
            (q (tuatara.io:native b)))
       (multiple-value-bind (f editor)
-          (run-keys (append (list (list-found (found-candidate p 1 "kiwi and kiwi") (found-candidate p 1 "kiwi and kiwi")
+          (run-keys (append (list (list-found (found-candidate p 1 "kiwi and kiwi")
+                                              (found-candidate p 1 "kiwi and kiwi")
                                               (found-candidate q 1 "kiwi and kiwi")
                                               (found-candidate q 1 "kiwi and kiwi"))
                                   "C-x C-q"

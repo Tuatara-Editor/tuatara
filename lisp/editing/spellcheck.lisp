@@ -21,7 +21,12 @@ en_NZ.UTF-8), else en_US. \\[spellcheck-languages] sets them for one buffer.")
   '(:org-code :org-verbatim :org-link :org-meta-line :org-block :org-block-begin-line :org-date
     :org-tag :org-property-value :org-special-keyword :org-drawer :org-macro :org-cite :org-footnote
     :org-formula :org-latex-and-related :org-document-info-keyword :org-checkbox :org-priority
-    :org-todo :org-done :org-wait :org-cancelled :link :markup.raw :markup.link.url :keyword :function :variable :constant)
+    :org-todo
+    :org-done :org-wait
+    :org-cancelled :link
+    :markup.raw :markup.link.url
+    :keyword :function
+    :variable :constant)
   "In text (Org, Markdown, LaTeX and the like), the faces whose words are not
 checked: code, links, dates, tags, keywords. A face counts for those named
 after it with a dot (:markup.raw for :markup.raw.block).")
@@ -261,7 +266,8 @@ part of the data or show as text."
             (tuatara.buffer:buffer-insert
              buffer size
              (format nil "~:[~;~%~]~@[~a ~]LocalWords: ~a~%"
-                     (and (plusp size) (not (member (tuatara.buffer:buffer-char-at buffer (1- size)) '(#\Newline #\Return))))
+                     (and (plusp size)
+                          (not (member (tuatara.buffer:buffer-char-at buffer (1- size)) '(#\Newline #\Return))))
                      prefix word))))))
   t)
 

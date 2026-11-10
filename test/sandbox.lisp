@@ -8,7 +8,7 @@
 nothing else, read only: not the file's directory, the home directory, the network or other
 processes. It reads the file on its standard input, the file's access time left alone, and is
 ended, with all it started, when its time is up, when it prints too much or is stopped; its memory
-is limited. Without bwrap it is not run, and says why. The test toolbox has bwrap.")
+is limited. Without bwrap it is not run, and says why. The container the tests run in has bwrap.")
 
 (defun sandbox-text (output)
   "OUTPUT, the octets a program printed, as text."
@@ -33,13 +33,17 @@ as text, how it went, and what it said on its error output."
   ;; every program run for a job is started, tied to its job and ended the one way (call-with-program)
   (let ((printf (tuatara.io:find-program "printf")) (sleep (tuatara.io:find-program "sleep")))
     ;; FUNCTION's values; what the program writes read through its pipe
-    (is string= "hi" (tuatara.io:call-with-program (list printf "hi") (lambda (p) (read-line (sb-ext:process-output p))) :output :stream))
+    (is string= "hi"
+        (tuatara.io:call-with-program (list printf "hi")
+                                      (lambda (p) (read-line (sb-ext:process-output p)))
+                                      :output :stream))
     ;; a program still running when FUNCTION returns, or signals, is ended, not left behind
     (let ((process nil) (start (get-internal-real-time)))
       (flet ((ended (process) (tuatara.runtime:wait-until (lambda () (not (sb-ext:process-alive-p process))) 10)))
         (tuatara.io:call-with-program (list sleep "30") (lambda (p) (setf process p)))
         (true (ended process))
-        (ignore-errors (tuatara.io:call-with-program (list sleep "30") (lambda (p) (setf process p) (error "gone wrong"))))
+        (ignore-errors
+          (tuatara.io:call-with-program (list sleep "30") (lambda (p) (setf process p) (error "gone wrong"))))
         (true (ended process)))
       (true (< (- (get-internal-real-time) start) (* 15 internal-time-units-per-second))))
     ;; the program of a job: stopping the job ends it
@@ -91,7 +95,8 @@ as text, how it went, and what it said on its error output."
   ;; once its time to end is up; the one done with it does not wait for that
   (let ((mark (format nil "31.~d" (+ 100000 (random 900000))))
         (start (get-internal-real-time)))
-    (tuatara.io:call-with-program (list (tuatara.io:find-program "sh") "-c" (format nil "trap '' TERM; sleep ~a & wait" mark))
+    (tuatara.io:call-with-program (list (tuatara.io:find-program "sh") "-c"
+                                        (format nil "trap '' TERM; sleep ~a & wait" mark))
                                   (lambda (process) (declare (ignore process)) (sleep 0.2)))
     (true (< (- (get-internal-real-time) start) (* 1/2 internal-time-units-per-second)))
     (true (plusp (processes-running mark)) "still there within its time to end")
@@ -134,6 +139,21 @@ as text, how it went, and what it said on its error output."
   ;; and back to bwrap
   (is eq :ready (tuatara.io:sandbox-status)))
 
+(define-test (sandbox setting-changed-while-tried)
+  ;; the setting changed while the sandbox is tried, as an init file read meanwhile does: what was tried is kept
+  (let ((tuatara.io::*sandbox-program* "bwrap"))
+    (sb-int:encapsulate 'tuatara.io::version-text 'changed-meanwhile
+                        (lambda (function &rest arguments)
+                          (setf tuatara.io::*sandbox-program* nil)
+                          (apply function arguments)))
+    (unwind-protect (tuatara.io:sandbox-status :again t)
+      (sb-int:unencapsulate 'tuatara.io::version-text 'changed-meanwhile))
+    (is eq nil tuatara.io::*sandbox-program*)
+    (is eq :off (tuatara.io:sandbox-status))
+    (is eq :off (tuatara.io:sandbox-status-now))
+    (is eq :unavailable (nth-value 1 (tuatara.io:sandbox-run "true" '()))))
+  (is eq :ready (tuatara.io:sandbox-status)))
+
 (define-test (sandbox reads-the-file-only)
   (uiop:with-temporary-file (:pathname path :type "txt")
     (alexandria:write-string-into-file (format nil "evidence~%") path :if-exists :supersede)
@@ -145,7 +165,9 @@ as text, how it went, and what it said on its error output."
     ;; read as a safe visit reads: the access time as it was
     (is = 946681200 (sb-posix:stat-atime (sb-posix:stat (namestring path))))
     ;; its name and directory are nowhere to be found
-    (is string= (format nil "no~%") (sandbox-shell (format nil "test -e '~a' && echo yes || echo no" (namestring path)))))
+    (is string=
+        (format nil "no~%")
+        (sandbox-shell (format nil "test -e '~a' && echo yes || echo no" (namestring path)))))
   ;; what is not a regular file is refused unread
   (fail (tuatara.io:sandbox-run-on-file (uiop:temporary-directory) "cat" '()) tuatara.io:file-system-error))
 
@@ -157,7 +179,8 @@ as text, how it went, and what it said on its error output."
            (program (namestring (merge-pathnames name dir)))
            (absolute (string-right-trim "/" (namestring dir)))
            ;; the same directory, named from the current one
-           (relative (format nil "~{~a~}~a" (loop repeat (count #\/ (string-right-trim "/" (namestring (uiop:getcwd)))) collect "../")
+           (relative (format nil "~{~a~}~a"
+                             (loop repeat (count #\/ (string-right-trim "/" (namestring (uiop:getcwd)))) collect "../")
                              (subseq absolute 1))))
       (alexandria:write-string-into-file (format nil "#!/bin/sh~%") program)
       (sb-posix:chmod program #o700)
@@ -194,14 +217,17 @@ as text, how it went, and what it said on its error output."
   ;; a sealed copy given as the input is read as it is, by many programs at once, each from its start
   (uiop:with-temporary-file (:pathname path :type "txt")
     (alexandria:write-string-into-file (format nil "evidence~%") path :if-exists :supersede)
-    (let ((copy (tuatara.io:call-with-file (namestring path) (lambda (fd p size) (declare (ignore p size)) (tuatara.io:sealed-copy fd)))))
+    (let ((copy (tuatara.io:call-with-file (namestring path)
+                                           (lambda (fd p size) (declare (ignore p size)) (tuatara.io:sealed-copy fd)))))
       (unwind-protect
            (let* ((results (make-array 4))
                   (threads (loop for i below 4
                                  collect (let ((i i))
                                            (sb-thread:make-thread
                                             (lambda () (setf (aref results i)
-                                                             (sandbox-text (tuatara.io:sandbox-run "cat" '() :input copy)))))))))
+                                                             (sandbox-text (tuatara.io:sandbox-run "cat"
+                                                                                                   '()
+                                                                                                   :input copy)))))))))
              (mapc #'sb-thread:join-thread threads)
              (is equal (make-list 4 :initial-element (format nil "evidence~%")) (coerce results 'list))
              (true (tuatara.io::sealed-p copy)))
@@ -215,7 +241,10 @@ as text, how it went, and what it said on its error output."
       (file-position out (* 64 1024 1024))
       (write-byte 0 out))
     (let ((tuatara.io::*sandbox-input-limit* (* 1024 1024)))
-      (let ((error (handler-case (tuatara.io:call-with-file (namestring path) (lambda (fd p size) (declare (ignore p size)) (tuatara.io:sealed-copy fd)))
+      (let ((error (handler-case (tuatara.io:call-with-file (namestring path)
+                                                            (lambda (fd p size)
+                                                              (declare (ignore p size))
+                                                              (tuatara.io:sealed-copy fd)))
                      (tuatara.io:file-system-error (e) e))))
         (true (typep error 'tuatara.io:file-system-error))
         (true (search "*sandbox-input-limit*" (princ-to-string error)))))))
@@ -320,7 +349,8 @@ process with MARK is killed after, whatever FUNCTION did."
            (let ((process (sb-ext:run-program
                            (nth-value 2 (tuatara.io:sandbox-status))
                            (append (list "--info-fd" (princ-to-string out))
-                                   (tuatara.io::sandbox-arguments (tuatara.io:sandbox-find-program "sleep") (list mark) nil nil
+                                   (tuatara.io::sandbox-arguments (tuatara.io:sandbox-find-program "sleep")
+                                                                  (list mark) nil nil
                                                                   :scratch nil))
                            :search nil :wait nil :input nil :output nil :error nil :preserve-fds (list out)
                            :environment environment)))
@@ -562,7 +592,9 @@ except OSError as e: print(e.errno)'")))
         (dolist (case (list (list ps "PS") (list mvg "MVG") (list mvg "TXT")))
           (destructuring-bind (path format) case
             (multiple-value-bind (output outcome said)
-                (apply #'tuatara.io:sandbox-run-on-file (namestring path) "magick" (list (format nil "~a:-[0]" format) "PAM:-")
+                (apply #'tuatara.io:sandbox-run-on-file
+                       (namestring path) "magick"
+                       (list (format nil "~a:-[0]" format) "PAM:-")
                        (tuatara.defaults::magick-sandbox))
               (declare (ignore output))
               (is eq :failed outcome "~a" format)
@@ -604,13 +636,17 @@ cat ~a/l.txt; echo; echo new > ~a/n.txt && cat ~a/n.txt; cat ~a/h.txt 2>/dev/nul
       (true (search (list "--symlink" (sb-posix:readlink "/home") "/home") arguments :test #'equal))))
   ;; a folder reached through a link into /tmp (~/Volatile to /tmp/Volatile): found by the path through the link
   (with-test-directory (dir)
-    (let* ((real (namestring (ensure-directories-exist (format nil "/tmp/tuatara-test-~d-~36r/" (sb-posix:getpid) (random (expt 36 8))))))
+    (let* ((real (namestring (ensure-directories-exist (format nil
+                                                               "/tmp/tuatara-test-~d-~36r/"
+                                                               (sb-posix:getpid)
+                                                               (random (expt 36 8))))))
            (link (format nil "~alinked" (namestring dir))))
       (unwind-protect
            (progn
              (alexandria:write-string-into-file "found" (format nil "~an.txt" real))
              (sb-posix:symlink (string-right-trim "/" real) link)
-             (is string= "found" (sandbox-shell (format nil "cat ~a/n.txt" link) :directories (list link) :directory link)))
+             (is string= "found"
+                 (sandbox-shell (format nil "cat ~a/n.txt" link) :directories (list link) :directory link)))
         (uiop:delete-directory-tree (pathname real) :validate (lambda (p) (search "/tmp/tuatara-test-" (namestring p)))))))
   ;; a folder in another is shown after it, so that it is seen
   (let ((arguments (tuatara.io::mount-arguments '(("/x/a/b" . "/x/a/b")) '(("/x/a" . "/x/a")) '())))
@@ -660,7 +696,8 @@ cat ~a/l.txt; echo; echo new > ~a/n.txt && cat ~a/n.txt; cat ~a/h.txt 2>/dev/nul
   (let* ((size (* 8 1024 1024))
          (consed (loop repeat 3
                        minimize (let ((before (sb-ext:get-bytes-consed)))
-                                  (let ((text (tuatara.io:program-output (list (tuatara.io:find-program "head") "-c" (princ-to-string size) "/dev/zero")
+                                  (let ((text (tuatara.io:program-output (list (tuatara.io:find-program "head") "-c"
+                                                                               (princ-to-string size) "/dev/zero")
                                                                          :seconds 30)))
                                     (is = size (length text)))
                                   (- (sb-ext:get-bytes-consed) before)))))
@@ -669,7 +706,9 @@ cat ~a/l.txt; echo; echo new > ~a/n.txt && cat ~a/n.txt; cat ~a/h.txt 2>/dev/nul
 (define-test (sandbox command-words)
   ;; a command line split as a shell splits it, no shell running; with :escapes a backslash
   ;; outside quotes is itself, and within double quotes begins one of a few escapes
-  (is equal '("-H" "-a" "1,0" " " "#" "'" "\"") (tuatara.io:command-words "-H -a 1,0 \" \" '#' \"'\" '\"'" :backslash :escapes))
+  (is equal
+      '("-H" "-a" "1,0" " " "#" "'" "\"")
+      (tuatara.io:command-words "-H -a 1,0 \" \" '#' \"'\" '\"'" :backslash :escapes))
   (is equal (list (string #\Tab)) (tuatara.io:command-words "\"\\t\"" :backslash :escapes))
   (is equal '("C:\\data") (tuatara.io:command-words "'C:\\data'" :backslash :escapes))
   (is equal '("C:\\Users\\x") (tuatara.io:command-words "C:\\Users\\x" :backslash :escapes))
@@ -686,7 +725,10 @@ cat ~a/l.txt; echo; echo new > ~a/n.txt && cat ~a/n.txt; cat ~a/h.txt 2>/dev/nul
         (tuatara.io:filter-through-program
          (list (tuatara.io:find-program "sh") "-c" "tr a-z A-Z; echo done >&2")
          (lambda (fd) (loop for at from 0 below (length text) by 4096
-                            do (tuatara.io:write-octets fd text :start at :end (min (length text) (+ at 4096)) :path "a test"))))
+                            do (tuatara.io:write-octets fd text
+                                                        :start at
+                                                        :end (min (length text) (+ at 4096))
+                                                        :path "a test"))))
       (is = (length text) (length output))
       (true (search "LINE 49999" (tuatara.text:octets-string output)))
       (is string= "done" (string-trim '(#\Newline) said))
@@ -694,7 +736,9 @@ cat ~a/l.txt; echo; echo new > ~a/n.txt && cat ~a/n.txt; cat ~a/h.txt 2>/dev/nul
       (false too-much)))
   ;; printing more than the limit: ended, nothing taken
   (multiple-value-bind (output said exit too-much)
-      (tuatara.io:filter-through-program (list (tuatara.io:find-program "yes")) (lambda (fd) (declare (ignore fd))) :limit 100000)
+      (tuatara.io:filter-through-program (list (tuatara.io:find-program "yes"))
+                                         (lambda (fd) (declare (ignore fd)))
+                                         :limit 100000)
     (declare (ignore said))
     (false output)
     (false exit)
@@ -786,7 +830,8 @@ cat ~a/l.txt; echo; echo new > ~a/n.txt && cat ~a/n.txt; cat ~a/h.txt 2>/dev/nul
   (is equal '(0 90 13 -1 1) (tuatara.io:version-numbers "0.90.13-rc1"))
   (false (tuatara.io:version-at-least-p (tuatara.io:version-numbers "0.90.13-rc1") '(0 90 13)))
   (true (tuatara.io:version-at-least-p (tuatara.io:version-numbers "0.90.13-rc1") '(0 90 12)))
-  (true (tuatara.io:version-at-least-p (tuatara.io:version-numbers "0.90.13") (tuatara.io:version-numbers "0.90.13-rc2")))
+  (true (tuatara.io:version-at-least-p (tuatara.io:version-numbers "0.90.13")
+                                       (tuatara.io:version-numbers "0.90.13-rc2")))
   (false (tuatara.io:version-at-least-p (tuatara.io:version-numbers "0.90.13-beta.3")
                                         (tuatara.io:version-numbers "0.90.13-rc1")))
   (true (tuatara.io:version-at-least-p (tuatara.io:version-numbers "0.90.13-rc2")
@@ -796,7 +841,10 @@ cat ~a/l.txt; echo; echo new > ~a/n.txt && cat ~a/n.txt; cat ~a/h.txt 2>/dev/nul
   ;; the limits are set by the system's /bin/sh, which on Debian and Ubuntu is dash: its ulimit names
   ;; the process limit -p, not -u. Run here by bash made to answer as dash does, the limits are set
   ;; all the same and the program run
-  (let* ((arguments (tuatara.io::sandbox-arguments "/bin/bash" '("-c" "ulimit -u; ulimit -t") 7 nil :file-limit nil :processes 77))
+  (let* ((arguments (tuatara.io::sandbox-arguments "/bin/bash"
+                                                   '("-c" "ulimit -u; ulimit -t") 7 nil
+                                                   :file-limit nil
+                                                   :processes 77))
          (shell (member "/bin/sh" arguments :test #'equal))
          (as-dash "ulimit() { case \"$1\" in -u) echo \"ulimit: Illegal option -u\" >&2; return 2;; -p) shift; builtin ulimit -u \"$@\";; *) builtin ulimit \"$@\";; esac; }; "))
     (true shell)

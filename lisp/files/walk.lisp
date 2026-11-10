@@ -1,4 +1,5 @@
-;;;; lisp/files/walk.lisp --- Walking the files under a folder as git leaves them out, and finding the folder a project is in.
+;;;; lisp/files/walk.lisp --- Walking the files under a folder as git leaves them out, and finding the folder a
+;;;; project is in.
 ;;;; Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
 ;;;;
 ;;;; FILES-UNDER walks a folder on the thread calling it, leaving out what
@@ -239,7 +240,8 @@ configuration is only read, never run: core.excludesFile of its [core] section,
            (let* ((xdg (let ((env (tuatara.io:own-variable "XDG_CONFIG_HOME")))
                          (if (and env (plusp (length env))) (directory-name env) (directory-name "~/.config/"))))
                   (named nil))
-             (dolist (file (list (concatenate 'string xdg "git/config") (concatenate 'string (directory-name "~/") ".gitconfig")))
+             (dolist (file (list (concatenate 'string xdg "git/config")
+                                 (concatenate 'string (directory-name "~/") ".gitconfig")))
                (let ((octets (read-text-file file)))
                  (when octets
                    (let ((section nil))
@@ -250,7 +252,9 @@ configuration is only read, never run: core.excludesFile of its [core] section,
                                 (setf section (string-downcase (string-trim "[] " text))))
                                ((and (equal section "core")
                                      (let ((equals (position #\= text)))
-                                       (and equals (string-equal "excludesfile" (string-trim '(#\Space #\Tab) (subseq text 0 equals))))))
+                                       (and equals
+                                            (string-equal "excludesfile"
+                                                          (string-trim '(#\Space #\Tab) (subseq text 0 equals))))))
                                 (setf named (string-trim '(#\Space #\Tab #\") (subseq text (1+ (position #\= text)))))))))))))
              (tuatara.io:native (tuatara.io:expand-path (or named (concatenate 'string xdg "git/ignore")))))))))
 
@@ -298,23 +302,24 @@ from the repository's top down to ROOT's parent, the outer ones first."
                       append (gitignore-rules (concatenate 'string dir ".gitignore") dir)))))))
 
 (defun walk-directory (root function &key list breadth-first max-depth same-device follow-links cancel limit)
-  "Go through the folder ROOT (a native name ending in /) and the folders
-under it, ROOT first, calling FUNCTION with three arguments: on entering a
-folder, the folder (a native name ending in /), its path from ROOT (\"\" for
-ROOT, else ending in /) and NIL; then, for each entry of it by name, the
-folder, its path from ROOT and the entry, a list as TUATARA.IO:DIRECTORY-ENTRIES
-gives it with stamps, as (NAME KIND SIZE OWN STAMP). A folder among the entries
-is entered when FUNCTION returns true for it: depth first, just after its
-entry, or with BREADTH-FIRST once every folder nearer ROOT has been gone
-through. A link to a folder is entered only with FOLLOW-LINKS; with
-MAX-DEPTH, no folder more than MAX-DEPTH below ROOT is; with SAME-DEVICE,
-no folder of another file system than ROOT's (a drive mounted below it,
-/proc), nor one that could not be examined. LIST, a function of a folder,
-gives its entries in place of TUATARA.IO:DIRECTORY-ENTRIES (NIL for a folder
-that cannot be read); an entry of only (NAME KIND) counts as no link. CANCEL,
-a cons, ends the walk when its car turns true, looked at as each folder is
-entered; LIMIT ends it once that many folders were entered. True when every
-folder wanted was gone through, NIL when CANCEL or LIMIT ended it."
+  "Go through the folder ROOT (a native name ending in /) and the folders under
+it, ROOT first, calling FUNCTION with three arguments. On entering a folder,
+they are the folder (a native name ending in /), its path from ROOT (\"\" for
+ROOT, else ending in /) and NIL. Then, for each entry of it by name, they are
+the folder, its path from ROOT and the entry, a list as
+TUATARA.IO:DIRECTORY-ENTRIES gives it with stamps, as (NAME KIND SIZE OWN
+STAMP). A folder among the entries is entered when FUNCTION returns true for
+it: depth first, just after its entry, or with BREADTH-FIRST once every folder
+nearer ROOT has been gone through. A link to a folder is entered only with
+FOLLOW-LINKS. With MAX-DEPTH, no folder more than MAX-DEPTH below ROOT is
+entered. With SAME-DEVICE, no folder of another file system than ROOT's is
+entered (a drive mounted below it, /proc), nor one that could not be examined.
+LIST, a function of a folder, gives its entries in place of
+TUATARA.IO:DIRECTORY-ENTRIES (NIL for a folder that cannot be read); an entry
+of only (NAME KIND) counts as no link. CANCEL, a cons, ends the walk when its
+car turns true, looked at as each folder is entered; LIMIT ends it once that
+many folders were entered. True when every folder wanted was gone through, NIL
+when CANCEL or LIMIT ended it."
   (let ((device (and same-device (let ((stamp (tuatara.io:path-stamp root :failure nil)))
                                    (and stamp (tuatara.io:stamp-dev stamp)))))
         (entered 0)
@@ -337,7 +342,9 @@ folder wanted was gone through, NIL when CANCEL or LIMIT ended it."
                               (or follow-links (eq own kind))
                               (or (null max-depth) (< depth max-depth))
                               (or (not same-device) (and stamp (eql device (tuatara.io:stamp-dev stamp)))))
-                     (let ((folder (list (concatenate 'string directory name "/") (concatenate 'string relative name "/") (1+ depth))))
+                     (let ((folder (list (concatenate 'string directory name "/")
+                                         (concatenate 'string relative name "/")
+                                         (1+ depth))))
                        (cond ((not breadth-first) (apply #'enter folder))
                              (last (setf (cdr last) (list folder) last (cdr last)))
                              (t (setf waiting (list folder) last waiting)))))))))

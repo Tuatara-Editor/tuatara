@@ -61,7 +61,10 @@
   (is equal '("report-2026.org" "old-report.org" "draft-rep.org" "ripe-pears.org")
       (map 'list #'tuatara.command:candidate-string
            (tuatara.command:filter-candidates "rep" (mapcar #'tuatara.command:make-candidate
-                                                            '("ripe-pears.org" "draft-rep.org" "old-report.org" "report-2026.org"))))))
+                                                            '("ripe-pears.org"
+                                                              "draft-rep.org"
+                                                              "old-report.org"
+                                                              "report-2026.org"))))))
 
 (define-test (completion m-x-and-buffers)
   ;; partial, out-of-order input selects end-of-buffer; RET runs it
@@ -82,7 +85,9 @@
     (tuatara.buffer:make-buffer "*scratch*" :text "x")
     (setf tuatara.defaults::*command-history* '())
     (tuatara.frontend.fake:fake-queue-keys f "M-x e n d SPC o f SPC b u f")
-    (tuatara.command:run-editor f :setup #'tuatara.defaults:install-defaults :buffer (tuatara.buffer:find-buffer "*scratch*"))
+    (tuatara.command:run-editor f
+                                :setup #'tuatara.defaults:install-defaults
+                                :buffer (tuatara.buffer:find-buffer "*scratch*"))
     (multiple-value-bind (screen spans row-faces) (tuatara.frontend.fake:fake-frame-with f "M-x end of buf")
       (declare (ignore spans))
       (is eq :completion-selected (aref row-faces (position-if (lambda (row) (search "end-of-buffer" row)) screen))))
@@ -92,13 +97,15 @@
   ;; switching buffers by a fragment of the name (the current buffer is not offered)
   (multiple-value-bind (f editor) (run-keys "C-x b o t h e r C-j C-x b s c r RET i z C-g" :text "")
     (declare (ignore f))
-    (is string= "*scratch*" (tuatara.buffer:buffer-name (tuatara.display:window-buffer (tuatara.command:editor-window editor))))
+    (is string= "*scratch*"
+        (tuatara.buffer:buffer-name (tuatara.display:window-buffer (tuatara.command:editor-window editor))))
     (is string= "z" (session-text editor))
     (tuatara.buffer:kill-buffer (tuatara.buffer:find-buffer "other")))
   ;; C-j submits the typed text as a new buffer name even though candidates exist
   (multiple-value-bind (f editor) (run-keys "C-x b n e w b u f C-j" :text "")
     (declare (ignore f))
-    (is string= "newbuf" (tuatara.buffer:buffer-name (tuatara.display:window-buffer (tuatara.command:editor-window editor))))
+    (is string= "newbuf"
+        (tuatara.buffer:buffer-name (tuatara.display:window-buffer (tuatara.command:editor-window editor))))
     (tuatara.buffer:kill-buffer (tuatara.buffer:find-buffer "newbuf"))))
 
 (define-test (completion completing-files)
@@ -116,12 +123,17 @@
                (declare (ignore f))
                (is string= "B" (session-text editor))))
            ;; TAB on a directory candidate descends into it
-           (let ((keys (format nil "C-x C-f C-a C-k ~{~a ~}s u TAB" (map 'list (lambda (c) (string c)) (namestring dir)))))
+           (let ((keys (format nil
+                               "C-x C-f C-a C-k ~{~a ~}s u TAB"
+                               (map 'list (lambda (c) (string c)) (namestring dir)))))
              (let ((f (tuatara.frontend.fake:make-fake-frontend :width 80 :height 12)))
-               (let ((scratch (tuatara.buffer:find-buffer "*scratch*"))) (when scratch (tuatara.buffer:kill-buffer scratch)))
+               (let ((scratch (tuatara.buffer:find-buffer "*scratch*")))
+                 (when scratch (tuatara.buffer:kill-buffer scratch)))
                (tuatara.buffer:make-buffer "*scratch*" :text "")
                (tuatara.frontend.fake:fake-queue-keys f keys)
-               (tuatara.command:run-editor f :setup #'tuatara.defaults:install-defaults :buffer (tuatara.buffer:find-buffer "*scratch*"))
+               (tuatara.command:run-editor f
+                                           :setup #'tuatara.defaults:install-defaults
+                                           :buffer (tuatara.buffer:find-buffer "*scratch*"))
                (true (tuatara.frontend.fake:fake-frame-showing f (concatenate 'string (namestring dir) "sub/"))))))
       (dolist (b (remove-if-not (lambda (b) (and (tuatara.buffer:buffer-file b)
                                                  (search (namestring dir) (namestring (tuatara.buffer:buffer-file b)))))
@@ -134,7 +146,9 @@
     (let ((scratch (tuatara.buffer:find-buffer "*scratch*"))) (when scratch (tuatara.buffer:kill-buffer scratch)))
     (tuatara.buffer:make-buffer "*scratch*" :text "")
     (tuatara.frontend.fake:fake-queue-keys f "C-x")
-    (tuatara.command:run-editor f :setup #'tuatara.defaults:install-defaults :buffer (tuatara.buffer:find-buffer "*scratch*"))
+    (tuatara.command:run-editor f
+                                :setup #'tuatara.defaults:install-defaults
+                                :buffer (tuatara.buffer:find-buffer "*scratch*"))
     (true (tuatara.frontend.fake:fake-frame-showing f "C-f find-file"))
     (true (tuatara.frontend.fake:fake-frame-showing f "C-s save-buffer"))
     (true (tuatara.frontend.fake:fake-frame-showing f "C-x-")))
@@ -143,7 +157,9 @@
     (let ((scratch (tuatara.buffer:find-buffer "*scratch*"))) (when scratch (tuatara.buffer:kill-buffer scratch)))
     (tuatara.buffer:make-buffer "*scratch*" :text "")
     (tuatara.frontend.fake:fake-queue-keys f "g")
-    (tuatara.command:run-editor f :setup #'tuatara.defaults:install-defaults :buffer (tuatara.buffer:find-buffer "*scratch*"))
+    (tuatara.command:run-editor f
+                                :setup #'tuatara.defaults:install-defaults
+                                :buffer (tuatara.buffer:find-buffer "*scratch*"))
     (true (tuatara.frontend.fake:fake-frame-showing f "j join-selected-lines"))))
 
 (define-test (completion counting-candidates)
@@ -239,12 +255,15 @@
     (is string= "  1.0 kB    2 days ago" (tuatara.command:fit-fields fields 24))
     (is string= "  2 days ago" (tuatara.command:fit-fields fields 13)))
   ;; a share of the row takes what the others leave it
-  (let ((fields '(("C-x f" :completion-key) ("Set the column lines are filled to, as it is." :completion-annotation 1/2))))
+  (let ((fields '(("C-x f" :completion-key)
+                  ("Set the column lines are filled to, as it is." :completion-annotation 1/2))))
     (is string= "C-x f  Set the column lines are fil…" (tuatara.command:fit-fields fields 36 :row-width 80))
-    (is string= "C-x f  Set the column lines are filled to, as it is.  " (tuatara.command:fit-fields fields 80 :row-width 94)))
+    (is string= "C-x f  Set the column lines are filled to, as it is.  "
+        (tuatara.command:fit-fields fields 80 :row-width 94)))
   ;; the first sentence of a docstring, on one line
   (is string= "Insert the text." (tuatara.command:first-sentence (format nil "Insert the text.  More here.")))
-  (is string= "Line one continues here." (tuatara.command:first-sentence (format nil "Line one~%continues here. Second.")))
+  (is string= "Line one continues here."
+      (tuatara.command:first-sentence (format nil "Line one~%continues here. Second.")))
   (is string= "No stop" (tuatara.command:first-sentence (format nil "No stop~%~%New paragraph")))
   (is string= "Uses v1.2 today." (tuatara.command:first-sentence "Uses v1.2 today. Then."))
   (is string= "" (tuatara.command:first-sentence nil)))
@@ -282,7 +301,8 @@
                                        (tuatara.command::redisplay tuatara.command:*editor*)
                                        (let ((f (tuatara.command:editor-frontend tuatara.command:*editor*)))
                                          (setf row (loop for r from 0 below 40
-                                                         when (search "*scratch*" (tuatara.frontend.fake:fake-screen-line f r))
+                                                         when (search "*scratch*"
+                                                                      (tuatara.frontend.fake:fake-screen-line f r))
                                                            return r))))))
                        :text "" :width 100 :height 40)
              row)))
@@ -398,7 +418,9 @@
   (let ((f (run-keys "M-x m e n u - t o g g l e" :width 100 :height 16)))
     (false (tuatara.frontend.fake:fake-frame-showing f "menu-toggle-switch")))
   (unwind-protect
-       (let ((f (run-keys (format nil "M-: ~a RET C-c z" (key-string "(bind-key \"C-c z\" 'tuatara.command::menu-toggle-switch)"))
+       (let ((f (run-keys (format nil
+                                  "M-: ~a RET C-c z"
+                                  (key-string "(bind-key \"C-c z\" 'tuatara.command::menu-toggle-switch)"))
                           :width 120 :height 16)))
          (true (tuatara.frontend.fake:fake-frame-showing f "menu-toggle-switch works in an open menu only")))
     ;; the key given back, for the tests after
@@ -419,7 +441,8 @@
   (or (not (equal (tuatara.command:menu-entry-argument entry) "--deep"))
       (find-if (lambda (a) (uiop:string-prefix-p "--depth=" a)) (tuatara.command:menu-arguments))))
 
-(tuatara.command:define-menu menu-test-filled-menu (:title "Filled menu" :show menu-test-filled-shows-p :summary menu-test-summary)
+(tuatara.command:define-menu menu-test-filled-menu
+  (:title "Filled menu" :show menu-test-filled-shows-p :summary menu-test-summary)
   "Open the filled menu the tests use."
   ("Do" ("a" "Act" menu-test-act))
   ("Options" ("= d" "Depth" :option "--depth=" :read menu-test-read-again :replace t) ("- e" "Deep" :switch "--deep")))
@@ -434,13 +457,16 @@
   (let ((f (run-keys "M-x m e n u - t e s t - o p e n - f i l l e d RET" :width 100 :height 16)))
     (true (tuatara.frontend.fake:fake-frame-showing f "Summed: --name=kea")))
   ;; a switch the menu has only with a value: left out, then there
-  (multiple-value-bind (f editor) (run-keys "M-x m e n u - t e s t - o p e n - f i l l e d RET - e" :width 100 :height 16)
+  (multiple-value-bind (f editor)
+      (run-keys "M-x m e n u - t e s t - o p e n - f i l l e d RET - e" :width 100 :height 16)
     (true (tuatara.frontend.fake:fake-frame-showing f "Deep (- e) is left out of this menu now"))
     (true (tuatara.command:editor-menu editor)))
   (run-keys "M-x m e n u - t e s t - o p e n - f i l l e d RET = d 3 RET - e a" :width 100 :height 16)
   (is equal '("--name=kea" "--depth=3" "--deep") *menu-test-given*)
   ;; an option asked again shows its value and takes the new one; an empty answer takes it away
-  (let ((f (run-keys "M-x m e n u - t e s t - o p e n - f i l l e d RET = d 3 RET = d DEL 5 RET" :width 100 :height 16)))
+  (let ((f (run-keys "M-x m e n u - t e s t - o p e n - f i l l e d RET = d 3 RET = d DEL 5 RET"
+                     :width 100
+                     :height 16)))
     (true (tuatara.frontend.fake:fake-frame-showing f "Summed: --name=kea --depth=5")))
   (run-keys "M-x m e n u - t e s t - o p e n - f i l l e d RET = d 3 RET = d DEL RET a" :width 100 :height 16)
   (is equal '("--name=kea") *menu-test-given*))
@@ -512,7 +538,9 @@
                               (funcall function)
                               (- (tuatara.bench::monotonic-seconds) start)))))
       (let ((filter (fastest (lambda () (tuatara.command:filter-candidates "kmpz" candidates))))
-            (search (fastest (lambda () (dolist (c candidates) (search "kmpz" (tuatara.command:candidate-string c) :test #'char-equal))))))
+            (search (fastest (lambda ()
+                               (dolist (c candidates)
+                                 (search "kmpz" (tuatara.command:candidate-string c) :test #'char-equal))))))
         (true (< filter search) "filtering took ~,2f ms, searching ~,2f ms" (* 1000 filter) (* 1000 search))))))
 
 (define-test (completion filtering-makes-no-garbage-for-each-candidate)
@@ -546,7 +574,8 @@
            (let ((made (mapcar (lambda (name) (tuatara.buffer:make-buffer name :text name))
                                '("a.txt" "*Conflict: a.txt*" "*Diff: a.txt*" "b.txt"))))
              (unwind-protect
-                  (multiple-value-bind (f editor) (run-keys (format nil "C-x b ~a RET ~a" (key-string current) keys) :text "")
+                  (multiple-value-bind (f editor)
+                      (run-keys (format nil "C-x b ~a RET ~a" (key-string current) keys) :text "")
                     (declare (ignore f))
                     (tuatara.buffer:buffer-name (session-buffer editor)))
                (mapc #'tuatara.buffer:kill-buffer made)))))

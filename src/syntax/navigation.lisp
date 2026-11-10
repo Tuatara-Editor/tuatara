@@ -38,12 +38,12 @@ is no tree."
 
 (defun select-node (syntax start end how)
   "The octets a named node of SYNTAX's tree starts and ends at, as two values,
-for a selection of octets START below END, by HOW: :SMALLEST, the smallest
-named node spanning them; :LARGER, the smallest spanning more than them;
-:FIRST-CHILD, the first named child of the smallest; :NEXT or :PREVIOUS, the
-next or previous named sibling of the smallest, or when it has none, that of
-the nearest node around it that has one. NIL when there is no tree or no such
-node."
+for a selection of octets START below END, by HOW. :SMALLEST is the smallest
+named node spanning them. :LARGER is the smallest spanning more than them.
+:FIRST-CHILD is the first named child of the smallest. :NEXT or :PREVIOUS is
+the next or previous named sibling of the smallest, or when it has none, that
+of the nearest node around it that has one. NIL when there is no tree or no
+such node."
   (let ((tree (syntax-tree syntax)))
     (when tree
       (with-call (call (tree-helper tree) +op-select+)
@@ -179,7 +179,8 @@ marks put before an expression (a quote) go with it."
              (leaf (first chain))
              (above (butlast (rest chain)))
              (comment (find-if #'comment-node-p chain))
-             (inside-string (find-if (lambda (n) (and (string-node-p n) (< (tree-node-start n) from (tree-node-end n)))) chain))
+             (inside-string (find-if (lambda (n)
+                                       (and (string-node-p n) (< (tree-node-start n) from (tree-node-end n)))) chain))
              (string (find-if (lambda (n) (and (string-node-p n) (<= p (tree-node-end n) from))) chain :from-end t)))
         (flet ((with-prefixes (x &optional (chain chain))
                  ;; marks before X that belong to it, as a quote does

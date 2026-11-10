@@ -35,7 +35,9 @@
   "The name of the buffer in the selected window, the line of its point (from 0) and the column."
   (let* ((b (tuatara.display:window-buffer (tuatara.command:editor-window tuatara.command:*editor*)))
          (point (tuatara.buffer:buffer-point b)))
-    (list (tuatara.buffer:buffer-name b) (tuatara.buffer:buffer-line-number b point) (tuatara.buffer:buffer-column b point))))
+    (list (tuatara.buffer:buffer-name b)
+          (tuatara.buffer:buffer-line-number b point)
+          (tuatara.buffer:buffer-column b point))))
 
 (defvar *places-reached* '()
   "The places a session's steps waited for and reached, the latest first (REACHED).")
@@ -103,7 +105,8 @@ force; *compile* killed afterwards."
 
 (define-test (compiling lines-name-places)
   ;; what each kind of line names: its kind, file, line and column
-  (flet ((place (line &key before (exists (lambda (file) (member file '("notes/todo.org" "x.lisp" "Makefile") :test #'string=))))
+  (flet ((place (line &key before (exists (lambda (file)
+                                            (member file '("notes/todo.org" "x.lisp" "Makefile") :test #'string=))))
            (multiple-value-list (tuatara.compile::output-line-place line :kind-before before :exists exists))))
     (is equal '(:error "src/a.c" 12 5) (place "src/a.c:12:5: error: expected ';' before '}' token"))
     (is equal '(:error "a.c" 3 nil) (place "a.c:3: fatal error: x.h: No such file or directory"))
@@ -144,7 +147,8 @@ force; *compile* killed afterwards."
     ;; make going into a directory and out of it
     (let ((in "make[1]: Entering directory '/tmp/x/sub'") (out "make[1]: Leaving directory '/tmp/x/sub'"))
       (is equal '(:entering "/tmp/x/sub") (multiple-value-list (tuatara.compile::make-directory-line in (length in))))
-      (is equal '(:leaving "/tmp/x/sub") (multiple-value-list (tuatara.compile::make-directory-line out (length out)))))))
+      (is equal '(:leaving "/tmp/x/sub")
+        (multiple-value-list (tuatara.compile::make-directory-line out (length out)))))))
 
 (define-test (compiling test-failures-name-places)
   ;; a Rust test failing names where it panicked, as cargo test prints it now and before 1.73;
@@ -154,10 +158,12 @@ force; *compile* killed afterwards."
     (is equal '(:error "src/main.rs" 4 37)
         (place "thread 'main' panicked at 'called `Option::unwrap()` on a `None` value', src/main.rs:4:37"))
     (is equal '(:error "tests/it's.rs" 3 5) (place "thread 'it' panicked at tests/it's.rs:3:5:"))
-    (is equal '(:error "src/app.ts" 3 7) (place "src/app.ts(3,7): error TS2322: Type 'string' is not assignable to type 'number'."))
+    (is equal '(:error "src/app.ts" 3 7)
+        (place "src/app.ts(3,7): error TS2322: Type 'string' is not assignable to type 'number'."))
     (is equal '(:error "Program.cs" 5 13)
         (place "Program.cs(5,13): error CS0103: The name 'x' does not exist in the current context [/tmp/p/p.csproj]"))
-    (is equal '(:warning "a.cpp" 10 nil) (place "a.cpp(10): warning C4996: 'strcpy': This function or variable may be unsafe."))
+    (is equal '(:warning "a.cpp" 10 nil)
+        (place "a.cpp(10): warning C4996: 'strcpy': This function or variable may be unsafe."))
     (is equal '(:error "C:\\src\\b.cpp" 7 nil) (place "C:\\src\\b.cpp(7) : error C2065: 'x': undeclared identifier"))
     ;; words of the same shape that name no place
     (is equal '(nil) (place "thread 'main' has overflowed its stack"))
@@ -246,7 +252,8 @@ force; *compile* killed afterwards."
     (auto-save-session (compile-steps dir (list :until #'compile-ended-p)) :width 100 :height 30)
     (let* ((session (numbers-after "session" (compile-output)))
            (stat (uiop:read-file-string "/proc/self/stat"))
-           (ours (parse-integer (fourth (uiop:split-string (subseq stat (+ 2 (position #\) stat :from-end t))) :separator " "))
+           (ours (parse-integer (fourth (uiop:split-string (subseq stat (+ 2 (position #\) stat :from-end t)))
+                                                           :separator " "))
                                 :junk-allowed t)))
       (true session)
       (false (eql session ours)))))
@@ -488,11 +495,14 @@ force; *compile* killed afterwards."
            (progn
              (auto-save-session
               (compile-steps dir
-                             (list :until (lambda () (setf first-output (if (search "writer " (compile-output)) (compile-output) ""))
-                                            (plusp (length first-output))))
+                             (list :until
+                                   (lambda ()
+                                     (setf first-output (if (search "writer " (compile-output)) (compile-output) ""))
+                                     (plusp (length first-output))))
                              (lambda () (alexandria:write-string-into-file "" (merge-pathnames "second" dir)))
                              "M-x c o m p i l e RET RET y RET"
-                             (list :until (lambda () (and (search "the-second-ran" (compile-output)) (compile-ended-p)))))
+                             (list :until
+                                   (lambda () (and (search "the-second-ran" (compile-output)) (compile-ended-p)))))
               :width 100 :height 30)
              (true (search "the-second-ran" (compile-output)))
              (true (< (- (get-internal-real-time) began) (* 9 internal-time-units-per-second)))
@@ -532,7 +542,8 @@ force; *compile* killed afterwards."
                              (list :until (lambda () (setf odd (numbers-after "odd" (compile-output)))))
                              "C-x o C-c C-k"
                              (lambda () (setf stopped-at (get-internal-real-time)))
-                             (list :until (lambda () (unless (pid-alive-p odd) (setf gone-at (get-internal-real-time)))))
+                             (list :until
+                                   (lambda () (unless (pid-alive-p odd) (setf gone-at (get-internal-real-time)))))
                              (list :until #'compile-ended-p))
               :width 100 :height 30)
              (true odd)
@@ -550,7 +561,8 @@ force; *compile* killed afterwards."
                              collect (tuatara.text:string-octets (format nil "~98,,,'-a~%" i)))))
            (auto-save-session (list (lambda () (tuatara.compile::add-compile-output b pieces))) :width 100 :height 20)
            (is = (+ 7 (* 99 10000)) (tuatara.buffer:buffer-size b))
-           (tuatara.text::map-leaves (lambda (leaf) (declare (ignore leaf)) (incf leaves)) (tuatara.buffer:buffer-text b))
+           (tuatara.text::map-leaves (lambda (leaf) (declare (ignore leaf)) (incf leaves))
+                                     (tuatara.buffer:buffer-text b))
            (true (< leaves 400) "~d pieces of text for 1 MB" leaves))
       (tuatara.buffer:kill-buffer b))))
 
@@ -584,7 +596,8 @@ force; *compile* killed afterwards."
 in, one after another, through OUTPUT-PAST-RETURNS."
   (let ((returns (tuatara.compile::make-output-returns)) (shown (tuatara.text:make-octets 0)))
     (dolist (piece pieces (tuatara.text:octets-string shown))
-      (multiple-value-bind (octets back) (tuatara.compile::output-past-returns returns (tuatara.text:string-octets piece))
+      (multiple-value-bind (octets back)
+          (tuatara.compile::output-past-returns returns (tuatara.text:string-octets piece))
         (setf shown (concatenate 'tuatara.text:octets (subseq shown 0 (- (length shown) back)) octets))))))
 
 (define-test (compiling progress-redrawn-on-one-line)
@@ -603,8 +616,10 @@ in, one after another, through OUTPUT-PAST-RETURNS."
   ;; a line too long to follow goes in as it came to its newline, and what follows is
   ;; followed again; a carriage return making one too long gives it up too
   (let ((tuatara.compile::*compile-return-line-most* 4))
-    (is string= (format nil "abcdefABC~%Zy") (output-as-a-terminal-shows-it (list "abcdefAB" (format nil "C~%xy~c" #\Return) "Z")))
-    (is string= (format nil "xyzwv~cQ" #\Return) (output-as-a-terminal-shows-it (list (format nil "ab~cxyzwv" #\Return) (format nil "~cQ" #\Return)))))
+    (is string= (format nil "abcdefABC~%Zy")
+        (output-as-a-terminal-shows-it (list "abcdefAB" (format nil "C~%xy~c" #\Return) "Z")))
+    (is string= (format nil "xyzwv~cQ" #\Return)
+        (output-as-a-terminal-shows-it (list (format nil "ab~cxyzwv" #\Return) (format nil "~cQ" #\Return)))))
   ;; in *compile*: the progress shows as one line, the places after it found where they are
   (with-compile-session (dir (format nil "printf '10%%\\r50%%\\r100%%\\n'~%printf 'a.c:2:11: error: bad\\n'~%"))
     (auto-save-session (compile-steps dir (list :until #'compile-ended-p) "M-g n" (reached '("a.c" 1 10)))
@@ -625,7 +640,8 @@ in, one after another, through OUTPUT-PAST-RETURNS."
                            (lambda ()
                              (setf tuatara.command::*taking-in-inside-question* t
                                    tuatara.command::*buffers-held-by-questions*
-                                   (list (cons (compile-buffer) (tuatara.command:editor-frame tuatara.command:*editor*)))))
+                                   (list (cons (compile-buffer)
+                                               (tuatara.command:editor-frame tuatara.command:*editor*)))))
                            (list :wait 1.5)
                            (lambda ()
                              (setf during (compile-output)

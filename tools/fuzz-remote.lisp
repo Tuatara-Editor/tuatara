@@ -125,7 +125,8 @@ every kind, a paste in pieces and answers."
           :font-faces '(("Mono A" t (("Regular" "Mono A 11") ("Bold" "Mono A Bold 11")))))
      :attach
      (tuatara.frontend:make-request :directory "/home/kiwi/cases/" :terminal "/dev/pts/3"
-                                    :environment '(("PATH" . "/usr/bin:/bin") ("LANG" . "mi_NZ.UTF-8") ("GIT_DIR" . "/x"))
+                                    :environment '(("PATH" . "/usr/bin:/bin") ("LANG" . "mi_NZ.UTF-8")
+                                                   ("GIT_DIR" . "/x"))
                                     :files '(("/tmp/a b" 12 3) ("/tmp/tūī" nil nil)) :safe t :hex t :frames 3
                                     :diff '("/tmp/old" "/tmp/new") :merge '("/l" "/b" "/r" "/m") :wait t :stop t))
     (tuatara.frontend::put-facts-message box (tuatara.frontend.fake:make-fake-frontend :desktop-style :dark) :facts)
@@ -175,7 +176,8 @@ every kind, a paste in pieces and answers."
         (setf out
               (case (random 9 *random*)
                 ;; octets changed
-                (0 (dotimes (i (1+ (random 8 *random*)) out) (setf (aref out (random n *random*)) (random 256 *random*))))
+                (0 (dotimes (i (1+ (random 8 *random*)) out)
+                     (setf (aref out (random n *random*)) (random 256 *random*))))
                 ;; cut short
                 (1 (subseq out 0 (random n *random*)))
                 ;; octets put in
@@ -191,7 +193,8 @@ every kind, a paste in pieces and answers."
                 ;; a message's length made wrong
                 (4 (if starts
                        (let ((at (nth (random (length starts) *random*) starts)))
-                         (tuatara.io:octets-put-integer out (random (ash 1 (+ 3 (random 29 *random*))) *random*) 4 :at at))
+                         (tuatara.io:octets-put-integer out (random (ash 1 (+ 3 (random 29 *random*)))
+                                                                    *random*) 4 :at at))
                        out))
                 ;; a message's kind changed
                 (5 (if starts
@@ -201,9 +204,13 @@ every kind, a paste in pieces and answers."
                        out))
                 ;; a message repeated, or taken out
                 (6 (if (cdr starts)
-                       (let* ((i (random (1- (length starts)) *random*)) (start (nth i starts)) (end (nth (1+ i) starts)))
+                       (let* ((i (random (1- (length starts)) *random*)) (start (nth i starts))
+                              (end (nth (1+ i) starts)))
                          (if (zerop (random 2 *random*))
-                             (concatenate 'tuatara.text:octets (subseq out 0 end) (subseq out start end) (subseq out end))
+                             (concatenate 'tuatara.text:octets
+                                          (subseq out 0 end)
+                                          (subseq out start end)
+                                          (subseq out end))
                              (concatenate 'tuatara.text:octets (subseq out 0 start) (subseq out end))))
                        out))
                 ;; the other side's messages mixed in
@@ -413,7 +420,8 @@ what went wrong."
                          (tuatara.io:with-octets-sap (sap octets)
                            (loop (let ((got (sb-unix:unix-read theirs sap 65536)))
                                    (unless (and got (plusp got)) (return))))))))))
-      (flet ((key (base &rest keys) (tuatara.frontend:make-event :key :key (apply #'tuatara.frontend:make-key base keys))))
+      (flet ((key (base &rest keys)
+               (tuatara.frontend:make-event :key :key (apply #'tuatara.frontend:make-key base keys))))
         (send-events theirs
                      (append (list (tuatara.frontend:make-event :resize :width 1 :height 1)
                                    (key #\a)
@@ -428,7 +436,8 @@ what went wrong."
                                    (tuatara.frontend:make-event :focus)
                                    (tuatara.frontend:make-event :close)
                                    (tuatara.frontend:make-event :resize :width 80 :height 24))
-                             (mapcar (lambda (spec) (tuatara.frontend:make-event :key :key (tuatara.frontend:spec-key spec)))
+                             (mapcar (lambda (spec)
+                                       (tuatara.frontend:make-event :key :key (tuatara.frontend:spec-key spec)))
                                      (tuatara.frontend:parse-key-sequence "C-g C-x C-c"))))
         (let ((scratch (tuatara.buffer:find-buffer "*scratch*")))
           (when scratch (tuatara.buffer:kill-buffer scratch)))

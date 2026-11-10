@@ -10,7 +10,9 @@
   "The text of the window frontend's source files but its calls into GTK's
 libraries (ffi.lisp), one after another."
   (format nil "~{~a~}" (mapcar #'uiop:read-file-string
-                               (remove "ffi" (directory (merge-pathnames "frontends/gtk/*.lisp" (asdf:system-source-directory :tuatara)))
+                               (remove "ffi"
+                                       (directory (merge-pathnames "frontends/gtk/*.lisp"
+                                                                   (asdf:system-source-directory :tuatara)))
                                        :key #'pathname-name :test #'string=))))
 
 (define-test (gtk keys-from-gdk)
@@ -55,7 +57,8 @@ libraries (ffi.lisp), one after another."
       (is equal '(1d0 0d0 0d0) (tuatara.frontend.gtk::face-colours :gtk-test-paper))))
   ;; nothing known of the desktop: black on white even when asked for
   (let ((tuatara.frontend.gtk::*desktop-colours* nil) (tuatara-user:*window-colours-from-desktop* t))
-    (is equal '((0d0 0d0 0d0) (1d0 1d0 1d0)) (list (tuatara.frontend.gtk::window-paper :fg) (tuatara.frontend.gtk::window-paper :bg)))))
+    (is equal '((0d0 0d0 0d0) (1d0 1d0 1d0))
+        (list (tuatara.frontend.gtk::window-paper :fg) (tuatara.frontend.gtk::window-paper :bg)))))
 
 (define-test (gtk events-between-threads)
   (let ((queue (tuatara.frontend:make-event-queue)))
@@ -125,7 +128,10 @@ libraries (ffi.lisp), one after another."
                 (true (> cell-height cell-width))
                 (is = (* 10 cell-width) width)
                 (is = (* 4 cell-height) height)
-                (flet ((at (column row) (tuatara.frontend.gtk:pixel-colour surface (1+ (* column cell-width)) (1+ (* row cell-height)))))
+                (flet ((at (column row)
+                         (tuatara.frontend.gtk:pixel-colour surface
+                                                            (1+ (* column cell-width))
+                                                            (1+ (* row cell-height)))))
                   ;; the ground, where nothing is written
                   (is string= "#080d15" (at 8 0))
                   ;; the cursor, a block at the top left, in the colour of the text
@@ -151,7 +157,8 @@ libraries (ffi.lisp), one after another."
               (lambda (surface width height cell-width cell-height)
                 (declare (ignore width height))
                 (is string= "#45b1e8" (tuatara.frontend.gtk:pixel-colour surface (1- cell-width) (1- cell-height)))
-                (is string= "#080d15" (tuatara.frontend.gtk:pixel-colour surface (1- cell-width) (floor cell-height 2))))
+                (is string= "#080d15"
+                    (tuatara.frontend.gtk:pixel-colour surface (1- cell-width) (floor cell-height 2))))
               frame :columns 10 :rows 4 :font "Adwaita Mono 11")))
       (tuatara.display:apply-theme theme))))
 
@@ -190,7 +197,9 @@ libraries (ffi.lisp), one after another."
                                  ;; painted whole again, not from the rows kept painted
                                  (tuatara.frontend.gtk::forget-kept-rows f)
                                  (sb-int:encapsulate 'tuatara.gtk:pango-layout-set-text 'counted
-                                                     (lambda (function &rest arguments) (incf count) (apply function arguments)))
+                                                     (lambda (function &rest arguments)
+                                                       (incf count)
+                                                       (apply function arguments)))
                                  (unwind-protect (paint)
                                    (sb-int:unencapsulate 'tuatara.gtk:pango-layout-set-text 'counted)))
                             (tuatara.frontend.gtk::forget-layouts f)
@@ -289,7 +298,11 @@ Adwaita Mono 11 on ao-dark."
   (flet ((frame (from rows)
            (let ((frame (tuatara.frontend.gtk:make-frame
                          (coerce (loop for i from 0 below rows
-                                       collect (list (format nil "~3d ~d,plain,~d,é" (abs (- i 10)) (+ from i) (* (+ from i) (+ from i))) nil
+                                       collect (list (format nil
+                                                             "~3d ~d,plain,~d,é"
+                                                             (abs (- i 10))
+                                                             (+ from i)
+                                                             (* (+ from i) (+ from i))) nil
                                                      '((0 4 :line-number) (4 6 :csv-column-0) (7 12 :csv-column-1))))
                                  'vector))))
              (setf (tuatara.frontend.gtk::frame-cursor-row frame) 10)
@@ -317,7 +330,11 @@ Adwaita Mono 11 on ao-dark."
   (flet ((frame (from rows)
            (tuatara.frontend.gtk:make-frame
             (coerce (loop for i from 0 below rows
-                          collect (list (format nil "~3d ~d,plain,~d,é" (abs (- i 10)) (+ from i) (* (+ from i) (+ from i))) nil
+                          collect (list (format nil
+                                                "~3d ~d,plain,~d,é"
+                                                (abs (- i 10))
+                                                (+ from i)
+                                                (* (+ from i) (+ from i))) nil
                                         '((0 4 :line-number) (4 6 :csv-column-0) (7 12 :csv-column-1))
                                         nil nil '(4)))
                     'vector))))
@@ -343,7 +360,11 @@ Adwaita Mono 11 on ao-dark."
     (flet ((frame (field)
              (tuatara.frontend.gtk:make-frame
               (coerce (loop for i from 0 below 12
-                            collect (list (format nil "~3d ~d,plain,~d,é" (abs (- i (if (= field 0) 6 5))) (+ field i) (* i i)) nil
+                            collect (list (format nil
+                                                  "~3d ~d,plain,~d,é"
+                                                  (abs (- i (if (= field 0) 6 5)))
+                                                  (+ field i)
+                                                  (* i i)) nil
                                           '((0 4 :line-number) (4 6 :csv-column-0) (7 12 :csv-column-1))))
                       'vector))))
       (let ((width (+ 12 (* 30 (tuatara.frontend.gtk::cell-width f))))
@@ -385,7 +406,8 @@ Adwaita Mono 11 on ao-dark."
                                   (dotimes (c 3)
                                     (incf seen)
                                     (unless (= (sb-sys:sap-ref-8 data (+ (* 4 (+ x (* y w))) c))
-                                               (aref whole (+ (* (+ 4 (* row ch) y) stride) (* 4 (+ 6 (* from cw) x)) c)))
+                                               (aref whole
+                                                     (+ (* (+ 4 (* row ch) y) stride) (* 4 (+ 6 (* from cw) x)) c)))
                                       (incf wrong))))))
                             (tuatara.gtk:g-object-unref texture))))
         (true (plusp seen))
@@ -407,18 +429,41 @@ wrote nothing."
            (sleep 0.5)
            (ignore-errors (delete-file out))
            (sb-ext:run-program sb-ext:*runtime-pathname*
-                               (list* "--dynamic-space-size" "4GB" "--noinform" "--disable-ldb" "--end-runtime-options" "--script"
-                                      (namestring (asdf:system-relative-pathname :tuatara (format nil "test/gtk/~a" script)))
+                               (list* "--dynamic-space-size"
+                                      "4GB"
+                                      "--noinform"
+                                      "--disable-ldb"
+                                      "--end-runtime-options"
+                                      "--script"
+                                      (namestring (asdf:system-relative-pathname :tuatara
+                                                                                 (format nil "test/gtk/~a" script)))
                                       (substitute (namestring out) :out arguments))
                                :wait t :output nil :error nil
-                               :environment (append (list "GDK_BACKEND=broadway" (format nil "BROADWAY_DISPLAY=:~d" display)
-                                                          (format nil "XDG_CONFIG_HOME=~a" (namestring (merge-pathnames "config/" dir)))
-                                                          (format nil "XDG_STATE_HOME=~a" (namestring (merge-pathnames "state/" dir)))
-                                                          (format nil "XDG_CACHE_HOME=~a" (or (uiop:getenv "XDG_CACHE_HOME") (namestring (merge-pathnames "cache/" dir))))
-                                                          (format nil "XDG_DATA_HOME=~a" (namestring (merge-pathnames "data/" dir))))
-                                                    (remove-if (lambda (pair) (some (lambda (key) (uiop:string-prefix-p key pair))
-                                                                                    '("GDK_BACKEND=" "BROADWAY_DISPLAY=" "WAYLAND_DISPLAY=" "DISPLAY="
-                                                                                      "XDG_CONFIG_HOME=" "XDG_STATE_HOME=" "XDG_DATA_HOME=" "GSK_RENDERER=")))
+                               :environment (append (list "GDK_BACKEND=broadway"
+                                                          (format nil "BROADWAY_DISPLAY=:~d" display)
+                                                          (format nil
+                                                                  "XDG_CONFIG_HOME=~a"
+                                                                  (namestring (merge-pathnames "config/" dir)))
+                                                          (format nil
+                                                                  "XDG_STATE_HOME=~a"
+                                                                  (namestring (merge-pathnames "state/" dir)))
+                                                          (format nil
+                                                                  "XDG_CACHE_HOME=~a"
+                                                                  (or (uiop:getenv "XDG_CACHE_HOME")
+                                                                      (namestring (merge-pathnames "cache/" dir))))
+                                                          (format nil
+                                                                  "XDG_DATA_HOME=~a"
+                                                                  (namestring (merge-pathnames "data/" dir))))
+                                                    (remove-if (lambda (pair)
+                                                                 (some (lambda (key) (uiop:string-prefix-p key pair))
+                                                                       '("GDK_BACKEND="
+                                                                         "BROADWAY_DISPLAY="
+                                                                         "WAYLAND_DISPLAY="
+                                                                         "DISPLAY="
+                                                                         "XDG_CONFIG_HOME="
+                                                                         "XDG_STATE_HOME="
+                                                                         "XDG_DATA_HOME="
+                                                                         "GSK_RENDERER=")))
                                                                (sb-ext:posix-environ))))
            (ignore-errors (with-open-file (in out) (with-standard-io-syntax (let ((*read-eval* nil)) (read in))))))
       (ignore-errors (sb-ext:process-kill server 15))
@@ -469,13 +514,15 @@ windows side by side."
             (true drawn "the window with a picture wrote nothing")
             (when drawn
               (true (> (getf drawn :textures) 1) "~d textures" (getf drawn :textures))
-              (true (< (getf drawn :differing-much) (/ (getf drawn :octets) 200)) "~:d of ~:d octets far from painted whole"
+              (true (< (getf drawn :differing-much) (/ (getf drawn :octets) 200))
+                    "~:d of ~:d octets far from painted whole"
                     (getf drawn :differing-much) (getf drawn :octets))))
           ;; the same picture in two windows side by side: drawn in both
           (let ((drawn (window-drawn dir picture "pictures-beside")))
             (true drawn "the window with a picture beside itself wrote nothing")
             (when drawn
-              (true (< (getf drawn :differing-much) (/ (getf drawn :octets) 200)) "~:d of ~:d octets far from painted whole"
+              (true (< (getf drawn :differing-much) (/ (getf drawn :octets) 200))
+                    "~:d of ~:d octets far from painted whole"
                     (getf drawn :differing-much) (getf drawn :octets))))))))
 
 (define-test (gtk two-windows)
@@ -515,7 +562,10 @@ windows side by side."
              (tuatara.frontend.gtk:call-with-painted-frame
               (lambda (surface width height cell-width cell-height)
                 (declare (ignore width height))
-                (flet ((at (x y) (tuatara.frontend.gtk:pixel-colour surface (floor (* x cell-width)) (floor (* y cell-height)))))
+                (flet ((at (x y)
+                         (tuatara.frontend.gtk:pixel-colour surface
+                                                            (floor (* x cell-width))
+                                                            (floor (* y cell-height)))))
                   ;; the columns before it as they are, on both rows
                   (is string= "#7533bd" (at 0.1 0.1))
                   (is string= "#7533bd" (at 0.1 1.1))
@@ -535,7 +585,10 @@ windows side by side."
              (tuatara.frontend.gtk:call-with-painted-frame
               (lambda (surface width height cell-width cell-height)
                 (declare (ignore width height))
-                (flet ((at (x y) (tuatara.frontend.gtk:pixel-colour surface (floor (* x cell-width)) (floor (* y cell-height)))))
+                (flet ((at (x y)
+                         (tuatara.frontend.gtk:pixel-colour surface
+                                                            (floor (* x cell-width))
+                                                            (floor (* y cell-height)))))
                   ;; the cursor on the moved row: from a row and a half down, a row tall
                   (is string= "#dadada" (at 0.1 1.6))
                   (is string= "#dadada" (at 0.1 2.4))
@@ -598,7 +651,10 @@ windows side by side."
                     (dotimes (y cell-height (values pixels cell-width))
                       (dotimes (x width)
                         (setf (aref pixels y x)
-                              (parse-integer (tuatara.frontend.gtk:pixel-colour surface x y) :start 1 :end 3 :radix 16))))))
+                              (parse-integer (tuatara.frontend.gtk:pixel-colour surface x y)
+                                             :start 1
+                                             :end 3
+                                             :radix 16))))))
                 (tuatara.frontend.gtk:make-frame (vector (list text nil '()) nil))
                 :columns 24 :rows 2 :font "Cascadia Code NF 12")))
         (multiple-value-bind (pixels cell-width) (painted "x ------------------ y")
@@ -637,8 +693,11 @@ windows side by side."
     ;; a drag tells the editor each cell it reaches once, as GTK's gesture calls it;
     ;; the button let go is the click's to tell, once
     (flet ((call (callback x y)
-             (sb-alien:alien-funcall (sb-alien:sap-alien callback (function sb-alien:void sb-sys:system-area-pointer sb-alien:double
-                                                                            sb-alien:double sb-sys:system-area-pointer))
+             (sb-alien:alien-funcall (sb-alien:sap-alien callback
+                                                         (function sb-alien:void
+                                                                   sb-sys:system-area-pointer
+                                                                   sb-alien:double
+                                                                   sb-alien:double sb-sys:system-area-pointer))
                                      (tuatara.io:null-pointer) x y data)))
       (call (tuatara.gtk:callback tuatara.frontend.gtk::on-drag-begin) 20d0 45d0)
       (call (tuatara.gtk:callback tuatara.frontend.gtk::on-drag-update) 1d0 1d0)
@@ -800,7 +859,8 @@ windows side by side."
                     (setf list (tuatara.runtime:foreign-call "g_slist_prepend" sb-sys:system-area-pointer
                                                              (sb-sys:system-area-pointer list)
                                                              (sb-sys:system-area-pointer
-                                                              (tuatara.runtime:foreign-call "g_file_new_for_path" sb-sys:system-area-pointer
+                                                              (tuatara.runtime:foreign-call "g_file_new_for_path"
+                                                                                            sb-sys:system-area-pointer
                                                                                             ((sb-alien:c-string :external-format :utf-8) path))))))))
          (file-list (tuatara.runtime:foreign-call "gdk_file_list_new_from_list" sb-sys:system-area-pointer
                                                   (sb-sys:system-area-pointer files))))
@@ -821,7 +881,9 @@ windows side by side."
                (setf (tuatara.frontend.gtk::cell-width f) 9 (tuatara.frontend.gtk::cell-height f) 20)
                (true (sb-alien:alien-funcall
                       (sb-alien:sap-alien (tuatara.gtk:callback tuatara.frontend.gtk::on-drop)
-                                          (function (sb-alien:boolean 32) sb-sys:system-area-pointer sb-sys:system-area-pointer
+                                          (function (sb-alien:boolean 32)
+                                                    sb-sys:system-area-pointer
+                                                    sb-sys:system-area-pointer
                                                     sb-alien:double sb-alien:double sb-sys:system-area-pointer))
                       (tuatara.io:null-pointer) value 20d0 45d0 data))
                (tuatara.frontend.gtk::forget-window f)
@@ -836,7 +898,8 @@ windows side by side."
   ;; the text beam over text, an arrow on mode lines and the echo row, a sideways arrow on a divider
   (let ((frame (tuatara.frontend.gtk:make-frame
                 (vector (list "left text          │right" nil '((19 20 :vertical-border)))
-                        (list " TUATARA[N] a.txt    TUATARA[N] b.txt" nil '((0 20 :mode-line) (20 40 :mode-line-inactive)))
+                        (list " TUATARA[N] a.txt    TUATARA[N] b.txt" nil '((0 20 :mode-line)
+                                                                            (20 40 :mode-line-inactive)))
                         (list "whole text" nil '())
                         (list " TUATARA[N] c.txt" :mode-line '())
                         (list "Wrote c.txt" nil '())))))
@@ -905,13 +968,17 @@ windows side by side."
                       (let ((b (tuatara.buffer:find-buffer name))) (when b (tuatara.buffer:kill-buffer b))))
                     (tuatara.frontend.fake:fake-queue-keys f (format nil "i x C-g ~a" keys))
                     (tuatara.frontend.fake:fake-queue-event f event)
-                    (values f (tuatara.command:run-editor f :files (list path) :setup #'tuatara.defaults:install-defaults)))))
+                    (values f
+                            (tuatara.command:run-editor f
+                                                        :files (list path)
+                                                        :setup #'tuatara.defaults:install-defaults)))))
            ;; the window closed while the minibuffer asks: the question ends, and closing asks its own
            (dolist (keys '("C-x C-f" "C-s a" "C-x k RET"))
              (let ((f (session keys (tuatara.frontend:make-event :close))))
                (true (tuatara.frontend.fake:fake-frame-showing f "Modified buffers exist; exit anyway?"))))
            ;; files dropped while it asks: the question ends, the file is opened
-           (multiple-value-bind (f editor) (session "C-x C-f" (tuatara.frontend:make-event :drop :files (list other) :column 1 :row 1))
+           (multiple-value-bind (f editor)
+               (session "C-x C-f" (tuatara.frontend:make-event :drop :files (list other) :column 1 :row 1))
              (declare (ignore f))
              (is string= "dropped" (session-text editor))))
       (dolist (name (list (file-namestring path) (file-namestring other)))
@@ -925,7 +992,8 @@ windows side by side."
                  ("Cantarell" nil (("Regular" "Cantarell 11"))))))
     (flet ((session (keys &key (font-faces faces))
              (let ((f (tuatara.frontend.fake:make-fake-frontend :width 120 :height 20 :font-steps (and font-faces 0)
-                                                                :fonts (mapcar #'first font-faces) :font-faces font-faces)))
+                                                                :fonts (mapcar #'first font-faces)
+                                                                :font-faces font-faces)))
                (tuatara.frontend.fake:fake-queue-keys f keys)
                (let ((scratch (tuatara.buffer:find-buffer "*scratch*")))
                  (when scratch (tuatara.buffer:kill-buffer scratch)))
@@ -964,7 +1032,8 @@ windows side by side."
       (multiple-value-bind (f editor) (session "M-x f o n t - l i s t RET j j j g l v g h y")
         (declare (ignore f))
         (true (search "(setf *gui-font* \"Adwaita Mono Bold 11\")" (first (tuatara.command:editor-kill-ring editor)))))
-      (multiple-value-bind (f editor) (session "M-x f o n t - l i s t RET j j j l l l l l l l l l l l l l l l l l l l l l l m i \" y")
+      (multiple-value-bind (f editor)
+          (session "M-x f o n t - l i s t RET j j j l l l l l l l l l l l l l l l l l l l l l l m i \" y")
         (declare (ignore f))
         (is string= "Adwaita Mono Bold 11" (first (tuatara.command:editor-kill-ring editor))))
       ;; g e, G and g g move; g begins those motions, so g r lists the fonts again
@@ -975,7 +1044,8 @@ windows side by side."
         (declare (ignore f))
         (is = 0 (session-point editor)))
       ;; C-x / s narrows it as every list: the fonts whose lines match, each under its family; g r keeps the filter
-      (dolist (keys '("M-x f o n t - l i s t RET C-x / s c a s c RET" "M-x f o n t - l i s t RET C-x / s c a s c RET g r"))
+      (dolist (keys '("M-x f o n t - l i s t RET C-x / s c a s c RET"
+                      "M-x f o n t - l i s t RET C-x / s c a s c RET g r"))
         (multiple-value-bind (f editor) (session keys)
           (declare (ignore f))
           (let ((text (session-text editor)))
@@ -986,7 +1056,8 @@ windows side by side."
       (false (gethash 'tuatara.defaults::font-list-filter tuatara.command:*commands*))
       ;; a terminal lists none
       (true (search "a terminal's font is its own"
-                    (tuatara.frontend.fake:fake-screen-line (session "M-x f o n t - l i s t RET" :font-faces nil) 19))))))
+                    (tuatara.frontend.fake:fake-screen-line (session "M-x f o n t - l i s t RET"
+                                                                     :font-faces nil) 19))))))
 
 (define-test (gtk faces-with-fonts)
   ;; a face may name a font; a theme changed after keeps it; the window paints its text in it
@@ -1231,7 +1302,8 @@ windows side by side."
                                   (surface (tuatara.frontend.gtk::image-surface image)))
                               (prog1 (/ (* 1000 (- (thread-cpu-time) start))
                                         internal-time-units-per-second
-                                        (/ (* (tuatara.frontend:image-width image) (tuatara.frontend:image-height image)) 1d6))
+                                        (/ (* (tuatara.frontend:image-width image)
+                                              (tuatara.frontend:image-height image)) 1d6))
                                 (tuatara.frontend.gtk::cairo-surface-destroy surface))))))
       (dolist (side '(1000 2000))
         (let ((ms (ms-per-megapixel (picture side))))
@@ -1253,7 +1325,10 @@ windows side by side."
 (define-test (gtk title-writes-octets-not-utf-8)
   ;; a name that is not UTF-8 is titled as the mode line writes it, each octet \xNN
   (is string= "bad\\xFF\\xFEname.txt - Tuatara"
-      (tuatara.frontend.gtk::shown-title (format nil "bad~c~cname.txt - Tuatara" (code-char #xDCFF) (code-char #xDCFE))))
+      (tuatara.frontend.gtk::shown-title (format nil
+                                                 "bad~c~cname.txt - Tuatara"
+                                                 (code-char #xDCFF)
+                                                 (code-char #xDCFE))))
   (is string= "plain - Tuatara" (tuatara.frontend.gtk::shown-title "plain - Tuatara")))
 
 (define-test (gtk command-keys-before-the-input-method)
@@ -1274,7 +1349,9 @@ windows side by side."
   ;; a file name the window gives GTK or Cairo reaches the system as it was read, raw bytes and all
   (tuatara.gtk:load-gtk-libraries)
   (let* ((folder (tuatara.io:path-join (uiop:native-namestring (uiop:temporary-directory))
-                                       (tuatara.io:slash-ended (format nil "tuatara-test-~a" (tuatara.io:random-name)))))
+                                       (tuatara.io:slash-ended (format nil
+                                                                       "tuatara-test-~a"
+                                                                       (tuatara.io:random-name)))))
          (path (format nil "~apicture-~c.png" folder (code-char #xDCFF))))
     (tuatara.io:make-directory folder #o700)
     (unwind-protect

@@ -118,7 +118,8 @@ add() {
   [ -n "$name" ] || fail "add: which library? (a Quicklisp project name, as releases.txt has it)"
   work="$(mktemp -d)"
   trap 'rm -rf "$work"' EXIT
-  curl -sSfL --retry 3 -o "$work/releases.txt" "$dist_url/releases.txt" || fail "$dist_url/releases.txt could not be downloaded"
+  curl -sSfL --retry 3 -o "$work/releases.txt" "$dist_url/releases.txt" ||
+    fail "$dist_url/releases.txt could not be downloaded"
   line=$(awk -v p="$name" '$1 == p { print; exit }' "$work/releases.txt")
   [ -n "$line" ] || fail "$name is not in the Quicklisp set $dist_url"
   url=$(echo "$line" | awk '{ print $2 }' | sed 's|^http:|https:|')

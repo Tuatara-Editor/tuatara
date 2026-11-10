@@ -130,7 +130,9 @@ every editor session applies the startup theme, so tests about faces start clean
     (tuatara.buffer:make-buffer "*scratch*" :text "")
     (setf tuatara.defaults::*command-history* '())
     (tuatara.frontend.fake:fake-queue-keys f "M-x e n d SPC o f SPC b u f")
-    (tuatara.command:run-editor f :setup #'tuatara.defaults:install-defaults :buffer (tuatara.buffer:find-buffer "*scratch*"))
+    (tuatara.command:run-editor f
+                                :setup #'tuatara.defaults:install-defaults
+                                :buffer (tuatara.buffer:find-buffer "*scratch*"))
     ;; the last frame is painted after the minibuffer closes: look at the one showing it
     (multiple-value-bind (screen spans row-faces) (tuatara.frontend.fake:fake-frame-with f "M-x end of buf")
       (let ((selected (position-if (lambda (row) (search "end-of-buffer" row)) screen))
@@ -149,7 +151,9 @@ every editor session applies the startup theme, so tests about faces start clean
     (let ((scratch (tuatara.buffer:find-buffer "*scratch*"))) (when scratch (tuatara.buffer:kill-buffer scratch)))
     (tuatara.buffer:make-buffer "*scratch*" :text "")
     (tuatara.frontend.fake:fake-queue-keys f "C-x")
-    (tuatara.command:run-editor f :setup #'tuatara.defaults:install-defaults :buffer (tuatara.buffer:find-buffer "*scratch*"))
+    (tuatara.command:run-editor f
+                                :setup #'tuatara.defaults:install-defaults
+                                :buffer (tuatara.buffer:find-buffer "*scratch*"))
     (multiple-value-bind (screen spans) (tuatara.frontend.fake:fake-frame-with f "C-f find-file")
       (declare (ignore screen))
       (let ((faces (loop for row-spans across spans append (mapcar #'third row-spans))))
@@ -181,7 +185,9 @@ every editor session applies the startup theme, so tests about faces start clean
       (is eq 'tuatara.defaults::ao-dark tuatara.display:*current-theme*))
     ;; a display without colours gets the plain theme: no colours, attributes only
     (let ((f (tuatara.frontend.fake:make-fake-frontend :colours 0)))
-      (tuatara.command:run-editor f :setup #'tuatara.defaults:install-defaults :buffer (tuatara.buffer:make-buffer "*mono*"))
+      (tuatara.command:run-editor f
+                                  :setup #'tuatara.defaults:install-defaults
+                                  :buffer (tuatara.buffer:make-buffer "*mono*"))
       (tuatara.buffer:kill-buffer (tuatara.buffer:find-buffer "*mono*"))
       (is eq 'tuatara.defaults::plain tuatara.display:*current-theme*)
       (is equal '(nil nil (:bold)) (multiple-value-list (tuatara.display:resolve-face-spec :keyword)))
@@ -243,7 +249,9 @@ every editor session applies the startup theme, so tests about faces start clean
   (is eq :24-bit (tuatara.frontend.tui::wanted-colours :setting :24-bit :no-color "1"))
   ;; how many are used, and why, as check-health says it
   (let ((tuatara-user:*tui-colours* :auto))
-    (is equal '(16777216 "COLORTERM says so") (multiple-value-list (tuatara.frontend.tui::colours-used :auto 16777216 t)))
+    (is equal
+        '(16777216 "COLORTERM says so")
+        (multiple-value-list (tuatara.frontend.tui::colours-used :auto 16777216 t)))
     (is equal '(256 "from TERM") (multiple-value-list (tuatara.frontend.tui::colours-used :auto 256 nil)))
     (is equal '(0 "NO_COLOR is set") (multiple-value-list (tuatara.frontend.tui::colours-used nil 256 nil))))
   (is equal '(16 "*tui-colours* 16") (multiple-value-list (tuatara.frontend.tui::colours-used 16 256 nil)))
@@ -294,7 +302,8 @@ STYLE, with KEYS typed, INIT (a string) as the init file, and ACTIONS, a list of
     ;; the desktop switching while the editor runs: the theme follows
     (is eq 'tuatara.defaults::ao-light
         (themed-session :style :dark
-                        :actions (list (list "l" (lambda (f) (setf (tuatara.frontend.fake:fake-desktop-style f) :light))))))
+                        :actions (list (list "l"
+                                             (lambda (f) (setf (tuatara.frontend.fake:fake-desktop-style f) :light))))))
     ;; the init file's own pair of themes
     (is eq 'tuatara.defaults::plain (themed-session :style :light :init "(setf *light-theme* 'plain)"))
     ;; a theme chosen in the init file stays, whatever the desktop
@@ -334,7 +343,8 @@ its own colours, flags, inheritance, font and height, and what it resolves to."
                                     (append (mapcar (lambda (reader) (funcall reader f))
                                                     (list #'tuatara.display:face-fg #'tuatara.display:face-bg
                                                           #'tuatara.display:face-bold #'tuatara.display:face-italic
-                                                          #'tuatara.display:face-underline #'tuatara.display:face-reverse
+                                                          #'tuatara.display:face-underline
+                                                          #'tuatara.display:face-reverse
                                                           #'tuatara.display:face-dim #'tuatara.display:face-extend
                                                           #'tuatara.display:face-inherit #'tuatara.display:face-font
                                                           #'tuatara.display::face-height))
@@ -349,7 +359,11 @@ its own colours, flags, inheritance, font and height, and what it resolves to."
                             collect (cons (string-downcase (symbol-name (first row))) (rest row)))))
           (actual (ao-face-table)))
       (is = (length expected) (length actual))
-      (is equal '() (set-difference actual expected :test #'equal) "Faces not as pinned: ~s" (set-difference actual expected :test #'equal))
+      (is equal
+          '()
+          (set-difference actual expected :test #'equal)
+          "Faces not as pinned: ~s"
+          (set-difference actual expected :test #'equal))
       (is equal '() (set-difference expected actual :test #'equal)))))
 
 (define-test (themes role-palettes)

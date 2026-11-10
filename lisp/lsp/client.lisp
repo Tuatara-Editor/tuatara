@@ -26,7 +26,9 @@ server that leaves more unread has stopped reading, and is ended.")
 
 (defvar *lsp-wait* 2
   "The seconds a command waits for a language server's answer it needs at once
-\(a completion, a definition), a key stopping the wait sooner.")
+\(a completion, a definition), a key stopping the wait sooner, 2 as standard.
+Raise it for a slow server, one still indexing a large project; lower it to
+give up sooner on one that is slow.")
 
 (defvar *lsp-servers* '()
   "The language servers running, the most recently started first.")
@@ -39,21 +41,22 @@ server that leaves more unread has stopped reading, and is ended.")
 answer (LSP-REQUEST-NOW) to wake.")
 
 (defstruct (lsp-server (:constructor make-lsp-server (name command root language options wake)) (:copier nil))
-  "A language server: NAME, as known (rust-analyzer); COMMAND, its program and
-arguments; ROOT, the project's folder it serves; LANGUAGE, the language it is
-started for; OPTIONS, what it is told at its start (read JSON), or NIL; WAKE,
-a function that wakes the editor, or NIL. PROCESS, the program running;
-OUTBOX, the messages waiting to be written to it, as octets, UNSENT how many
-octets those are, and STALLED true once they were too many; NEXT-ID, the next
-request's number; WAITING, the requests not yet answered, by number, each the
-function called with the answer's result and its error; CAPABILITIES, what it
-said it can do; ENCODING, :UTF-8 or :UTF-16, how its positions count
-characters; STATUS, :STARTING, :READY or :STOPPED; DOCUMENTS, the buffers it
-has open; SAID, its last lines on its error output; PROGRESS, what it said it
-is busy with, by token, each (TITLE WORDS PERCENT); EVENTS, its last messages
-either way, newest first, each (TIME TO-IT TEXT), TEXT their start
-\(*LSP-EVENT-LENGTH*); ACTING, how many of its commands chosen to be run are
-under way. LOCK is held while UNSENT, SAID or EVENTS change."
+  "A language server. NAME is its name as known (rust-analyzer). COMMAND is
+its program and arguments. ROOT is the project's folder it serves. LANGUAGE is
+the language it is started for. OPTIONS is what it is told at its start (read
+JSON), or NIL. WAKE is a function that wakes the editor, or NIL. PROCESS is
+the program running. OUTBOX is the messages waiting to be written to it, as
+octets, UNSENT how many octets those are, and STALLED true once they were too
+many. NEXT-ID is the next request's number. WAITING is the requests not yet
+answered, by number, each the function called with the answer's result and its
+error. CAPABILITIES is what it said it can do. ENCODING is :UTF-8 or :UTF-16,
+how its positions count characters. STATUS is :STARTING, :READY or :STOPPED.
+DOCUMENTS are the buffers it has open. SAID is its last lines on its error
+output. PROGRESS is what it said it is busy with, by token, each (TITLE WORDS
+PERCENT). EVENTS are its last messages either way, newest first, each (TIME
+TO-IT TEXT), TEXT their start (*LSP-EVENT-LENGTH*). ACTING is how many of its
+commands chosen to be run are under way. LOCK is held while UNSENT, SAID or
+EVENTS change."
   name command root language options wake process
   (outbox (sb-concurrency:make-mailbox :name "language server writes")) (unsent 0) (stalled nil)
   (lock (sb-thread:make-mutex :name "language server"))
@@ -195,7 +198,8 @@ due, or NIL when none waits."
                  (lsp-cancel server id)
                  (handler-case (reporting-errors ("giving up waiting for ~a" (lsp-server-name server))
                                  (funcall then nil :timeout))
-                   (error (e) (log-message (format nil "~a: what waited for an answer failed: ~a" (lsp-server-name server) e)))))
+                   (error (e)
+                     (log-message (format nil "~a: what waited for an answer failed: ~a" (lsp-server-name server) e)))))
                 (t (setf soonest (if soonest (min soonest left) left)))))))
     (and soonest (max 0.01 soonest))))
 
@@ -343,11 +347,13 @@ of *LSP-REQUEST-FUNCTIONS* that answers later.")
 
 (defmacro define-lsp-notification (method (server params) &body body)
   "Define what is done when a server tells METHOD, SERVER and PARAMS bound."
-  `(setf (gethash ,method *lsp-notification-functions*) (lambda (,server ,params) (declare (ignorable ,server ,params)) ,@body)))
+  `(setf (gethash ,method *lsp-notification-functions*)
+         (lambda (,server ,params) (declare (ignorable ,server ,params)) ,@body)))
 
 (defmacro define-lsp-request (method (server params) &body body)
   "Define the answer to a server asking METHOD, SERVER and PARAMS bound."
-  `(setf (gethash ,method *lsp-request-functions*) (lambda (,server ,params) (declare (ignorable ,server ,params)) ,@body)))
+  `(setf (gethash ,method *lsp-request-functions*)
+         (lambda (,server ,params) (declare (ignorable ,server ,params)) ,@body)))
 
 (defun lsp-take-in ()
   "Take in what the servers sent: answers to the functions waiting for them,
@@ -357,7 +363,8 @@ questions answered, what they tell done; true when there was anything."
         count t
         do (handler-case (reporting-errors ("taking in what ~a sent" (lsp-server-name server))
                            (lsp-take-in-message server message))
-             (error (e) (log-message (format nil "~a: what it sent could not be taken in: ~a" (lsp-server-name server) e))))))
+             (error (e)
+               (log-message (format nil "~a: what it sent could not be taken in: ~a" (lsp-server-name server) e))))))
 
 (defun lsp-take-in-message (server message)
   "Take in MESSAGE from SERVER: an answer, a question or something it tells."
@@ -428,7 +435,8 @@ the server and the command's arguments (a vector).")
 (defmacro define-lsp-client-command (name (server arguments) &body body)
   "Define how the editor runs NAME, a command a server leaves to its editor,
 SERVER and ARGUMENTS bound."
-  `(setf (gethash ,name *lsp-client-commands*) (lambda (,server ,arguments) (declare (ignorable ,server ,arguments)) ,@body)))
+  `(setf (gethash ,name *lsp-client-commands*)
+         (lambda (,server ,arguments) (declare (ignorable ,server ,arguments)) ,@body)))
 
 (defun lsp-capabilities ()
   "What Tuatara can do, as the protocol's initialize tells a server."
@@ -437,7 +445,10 @@ SERVER and ARGUMENTS bound."
              "general" (funcall o "positionEncodings" #("utf-8" "utf-16"))
              "workspace" (funcall o "configuration" t "workspaceFolders" t "applyEdit" t
                                   "workspaceEdit" (funcall o "documentChanges" t)
-                                  "inlayHint" (funcall o "refreshSupport" t) "semanticTokens" (funcall o "refreshSupport" t)
+                                  "inlayHint"
+                                  (funcall o "refreshSupport" t)
+                                  "semanticTokens"
+                                  (funcall o "refreshSupport" t)
                                   "symbol" (funcall o) "diagnostics" (funcall o "refreshSupport" t)
                                   "codeLens" (funcall o "refreshSupport" t)
                                   "didChangeWatchedFiles" (funcall o "dynamicRegistration" t "relativePatternSupport" t))
@@ -453,15 +464,18 @@ SERVER and ARGUMENTS bound."
                                                                          "documentationFormat" #("plaintext" "markdown")
                                                                          "resolveSupport" (funcall o "properties" #("documentation" "detail"))))
                       "hover" (funcall o "contentFormat" #("plaintext" "markdown"))
-                      "signatureHelp" (funcall o "signatureInformation" (funcall o "documentationFormat" #("plaintext" "markdown")))
+                      "signatureHelp"
+                      (funcall o "signatureInformation" (funcall o "documentationFormat" #("plaintext" "markdown")))
                       "definition" (funcall o) "references" (funcall o) "implementation" (funcall o)
                       "typeDefinition" (funcall o)
                       "rename" (funcall o)
                       "formatting" (funcall o) "rangeFormatting" (funcall o)
                       "codeAction" (funcall o "codeActionLiteralSupport"
-                                            (funcall o "codeActionKind" (funcall o "valueSet" #("" "quickfix" "refactor" "refactor.extract"
-                                                                                                "refactor.inline" "refactor.rewrite"
-                                                                                                "source" "source.organizeImports"))))
+                                            (funcall o
+                                                     "codeActionKind"
+                                                     (funcall o "valueSet" #("" "quickfix" "refactor" "refactor.extract"
+                                                                             "refactor.inline" "refactor.rewrite"
+                                                                             "source" "source.organizeImports"))))
                       "inlayHint" (funcall o) "callHierarchy" (funcall o) "documentHighlight" (funcall o)
                       "diagnostic" (funcall o "relatedDocumentSupport" :false)
                       "codeLens" (funcall o) "foldingRange" (funcall o "lineFoldingOnly" t) "selectionRange" (funcall o)
@@ -502,7 +516,8 @@ program cannot be started (said so)."
                   "processId" (sb-posix:getpid)
                   "clientInfo" (tuatara.text:json-object "name" "Tuatara")
                   "rootUri" (path-uri root) "rootPath" (tuatara.io:native root)
-                  "workspaceFolders" (vector (tuatara.text:json-object "uri" (path-uri root) "name" (tuatara.io:native-file-name root)))
+                  "workspaceFolders"
+                  (vector (tuatara.text:json-object "uri" (path-uri root) "name" (tuatara.io:native-file-name root)))
                   "capabilities" (lsp-capabilities)
                   "initializationOptions" (or options :omit))
                  (lambda (result error)
@@ -518,7 +533,8 @@ program cannot be started (said so)."
 ready, and open the documents that waited for it."
   (let ((capabilities (tuatara.text:json-get result "capabilities")))
     (setf (lsp-server-capabilities server) capabilities
-          (lsp-server-encoding server) (if (equal (tuatara.text:json-get capabilities "positionEncoding") "utf-8") :utf-8 :utf-16)
+          (lsp-server-encoding server)
+          (if (equal (tuatara.text:json-get capabilities "positionEncoding") "utf-8") :utf-8 :utf-16)
           (lsp-server-status server) :ready)
     (lsp-notify server "initialized" (tuatara.text:json-object))
     (dolist (doc (lsp-server-documents server))
@@ -616,7 +632,10 @@ server does not say, NAME the server's, with PROJECTS its project's after it."
         append (loop for (nil words percent) being the hash-values of (lsp-server-progress server)
                      collect (list words percent
                                    (if projects
-                                       (format nil "~a ~a" (lsp-server-name server) (abbreviated-path (lsp-server-root server)))
+                                       (format nil
+                                               "~a ~a"
+                                               (lsp-server-name server)
+                                               (abbreviated-path (lsp-server-root server)))
                                        (lsp-server-name server))))))
 
 (defun lsp-outside-work (&optional (buffer nil buffer-p))

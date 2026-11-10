@@ -111,8 +111,9 @@ the look of its result, the field itself taken away."
         (let* ((end-char (search "w:fldCharType=\"end\"" simple :start2 begin))
                (end (and end-char (search "</w:r>" simple :start2 end-char)))
                (field (and end (subseq simple begin (+ end 6))))
-               (instruction (and field (format nil "~{~a~}" (mapcar (lambda (e) (docx-xml-text (subseq field (car e) (cdr e))))
-                                                                    (xml-elements field "w:instrText")))))
+               (instruction (and field
+                                 (format nil "~{~a~}" (mapcar (lambda (e) (docx-xml-text (subseq field (car e) (cdr e))))
+                                                              (xml-elements field "w:instrText")))))
                (kind (and instruction (cl-ppcre:scan-to-strings "^\\s*(FORMTEXT|FORMDROPDOWN|MERGEFIELD)" instruction))))
           (if (or (null field) (null kind) (search "fldCharType=\"begin\"" field :start2 (+ 10 (search "fldCharType=\"begin\"" field))))
               (progn (write-string (subseq simple p (+ begin 4)) out) (setf p (+ begin 4)))
@@ -154,7 +155,9 @@ made the same label with {{{label}}} for its value."
                      (let ((written nil))
                        (dolist (item items)
                          (cond ((eq (first item) :other) (write-string (second item) out))
-                               ((not written) (write-string (docx-import-place-run key first-props) out) (setf written t)))))
+                               ((not written)
+                                (write-string (docx-import-place-run key first-props) out)
+                                (setf written t)))))
                      (write-string tail out))))
             (cond
               ((zerop (length (string-trim " " text))) paragraph)
@@ -198,9 +201,11 @@ made the same label with {{{label}}} for its value."
                              (setf seen end)
                              (cond ((< end (1+ colon)) (write-string (second item) out))
                                    ((<= start colon)
-                                    ;; the run with the colon: up to it and its spaces; the value's look its own when it holds some
+                                    ;; the run with the colon: up to it and its spaces; the value's look its own when it
+                                    ;; holds some
                                     (let ((keep (subseq item-text 0 (1+ (- colon start)))))
-                                      (write-string (docx-with-properties (docx-run (concatenate 'string keep " ")) (fourth item)) out)
+                                      (write-string (docx-with-properties (docx-run (concatenate 'string keep " "))
+                                                                          (fourth item)) out)
                                       (when (plusp (length (string-trim " " (subseq item-text (1+ (- colon start))))))
                                         (setf value-props (fourth item)))))
                                    (t (unless value-props (setf value-props (fourth item))))))))
@@ -219,7 +224,11 @@ after it along the row the same (Subject: | ... | Date: | ...)."
      (let* ((rows (xml-elements tbl "w:tr"))
             (shaped (loop for row in rows
                           for cells = (xml-elements tbl "w:tc" :start (car row) :end (cdr row))
-                          for label = (and (>= (length cells) 2) (string-trim " :" (docx-xml-text (subseq tbl (car (first cells)) (cdr (first cells))))))
+                          for label = (and (>= (length cells) 2)
+                                           (string-trim " :"
+                                                        (docx-xml-text (subseq tbl
+                                                                               (car (first cells))
+                                                                               (cdr (first cells))))))
                           count (and label (<= 1 (length label) 40) (alpha-char-p (char label 0))))))
        (if (or (< (length rows) 2) (< (* 2 shaped) (length rows)) (search "<w:tblHeader" tbl))
            tbl
@@ -287,7 +296,9 @@ it, and the w:sectPr of the section each of the text's top elements is in, in or
                     (length content)))
          (front (subseq content 0 start))
          (text (subseq content start))
-         (breaks (remove-if-not (lambda (top) (and (string= (first top) "w:p") (search "<w:sectPr" document :start2 (cadr top) :end2 (cddr top))))
+         (breaks (remove-if-not (lambda (top)
+                                  (and (string= (first top) "w:p")
+                                       (search "<w:sectPr" document :start2 (cadr top) :end2 (cddr top))))
                                 text))
          (section (if breaks
                       (let ((span (xml-element document "w:sectPr" :start (cadr (first breaks)) :end (cddr (first breaks)))))
@@ -306,7 +317,8 @@ it, and the w:sectPr of the section each of the text's top elements is in, in or
                   (let* ((span (xml-element document "w:sectPr" :start (cadr top) :end (cddr top)))
                          (xml (subseq document (car span) (cdr span))))
                     (setf governing (append governing (make-list count :initial-element xml)) count 0))))
-              (append governing (make-list count :initial-element (and final (subseq document (cadr final) (cddr final)))))))))
+              (append governing
+                      (make-list count :initial-element (and final (subseq document (cadr final) (cddr final)))))))))
 
 (defun docx-import-contents (front)
   "FRONT with its table of contents, a content control of contents or a TOC
@@ -315,11 +327,18 @@ value true when it had one."
   (let ((control (find-if (lambda (span) (search "Table of Contents" front :start2 (car span) :end2 (cdr span)))
                           (xml-elements front "w:sdt"))))
     (if control
-        (values (concatenate 'string (subseq front 0 (car control)) "<w:p><w:r><w:t>{{{contents}}}</w:t></w:r></w:p>" (subseq front (cdr control))) t)
-        (let ((paragraphs (remove-if-not (lambda (span) (cl-ppcre:scan "<w:instrText[^>]*>\\s*TOC\\s|<w:pStyle w:val=\"TOC" (subseq front (car span) (cdr span))))
+        (values (concatenate 'string
+                             (subseq front 0 (car control))
+                             "<w:p><w:r><w:t>{{{contents}}}</w:t></w:r></w:p>"
+                             (subseq front (cdr control))) t)
+        (let ((paragraphs (remove-if-not (lambda (span)
+                                           (cl-ppcre:scan "<w:instrText[^>]*>\\s*TOC\\s|<w:pStyle w:val=\"TOC"
+                                                          (subseq front (car span) (cdr span))))
                                          (xml-elements front "w:p"))))
           (if paragraphs
-              (values (concatenate 'string (subseq front 0 (car (first paragraphs))) "<w:p><w:r><w:t>{{{contents}}}</w:t></w:r></w:p>"
+              (values (concatenate 'string
+                                   (subseq front 0 (car (first paragraphs)))
+                                   "<w:p><w:r><w:t>{{{contents}}}</w:t></w:r></w:p>"
                                    (subseq front (cdr (car (last paragraphs)))))
                       t)
               (values front nil))))))
@@ -343,7 +362,8 @@ the lines of tuatara.txt, its tables' style and its lists' numberings."
         (let ((kind (cdr (assoc 0 (gethash id (docx-reading-numbering *docx-reading*))))))
           (when abstract
             (cond ((and (equal kind "bullet") (null bullets)) (setf bullets abstract))
-                  ((and kind (not (member kind '("bullet" "none") :test #'string=)) (null numbers)) (setf numbers abstract)))))))
+                  ((and kind (not (member kind '("bullet" "none") :test #'string=)) (null numbers))
+                   (setf numbers abstract)))))))
     (with-output-to-string (s)
       (format s "# How the note's text follows this template's design: made by export-template-from-docx.~%")
       (format s "table style: ~@[~a~]~%table position: ~@[~a~]~%bullets: ~@[~a~]~%numbers: ~@[~a~]~%" table-style table-position bullets numbers))))
@@ -354,7 +374,8 @@ the lines of tuatara.txt, its tables' style and its lists' numberings."
   "PLACE, {{{KEY}}}, as the LaTeX half writes it: with the date pattern of
 the field KEY when it is a date's, {{{KEY:date=d MMMM yyyy}}}."
   (let* ((key (string-trim "{}" place))
-         (field (and *template-import* (find key (template-import-fields *template-import*) :key #'first :test #'string=))))
+         (field (and *template-import*
+                     (find key (template-import-fields *template-import*) :key #'first :test #'string=))))
     (if (and field (eq (second field) :date) (fifth field) (not (find #\} (fifth field))))
         (format nil "{{{~a:date=~a}}}" key (fifth field))
         place)))
@@ -424,8 +445,12 @@ FIELDS for its places and CONTENTS true for a table of contents."
           (format s "\\usepackage{xcolor}~%\\usepackage{titlesec}~%\\usepackage{fancyhdr}~%\\usepackage{lastpage}~%~:[~;\\usepackage{multicol}~%~]" (> columns 1))
           (format s "\\setlength{\\parindent}{0pt}~%\\setlength{\\parskip}{~apt}~%\\linespread{~,2f}~%"
                   (docx-twips-pt (or (getf normal :after) 0))
-                  (let ((line (getf normal :line))) (if (and line (equal (or (getf normal :line-rule) "auto") "auto")) (/ line 240.0) 1.0)))
-          (format s "\\renewcommand{\\normalsize}{\\fontsize{~a}{~a}\\selectfont}\\normalsize~%" (points-text size) (points-text (* 6/5 size)))
+                  (let ((line (getf normal :line)))
+                    (if (and line (equal (or (getf normal :line-rule) "auto") "auto")) (/ line 240.0) 1.0)))
+          (format s
+                  "\\renewcommand{\\normalsize}{\\fontsize{~a}{~a}\\selectfont}\\normalsize~%"
+                  (points-text size)
+                  (points-text (* 6/5 size)))
           (write-string (heading 1 "section") s)
           (write-string (heading 2 "subsection") s)
           (write-string (heading 3 "subsubsection") s)
@@ -451,10 +476,13 @@ FIELDS for its places and CONTENTS true for a table of contents."
                    (styled (pxml text)
                      ;; a paragraph of a style of its own (the title's) in its size and colour
                      (let ((look (style-look pxml)))
-                       (if (and look (or (getf look :colour) (/= (or (getf look :size) 22) (or (getf normal :size) 22))))
+                       (if (and look
+                                (or (getf look :colour) (/= (or (getf look :size) 22) (or (getf normal :size) 22))))
                            (let ((points (/ (or (getf look :size) 22) 2)))
-                             (format nil "{\\fontsize{~a}{~a}\\selectfont~:[~;\\bfseries~]~@[\\color[HTML]{~a}~] ~a\\par}~%"
-                                     (points-text points) (points-text (* 6/5 points)) (getf look :bold) (getf look :colour) text))
+                             (format nil
+                                     "{\\fontsize{~a}{~a}\\selectfont~:[~;\\bfseries~]~@[\\color[HTML]{~a}~] ~a\\par}~%"
+                                     (points-text points) (points-text (* 6/5 points)) (getf look :bold)
+                                     (getf look :colour) text))
                            (format nil "~a\\par~%" text))))
                    (front (xml)
                      (dolist (top (xml-top-elements xml 0 (length xml)))
@@ -463,7 +491,8 @@ FIELDS for its places and CONTENTS true for a table of contents."
                            ((string= (first top) "w:p")
                             (let ((text (docx-import-latex-text element)))
                               (cond ((search "{{{contents}}}" text) (format s "\\tableofcontents~%\\clearpage~%"))
-                                    ((search "{{{subtitle}}}" text) (format s "{{{#subtitle}}}~a{{{/subtitle}}}" (styled element text)))
+                                    ((search "{{{subtitle}}}" text)
+                                     (format s "{{{#subtitle}}}~a{{{/subtitle}}}" (styled element text)))
                                     ((plusp (length text)) (write-string (styled element text) s)))))
                            ((string= (first top) "w:tbl")
                             (let ((rows (mapcar (lambda (row)
@@ -471,7 +500,8 @@ FIELDS for its places and CONTENTS true for a table of contents."
                                                           (xml-elements element "w:tc" :start (car row) :end (cdr row))))
                                                 (xml-elements element "w:tr"))))
                               (format s "\\begin{tabular}{@{}~{~a~}@{}}~%~{~{~a~^ & ~}\\\\~%~}\\end{tabular}\\par~%"
-                                      (make-list (reduce #'max rows :key #'length :initial-value 1) :initial-element "l") rows)))
+                                      (make-list (reduce #'max rows :key #'length :initial-value 1)
+                                                 :initial-element "l") rows)))
                            ((member (first top) '("w:sdt" "w:sdtContent") :test #'string=)
                             (let ((content (xml-element element "w:sdtContent")))
                               (when content
@@ -484,7 +514,9 @@ FIELDS for its places and CONTENTS true for a table of contents."
             (unless (or (search (format nil "{{{~a}}}" (first field)) front-xml)
                         (some (lambda (header) (search (format nil "{{{~a}}}" (first field)) (cdr header))) headers)
                         (member (first field) '("title" "subtitle") :test #'string=))
-              (format s "{{{#~a}}}~a: {{{~a}}}\\par~%{{{/~a}}}" (first field) (latex-escape (or (fourth field) (first field))) (first field) (first field))))
+              (format s "{{{#~a}}}~a: {{{~a}}}\\par~%{{{/~a}}}" (first field) (latex-escape (or (fourth field)
+                                                                                                (first field)))
+                      (first field) (first field))))
           (format s "~:[~*~;\\begin{multicols}{~d}~%~]{{{body}}}~%~:[~;\\end{multicols}~%~]\\end{document}~%"
                   (> columns 1) columns (> columns 1)))))))
 
@@ -503,7 +535,8 @@ sides in twentieths of a point, :MARGINS (TOP RIGHT BOTTOM LEFT)."
     (list :landscape (or (and (search "w:orient=\"landscape\"" section) t) (and width height (> width height)))
           :columns (max 1 columns)
           :size (and width height (list (min width height) (max width height)))
-          :margins (mapcar (lambda (side) (docx-page-number section "w:pgMar" side)) '("w:top" "w:right" "w:bottom" "w:left")))))
+          :margins (mapcar (lambda (side) (docx-page-number section "w:pgMar" side))
+                           '("w:top" "w:right" "w:bottom" "w:left")))))
 
 (defun docx-import-marker (landscape columns scope)
   "A paragraph standing for a page setting in the text read: LANDSCAPE, the
@@ -523,7 +556,8 @@ kept and what not, sentences."
          (main-page (docx-import-page main))
          (marks (make-array n :initial-element nil))
          (sideways 0) (in-columns 0) (notes '()))
-    (flet ((level (i) (and (< i n) (cl-ppcre:scan "^<w:p[\\s>]" (svref tops i)) (docx-import-heading-level (svref tops i))))
+    (flet ((level (i)
+             (and (< i n) (cl-ppcre:scan "^<w:p[\\s>]" (svref tops i)) (docx-import-heading-level (svref tops i))))
            (list-item-p (i) (search "<w:numPr>" (svref tops i)))
            (worded-p (i) (let ((xml (svref tops i)))
                            (or (cl-ppcre:scan "^<w:tbl[\\s>]" xml)
@@ -544,8 +578,10 @@ kept and what not, sentences."
                      (unless (and (equal (getf page :size) (getf main-page :size))
                                   (let ((m (getf page :margins)))
                                     (or (equal m (getf main-page :margins))
-                                        (equal (list (fourth m) (first m) (second m) (third m)) (getf main-page :margins))
-                                        (equal (list (second m) (third m) (fourth m) (first m)) (getf main-page :margins)))))
+                                        (equal (list (fourth m) (first m) (second m) (third m))
+                                               (getf main-page :margins))
+                                        (equal (list (second m) (third m) (fourth m) (first m))
+                                               (getf main-page :margins)))))
                        (pushnew "a later section's own paper size or margins are not kept: its pages are the template's, turned as they were"
                                 notes :test #'string=))
                      (let ((j i))
@@ -559,13 +595,15 @@ kept and what not, sentences."
                                             (setf (svref marks j) (list landscape columns :heading) j subtree-end)
                                             (progn (setf (svref marks j) (list landscape columns :element)) (incf j))))
                                       (progn
-                                        (when (and (worded-p j) (not (and (list-item-p j) (> j i) (list-item-p (1- j)))))
+                                        (when (and (worded-p j)
+                                                   (not (and (list-item-p j) (> j i) (list-item-p (1- j)))))
                                           (setf (svref marks j) (list landscape columns :element)))
                                         (incf j)))))))
                    (setf i end))))
       (when (plusp (+ sideways in-columns))
         (push (format nil "~@[~d later section~:p on pages turned sideways~]~:[~; and ~]~@[~d in columns~] kept as page settings (:EXPORT: page, columns)"
-                      (and (plusp sideways) sideways) (and (plusp sideways) (plusp in-columns)) (and (plusp in-columns) in-columns))
+                      (and (plusp sideways) sideways) (and (plusp sideways) (plusp in-columns))
+                      (and (plusp in-columns) in-columns))
               notes))
       (values (loop for i below n
                     for mark = (svref marks i)
@@ -638,12 +676,14 @@ was. Links clicked on are not noted."
     (dolist (entry entries)
       (cond ((string= entry "word/_rels/settings.xml.rels"))  ; its attached template, left out
             ((uiop:string-suffix-p entry ".rels")
-             (cl-ppcre:do-matches-as-strings (relation "<Relationship [^>]*TargetMode=\"External\"[^>]*>" (docx-reading-text entry))
+             (cl-ppcre:do-matches-as-strings (relation "<Relationship [^>]*TargetMode=\"External\"[^>]*>"
+                                                       (docx-reading-text entry))
                (unless (search "/hyperlink\"" relation)
                  (cl-ppcre:register-groups-bind (target) ("Target=\"([^\"]*)\"" relation)
                    (pushnew (xml-text-value target) targets :test #'string=)))))
             ((cl-ppcre:scan "^word/.*\\.xml$" entry)
-             (cl-ppcre:do-register-groups (field) ("(INCLUDE(?:PICTURE|TEXT)\\s+(?:\\\\[a-z]\\s+)*\"?[^\"<\\s]*)" (docx-reading-text entry))
+             (cl-ppcre:do-register-groups (field)
+               ("(INCLUDE(?:PICTURE|TEXT)\\s+(?:\\\\[a-z]\\s+)*\"?[^\"<\\s]*)" (docx-reading-text entry))
                (pushnew field targets :test #'string=)))))
     (when targets
       (template-import-note (format nil "it fetches from elsewhere when a report opens, which whoever keeps it can see: ~{~a~^, ~} (take them out in Word if they should not be)"
@@ -666,22 +706,31 @@ an error when it cannot be read; writes over nothing that exists."
     (template-import-check-free (list folder tex note media))
     ;; a folder's own entry, which zip -r makes, holds nothing to write
     (setf (docx-reading-entries *docx-reading*)
-          (remove-if (lambda (e) (let ((name (getf e :name))) (and (uiop:string-suffix-p name "/") (docx-safe-file-name-p (string-right-trim "/" name)))))
+          (remove-if (lambda (e)
+                       (let ((name (getf e :name)))
+                         (and (uiop:string-suffix-p name "/") (docx-safe-file-name-p (string-right-trim "/" name)))))
                      (docx-reading-entries *docx-reading*)))
     ;; a part named to land outside the template's folder (../../init.lisp): nothing made at all
-    (let ((unsafe (find-if-not #'docx-safe-file-name-p (docx-reading-entries *docx-reading*) :key (lambda (e) (getf e :name)))))
+    (let ((unsafe (find-if-not #'docx-safe-file-name-p
+                               (docx-reading-entries *docx-reading*)
+                               :key (lambda (e) (getf e :name)))))
       (when unsafe
-        (refuse "~a holds a part named ~s, outside the document: nothing made" (tuatara.io:native-file-name path) (getf unsafe :name))))
+        (refuse "~a holds a part named ~s, outside the document: nothing made"
+                (tuatara.io:native-file-name path)
+                (getf unsafe :name))))
     (unless (string-equal (docx-main-part) "word/document.xml")
       (refuse "~a keeps its text in ~a, not word/document.xml as a template's is: nothing made"
              (tuatara.io:native-file-name path) (docx-main-part)))
-    (let ((document (or (docx-reading-text "word/document.xml") (refuse "~a holds no Word document" (tuatara.io:native-file-name path)))))
+    (let ((document (or (docx-reading-text "word/document.xml")
+                        (refuse "~a holds no Word document" (tuatara.io:native-file-name path)))))
       (multiple-value-bind (front text-xml section before after governing) (docx-import-split document)
         (multiple-value-bind (front contents) (docx-import-contents front)
           (let* ((front (docx-import-fields-in front :front t))
                  (title (or (let ((f (find "title" (template-import-fields *template-import*) :key #'first :test #'string=))) (and f (third f)))
                             (let ((core (docx-reading-part "docProps/core.xml")))
-                              (and core (let ((e (first (xml-find-all core "dc:title")))) (and e (plusp (length (xml-all-text e))) (xml-all-text e)))))))
+                              (and core
+                                   (let ((e (first (xml-find-all core "dc:title"))))
+                                     (and e (plusp (length (xml-all-text e))) (xml-all-text e)))))))
                  (body-paragraph "<w:p><w:r><w:t>{{{body}}}</w:t></w:r></w:p>")
                  (final (cl-ppcre:regex-replace-all "<w:type w:val=\"[^\"]*\"/>" (or section "") ""))
                  (new-document (concatenate 'string before front body-paragraph final after))
@@ -698,14 +747,16 @@ an error when it cannot be read; writes over nothing that exists."
             ;; every part kept as it is but those the import changes or leaves out
             (dolist (entry entries)
               (cond
-                ((string= entry "word/document.xml") (push (cons entry (docx-import-without-changes new-document)) parts))
+                ((string= entry "word/document.xml")
+                 (push (cons entry (docx-import-without-changes new-document)) parts))
                 ((cl-ppcre:scan "(?i)vbaProject|vbaData|word/_rels/vbaProject" entry)
                  (template-import-note "its macros left out"))
                 ((cl-ppcre:scan "^word/comments|^word/people\\.xml" entry)
                  (template-import-note "its comments left out"))
                 ((member entry '("word/footnotes.xml" "word/endnotes.xml") :test #'string=)
                  ;; the separators kept, the notes of the text left out
-                 (let ((xml (docx-reading-text entry)) (element (if (search "footnotes" entry) "w:footnote" "w:endnote")))
+                 (let ((xml (docx-reading-text entry))
+                       (element (if (search "footnotes" entry) "w:footnote" "w:endnote")))
                    (push (cons entry (xml-replace-elements xml element
                                                            (lambda (note) (and (search "w:type=" note :end2 (position #\> note)) note))))
                          parts)))
@@ -739,7 +790,8 @@ an error when it cannot be read; writes over nothing that exists."
             (push (cons *docx-template-design-file* (docx-import-design text-xml)) parts)
             ;; the headers and footers of the text's section, for the LaTeX half
             (let ((rels (docx-part-relations (docx-main-part))))
-              (cl-ppcre:do-register-groups (element type id) ("<w:(header|footer)Reference w:type=\"(\\w+)\" r:id=\"([^\"]+)\"" (or section ""))
+              (cl-ppcre:do-register-groups (element type id)
+                ("<w:(header|footer)Reference w:type=\"(\\w+)\" r:id=\"([^\"]+)\"" (or section ""))
                 (let* ((target (docx-relation-target rels id))
                        (part (and target (cdr (assoc target parts :test #'string=)))))
                   (when (stringp part)

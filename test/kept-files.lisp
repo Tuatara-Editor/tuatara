@@ -61,7 +61,10 @@ state, data or cache; PATH within it, a folder's ending in /; CLASS :KEPT,
     (tuatara.defaults::*look-only*
      "/cases/2026-0001/seized repo/" "/cases/2026-0002/")
     (tuatara.packages::*package-trust*
-     ("https://example.org/signed.git" "SHA256:abcDEF0123456789+/=" "Mere Rotorua" "mere@example.org AAAAC3NzaC1lZDI1NTE5AAAAIExample+/=")
+     ("https://example.org/signed.git"
+      "SHA256:abcDEF0123456789+/="
+      "Mere Rotorua"
+      "mere@example.org AAAAC3NzaC1lZDI1NTE5AAAAIExample+/=")
      ("https://example.org/tools.git" "unsigned" nil nil))
     (tuatara.packages::*fetched-packages*
      ("example https://example.org/tools.git release" "0123456789abcdef0123456789abcdef01234567" "v1.2.0" t
@@ -198,7 +201,10 @@ pinned at, and write the sample files of that version (WRITE-KEPT-FILE-SAMPLES).
             (with-fresh-state
               (let ((text (file-text sample))
                     (path (tuatara.defaults::state-list-path list))
-                    (where (format nil "~a of ~a" (tuatara.defaults::state-list-name list) (car (last (pathname-directory folder))))))
+                    (where (format nil
+                                   "~a of ~a"
+                                   (tuatara.defaults::state-list-name list)
+                                   (car (last (pathname-directory folder))))))
                 (put-state-file list text)
                 (is equal (kept-file-entries list) (tuatara.defaults::read-state-file list path) "~a read" where)
                 (is equal (kept-file-entries list) (tuatara.defaults::state-list-entries list) "~a listed" where)
@@ -206,7 +212,9 @@ pinned at, and write the sample files of that version (WRITE-KEPT-FILE-SAMPLES).
                 (tuatara.defaults::state-list-drop list '("/nowhere/kept-files"))
                 (tuatara.defaults::finish-state-writes)
                 (let ((written (file-text path)))
-                  (true (uiop:string-prefix-p (format nil "# tuatara ~a " (tuatara.defaults::state-list-name list)) written)
+                  (true (uiop:string-prefix-p (format nil
+                                                      "# tuatara ~a "
+                                                      (tuatara.defaults::state-list-name list)) written)
                         "~a begins with its version" where)
                   (is equal (file-lines-but-comments text) (file-lines-but-comments written) "~a written back" where))
                 (is equal (kept-file-entries list) (tuatara.defaults::read-state-file list path) "~a read again" where)))))))
@@ -236,7 +244,8 @@ pinned at, and write the sample files of that version (WRITE-KEPT-FILE-SAMPLES).
         (true (find (list :state name) pinned :key #'kept-file-row-name :test #'equal) "~a is pinned" name)
         ;; a list of trust pinned as one, with the fields its lines have
         (multiple-value-bind (class version more)
-            (kept-file-row-parts (or (find (list :state name) pinned :key #'kept-file-row-name :test #'equal) (list :state name)))
+            (kept-file-row-parts (or (find (list :state name) pinned :key #'kept-file-row-name :test #'equal)
+                                     (list :state name)))
           (declare (ignore class version))
           (is eq (and (tuatara.defaults::state-list-trust list) t) (getf more :trust) "~a's trust pinned" name)
           (when (tuatara.defaults::state-list-trust list)
@@ -257,7 +266,8 @@ pinned at, and write the sample files of that version (WRITE-KEPT-FILE-SAMPLES).
     (is equal '(("bookmarks") ("places") ("gone"))
         (mapcar (lambda (row) (rest (kept-file-row-name row))) (kept-file-breaks pinned now))))
   ;; a list of trust stays one, its lines' fields as pinned; a list may become one
-  (let ((pinned '((:state "same" :remembered 1 :trust t :fields 4) (:state "more-fields" :remembered 1 :trust t :fields 4)
+  (let ((pinned '((:state "same" :remembered 1 :trust t :fields 4)
+                  (:state "more-fields" :remembered 1 :trust t :fields 4)
                   (:state "no-longer" :remembered 1 :trust t :fields 2) (:state "became" :remembered 1)))
         (now '((:state "same" :remembered 2 :trust t :fields 4) (:state "more-fields" :remembered 1 :trust t :fields 5)
                (:state "no-longer" :remembered 1) (:state "became" :remembered 1 :trust t :fields 2))))
@@ -306,8 +316,9 @@ those left out written empty, then a field of its own."
   (with-fresh-state
     (let* ((list tuatara.packages::*package-trust*)
            (where "https://example.org/signed.git"))
-      (put-state-file list (format nil "~a~cunsigned~c~c~%~a~cnewkind:ABC~c~c~%https://example.org/other.git~cunsigned~c~c~%"
-                                   where #\Tab #\Tab #\Tab where #\Tab #\Tab #\Tab #\Tab #\Tab #\Tab))
+      (put-state-file list
+                      (format nil "~a~cunsigned~c~c~%~a~cnewkind:ABC~c~c~%https://example.org/other.git~cunsigned~c~c~%"
+                              where #\Tab #\Tab #\Tab where #\Tab #\Tab #\Tab #\Tab #\Tab #\Tab))
       (tuatara.defaults::state-list-drop list (list where))
       (tuatara.defaults::finish-state-writes)
       (let ((text (file-text (tuatara.defaults::state-list-path list))))
@@ -322,7 +333,8 @@ those left out written empty, then a field of its own."
           (file-lines-but-comments (file-text (tuatara.defaults::state-list-path list))))))
   (with-fresh-state
     (let ((list tuatara.defaults::*lsp-trusted*))
-      (put-state-file list (format nil "# tuatara lsp-trusted 2~%/projects/one/~conly some days~%/projects/two/~%" #\Tab))
+      (put-state-file list
+                      (format nil "# tuatara lsp-trusted 2~%/projects/one/~conly some days~%/projects/two/~%" #\Tab))
       (is equal '("/projects/two/") (tuatara.defaults::state-list-entries list))
       (tuatara.defaults::state-list-drop list '("/projects/one/"))
       (tuatara.defaults::finish-state-writes)
@@ -387,7 +399,8 @@ those left out written empty, then a field of its own."
         ;; written once it can be read again
         (tuatara.defaults::state-list-drop list '("/nowhere/kept-files"))
         (tuatara.defaults::finish-state-writes)
-        (is equal (cons (list "New" "/notes/new.txt" 0 "" () nil) entries) (tuatara.defaults::read-state-file list path))))))
+        (is equal (cons (list "New" "/notes/new.txt" 0 "" () nil) entries)
+            (tuatara.defaults::read-state-file list path))))))
 
 (define-test (kept-files bookmark-to-a-path-not-there-kept)
   ;; a bookmark to a server's folder not mapped just now: gone to, said so, and kept
@@ -431,7 +444,8 @@ those left out written empty, then a field of its own."
           (is equal '("bm-f" "bm-e" "bm-d" "bm-c" "bm-b" "bm-a") (names))
           ;; set by C-x m m: kept, and the echo area says how many there are
           (let ((f (run-keys "C-x m m RET" :file file :width 120)))
-            (true (tuatara.frontend.fake:fake-frame-showing-across-rows f "7 bookmarks, more than *bookmarks-kept* (3)")))
+            (true (tuatara.frontend.fake:fake-frame-showing-across-rows f
+                                                                        "7 bookmarks, more than *bookmarks-kept* (3)")))
           (tuatara.defaults::finish-state-writes)
           (is equal '("notes.txt" "bm-f" "bm-e" "bm-d" "bm-c" "bm-b" "bm-a") (names))
           ;; the oldest still listed and gone to
@@ -442,7 +456,8 @@ those left out written empty, then a field of its own."
           (forget-file-buffers)
           ;; a remembered list keeps no more than its limit
           (tuatara.defaults::state-list-put tuatara.defaults::*recent-files*
-                                            (mapcar (lambda (n) (cons (format nil "/notes/~a.txt" n) nil)) '(1 2 3 4 5)))
+                                            (mapcar (lambda (n) (cons (format nil "/notes/~a.txt" n) nil))
+                                              '(1 2 3 4 5)))
           (tuatara.defaults::finish-state-writes)
           (is = 3 (length (tuatara.defaults::read-recent-files))))))))
 
@@ -451,8 +466,9 @@ those left out written empty, then a field of its own."
   (with-fresh-state
     (let* ((list tuatara.defaults::*bookmarks*)
            (path (tuatara.defaults::state-list-path list)))
-      (put-state-file list (format nil "# tuatara bookmarks 2~%~a# a comment of the later release~%7~cPlain~c/p~cctx~c~c~%"
-                                   (tuatara.defaults::state-list-header list) #\Tab #\Tab #\Tab #\Tab #\Tab))
+      (put-state-file list
+                      (format nil "# tuatara bookmarks 2~%~a# a comment of the later release~%7~cPlain~c/p~cctx~c~c~%"
+                              (tuatara.defaults::state-list-header list) #\Tab #\Tab #\Tab #\Tab #\Tab))
       (tuatara.defaults::state-list-drop list '("nothing one"))
       (tuatara.defaults::finish-state-writes)
       (let ((once (file-text path)))
@@ -494,7 +510,9 @@ those left out written empty, then a field of its own."
       (put-state-file list (format nil "# tuatara bookmarks 2~%~a~%" line))
       (tuatara.defaults::state-list-put list (list (list "work" "/w" 0 "" () nil)))
       (tuatara.defaults::finish-state-writes)
-      (true (member line (file-lines-but-comments (file-text (tuatara.defaults::state-list-path list))) :test #'string=))))
+      (true (member line
+                    (file-lines-but-comments (file-text (tuatara.defaults::state-list-path list)))
+                    :test #'string=))))
   (with-fresh-state
     (let* ((list tuatara.defaults::*grammar-answers*)
            (line (format nil "@category~cyaml" #\Tab)))
@@ -502,7 +520,9 @@ those left out written empty, then a field of its own."
       (is equal '() (tuatara.defaults::state-list-entries list))
       (tuatara.defaults::state-list-put list (list (cons "yaml" t)))
       (tuatara.defaults::finish-state-writes)
-      (true (member line (file-lines-but-comments (file-text (tuatara.defaults::state-list-path list))) :test #'string=))))
+      (true (member line
+                    (file-lines-but-comments (file-text (tuatara.defaults::state-list-path list)))
+                    :test #'string=))))
   (dolist (row *kept-file-entries*)
     (let ((list (symbol-value (first row))))
       (false (tuatara.defaults::state-line-key list (format nil "@later~cthing" #\Tab))
@@ -542,7 +562,8 @@ those left out written empty, then a field of its own."
              (values (tuatara.defaults::apply-state-changes list disk changes)
                      (tuatara.defaults::apply-state-changes
                       list disk (reverse (mapcar #'cdr (tuatara.defaults::compact-state-changes
-                                                         list (reverse (mapcar (lambda (c) (cons "f" c)) changes)))))))))
+                                                         list (reverse (mapcar (lambda (c)
+                                                                                 (cons "f" c)) changes)))))))))
       (multiple-value-bind (in-turn folded) (both '("/0" "/3") '((:put ("/1") 2) (:drop ("/0"))))
         (is equal '("/1") in-turn)
         (is equal in-turn folded))
@@ -553,7 +574,8 @@ those left out written empty, then a field of its own."
                    (disk (remove-duplicates (loop repeat (random 6) collect (path)) :test #'string= :from-end t))
                    (changes (loop repeat (1+ (random 12))
                                   collect (case (random 3)
-                                            (0 (list :put (remove-duplicates (list (path) (path)) :test #'string=) most))
+                                            (0
+                                             (list :put (remove-duplicates (list (path) (path)) :test #'string=) most))
                                             (1 (list :replace (list (path))))
                                             (2 (list :drop (list (path))))))))
               (multiple-value-bind (in-turn folded) (both disk changes)

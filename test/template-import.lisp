@@ -113,7 +113,9 @@ Words.
             ;; the picture in its folder saved, the one outside it not; nothing beside the document
             (true (probe-file (concatenate 'string media "logo.png")))
             (is = 1 (length (tuatara.io:directory-entries media)))
-            (is equal '("logo.png" "survey.tex") (sort (mapcar #'first (tuatara.io:directory-entries (namestring given))) #'string<))))
+            (is equal
+                '("logo.png" "survey.tex")
+                (sort (mapcar #'first (tuatara.io:directory-entries (namestring given))) #'string<))))
         ;; written over by none: a second import refused
         (fail (tuatara.defaults::latex-import source "survey" :tex tex))))))
 
@@ -130,12 +132,15 @@ Words.
         (is string= (alexandria:read-file-into-string source) (alexandria:read-file-into-string tex)))
       ;; groups within groups a hundred thousand deep: read in a moment, kept as written
       (alexandria:write-string-into-file (format nil "\\begin{document}~%\\section{Deep}~%~a~a~%\\end{document}~%"
-                                                 (make-string 100000 :initial-element #\{) (make-string 100000 :initial-element #\}))
+                                                 (make-string 100000 :initial-element #\{)
+                                                 (make-string 100000 :initial-element #\}))
                                          (merge-pathnames "deep.tex" dir))
-      (true (tuatara.defaults::latex-import (namestring (merge-pathnames "deep.tex" dir)) "deep" :tex (namestring (merge-pathnames "out/deep.tex" dir))))
+      (true (tuatara.defaults::latex-import (namestring (merge-pathnames "deep.tex" dir)) "deep"
+                                            :tex (namestring (merge-pathnames "out/deep.tex" dir))))
       ;; no document in it: refused, nothing made
       (alexandria:write-string-into-file "\\section{Only a part}" (merge-pathnames "part.tex" dir))
-      (fail (tuatara.defaults::latex-import (namestring (merge-pathnames "part.tex" dir)) "part" :tex (namestring (merge-pathnames "out/part.tex" dir))))
+      (fail (tuatara.defaults::latex-import (namestring (merge-pathnames "part.tex" dir)) "part"
+                                            :tex (namestring (merge-pathnames "out/part.tex" dir))))
       (false (probe-file (merge-pathnames "out/part.tex" dir))))))
 
 (define-test (template-import placeholder-values)
@@ -174,7 +179,8 @@ Words.
         (let ((template (alexandria:read-file-into-string tex)))
           (true (search (format nil "~%%\\includegraphics{~~/x.png} (left out on import") template) "~a" template)
           (false (search (format nil "~%\\includegraphics{~~/x.png}") template)))
-        (true (member "1 command taking in files outside it (~/..., /... or ../...) made comments" words :test #'string=) "~s" words)))))
+        (true (member "1 command taking in files outside it (~/..., /... or ../...) made comments" words
+                      :test #'string=) "~s" words)))))
 
 (define-test (template-import docx-made-template)
   (with-test-directory (dir)
@@ -182,7 +188,10 @@ Words.
            (folder (namestring (merge-pathnames "pair/" dir)))
            (tex (namestring (merge-pathnames "pair.tex" dir)))
            (note-path (namestring (merge-pathnames "note.org" dir))))
-      (multiple-value-bind (made words) (tuatara.defaults::docx-import source "pair" :folder folder :tex tex :note note-path)
+      (multiple-value-bind (made words) (tuatara.defaults::docx-import source "pair"
+                                                                       :folder folder
+                                                                       :tex tex
+                                                                       :note note-path)
         (is string= note-path made)
         (is string= "6 fields (issue_date, version, reviewer, title, made_for, plan_code)" (first words))
         (true (member "its macros left out" words :test #'string=))
@@ -220,7 +229,8 @@ Words.
           (has "{{{plan_code}}}" (alexandria:read-file-into-string (merge-pathnames "pair/word/header1.xml" dir)))
           (false (probe-file (merge-pathnames "pair/word/vbaProject.bin" dir)))
           (false (probe-file (merge-pathnames "pair/word/comments.xml" dir)))
-          (false (search "trackRevisions" (alexandria:read-file-into-string (merge-pathnames "pair/word/settings.xml" dir))))
+          (false (search "trackRevisions"
+                         (alexandria:read-file-into-string (merge-pathnames "pair/word/settings.xml" dir))))
           (false (search "macroEnabled" (uiop:read-file-string (uiop:parse-native-namestring (namestring (merge-pathnames "pair/[Content_Types].xml" dir))))))
           (has "table style: BlueGrid" design)
           (has "numbers: 5" design)
@@ -254,7 +264,8 @@ Words.
             (picture (concatenate 'string templates "form-media/image1.png")))
         (is string= (concatenate 'string templates "form.org") made)
         (true (probe-file picture))
-        (true (search (format nil "[[file:~a]]" (tuatara.command:abbreviated-path picture)) (alexandria:read-file-into-string made)))
+        (true (search (format nil "[[file:~a]]" (tuatara.command:abbreviated-path picture))
+                      (alexandria:read-file-into-string made)))
         (true (search "#+template: form" (alexandria:read-file-into-string made)))
         ;; a field tagged before the import a keyword of its own
         (true (search (format nil "# Doc ref~%#+doc_ref:~%") (alexandria:read-file-into-string made)))
@@ -285,7 +296,9 @@ is there or TRIES turns have gone."
       (sb-posix:setenv "XDG_CONFIG_HOME" (namestring (merge-pathnames "config/" dir)) 1)
       (unwind-protect
         (multiple-value-bind (f editor)
-            (run-keys (list (format nil "M-x e x p o r t - t e m p l a t e - f r o m - d o c x RET ~a C-j RET" (typed-keys source))
+            (run-keys (list (format nil
+                                    "M-x e x p o r t - t e m p l a t e - f r o m - d o c x RET ~a C-j RET"
+                                    (typed-keys source))
                             (wait-for-buffer "untitled"))
                       :width 120 :height 20)
           (declare (ignore f))
@@ -297,7 +310,9 @@ is there or TRIES turns have gone."
             (true (search "#+version: 0.3" (tuatara.buffer:buffer-string note)))
             (true (probe-file (concatenate 'string templates "report.org")))
             ;; nothing written beside the document given
-            (is equal '("report.docx") (mapcar #'first (tuatara.io:directory-entries (namestring (merge-pathnames "given/" dir)))))
+            (is equal
+                '("report.docx")
+                (mapcar #'first (tuatara.io:directory-entries (namestring (merge-pathnames "given/" dir)))))
             (true (probe-file (merge-pathnames "config/tuatara/docx-templates/report/word/document.xml" dir)))))
         (setf tuatara.defaults::*note-templates-directory* fenced)
         (sb-posix:setenv "XDG_CONFIG_HOME" config 1)))))
@@ -345,7 +360,8 @@ is there or TRIES turns have gone."
                (with-open-file (out path :direction :output :element-type '(unsigned-byte 8) :if-exists :supersede)
                  (write-sequence (tuatara.defaults::zip-octets (list (cons "word/document.xml" document))) out))
                (let ((name (format nil "odd~d" (random 1000000))))
-                 (tuatara.defaults::docx-import path name :folder (namestring (merge-pathnames (format nil "~a/" name) dir))
+                 (tuatara.defaults::docx-import path name
+                                                :folder (namestring (merge-pathnames (format nil "~a/" name) dir))
                                                           :tex (namestring (merge-pathnames (format nil "~a.tex" name) dir))
                                                           :note (namestring (merge-pathnames (format nil "~a.org" name) dir)))))))
       (fail (imported (format nil "<w:document ~a></w:document>" *docx-report-w*)))
@@ -386,11 +402,13 @@ columns with margins of its own, as Word writes sections."
         (write-sequence (tuatara.defaults::zip-octets (docx-sectioned-parts)) out))
       (multiple-value-bind (made words)
           (tuatara.defaults::docx-import source "sect" :folder (namestring (merge-pathnames "sect/" dir))
-                                                       :tex (namestring (merge-pathnames "sect.tex" dir)) :note note-path)
+                                                       :tex (namestring (merge-pathnames "sect.tex" dir))
+                                                       :note note-path)
         (declare (ignore made))
         (let ((note (alexandria:read-file-into-string note-path)))
           (flet ((has (text) (true (search text note) "~s in~%~a" text note)))
-            ;; the table alone sideways: its own drawer; the appendix: on its heading, all under it, sideways in two columns
+            ;; the table alone sideways: its own drawer; the appendix: on its heading, all under it, sideways in two
+            ;; columns
             (has (format nil ":EXPORT:~%page: landscape~%:END:~%|"))
             (has (format nil "* Appendix~%:EXPORT:~%page: landscape~%columns: 2~%:END:~%"))
             ;; the upright sections as they are, the drawers hidden from Org's own exports, the list whole
@@ -402,7 +420,8 @@ columns with margins of its own, as Word writes sections."
         (true (find-if (lambda (w) (search "2 later sections on pages turned sideways" w)) words) "~s" words)
         (true (find-if (lambda (w) (search "own paper size or margins are not kept" w)) words)))
       ;; written again: Word's sections turned as they were, the PDF's pages too
-      (let* ((note (cl-ppcre:regex-replace "#\\+template: sect" (alexandria:read-file-into-string note-path) "#+template: ./sect"))
+      (let* ((note (cl-ppcre:regex-replace "#\\+template: sect"
+                                           (alexandria:read-file-into-string note-path) "#+template: ./sect"))
              (all (docx-text (tuatara.defaults::org-docx-document note :file note-path)))
              (orients (let ((o '()))
                         (cl-ppcre:do-register-groups (attrs) ("<w:sectPr>.*?<w:pgSz([^>]*)/>" all)
@@ -413,7 +432,8 @@ columns with margins of its own, as Word writes sections."
         ;; no upright section left empty after the appendix: the document's last is the appendix's own
         (true (search "w:orient=\"landscape\"" all :start2 (search "<w:sectPr>" all :from-end t))))
       (let ((latex (tuatara.defaults::org-latex-document
-                    (cl-ppcre:regex-replace "#\\+template: sect" (alexandria:read-file-into-string note-path) "#+template: ./sect")
+                    (cl-ppcre:regex-replace "#\\+template: sect"
+                                            (alexandria:read-file-into-string note-path) "#+template: ./sect")
                     :file note-path :enhanced t)))
         (is = 2 (count-matches "\\begin{tuataralandscape}" latex))
         (is = 2 (count-matches "\\end{tuataralandscape}" latex))))))
@@ -437,10 +457,11 @@ columns with margins of its own, as Word writes sections."
           (true (and said (search "http://example.com/seen.png" said)) "~s" words)
           (false (and said (search "clicked" said))))))))
 
-
 (define-test (template-import docx-words-never-latex)
   ;; what a Word document says, its font's name and its header's words, never becomes LaTeX in the template
-  (is string= "{{{title}}} \\textbackslash{}thing" (tuatara.defaults::docx-import-latex-text "<w:p><w:r><w:t>{{{title}}} \\thing</w:t></w:r></w:p>"))
+  (is string=
+      "{{{title}}} \\textbackslash{}thing"
+      (tuatara.defaults::docx-import-latex-text "<w:p><w:r><w:t>{{{title}}} \\thing</w:t></w:r></w:p>"))
   (let ((text (tuatara.defaults::docx-import-latex-text "<w:p><w:r><w:t>{{{x \\input{/etc/passwd} }}}</w:t></w:r></w:p>")))
     (false (search "\\input" text))
     (true (search "\\textbackslash{}input" text)))
@@ -461,9 +482,11 @@ columns with margins of its own, as Word writes sections."
 (define-test (template-import picture-names-kept-apart)
   ;; two pictures of one name from two folders of a document: each saved under a name of its own
   (let ((pictures '()))
-    (flet ((name (source) (let ((file (tuatara.defaults::import-picture-file source "m" (tuatara.io:native-file-name source) pictures)))
-                            (pushnew (cons source file) pictures :test #'equal)
-                            file)))
+    (flet ((name (source)
+             (let ((file (tuatara.defaults::import-picture-file source "m"
+                                                                (tuatara.io:native-file-name source) pictures)))
+               (pushnew (cons source file) pictures :test #'equal)
+               file)))
       (is string= "m/a.png" (name "word/media/a.png"))
       (is string= "m/a (2).png" (name "word/x/a.png"))
       (is string= "m/a.png" (name "word/media/a.png")))))
@@ -475,7 +498,8 @@ columns with margins of its own, as Word writes sections."
                    "\\IfFileExists{/etc/passwd}" "\\includegraphics{\"~/x\"}" "\\import{sec/}{../../f}"
                    "\\includegraphics[width=2cm]{figs/../../x.png}"))
         (inside '("\\input{chapter}" "\\includegraphics[width=0.5\\textwidth]{figs/a.png}" "\\input{a}~\\cite{b}" "\\include{a/b}")))
-    (let ((template (tuatara.defaults::latex-import-without-outside-files (format nil "~{~a~%~}" (append outside inside)))))
+    (let ((template (tuatara.defaults::latex-import-without-outside-files (format nil "~{~a~%~}"
+                                                                                  (append outside inside)))))
       (dolist (line outside)
         (true (search (format nil "%~a (left out on import" line) template) "~a in~%~a" line template))
       (dolist (line inside)

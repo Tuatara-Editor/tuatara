@@ -23,8 +23,10 @@ the editor is busy, so that C-g can stop work and keys typed meanwhile are kept.
 (define-test (scratch startup-buffers)
   (multiple-value-bind (f editor) (fresh-start "")
     (is string= "*lisp-scratch*" (current-name editor))
-    (true (typep (tuatara.modes:buffer-major-mode (tuatara.buffer:find-buffer "*lisp-scratch*")) 'tuatara.defaults::lisp-mode))
-    (true (typep (tuatara.modes:buffer-major-mode (tuatara.buffer:find-buffer "*org-scratch*")) 'tuatara.defaults::org-mode))
+    (true (typep (tuatara.modes:buffer-major-mode (tuatara.buffer:find-buffer "*lisp-scratch*"))
+                 'tuatara.defaults::lisp-mode))
+    (true (typep (tuatara.modes:buffer-major-mode (tuatara.buffer:find-buffer "*org-scratch*"))
+                 'tuatara.defaults::org-mode))
     (true (tuatara.frontend.fake:fake-frame-showing f "*lisp-scratch*" "Lisp"))
     ;; the first text is not a change: nothing to undo, not modified
     (false (tuatara.buffer:buffer-undo-stack (tuatara.buffer:find-buffer "*lisp-scratch*"))))
@@ -71,7 +73,8 @@ the editor is busy, so that C-g can stop work and keys typed meanwhile are kept.
   (multiple-value-bind (f editor) (fresh-start "M-x o r g - s c r a t c h RET C-x k M-x o r g - s c r a t c h RET")
     (is string= "*org-scratch*" (current-name editor))
     (true (tuatara.frontend.fake:fake-frame-showing f "Made a new *org-scratch*"))
-    (true (typep (tuatara.modes:buffer-major-mode (tuatara.buffer:find-buffer "*org-scratch*")) 'tuatara.defaults::org-mode))
+    (true (typep (tuatara.modes:buffer-major-mode (tuatara.buffer:find-buffer "*org-scratch*"))
+                 'tuatara.defaults::org-mode))
     ;; the header comment, word for word, with the keys that save it bound now (C-x C-s)
     (is string= (format nil "# This buffer is for scribbling in org-mode.~%# Start your scribble here and save to file with ~a for persistence.~%~%"
                         (concatenate 'string (string (code-char #x2018)) "C-x C-s" (string (code-char #x2019))))
@@ -199,8 +202,9 @@ then type THEN; return the frontend and the editor."
   (true (showing (evaluating "(/ 1 0)") "Error: arithmetic error DIVISION-BY-ZERO"))
   ;; on one line, a space between words where the report breaks its lines
   (true (showing (evaluating "(car 1)") "Error: The value 1 is not of type LIST"))
-  (is string= "two words" (tuatara.runtime:condition-words (make-condition 'simple-error :format-control (format nil "  two~%    words~%")
-                                                                                        :format-arguments '())))
+  (is string= "two words"
+      (tuatara.runtime:condition-words (make-condition 'simple-error :format-control (format nil "  two~%    words~%")
+                                                                    :format-arguments '())))
   (true (showing (evaluating "(values)") "=> ; No values"))
   ;; running out of stack is reported, not the end of the editor
   (let ((f (evaluating "(labels ((deep (n) (1+ (deep n)))) (deep 1))" :then "o ( + SPC 1 SPC 1 ) C-x C-e")))
@@ -299,7 +303,8 @@ then type THEN; return the frontend and the editor."
         (kill-buffers-visiting dir))
       (false *evaluated-by-hostile-text*)
       (is = 7 (length (cdr (assoc :lisp-mode refusals))))
-      (true (every (lambda (said) (search "is opened safely: nothing was evaluated" said)) (cdr (assoc :lisp-mode refusals))))
+      (true (every (lambda (said) (search "is opened safely: nothing was evaluated" said))
+                   (cdr (assoc :lisp-mode refusals))))
       (true (every (lambda (said) (search "works in Lisp buffers only" said)) (cdr (assoc :as-opened refusals))))))
   ;; nor is the text of a buffer that is not Lisp
   (let ((said nil))
@@ -331,7 +336,9 @@ then type THEN; return the frontend and the editor."
 (define-test (scratch integers-shown-several-ways)
   ;; M-: shows an integer with its octal, hex and character
   (flet ((shown (expression)
-           (multiple-value-bind (f editor) (run-keys (format nil "M-: ~a RET" (key-string expression)) :text "" :width 100)
+           (multiple-value-bind (f editor) (run-keys (format nil "M-: ~a RET" (key-string expression))
+                                                     :text ""
+                                                     :width 100)
              (declare (ignore editor))
              (echo-text f))))
     (is string= "=> 65 (#o101, #x41, #\\A)" (shown "65"))
@@ -341,7 +348,8 @@ then type THEN; return the frontend and the editor."
     (is string= "=> \"x\"" (shown "\"x\""))
     (is string= "(values 1 2) => 1 ; 2" (shown "(values 1 2)")))
   ;; C-u M-: puts the value alone at point
-  (is string= "65" (session-text (nth-value 1 (run-keys (format nil "C-u M-: ~a RET" (key-string "65")) :text "" :width 100)))))
+  (is string= "65"
+      (session-text (nth-value 1 (run-keys (format nil "C-u M-: ~a RET" (key-string "65")) :text "" :width 100)))))
 
 (define-test (scratch value-said-with-its-expression)
   ;; the value after what was evaluated, in the echo area and in *Messages*; a long one cut
@@ -349,7 +357,8 @@ then type THEN; return the frontend and the editor."
     (true (showing f "(setf *print-pretty* *print-pretty*) => "))
     (true (search "(setf *print-pretty* *print-pretty*) => " (messages-text))))
   (true (showing (evaluating (format nil "(list 1~%   2)")) "(list 1 2) => (1 2)"))
-  (true (showing (evaluating (format nil "(list ~{~a~^ ~})" (loop for i below 40 collect i))) "(list 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20… => ")))
+  (true (showing (evaluating (format nil "(list ~{~a~^ ~})" (loop for i below 40 collect i)))
+                 "(list 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20… => ")))
 
 (define-test (scratch stopped-but-not-at-once)
   ;; C-g on an evaluation that cannot be interrupted for a while: never ended outright, said to end on its own, and ends
@@ -359,8 +368,12 @@ then type THEN; return the frontend and the editor."
       (true (showing f "Evaluation stopped"))
       (true (search "ends on its own" (messages-text)))
       (true (< (- (get-internal-real-time) start) (* 4 internal-time-units-per-second))))
-    (true (loop repeat 600 thereis (<= (count "tuatara evaluation" (sb-thread:list-all-threads) :key #'sb-thread:thread-name :test #'equal)
-                                      before)
+    (true (loop repeat 600
+                thereis (<= (count "tuatara evaluation"
+                                   (sb-thread:list-all-threads)
+                                   :key #'sb-thread:thread-name
+                                   :test #'equal)
+                           before)
                 do (sleep 0.01)))))
 
 (defstruct (unprintable-sample (:print-function (lambda (object stream depth)

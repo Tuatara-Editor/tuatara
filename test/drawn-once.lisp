@@ -30,7 +30,8 @@ modal mode line makes nothing while it stays the same.")
   ;; each row's number is counted on from the row before, not looked up afresh,
   ;; and lines hidden by a fold are passed over
   (let ((tuatara-user:*line-numbers-default* :absolute))
-    (multiple-value-bind (f editor) (run-keys "" :text (format nil "~{l~a~%~}" (loop for i below 200 collect i)) :height 12)
+    (multiple-value-bind (f editor)
+        (run-keys "" :text (format nil "~{l~a~%~}" (loop for i below 200 collect i)) :height 12)
       (declare (ignore f))
       (let* ((window (tuatara.command:editor-window editor))
              (b (tuatara.display:window-buffer window))

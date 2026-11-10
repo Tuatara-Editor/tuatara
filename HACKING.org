@@ -3,7 +3,8 @@
 * What you need
 
 - SBCL 2.6 or later, with threads (the Fedora and Debian packages are). The core
-  uses SBCL's threads, foreign calls and compiler, so other Lisps will not build it.
+  uses SBCL's threads, foreign calls and compiler, so other Lisps will not build
+  it.
 - Quicklisp, in =~/quicklisp/= (its default), =~/.local/share/quicklisp/=, or
   where =QUICKLISP_SETUP= names its =setup.lisp=. The Lisp libraries the
   program is built with are listed, each archive by its SHA-256, in
@@ -96,30 +97,31 @@ build/tuatara --gui FILE      # in a window of its own
 
 Each script does nothing when what it makes is up to date. =tools/release.sh=
 lays out a directory to give to others, its program built from the last commit
-in a new folder of its own, =/tmp/tuatara-release-build.XXXXXX/=, so that it names no folder of the machine it
-was built on (it refuses one that names the home folder or the account);
-=tools/appimage.sh= makes an AppImage of
-it (it takes its libraries from Ubuntu 24.04, in a podman container), and
+in a new folder of its own, =/tmp/tuatara-release-build.XXXXXX/=, so that it
+names no folder of the machine it was built on (it refuses one that names the
+home folder or the account); =tools/appimage.sh= makes an AppImage of it (it
+takes its libraries from Ubuntu 24.04, in a podman container), and
 =tools/distro-packages.sh= Fedora, Ubuntu and Arch packages (each made by its
 system's own tools in a podman container; =--check= installs each in a new
 container and runs it: Tuatara colours code only where its sandbox runs, and
-bwrap cannot mount a =/proc= of its own under podman's masks over =/proc= or
-its SELinux label, so the check's container is made without those, =/sys=
-still masked and seccomp kept). The images are pinned by digest in =tools/containers.sh=;
-each build also brings its container's packages up to date (the system's
-update and upgrade), so the libraries bundled are the current ones, and
-=tools/appimage.sh= records them: =build/Tuatara-x86_64.AppImage.libraries.txt=
-(inside the AppImage as =licenses/bundled-libraries.txt=, and a release file)
-lists the package, exact version and SHA-256 of each bundled library with the
-base image's digest and the hashes of appimagetool, its runtime and the exclude
-list, to check against security advisories. Beside it,
-=build/release/Tuatara-x86_64.AppImage.library-sources.tar.zst= holds the
-Ubuntu source package of every bundled library at exactly that version
+bwrap cannot mount a =/proc= of its own under podman's masks over =/proc= or its
+SELinux label, so the check's container is made without those, =/sys= still
+masked and seccomp kept). The images are pinned by digest in
+=tools/containers.sh=; each build also brings its container's packages up to
+date (the system's update and upgrade), so the libraries bundled are the current
+ones, and =tools/appimage.sh= records them:
+=build/Tuatara-x86_64.AppImage.libraries.txt= (inside the AppImage as
+=licenses/bundled-libraries.txt=, and a release file) lists the package, exact
+version and SHA-256 of each bundled library with the base image's digest and the
+hashes of appimagetool, its runtime and the exclude list, to check against
+security advisories. Beside it,
+=build/release/Tuatara-x86_64.AppImage.library-sources.tar.zst= holds the Ubuntu
+source package of every bundled library at exactly that version
 (=tools/library-sources.sh=, deb-src enabled in the container): apt checks each
 file against Ubuntu's signed index, and the script again against its =.dsc=,
-either stopping the build on a file that differs. It is a release file too,
-so that a release carries its libraries' sources itself, whatever Ubuntu's
-archive keeps.
+either stopping the build on a file that differs. It is a release file too, so
+that a release carries its libraries' sources itself, whatever Ubuntu's archive
+keeps.
 
 A release carries every grammar's licence (=grammars/licenses/=), and SBCL's
 and those of the Lisp libraries compiled into the program (=licenses/=); and
@@ -165,8 +167,8 @@ init file (=test/fences.lisp=).
 
 Full compiler warnings fail the suite. Build once with an empty cache too
 (=XDG_CACHE_HOME= pointing at a new directory): a setting used before the file
-that defines it is loaded warns only then. A test that changes a file works on files
-it made itself, in a directory of its own.
+that defines it is loaded warns only then. A test that changes a file works on
+files it made itself, in a directory of its own.
 
 =tools/bidi-conformance.sh= runs the order right-to-left text is shown in
 (=src/display/bidi.lisp=) against Unicode's own conformance files for the
@@ -176,6 +178,18 @@ version of the character data SBCL carries: =BidiTest.txt=,
 Unicode License and not kept here). It prints how many cases of each pass;
 every one should. Run it when that file changes, or when SBCL's Unicode
 version does (then with the new version's files and hashes).
+
+** Line length
+
+The columns (code 120, documents 80, commit messages 72) are aims, so the
+check only lists. =tools/line-check.py [--summary] [ROOT]= prints each
+tracked code, Org and Markdown line past its column as =file:line: length=
+and the total; tables, lines that are only a link, and source and example
+blocks are left out. =--summary= gives the count for each file. ROOT is any
+repository, a package's too. The test =(definitions long-lines-listed)=
+prints the total and never fails on it. =tools/git-hooks/commit-msg= adds
+Signed-off-by and warns about a subject or body line over 72; install it
+like the pre-commit hook.
 
 ** The stable surface
 
@@ -448,8 +462,8 @@ says what it is for.
   background, and the editor answers keys meanwhile.
 - No colours in code but =lisp/theme.lisp=, which derives every shade from the
   theme in force.
-- Nothing in a file is ever run: pictures, PDFs and Office documents are drawn in
-  the sandbox, links are followed only when asked.
+- Nothing in a file is ever run: pictures, PDFs and Office documents are drawn
+  in the sandbox, links are followed only when asked.
 - Pictures (=lisp/viewers/decode.lisp=): OpenJPEG and libjxl make every pixel
   of a JPEG 2000 or JPEG XL picture before ImageMagick can count them, so
   their size is read from the header in the editor first and the picture

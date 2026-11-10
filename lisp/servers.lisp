@@ -167,15 +167,15 @@ DESTINATIONS GPG CLIPBOARD FILES ADDED [PROGRAM])."
 
 (defun parse-server-line (line)
   "The entry LINE of the list of trusted servers writes, (HOST AGENT
-DESTINATIONS GPG CLIPBOARD FILES ADDED [PROGRAM]), or NIL for a line that makes no
-sense: HOST a machine as ssh takes it (HOST-REFUSAL); AGENT, GPG and
-CLIPBOARD true for yes; DESTINATIONS the machines a key of the agent may be
-used for from there, a list; FILES the folder there dropped files go to, or
-NIL; ADDED the day it was trusted, as 2026-11-05; PROGRAM, when the line has
-it and it is not -, the tuatara to run there, a plain path (PLAIN-PATH-P), as
-it goes to the shell there. Every one of these fields must be understood, or
-the line gives nothing; fields after them are passed over
-(STATE-LINE-FIELDS)."
+DESTINATIONS GPG CLIPBOARD FILES ADDED [PROGRAM]), or NIL for a line that makes
+no sense. HOST is a machine as ssh takes it (HOST-REFUSAL). AGENT, GPG and
+CLIPBOARD are true for yes. DESTINATIONS is the machines a key of the agent may
+be used for from there, a list. FILES is the folder there dropped files go to,
+or NIL. ADDED is the day it was trusted, as 2026-11-05. PROGRAM, when the line
+has it and it is not -, is the tuatara to run there, a plain path
+\(PLAIN-PATH-P), as it goes to the shell there. Every one of these fields must
+be understood, or the line gives nothing; fields after them are passed over
+\(STATE-LINE-FIELDS)."
   (let ((fields (state-line-fields line)))
     (when (<= 7 (length fields))
       (destructuring-bind (host agent destinations gpg clipboard files added &optional (program "-") &rest later) fields
@@ -203,12 +203,12 @@ the line gives nothing; fields after them are passed over
   :path-of #'first :fields 8 :trust t :line-key (field-line-key 7 0))
 
 (defun server-permissions (host)
-  "What the machine HOST, as given to tuatara --client=, is trusted with, as
-a plist: :AGENT, the ssh agent forwarded; :DESTINATIONS, the machines its
-keys may be used for from there; :GPG, gpg-agent forwarded; :CLIPBOARD, the
-clipboard shared; :FILES, the folder there files dropped on the window go
-to, or NIL; :PROGRAM, the tuatara to run there, or NIL for the one on its
-PATH. NIL for a machine not on the list, which is given nothing."
+  "What the machine HOST, as given to tuatara --client=, is trusted with, as a
+plist. :AGENT is the ssh agent forwarded. :DESTINATIONS is the machines its keys
+may be used for from there. :GPG is gpg-agent forwarded. :CLIPBOARD is the
+clipboard shared. :FILES is the folder there files dropped on the window go to,
+or NIL. :PROGRAM is the tuatara to run there, or NIL for the one on its PATH.
+NIL for a machine not on the list, which is given nothing."
   (let ((entry (state-list-find *trusted-servers* host)))
     (and entry
          (destructuring-bind (host agent destinations gpg clipboard files added &optional program) entry
@@ -244,7 +244,10 @@ marked, \\[list-delete-marked] the marked ones or the one on the line, after ask
   "Keys of the list of trusted servers (servers-mode's keymap).")
 
 (defparameter *servers-columns* '((" M" :width 2) ("Server" :width 24) ("Agent" :width 5) ("Keys used for" :width 24)
-                                  ("GPG" :width 3) ("Clipboard" :width 9) ("Dropped files to" :width 18) ("Trusted" :width 10)
+                                  ("GPG" :width 3)
+                                  ("Clipboard" :width 9)
+                                  ("Dropped files to" :width 18)
+                                  ("Trusted" :width 10)
                                   ("Tuatara there"))
   "The columns of the list of trusted servers, as TABLE-HEADING-PIECES takes
 them: the mark, the machine, whether the ssh agent is forwarded and the

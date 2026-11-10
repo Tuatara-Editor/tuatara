@@ -134,7 +134,8 @@ blank above it."
       (let ((at (tuatara.buffer:buffer-line-start b (point))))
         (tuatara.buffer:buffer-insert b at (tuatara.buffer:unjoined-line-ends
                                             b at (with-output-to-string (out)
-                                                   (dotimes (i extra) (write-string (tuatara.buffer:buffer-newline b) out))))
+                                                   (dotimes (i extra)
+                                                     (write-string (tuatara.buffer:buffer-newline b) out))))
                                       :group t))
       (move-to-line-end))
     (tuatara-insert)))
@@ -286,9 +287,19 @@ state, while typing. Nothing in a buffer modal editing stays out of."
     ("g q" fill-region) ("g Q" fill-paragraph)
     (">" indent-selection-or-line)
     ("J" select-next-line) ("K" select-previous-line) ("F" delete-other-windows)
-    ("S" jump-back) ("z z" recenter) ("z =" spellcheck-correct) ("z g" spellcheck-add-word) ("z f" spellcheck-add-word-to-file) ("z n" spellcheck-next) ("z p" spellcheck-previous) (":" goto-line)
+    ("S" jump-back)
+    ("z z" recenter)
+    ("z =" spellcheck-correct)
+    ("z g" spellcheck-add-word)
+    ("z f" spellcheck-add-word-to-file)
+    ("z n" spellcheck-next)
+    ("z p" spellcheck-previous)
+    (":" goto-line)
     ("r q" query-replace-regexp) ("r r" replace-regexp) ("?" describe-bindings)
-    ("RET" tuatara-normal-return) ("DEL" tuatara-normal-inert) ("<delete>" tuatara-normal-inert) ("TAB" tuatara-normal-tab))
+    ("RET" tuatara-normal-return)
+    ("DEL" tuatara-normal-inert)
+    ("<delete>" tuatara-normal-inert)
+    ("TAB" tuatara-normal-tab))
   "The NORMAL state bindings, each (KEYS COMMAND), but for those that select by
 the syntax tree (*TUATARA-SYNTAX-BINDINGS*).")
 
@@ -330,10 +341,10 @@ motions, so a list is made again with \\`r' or \\`g r' (\\<buffers-mode>\\[rever
 (defparameter *tuatara-list-keys*
   '("j" "k" "V" "J" "K" "y" "z z" "?" "F")
   "The keys of NORMAL state that lists of lines have (*TUATARA-LIST-KEYMAP*),
-as the agenda has: up and down a line, whole lines selected and grown a line
-at a time and copied, the line in the middle of the window, every binding,
-this window alone on the screen; not the keys that move by words or select
-parts of lines, which have nothing to act on there.")
+as the agenda has. They are up and down a line, whole lines selected and grown
+a line at a time and copied, the line in the middle of the window, every
+binding, this window alone on the screen. They are not the keys that move by
+words or select parts of lines, which have nothing to act on there.")
 
 (defparameter *tuatara-leader-bindings* '()
   "The leader's keys (after \\`SPC' in NORMAL state, or \\`C-x SPC' anywhere)
@@ -527,7 +538,8 @@ Each becomes a command, input-method-LABEL, on its key; & . and - are taken.")
                                              (string-trim "-" (cl-ppcre:regex-replace-all "[^A-Za-z0-9]+" (string-downcase label) "-"))))
                       :tuatara.defaults)))
     (setf (symbol-function name) (lambda () (turn-on-input-method method label))
-          (documentation name 'function) (format nil "Turn on the ~a input method, ~a (*input-method-keys*)." label method)
+          (documentation name 'function)
+          (format nil "Turn on the ~a input method, ~a (*input-method-keys*)." label method)
           (gethash name *commands*) (symbol-function name))
     name))
 

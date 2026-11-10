@@ -224,7 +224,9 @@ them, and the fixnum vector of byte positions APPLY-EDITS should return."
   ;; kinds count together, as the text alone cannot tell them apart; the second value says whether they pair
   (is equal '(2 nil) (multiple-value-list (tuatara.text:rope-bracket-match (tuatara.text:string->rope "(]") 0)))
   (is equal '(2 t) (multiple-value-list (tuatara.text:rope-bracket-match (tuatara.text:string->rope "[]") 0)))
-  (is equal '(0 nil) (multiple-value-list (tuatara.text:rope-bracket-match (tuatara.text:string->rope "{)") 2 :backward t)))
+  (is equal
+      '(0 nil)
+      (multiple-value-list (tuatara.text:rope-bracket-match (tuatara.text:string->rope "{)") 2 :backward t)))
   ;; brackets in the spans given, or escaped when asked, count for nothing; nor do those past START or END
   (let ((rope (tuatara.text:string->rope "(a \")\" \\) b)")))
     (is = 5 (tuatara.text:rope-bracket-match rope 0))
@@ -334,14 +336,18 @@ were before MAP-LINE-SLICES: (LINE START END START-COLUMN END-COLUMN LINE-END)."
                      (map 'vector #'char-code "abc")
                      (map 'vector #'char-code (format nil "abc~%"))
                      (map 'vector #'char-code (format nil "a~cb~%xyz~%~%q" #\Tab))
-                     (concatenate 'vector #(195 169 228 184 173 120 10 121) (map 'vector #'char-code (format nil "~%longer line here~%")))
+                     (concatenate 'vector
+                                  #(195 169 228 184 173 120 10 121)
+                                  (map 'vector #'char-code (format nil "~%longer line here~%")))
                      #(97 255 98 10 128 99 100 10 228 184 10 240 159 152 128 101 10)
                      (map 'vector #'char-code (format nil "a~c~%bc~c~%~c~%d" #\Return #\Return #\Return))
                      (map 'vector #'char-code (format nil "a~cb~%~c" #\Return #\Return)))))
     (dolist (octets texts)
       (dolist (crlf '(nil t))
         (let ((b (tuatara.buffer:make-buffer (format nil " line-slices-~d" (random 100000))
-                                             :text (tuatara.text:octets->rope (coerce octets '(simple-array (unsigned-byte 8) (*)))))))
+                                             :text (tuatara.text:octets->rope (coerce octets
+                                                                                      '(simple-array (unsigned-byte 8)
+                                                                                        (*)))))))
           (unwind-protect
                (progn
                  (when crlf (setf (tuatara.buffer:buffer-local b :line-ending) :crlf))
@@ -350,7 +356,9 @@ were before MAP-LINE-SLICES: (LINE START END START-COLUMN END-COLUMN LINE-END)."
                                 do (let ((found '()))
                                      (tuatara.text:map-line-slices
                                       (lambda (&rest row) (push row found))
-                                      (tuatara.buffer:buffer-text b) 0 (1+ (tuatara.buffer:buffer-size b)) left right :crlf crlf)
+                                      (tuatara.buffer:buffer-text b) 0
+                                      (1+ (tuatara.buffer:buffer-size b)) left right
+                                      :crlf crlf)
                                      (is equal (line-slices-by-steps b left right) (nreverse found)
                                          "~s ~:[LF~;CRLF~] ~d-~d" octets crlf left right)))))
             (tuatara.buffer:kill-buffer b)))))))
@@ -371,13 +379,15 @@ were before MAP-LINE-SLICES: (LINE START END START-COLUMN END-COLUMN LINE-END)."
       (let ((each (/ (- (made 400) (made 100)) 300)))
         (true (< each 20000) "~:d octets a line" (round each)))))
   ;; a line longer than the block: read on to its end, the same as the buffer's own steps find
-  (let ((b (tuatara.buffer:make-buffer " long-line-slices" :text (format nil "ab~%~a~%cd" (make-string 50000 :initial-element #\x)))))
+  (let ((b (tuatara.buffer:make-buffer " long-line-slices"
+                                       :text (format nil "ab~%~a~%cd" (make-string 50000 :initial-element #\x)))))
     (unwind-protect
          (dolist (columns '((0 3) (4090 4100) (49990 50010)))
            (destructuring-bind (left right) columns
              (let ((found '()))
                (tuatara.text:map-line-slices (lambda (&rest slice) (push slice found))
-                                             (tuatara.buffer:buffer-text b) 0 (1+ (tuatara.buffer:buffer-size b)) left right)
+                                             (tuatara.buffer:buffer-text b) 0
+                                             (1+ (tuatara.buffer:buffer-size b)) left right)
                (is equal (line-slices-by-steps b left right) (nreverse found) "~d-~d" left right))))
       (tuatara.buffer:kill-buffer b))))
 
@@ -389,7 +399,9 @@ were before MAP-LINE-SLICES: (LINE START END START-COLUMN END-COLUMN LINE-END)."
          (total (tuatara.text:rope-octet-length rope))
          (found '()))
     (tuatara.text:map-line-slices (lambda (&rest slice) (push slice found)) rope 0 1 0 10
-                                  :width (lambda (code column before) (declare (ignore column before)) (values (if (= code #x200B) 0 1) code)))
+                                  :width (lambda (code column before)
+                                           (declare (ignore column before))
+                                           (values (if (= code #x200B) 0 1) code)))
     (destructuring-bind (line start end start-column end-column line-end) (first found)
       (is = 0 line)
       (is = 0 start)
@@ -479,7 +491,11 @@ cd")
 
 (define-test (rope octet-lengths-counted)
   ;; counted without making the octets, the same as making them: raw bytes one, other lone surrogates three
-  (let ((pieces (list "a" "é" "€" "😀" (string (code-char #xDC80)) (string (code-char #xDCFF)) (string (code-char #xD800)) (string #\Newline))))
+  (let ((pieces (list "a" "é" "€" "😀"
+                      (string (code-char #xDC80))
+                      (string (code-char #xDCFF))
+                      (string (code-char #xD800))
+                      (string #\Newline))))
     (dotimes (i 200)
       (let ((s (format nil "~{~a~}" (loop repeat (random 12) collect (nth (random (length pieces)) pieces)))))
         (is = (length (tuatara.text:string-octets s)) (tuatara.text:string-octet-length s))
@@ -539,7 +555,9 @@ cd")
   ;; in columns: a wide character takes two
   (is string= "日本語…" (tuatara.display:shorten-string "日本語のテキスト" 7))
   ;; on one line: runs of line ends and other control characters one space, the ends trimmed
-  (is string= "C:\\photos\\x.jpg: $HOME no face" (tuatara.text:one-line (format nil " C:\\photos\\x.jpg:~c$HOME~c~%no face~%" #\Tab #\Return)))
+  (is string=
+      "C:\\photos\\x.jpg: $HOME no face"
+      (tuatara.text:one-line (format nil " C:\\photos\\x.jpg:~c$HOME~c~%no face~%" #\Tab #\Return)))
   (false (tuatara.text:one-line nil))
   ;; a name without its namespace's prefix
   (is string= "Description" (tuatara.text:xml-unprefixed "rdf:Description"))

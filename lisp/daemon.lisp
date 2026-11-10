@@ -43,13 +43,14 @@ shows as owned by that id."
 
 (defun runtime-folder-refusal (stamp what uid &key (private t) on-the-way)
   "Why the folder WHAT, as STAMP (not following a link) says it is, is not
-safe for a daemon's socket, in words, or NIL when it is: there, a folder and
-no link, UID's, and with PRIVATE for UID alone (mode 700), else at least not
-writable by others. With ON-THE-WAY, WHAT is a folder on the way to that one
-and need only be root's or UID's, and writable by others only with the
-sticky bit, as /tmp is, where no one may remove or rename what is another's;
-a sticky one may also be owned by an id the editor's namespace of user ids
-leaves out (OUTSIDE-OWNER), as /tmp is seen from a container."
+safe for a daemon's socket, in words, or NIL when it is safe. It is safe when
+it is a folder and no link and is UID's. With PRIVATE it must be for UID alone
+(mode 700), else at least not writable by others. With ON-THE-WAY, WHAT is a
+folder on the way to that one. It need only be root's or UID's, and writable
+by others only with the sticky bit, as /tmp is, where no one may remove or
+rename what is another's. A sticky one may also be owned by an id the editor's
+namespace of user ids leaves out (OUTSIDE-OWNER), as /tmp is seen from a
+container."
   (let ((mode (and stamp (tuatara.io:stamp-mode stamp))))
     (cond ((null stamp) (format nil "~a is not there" what))
           ((eq (tuatara.io:stamp-kind stamp) :symlink) (format nil "~a is a link, not a folder" what))
@@ -66,11 +67,11 @@ leaves out (OUTSIDE-OWNER), as /tmp is seen from a container."
 
 (defun folder-refusal (path what uid &key (private t))
   "Why the folder at PATH, a native name, is not safe to keep what only UID
-may change in, in words naming it WHAT, or NIL when it is: named from the
-root, every folder on the way to it from there safe as RUNTIME-FOLDER-REFUSAL
-says with ON-THE-WAY, a link on the way followed and where it leads checked
-the same way, and the folder itself no link and safe as that says with
-PRIVATE."
+may change in, in words naming it WHAT, or NIL when it is safe. It is checked
+named from the root. Every folder on the way to it from there must be safe as
+RUNTIME-FOLDER-REFUSAL says with ON-THE-WAY. A link on the way is followed and
+where it leads is checked the same way. The folder itself must be no link and
+safe as that says with PRIVATE."
   (flet ((named (parts) (format nil "/~{~a~^/~}" (reverse parts)))
          (on-the-way (name stamp)
            (runtime-folder-refusal stamp (format nil "~a, on the way to ~a," name what) uid :on-the-way t)))
@@ -141,14 +142,16 @@ daemon (DAEMON-NAME-P) or one too long for a socket."
 ;;; A daemon: its lock, its socket, and the clients being greeted
 
 (defstruct (daemon (:constructor %make-daemon (name lock listener)) (:copier nil))
-  "A daemon running in this process: NAME, its LOCK held on its lock file (a
-descriptor), the LISTENER socket it takes connections on (a descriptor); its
-QUEUE, the events of its frames; the THREAD taking connections; GREETING,
-how many are being greeted; ARRIVED, the remote frontends greeted and not
-yet given a frame, newest first, each a new client's or (:WINDOW REMOTE
-WHAT) for a window asked of a client, under MUTEX; NAMESPACE, the mount
-namespace it runs in; ENDING, true once it was asked to end with no one to
-ask (ASK-DAEMON-TO-END)."
+  "A daemon running in this process. NAME is its name, and its LOCK is held on
+its lock file (a descriptor). LISTENER is the socket it takes connections on
+(a descriptor). QUEUE holds the events of its frames, and THREAD is the thread
+taking connections. GREETING is how many are being greeted. ARRIVED is the
+remote frontends greeted and not yet given a frame, newest first, under MUTEX;
+each is a new client's or (:WINDOW REMOTE WHAT) for a window asked of a
+client. NAMESPACE is the mount namespace it runs in. ENDING is true once it
+was asked to end with no one to ask (ASK-DAEMON-TO-END). LEAVING is a
+semaphore signalled once it has ended while GUARD-DAEMON-LEAVING watches it,
+NIL before."
   name lock listener
   (queue (tuatara.frontend:make-event-queue))
   (thread nil)
@@ -156,7 +159,8 @@ ask (ASK-DAEMON-TO-END)."
   (arrived '())
   (mutex (sb-thread:make-mutex :name "daemon"))
   (namespace (tuatara.io:mount-namespace (sb-posix:getpid)))
-  (ending nil))
+  (ending nil)
+  (leaving nil))
 
 (setf (documentation 'daemon-p 'function) "True when OBJECT is a DAEMON."
       (documentation 'daemon-name 'function) "The name of DAEMON."
@@ -223,10 +227,11 @@ not safe (DAEMON-FOLDER). Returns the DAEMON."
   "The most clients a daemon is shown by at once; one more is refused.")
 
 (defun peer-refusal (uid namespace &key (own-uid (sb-posix:geteuid)) own-namespace)
-  "Why a program at the other end of a connection, run by the account with
-user id (UID) UID in the mount namespace NAMESPACE, may not be a client of a
-daemon run by OWN-UID in OWN-NAMESPACE, in words, or NIL when it may: it must
-be run by the same account, and see the same files at the same paths."
+  "Why a program at the other end of a connection may not be a client of a
+daemon run by OWN-UID in OWN-NAMESPACE, in words, or NIL when it may. The
+program is run by the account with user id (UID) UID in the mount namespace
+NAMESPACE. It must be run by the same account, and see the same files at the
+same paths."
   (cond ((not (eql uid own-uid))
          "This daemon is another user's: it takes clients only of the account that started it")
         ((or (null namespace) (not (equal namespace own-namespace)))
@@ -269,13 +274,13 @@ when this kernel cannot give the pidfd."
           (sb-posix:close pidfd)))))
 
 (defun take-connection (daemon editor fd)
-  "Take the new connection FD to DAEMON, whose editor is EDITOR: refused,
-saying why, when its peer is another account's or in another mount namespace
-\(PEER-REFUSAL), or that namespace cannot be read and OpenSSH's server did not
-start it (PEER-NAMESPACE), or as many are greeted as may be at once
-\(*MOST-GREETING*); else greeted on a thread of its own (GREET), told when
-OpenSSH's server carries it, for only a client on another machine may then be
-taken."
+  "Take the new connection FD to DAEMON, whose editor is EDITOR. It is
+refused, saying why, when its peer is another account's or in another mount
+namespace \(PEER-REFUSAL). It is refused too when that namespace cannot be
+read and OpenSSH's server did not start it (PEER-NAMESPACE), or when as many
+are greeted as may be at once \(*MOST-GREETING*). Otherwise it is greeted on a
+thread of its own (GREET), and told when OpenSSH's server carries it, for only
+a client on another machine may then be taken."
   (multiple-value-bind (namespace pid by-ssh) (peer-namespace fd)
     (let* ((uid (nth-value 1 (tuatara.io:peer-credentials fd)))
            (own (daemon-namespace daemon))
@@ -341,10 +346,14 @@ A new client is let go when as many show the editor as may (*MOST-CLIENTS*)."
                                               *most-clients*)))
                        (hand-on remote)))))
          (tuatara.frontend:remote-refused (condition)
-           (tuatara.runtime:debug-report :daemon "a client refused: ~a" (tuatara.frontend:remote-refused-words condition))
+           (tuatara.runtime:debug-report :daemon
+                                         "a client refused: ~a"
+                                         (tuatara.frontend:remote-refused-words condition))
            (tuatara.frontend:shut-and-close fd))
          (error (condition)
-           (tuatara.runtime:debug-report :daemon "greeting a client failed: ~a" (tuatara.runtime:failure-words condition))
+           (tuatara.runtime:debug-report :daemon
+                                         "greeting a client failed: ~a"
+                                         (tuatara.runtime:failure-words condition))
            (tuatara.frontend:shut-and-close fd)))
     (sb-thread:with-mutex ((daemon-mutex daemon)) (decf (daemon-greeting daemon)))))
 
@@ -488,17 +497,19 @@ for: what is greeted wakes the editor."
       next)))
 
 (defun start-client (editor client request)
-  "Do what CLIENT of EDITOR asked for as it attached, REQUEST, in its frame:
-open its files (standard input among them), each where its +LINE asks, the
-first shown; or compare or merge files; or, asking for none, take up the
-folder of the client that ended last, with its layouts, when the session is
-kept (TAKE-UP-ENDED-FOLDER); open the frames asked for; or stop the editor. A
-file that cannot be opened is said, as when the editor starts with it."
+  "Do what CLIENT of EDITOR asked for as it attached, REQUEST, in its frame.
+It may ask to open its files (standard input among them), each where its +LINE
+asks, the first shown. It may ask to compare or merge files. Asking for none,
+it takes up the folder of the client that ended last, with its layouts, when
+the session is kept (TAKE-UP-ENDED-FOLDER). It may also ask to open the frames
+asked for, or to stop the editor. A file that cannot be opened is said, as
+when the editor starts with it."
   (let* ((merge (tuatara.frontend:request-merge request))
          (entries (if merge
                       (list (fourth merge))
                       (loop for (path) in (tuatara.frontend:request-files request)
-                            collect (if (or (tuatara.frontend:request-safe request) (tuatara.frontend:request-hex request))
+                            collect (if (or (tuatara.frontend:request-safe request)
+                                            (tuatara.frontend:request-hex request))
                                         (list path :safe (tuatara.frontend:request-safe request)
                                                    :hex (tuatara.frontend:request-hex request))
                                         path))))
@@ -648,11 +659,56 @@ folder of the client working in the frame first."
                                '(#\s #\l)))
                (save-buffers-saying buffers "Saved ~d file~:p")))))
 
+(defparameter *leaving-seconds* 60
+  "The seconds a daemon told to stop has to end. Everything it does as it
+stops takes less; one still at work then is ended, so that a daemon of its
+name can start again (GUARD-DAEMON-LEAVING).")
+
+(defvar *end-stuck-daemon* (lambda () (sb-ext:exit :code 1 :abort t))
+  "Called, with nothing, to end the process of a daemon that did not stop in
+time (GUARD-DAEMON-LEAVING).")
+
+(defun stuck-daemon-words (thread)
+  "What a daemon that did not stop in time writes in its log: the threads
+running, then the calls under way on THREAD, its editor's, innermost first,
+each by its function alone, never what it was given. THREAD gets two seconds
+to answer; one that cannot be asked is said so."
+  (let ((calls '()) (answered (sb-thread:make-semaphore :name "the calls of a stuck daemon")))
+    (tuatara.runtime:ignoring-errors-reported ("asking the editor's thread for its calls")
+      (sb-thread:interrupt-thread thread (lambda ()
+                                           (setf calls (let ((tuatara.runtime:*secret-at-hand* t))
+                                                         (tuatara.runtime:backtrace-lines)))
+                                           (sb-thread:signal-semaphore answered))))
+    (sb-thread:wait-on-semaphore answered :timeout 2)
+    (format nil "The daemon did not stop in time and is ended. Its threads: ~{~a~^, ~}~%~
+                 ~:[Its editor's thread did not say what it waits for~;Its editor's thread waits in:~:*~{~%  ~a~}~]"
+            (mapcar #'sb-thread:thread-name (sb-thread:list-all-threads))
+            calls)))
+
+(defun guard-daemon-leaving (daemon seconds)
+  "From now on DAEMON, whose editor runs on this thread, has SECONDS to end:
+when it has not (CLOSE-DAEMON's caller signals its LEAVING), what held it is
+written in its log (STUCK-DAEMON-WORDS) and the process ends, by
+*END-STUCK-DAEMON*. The first call counts; those after it change nothing."
+  (unless (daemon-leaving daemon)
+    (let ((left (sb-thread:make-semaphore :name "the daemon has ended"))
+          (editor-thread sb-thread:*current-thread*))
+      (setf (daemon-leaving daemon) left)
+      (tuatara.runtime:make-guarded-thread
+       (lambda ()
+         (unless (sb-thread:wait-on-semaphore left :timeout seconds)
+           (unwind-protect (progn (format *error-output* "~a~%" (stuck-daemon-words editor-thread))
+                                  (finish-output *error-output*))
+             (funcall *end-stuck-daemon*))))
+       :name "tuatara daemon leaving"))))
+
 (defun stop-daemon (editor &key (words "The daemon was stopped (M-x daemon-quit)") (here (current-client editor)))
   "Stop EDITOR, a daemon's: every client but HERE, by default the one working
 in the frame, is told the daemon ends, with WORDS, and exits 1; HERE exits
 0; then the editor ends, writing what it keeps as an editor does, at once
-wherever this is called from (it is woken)."
+wherever this is called from (it is woken), within *LEAVING-SECONDS*
+(GUARD-DAEMON-LEAVING)."
+  (guard-daemon-leaving *daemon* *leaving-seconds*)
   (dolist (client (editor-clients editor))
     (unless (or (eq client here) (client-ended client) (not (client-remote client)))
       (setf (client-exit-code client) 1 (client-exit-words client) words)
@@ -747,21 +803,23 @@ stopped instead."
           (lost-changes-count-words lost)))
 
 (defun stop-with-no-one-to-ask (editor words &key keep-changes here)
-  "Stop EDITOR, a daemon's, where no one can be asked: the changes not saved
-are written as auto-saved copies first (AUTO-SAVE-UNSAVED), as the
-auto-saving settings allow and never of an encrypted file's text or a file
-opened safely, so that they are kept even if the process is killed while it
-waits; then the saves running are waited for, at most
-*NO-ONE-TO-ASK-SAVE-SECONDS* (those still running then said in the log);
-then every client but HERE is told WORDS and exits 1, HERE exiting 0
-\(STOP-DAEMON). Changes no copy would keep (UNSAVED-NOT-KEPT) are lost, said
-in the daemon's log (SAY-IN-DAEMON-LOG); with KEEP-CHANGES nothing is
-stopped while there are such changes, and why is returned in words
-\(LOST-CHANGES-WORDS). NIL once stopped."
+  "Stop EDITOR, a daemon's, where no one can be asked. First the changes not
+saved are written as auto-saved copies (AUTO-SAVE-UNSAVED), as the auto-saving
+settings allow and never of an encrypted file's text or a file opened safely,
+so that they are kept even if the process is killed while it waits. Then the
+saves running are waited for, at most *NO-ONE-TO-ASK-SAVE-SECONDS* (those
+still running then said in the log). Then every client but HERE is told WORDS
+and exits 1, HERE exiting 0 \(STOP-DAEMON). Changes no copy would keep
+(UNSAVED-NOT-KEPT) are lost, and this is said in the daemon's log
+(SAY-IN-DAEMON-LOG). With KEEP-CHANGES nothing is stopped while there are such
+changes, and why is returned in words \(LOST-CHANGES-WORDS). NIL once stopped.
+However it goes, the process ends in the time the saves are given and
+*LEAVING-SECONDS* (GUARD-DAEMON-LEAVING)."
   (let ((lost (unsaved-not-kept)))
     (if (and lost keep-changes)
         (lost-changes-words lost)
-        (progn (auto-save-unsaved)
+        (progn (guard-daemon-leaving *daemon* (+ *no-one-to-ask-save-seconds* *leaving-seconds*))
+               (auto-save-unsaved)
                (unless (wait-for-saves-begun :seconds *no-one-to-ask-save-seconds*)
                  (say-in-daemon-log "The daemon stopped with no one to ask while saves still ran, ~
                                      cut short: ~{~a~^, ~}"
@@ -818,13 +876,13 @@ says, rather than end the process at once."
   nil)
 
 (defun end-when-asked (editor)
-  "Tick function of a daemon (*TICK-FUNCTIONS*): once it was asked to end
-\(ASK-DAEMON-TO-END), stop EDITOR as tuatara --stop with no terminal does
-\(STOP-WITH-NO-ONE-TO-ASK), but whatever changes would be lost, as it is
-not asked whether it may, every change an auto-saved copy may keep is kept
-so, those that cannot be are said in the log, every client exits 1, and the
-daemon writes what it keeps. Taken in inside a question too, which is
-given up."
+  "Tick function of a daemon (*TICK-FUNCTIONS*). Once it was asked to end
+\(ASK-DAEMON-TO-END), it stops EDITOR as tuatara --stop with no terminal does
+\(STOP-WITH-NO-ONE-TO-ASK). Whatever changes would be lost, it is not asked
+whether it may: every change an auto-saved copy may keep is kept so. Those
+that cannot be kept are said in the log, every client exits 1, and the daemon
+writes what it keeps. It is also taken in inside a question, which is given
+up."
   (let ((daemon *daemon*))
     (when (and daemon (daemon-ending daemon) (editor-running editor))
       (stop-with-no-one-to-ask editor "The daemon was asked to end (SIGTERM, as at logout)" :here nil)))
@@ -840,7 +898,8 @@ when it is asked to (END-WHEN-ASKED), its session kept in a file of its own
 \(*SESSION-NAME*). SETUP is called with the editor as RUN-EDITOR calls it
 \(the init file read, the packages loaded), and READY, a function of none,
 once the editor runs and takes clients. DAEMON is closed once the editor has
-ended (CLOSE-DAEMON). Returns the editor."
+ended (CLOSE-DAEMON), and told it need no longer be ended by force
+(GUARD-DAEMON-LEAVING). Returns the editor."
   (let ((idle (tuatara.frontend:make-null-frontend (daemon-queue daemon)))
         (*session-name* (format nil "session-daemon-~a" (daemon-name daemon))))
     (setf *daemon* daemon)
@@ -855,6 +914,9 @@ ended (CLOSE-DAEMON). Returns the editor."
                      :start (lambda (editor)
                               (start-taking-connections daemon editor)
                               (when ready (funcall ready))))
-      (setf *tick-functions* (remove-if (lambda (f) (member f '(take-in-clients end-when-asked end-clients-without-buffers))) *tick-functions*)
+      (setf *tick-functions*
+            (remove-if (lambda (f) (member f '(take-in-clients end-when-asked end-clients-without-buffers)))
+                       *tick-functions*)
             *daemon* nil)
-      (close-daemon daemon))))
+      (close-daemon daemon)
+      (when (daemon-leaving daemon) (sb-thread:signal-semaphore (daemon-leaving daemon))))))

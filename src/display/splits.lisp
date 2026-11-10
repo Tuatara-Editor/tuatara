@@ -10,7 +10,8 @@
 
 (defclass split (area)
   ((arrangement :initarg :arrangement :accessor split-arrangement
-                :documentation ":STACKED when the areas in the split are one above another, :SIDE-BY-SIDE when they are side by side.")
+                :documentation ":STACKED when the areas in the split are one above another,
+:SIDE-BY-SIDE when they are side by side.")
    (children :initarg :children :initform '() :accessor split-children
              :documentation "The areas in the split, from the top or from the left."))
   (:documentation "A split of the screen: two areas or more, one above another or side by side."))
@@ -296,6 +297,29 @@ to bottom. The windows keep their shares. Returns AREA."
         (setf (area-share child) (/ 1 n))
         (balance-area child)))))
 
+(defun area-arranged (window arrangement)
+  "WINDOW, or the nearest area around it, that is a part of a split arranged
+as ARRANGEMENT; the outermost area when there is no such split."
+  (let ((area window))
+    (loop while (and (area-parent area) (not (eq (split-arrangement (area-parent area)) arrangement)))
+          do (setf area (area-parent area)))
+    area))
+
+(defun split-percentages (window arrangement)
+  "The room each part of the nearest split around WINDOW arranged as
+ARRANGEMENT has, as laid out last, in whole per cent, first to last, adding up
+to 100; NIL when there is no such split."
+  (let ((parent (area-parent (area-arranged window arrangement))))
+    (when parent
+      (let* ((sizes (mapcar (lambda (child) (area-extent child arrangement)) (split-children parent)))
+             (total (reduce #'+ sizes))
+             (sum 0)
+             (reached 0))
+        (loop for size in sizes
+              do (incf sum size)
+              collect (let ((to (round (* 100 sum) total)))
+                        (prog1 (- to reached) (setf reached to))))))))
+
 (defun resize-area (window delta arrangement)
   "Make WINDOW DELTA rows taller (ARRANGEMENT :STACKED) or columns wider
 (:SIDE-BY-SIDE), or smaller when DELTA is negative, as laid out last: the rows
@@ -304,9 +328,7 @@ from those before it, the nearest first, and go to the next area (or the one
 before). No window is left smaller than *WINDOW-MIN-HEIGHT* or
 *WINDOW-MIN-WIDTH* allow. Returns how many rows or columns it changed by, 0
 when there is no room."
-  (let ((area window))
-    (loop while (and (area-parent area) (not (eq (split-arrangement (area-parent area)) arrangement)))
-          do (setf area (area-parent area)))
+  (let ((area (area-arranged window arrangement)))
     (let ((parent (area-parent area)))
       (if (null parent)
           0

@@ -37,20 +37,21 @@ among them; NIL for a class Tuatara does not know."
           ((string= name "punct") punct)
           ((string= name "cntrl") (format nil "~c-~c" (code-char 0) (code-char 31)))
           ((member name '("ascii" "unibyte") :test #'string=) (format nil "~c-~c" (code-char 0) (code-char 127)))
-          ((member name '("nonascii" "multibyte") :test #'string=) (format nil "~c-~c" (code-char 128) (code-char (1- char-code-limit))))
+          ((member name '("nonascii" "multibyte") :test #'string=)
+           (format nil "~c-~c" (code-char 128) (code-char (1- char-code-limit))))
           ((string= name "graph") (format nil "!-~~~c-~c" (code-char 161) (code-char (1- char-code-limit))))
           ((string= name "print") (format nil " -~~~c-~c" (code-char 160) (code-char (1- char-code-limit))))
           (t nil))))
 
 (defun org-regexp-to-ppcre (regex)
   "REGEX, a regular expression in Org's regexp syntax, as one CL-PPCRE reads:
-its groups, alternatives and counts (a backslash before the bracket, the
-bar or the brace) made CL-PPCRE's, and a bracket, bar or brace with no
-backslash a letter; its marks for the text's start and end, the edges of
-words and symbols, words and spaces made CL-PPCRE's, [:class:] as
-ORG-REGEXP-CHAR-CLASS has it; a backslash in [...] a letter; ^ and $ anchors only
-where that syntax takes them so, * + ? at the start letters. NIL for what cannot be
-read so: a category, a syntax class not listed, a backslash at the end."
+its groups, alternatives and counts (a backslash before the bracket, the bar or
+the brace) made CL-PPCRE's, and a bracket, bar or brace with no backslash a
+letter. Its marks for the text's start and end, the edges of words and symbols,
+words and spaces made CL-PPCRE's, [:class:] as ORG-REGEXP-CHAR-CLASS has it. A
+backslash in [...] a letter; ^ and $ anchors only where that syntax takes them
+so, * + ? at the start letters. NIL for what cannot be read so: a category, a
+syntax class not listed, a backslash at the end."
   (let ((n (length regex)) (i 0) (start t)
         (out (make-string-output-stream)))
     (flet ((emit (text) (write-string text out))
@@ -69,7 +70,9 @@ read so: a category, a syntax class not listed, a backslash at the end."
                                    ((and (< i n) (char= (char regex i) #\?))
                                     ;; \(?3: a group of a number given; a group
                                     (let ((colon (position #\: regex :start i)))
-                                      (unless (and colon (> colon (1+ i)) (every #'digit-char-p (subseq regex (1+ i) colon)))
+                                      (unless (and colon
+                                                   (> colon (1+ i))
+                                                   (every #'digit-char-p (subseq regex (1+ i) colon)))
                                         (fail))
                                       (emit "(") (setf i (1+ colon))))
                                    (t (emit "(")))
@@ -100,7 +103,8 @@ read so: a category, a syntax class not listed, a backslash at the end."
                            (emit (cond ((member class '(#\- #\Space)) (if (char= d #\s) "\\s" "\\S"))
                                        ((char= class #\w) (if (char= d #\s) "\\w" "\\W"))
                                        ((char= class #\_) (if (char= d #\s) "[\\w_-]" "[^\\w_-]"))
-                                       ((char= class #\.) (format nil "[~:[^~;~]~a]" (char= d #\s) (org-regexp-char-class "punct")))
+                                       ((char= class #\.)
+                                        (format nil "[~:[^~;~]~a]" (char= d #\s) (org-regexp-char-class "punct")))
                                        (t (fail))))))
                         ((#\1 #\2 #\3 #\4 #\5 #\6 #\7 #\8 #\9) (emit (format nil "\\~c" d)))
                         ((#\c #\C) (fail))
@@ -169,13 +173,13 @@ rest of a larger directory left out, and said to be.")
 
 (defun formatted-block-listing (&optional excluded)
   "The files with formatted names in *FORMATTED-FILE-DIRECTORY* and its
-subdirectories, as a dynamic block lists them, as Denote does: in each
-directory the files of its subdirectories first, then its own, each in order
-of name; hidden files and directories, backups and names with no identifier
-left out, links to directories not followed, and the directories whose path
-from there EXCLUDED, a scanner, matches. A list of (PATH . RELATIVE), PATH
-the native path, RELATIVE the path from that directory. Each directory is
-listed as every walk lists it (DIRECTORY-LISTING)."
+subdirectories, as a dynamic block lists them, as Denote does: in each directory
+the files of its subdirectories first, then its own, each in order of name.
+Hidden files and directories, backups and names with no identifier left out,
+links to directories not followed, and the directories whose path from there
+EXCLUDED, a scanner, matches. A list of (PATH . RELATIVE), PATH the native path,
+RELATIVE the path from that directory. Each directory is listed as every walk
+lists it (DIRECTORY-LISTING)."
   (let ((count 0) (said nil))
     (labels ((walk (directory relative)
                (declare (notinline index-directory-entries))
@@ -197,7 +201,8 @@ listed as every walk lists it (DIRECTORY-LISTING)."
                                    (if (>= count *formatted-block-most-files*)
                                        (unless said
                                          (setf said t)
-                                         (message "A dynamic block looks at the first ~:d files only" *formatted-block-most-files*))
+                                         (message "A dynamic block looks at the first ~:d files only"
+                                                  *formatted-block-most-files*))
                                        (progn (incf count) (push (cons path inside) own))))))))
                  (append below (nreverse own)))))
       (walk (directory-name *formatted-file-directory*) ""))))
@@ -409,7 +414,8 @@ with a link to a place in it (::), each in the order of FILES."
           for place = (format nil (if markdown "(denote:~a::" "[denote:~a::") identifier)
           append (let ((first (remove-if-not (lambda (file) (search whole (gethash file texts))) linking)))
                    (append first
-                           (remove-if-not (lambda (file) (and (not (member file first)) (search place (gethash file texts))))
+                           (remove-if-not (lambda (file)
+                                            (and (not (member file first)) (search place (gethash file texts))))
                                           linking))))))
 
 (defun formatted-heading-backlinks (identifier custom-id files)
@@ -587,11 +593,13 @@ is; NIL when there is none of the first."
   "The lines of a sequence block of FILES with sequences: in the order of their sequences, those within DEPTH levels of the
 first (all with no DEPTH), each a list item indented by two for each level
 below it, its link labelled by its sequence, a colon and its label."
-  (let* ((sorted (stable-sort (copy-list files) #'string< :key (lambda (file) (formatted-sequence-key (formatted-signature file)))))
+  (let* ((sorted (stable-sort (copy-list files) #'string< :key (lambda (file)
+                                                                 (formatted-sequence-key (formatted-signature file)))))
          (root (length (formatted-sequence-parts (formatted-signature (first sorted)))))
          (kept (remove-if-not (lambda (file)
                                 (or (not (integerp depth))
-                                    (<= (length (formatted-sequence-parts (formatted-signature file))) (+ root depth -1))))
+                                    (<= (length (formatted-sequence-parts (formatted-signature file)))
+                                        (+ root depth -1))))
                               sorted)))
     (with-output-to-string (out)
       (dolist (file kept)
@@ -763,7 +771,8 @@ the files it matches listed as it is typed."
   (let ((regex (read-formatted-block-regex "missing links to files whose names match")))
     (when regex
       (dblock-insert "formatted-missing-links" (list :regexp regex :not-regexp nil :excluded-dirs-regexp nil
-                                                     :sort-by-component nil :reverse-sort nil :id-only nil :include-date nil)))))
+                                                     :sort-by-component nil :reverse-sort nil :id-only nil
+                                                     :include-date nil)))))
 
 (define-command insert-formatted-backlinks-block ()
   "Put in a dynamic block of links to the files with formatted names that link
@@ -794,7 +803,8 @@ files asked for."
   (let ((regex (read-formatted-block-regex "Org files whose names match, as headlines")))
     (when regex
       (dblock-insert "formatted-files-as-headings" (list :regexp regex :not-regexp nil :excluded-dirs-regexp nil
-                                                         :sort-by-component (read-formatted-sort-component) :reverse-sort nil
+                                                         :sort-by-component (read-formatted-sort-component)
+                                                         :reverse-sort nil
                                                          :add-links nil :exclude-tags nil)))))
 
 (define-command insert-formatted-sequence-block ()

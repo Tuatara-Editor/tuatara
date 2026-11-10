@@ -402,11 +402,15 @@ printed, the error output after the output."
           (gpl (write-test-file directory "gpl/COPYING"
                                 (format nil "                    GNU GENERAL PUBLIC LICENSE~%                       Version 3, 29 June 2007~%~
                                              ... the GNU Affero General Public License ...")))
-          (mit (write-test-file directory "dual/LICENSE-MIT" "Permission is hereby granted, free of charge, to any person obtaining a copy"))
+          (mit (write-test-file directory "dual/LICENSE-MIT"
+                                "Permission is hereby granted, free of charge, to any person obtaining a copy"))
           (apache (write-test-file directory "dual/LICENSE-APACHE"
                                    (format nil "                              Apache License~%                        Version 2.0, January 2004~%")))
-          (named (write-test-file directory "named/LICENSE" (format nil "SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception~%")))
-          (reuse (write-test-file directory "reuse/LICENSES/CC0-1.0.txt" "Creative Commons Legal Code CC0 1.0 Universal"))
+          (named (write-test-file directory "named/LICENSE"
+                                  (format nil "SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception~%")))
+          (reuse (write-test-file directory
+                                  "reuse/LICENSES/CC0-1.0.txt"
+                                  "Creative Commons Legal Code CC0 1.0 Universal"))
           (mpl (write-test-file directory "reuse/LICENSE.txt" "Mozilla Public License Version 2.0"))
           (none (write-test-file directory "none/LICENSE" "All rights reserved.")))
       (flet ((names (&rest files)
@@ -414,7 +418,8 @@ printed, the error output after the output."
                  (is = 0 status)
                  (uiop:split-string (string-right-trim '(#\Newline) out) :separator '(#\Newline))))
              (agrees (label &rest files)
-               (multiple-value-bind (status out) (apply #'licence-names-of "--agrees" label (mapcar #'uiop:native-namestring files))
+               (multiple-value-bind (status out) (apply #'licence-names-of "--agrees" label
+                                                        (mapcar #'uiop:native-namestring files))
                  (values (zerop status) out))))
         (is equal '("AGPL-3.0" "ISC") (names handed))
         (is equal '("0BSD") (names bare))
@@ -443,12 +448,15 @@ printed, the error output after the output."
           (is = 0 status)
           (is string= (format nil "Apache-2.0~%LLVM-exception~%") out))
         (let ((notice (write-test-file directory "notice/LICENSE.md"
-                                       (format nil "This program is free software: you can redistribute it and/or modify~%~
+                                       (format nil
+                                               "This program is free software: you can redistribute it and/or modify~%~
                                                     it under the terms of the GNU General Public License as published by~%~
                                                     the Free Software Foundation, either version 3 of the License, or~%~
                                                     (at your option) any later version.~%"))))
           (is equal '("GPL-3.0") (names notice))
-          (is string= (format nil "GPL-3.0~%") (nth-value 1 (licence-names-of "--untexted" (uiop:native-namestring notice))))
+          (is string=
+              (format nil "GPL-3.0~%")
+              (nth-value 1 (licence-names-of "--untexted" (uiop:native-namestring notice))))
           (is string= "" (nth-value 1 (licence-names-of "--untexted" (uiop:native-namestring notice) (uiop:native-namestring gpl)))))
         (is string= "" (nth-value 1 (licence-names-of "--untexted" (uiop:native-namestring handed))))))))
 
@@ -486,7 +494,8 @@ syntax/grammars.tsv: its exit status, and its output and error output."
   ;; names otherwise than its licence files
   (with-test-directory (directory)
     (multiple-value-bind (url commit)
-        (grammar-origin directory "origin" (format nil "GNU AFFERO GENERAL PUBLIC LICENSE~%Version 3, 19 November 2007~%"))
+        (grammar-origin directory "origin"
+                        (format nil "GNU AFFERO GENERAL PUBLIC LICENSE~%Version 3, 19 November 2007~%"))
       (flet ((build (label)
                (run-grammars-script directory (format nil "g	~a	~a	~a~%" url commit label))))
         (multiple-value-bind (status out) (build "0BSD")
@@ -499,7 +508,8 @@ syntax/grammars.tsv: its exit status, and its output and error output."
           (false (search "otherwise than its licence files" out) "~a" out)
           (true (probe-file (merge-pathnames "build/grammars/licenses/g/LICENSE" directory)) "~a" out))
         ;; a text of syntax/licenses/ for a grammar whose own files hold it stops it
-        (write-test-file directory "syntax/licenses/g.txt" (format nil "GNU AFFERO GENERAL PUBLIC LICENSE~%Version 3~%"))
+        (write-test-file directory "syntax/licenses/g.txt"
+                         (format nil "GNU AFFERO GENERAL PUBLIC LICENSE~%Version 3~%"))
         (multiple-value-bind (status out) (build "AGPL-3.0-or-later")
           (is = 1 status)
           (true (search "has a text for g, whose own licence files hold" out) "~a" out))))))
@@ -695,9 +705,11 @@ and the Quicklisp folder."
     (write-test-file directory "common/scan.h" (format nil "int b;~%"))
     (write-test-file directory "README" "not compiled")
     (is equal '("common/scan.h" "src/parser.c" "src/scanner.c" "src/tree_sitter/parser.h")
-        (uiop:split-string (string-trim '(#\Newline) (grammar-build-output "grammar_inputs \"$PWD\" \"$PWD/src\"" directory))
+        (uiop:split-string (string-trim '(#\Newline)
+                                        (grammar-build-output "grammar_inputs \"$PWD\" \"$PWD/src\"" directory))
                            :separator '(#\Newline)))
-    (flet ((hash () (string-trim '(#\Newline) (grammar-build-output "grammar_inputs_hash \"$PWD\" \"$PWD/src\"" directory))))
+    (flet ((hash ()
+             (string-trim '(#\Newline) (grammar-build-output "grammar_inputs_hash \"$PWD\" \"$PWD/src\"" directory))))
       (let ((first (hash)))
         (is = 64 (length first))
         (write-test-file directory "README" "still not compiled")
@@ -812,13 +824,15 @@ cat \"$file\"~%" (uiop:native-namestring answers)))
              (check (address)
                (write-test-file directory "syntax/grammars.tsv" (format nil "g	~a	~a	MIT~%" address commit))
                (multiple-value-bind (out error status)
-                   (uiop:run-program (list* "env" (format nil "PATH=~a:~a" (uiop:native-namestring bin) (uiop:getenv "PATH"))
+                   (uiop:run-program (list* "env"
+                                            (format nil "PATH=~a:~a" (uiop:native-namestring bin) (uiop:getenv "PATH"))
                                             "GIT_CONFIG_COUNT=3"
                                             (append
                                              (loop for from in (list url "https://tangled.org/owner.example/g"
                                                                      "https://tangled.org/did:web:owner.example/g")
                                                    for i from 0
-                                                   collect (format nil "GIT_CONFIG_KEY_~d=url.file://~a.insteadOf" i repo)
+                                                   collect (format nil
+                                                                   "GIT_CONFIG_KEY_~d=url.file://~a.insteadOf" i repo)
                                                    collect (format nil "GIT_CONFIG_VALUE_~d=~a" i from))
                                              (list "bash" (uiop:native-namestring (merge-pathnames "check-grammar-sources.sh" tools)))))
                                      :output :string :error-output nil :ignore-error-status t)
@@ -905,7 +919,10 @@ cat \"$file\"~%" (uiop:native-namestring answers)))
                                   ("jinja" tuatara.defaults::jinja2-mode)
                                   ("cylc" tuatara.defaults::cylc-mode))
           do (false (find grammar rows :key #'first :test #'string=) "~a is left out" grammar)
-             (false (find grammar tuatara.defaults::*languages* :key #'tuatara.defaults::language-grammar :test #'string=))
+             (false (find grammar
+                          tuatara.defaults::*languages*
+                          :key #'tuatara.defaults::language-grammar
+                          :test #'string=))
              (when mode
                (true (tuatara.modes:find-mode mode) "~(~a~) stays" mode)
                (false (tuatara.defaults::mode-language (make-instance mode)))))))
@@ -994,15 +1011,20 @@ grep -qs host_secret src/parser.c && echo took-host || echo took-nothing" repo c
       (write-test-file directory "usr/lib/libfoo.so.1.0" "foo")
       (write-test-file directory "usr/lib/libbar.so.2" "bar")
       (write-test-file directory "docs/libfoo1/copyright" "License: LGPL-2.1+")
-      (uiop:run-program (list "ln" "-s" "libfoo.so.1.0" (uiop:native-namestring (merge-pathnames "usr/lib/libfoo.so.1" directory))))
+      (uiop:run-program (list "ln" "-s" "libfoo.so.1.0"
+                              (uiop:native-namestring (merge-pathnames "usr/lib/libfoo.so.1" directory))))
       (flet ((run (library)
                (multiple-value-bind (out error status)
                    (uiop:run-program
-                    (list "bash" (tools-script "bundle-libraries.sh") (uiop:native-namestring (merge-pathnames "out/" directory))
+                    (list "bash"
+                          (tools-script "bundle-libraries.sh")
+                          (uiop:native-namestring (merge-pathnames "out/" directory))
                           (uiop:native-namestring (merge-pathnames library directory)))
                     :output :string :error-output :string :ignore-error-status t
-                    :environment (list (format nil "PATH=~a:/usr/bin:/bin" (uiop:native-namestring (merge-pathnames "bin/" directory)))
-                                       (format nil "DOC_DIR=~a" (uiop:native-namestring (merge-pathnames "docs/" directory)))
+                    :environment (list (format nil "PATH=~a:/usr/bin:/bin"
+                                               (uiop:native-namestring (merge-pathnames "bin/" directory)))
+                                       (format nil "DOC_DIR=~a"
+                                               (uiop:native-namestring (merge-pathnames "docs/" directory)))
                                        (format nil "USR_ROOT=~a" (string-right-trim "/" (uiop:native-namestring (merge-pathnames "usr/" directory))))))
                  (declare (ignore out))
                  (values status error))))
@@ -1011,7 +1033,10 @@ grep -qs host_secret src/parser.c && echo took-host || echo took-nothing" repo c
             (mapcar (lambda (line) (subseq line 0 (position #\Tab line :from-end t)))
                     (uiop:read-file-lines (merge-pathnames "out/lib.tsv" directory))))
         (is = 64 (length (subseq (first (uiop:read-file-lines (merge-pathnames "out/lib.tsv" directory)))
-                                 (1+ (position #\Tab (first (uiop:read-file-lines (merge-pathnames "out/lib.tsv" directory))) :from-end t)))))
+                                 (1+
+                                  (position #\Tab
+                                            (first (uiop:read-file-lines (merge-pathnames "out/lib.tsv" directory)))
+                                            :from-end t)))))
         (true (probe-file (merge-pathnames "out/copyright/libfoo1.copyright" directory)))
         (true (probe-file (merge-pathnames "out/lib/libfoo.so.1" directory)))
         (multiple-value-bind (status error) (run "usr/lib/libbar.so.2")
@@ -1048,11 +1073,15 @@ printf 'Source: foo\\nChecksums-Sha256:\\n %s 4 foo_1.0.orig.tar.xz\\nFiles:\\n 
       (flet ((run (&rest environment)
                (multiple-value-bind (out error status)
                    (uiop:run-program
-                    (list "bash" (tools-script "library-sources.sh") (uiop:native-namestring (merge-pathnames "out/" directory))
+                    (list "bash"
+                          (tools-script "library-sources.sh")
+                          (uiop:native-namestring (merge-pathnames "out/" directory))
                           (uiop:native-namestring (merge-pathnames "lib.tsv" directory)))
                     :output :string :error-output :string :ignore-error-status t
-                    :environment (list* (format nil "PATH=~a:/usr/bin:/bin" (uiop:native-namestring (merge-pathnames "bin/" directory)))
-                                        (format nil "DOC_DIR=~a" (uiop:native-namestring (merge-pathnames "docs/" directory)))
+                    :environment (list* (format nil "PATH=~a:/usr/bin:/bin"
+                                                (uiop:native-namestring (merge-pathnames "bin/" directory)))
+                                        (format nil "DOC_DIR=~a"
+                                                (uiop:native-namestring (merge-pathnames "docs/" directory)))
                                         environment))
                  (declare (ignore out))
                  (values status error))))
@@ -1087,9 +1116,11 @@ printf 'Source: foo\\nChecksums-Sha256:\\n %s 4 foo_1.0.orig.tar.xz\\nFiles:\\n 
   (true (search "for path in $(printf \"%s\\n\" $roots $(ldd $roots | grep \"=> /\" | sed \"s/.*=> //; s/ (.*//\") | sort -u); do"
                 (uiop:read-file-string (tools-script "appimage.sh"))))
   (with-test-directory (directory)
-    (sb-posix:chmod (uiop:native-namestring (write-test-file directory "bin/dpkg" (format nil "#!/bin/sh~%echo \"libfoo1:amd64: $1\"~%")))
+    (sb-posix:chmod (uiop:native-namestring (write-test-file directory "bin/dpkg"
+                                                             (format nil "#!/bin/sh~%echo \"libfoo1:amd64: $1\"~%")))
                     #o755)
-    (sb-posix:chmod (uiop:native-namestring (write-test-file directory "bin/dpkg-query" (format nil "#!/bin/sh~%printf 1~%")))
+    (sb-posix:chmod (uiop:native-namestring (write-test-file directory "bin/dpkg-query"
+                                                             (format nil "#!/bin/sh~%printf 1~%")))
                     #o755)
     (write-test-file directory "docs/libfoo1/copyright" "License: MIT")
     (let ((library (uiop:native-namestring (write-test-file directory "usr/lib/libfoo.so.1" "foo"))))
@@ -1098,7 +1129,8 @@ printf 'Source: foo\\nChecksums-Sha256:\\n %s 4 foo_1.0.orig.tar.xz\\nFiles:\\n 
            (list "bash" (tools-script "bundle-libraries.sh") (uiop:native-namestring (merge-pathnames "out/" directory))
                  library library)
            :output :string :error-output :string :ignore-error-status t
-           :environment (list (format nil "PATH=~a:/usr/bin:/bin" (uiop:native-namestring (merge-pathnames "bin/" directory)))
+           :environment (list (format nil "PATH=~a:/usr/bin:/bin"
+                                      (uiop:native-namestring (merge-pathnames "bin/" directory)))
                               (format nil "DOC_DIR=~a" (uiop:native-namestring (merge-pathnames "docs/" directory)))))
         (declare (ignore out))
         (isnt = 0 status)
@@ -1106,7 +1138,8 @@ printf 'Source: foo\\nChecksums-Sha256:\\n %s 4 foo_1.0.orig.tar.xz\\nFiles:\\n 
 
 (define-test (tools possible-copies-ranks-by-words-and-names)
   ;; a fixture index and a branch adding two definitions: one with the words and the name of an
-  ;; entry from another file, one like nothing; the definition itself is left out, a near-match in its own file is listed
+  ;; entry from another file, one like nothing; the definition itself is left out, a near-match in its own file is
+  ;; listed
   (with-test-directory (directory)
     (flet ((path (name) (uiop:native-namestring (merge-pathnames name directory)))
            (git (&rest arguments)

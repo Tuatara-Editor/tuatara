@@ -45,7 +45,8 @@
   ;; with categories, and a line written before there were any
   (let ((bookmark (list "n" "/tmp/z.txt" 7 "x" '("work" "home") nil)))
     (is equal bookmark (tuatara.defaults::parse-bookmark-line (tuatara.defaults::bookmark-line bookmark))))
-  (is equal '("n" "/p" 3 "x" () nil) (tuatara.defaults::parse-bookmark-line (format nil "3~cn~c/p~cx" #\Tab #\Tab #\Tab)))
+  (is equal '("n" "/p" 3 "x" () nil)
+      (tuatara.defaults::parse-bookmark-line (format nil "3~cn~c/p~cx" #\Tab #\Tab #\Tab)))
   ;; set in a file opened safely: kept so, with or without categories
   (dolist (bookmark (list (list "s" "/tmp/e.txt" 1 "x" '() t) (list "s" "/tmp/e.txt" 1 "x" '("case") t)))
     (is equal bookmark (tuatara.defaults::parse-bookmark-line (tuatara.defaults::bookmark-line bookmark))))
@@ -108,7 +109,9 @@
                (keep "both" "work" "home")
                ;; a section a category, in the order of their names, then those in none; one in two in both
                (let ((text (shown "C-x m l")))
-                 (true (< (search "▾ home (2)" text) (search "▾ work (1)" text) (search "▾ No category (1)" text)) "~a" text)
+                 (true (< (search "▾ home (2)" text)
+                          (search "▾ work (1)" text)
+                          (search "▾ No category (1)" text)) "~a" text)
                  (is = 2 (count-matches "both " text))
                  (true (search "2 categories" text))
                  ;; a line of air after a section's last bookmark
@@ -150,11 +153,13 @@
              (let ((list (tuatara.buffer:find-buffer "*Bookmarks*")))
                (when list (tuatara.buffer:kill-buffer list)))
              (run-keys "C-x m l c h o m e C-j RET" :width 100 :height 16)
-             (is equal '("work" "home") (tuatara.defaults::bookmark-categories (tuatara.defaults::find-bookmark "notes.txt")))
+             (is equal '("work" "home")
+                 (tuatara.defaults::bookmark-categories (tuatara.defaults::find-bookmark "notes.txt")))
              ;; set again, none chosen: its categories kept
              (run-keys "C-x m m RET RET" :file (namestring path) :width 100)
              (forget-file-buffers)
-             (is equal '("work" "home") (tuatara.defaults::bookmark-categories (tuatara.defaults::find-bookmark "notes.txt"))))
+             (is equal '("work" "home")
+                 (tuatara.defaults::bookmark-categories (tuatara.defaults::find-bookmark "notes.txt"))))
         (forget-file-buffers)
         (dolist (name (tuatara.defaults::bookmark-names))
           (tuatara.defaults::state-list-drop tuatara.defaults::*bookmarks* (list name)))))))
@@ -167,7 +172,8 @@
       (alexandria:write-string-into-file (format nil "one~%two~%") path)
       (unwind-protect
            (progn
-             (run-keys (format nil "C-u C-x C-f C-a C-k ~a RET C-n C-x m m RET RET" (rimu-typed (namestring path))) :width 160)
+             (run-keys (format nil "C-u C-x C-f C-a C-k ~a RET C-n C-x m m RET RET" (rimu-typed (namestring path)))
+                       :width 160)
              (true (sixth (tuatara.defaults::find-bookmark "evidence.txt")))
              (forget-file-buffers)
              (let ((editor (nth-value 1 (run-keys "C-x m b e v i d e n c e RET" :width 160))))
@@ -227,7 +233,8 @@
         (unwind-protect
              (progn
                (tuatara.defaults::state-list-put tuatara.defaults::*bookmarks* (list (list "plain" file 0 "" '())))
-               (tuatara.defaults::state-list-put tuatara.defaults::*bookmarks* (list (list "named" file 0 "" '("No category" "work"))))
+               (tuatara.defaults::state-list-put tuatara.defaults::*bookmarks*
+                                                 (list (list "named" file 0 "" '("No category" "work"))))
                (let ((text (shown "C-x m l C-p TAB")))
                  (true (search "▸ No category (1)" text) "~a" text)
                  (true (search "▾ No category (1)" text) "~a" text))
@@ -277,7 +284,9 @@
                (dolist (name '("x" "y" "z"))
                  (tuatara.defaults::state-list-put tuatara.defaults::*bookmarks* (list (list name file 0 "" '("c1")))))
                (let ((text (manage "C-x m l C-u 2 m")))
-                 (is = 2 (count-if (lambda (l) (uiop:string-prefix-p ">" l)) (uiop:split-string text :separator '(#\Newline)))))
+                 (is = 2
+                     (count-if (lambda (l) (uiop:string-prefix-p ">" l))
+                               (uiop:split-string text :separator '(#\Newline)))))
                ;; z, the latest, marked for deletion; the section folded; x unfolds it and asks
                (let ((text (manage "C-x m l d C-p TAB x y e s RET")))
                  (false (tuatara.defaults::find-bookmark "z"))

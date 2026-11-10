@@ -47,7 +47,8 @@ character KEYVAL types, as GDK says."
   "Hand KEY, typed in F's window, to the editor."
   (queue-push (gtk-queue f) (tuatara.frontend:make-event :key :key key :frame (gtk-owner f))))
 
-(define-callback on-key-pressed :boolean ((controller :pointer) (keyval :uint) (keycode :uint) (state :uint) (data :pointer))
+(define-callback on-key-pressed :boolean ((controller :pointer) (keyval :uint) (keycode :uint) (state :uint)
+                                          (data :pointer))
   (declare (ignore controller keycode))
   (let ((f (data-window data)) (key (gdk-key keyval state)))
     (when (and f key)
@@ -62,7 +63,8 @@ input method: but Control+Shift+U, which starts typing a character by its code."
     (and (or ctrl meta)
          (not (and ctrl shift (member keyval '(#x55 #x75)))))))
 
-(define-callback on-command-key-pressed :boolean ((controller :pointer) (keyval :uint) (keycode :uint) (state :uint) (data :pointer))
+(define-callback on-command-key-pressed :boolean ((controller :pointer) (keyval :uint) (keycode :uint) (state :uint)
+                                                  (data :pointer))
   ;; before the input method: a command key gives up what it is composing (an accent
   ;; typed first, a dead key's) and runs as it always does
   (declare (ignore controller keycode))
@@ -114,7 +116,8 @@ drawn there (TUATARA.DISPLAY:LARGE-COLUMN)."
                             (attributes sb-sys:system-area-pointer (null-pointer))
                             (cursor sb-alien:int 0))
         (gtk-im-context-get-preedit-string context (sb-alien:alien-sap (sb-alien:addr text))
-                                           (sb-alien:alien-sap (sb-alien:addr attributes)) (sb-alien:alien-sap (sb-alien:addr cursor)))
+                                           (sb-alien:alien-sap (sb-alien:addr attributes))
+                                           (sb-alien:alien-sap (sb-alien:addr cursor)))
         (let ((pointer text) (list attributes))
           (setf (gtk-preedit f)
                 (unless (null-pointer-p pointer)

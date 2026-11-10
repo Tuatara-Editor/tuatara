@@ -34,7 +34,8 @@ CHOICES) in the order met; NOTES, what to say of it."
 (defvar *template-import* nil
   "The TEMPLATE-IMPORT under way.")
 
-(defparameter *template-import-reserved-keys* '("body" "contents" "created" "engine" "packages" "fonts" "toc" "latex_header" "font_fallbacks")
+(defparameter *template-import-reserved-keys*
+  '("body" "contents" "created" "engine" "packages" "fonts" "toc" "latex_header" "font_fallbacks")
   "Names a field cannot have, the places Tuatara fills itself: such a field is named with _field after.")
 
 (defun template-field-key (text)
@@ -117,7 +118,8 @@ date's {{{issue_date:date=d MMMM yyyy}}}, but those Tuatara fills itself
       (when (and place (null (getf place :condition))
                  (not (member (getf place :name) (list* "body" "title" "contents" *latex-only-places*) :test #'string=)))
         (let ((name (getf place :name)))
-          (template-field name (if (or (getf place :date) (template-date-label-p (substitute #\Space #\_ name))) :date :text)
+          (template-field name
+                          (if (or (getf place :date) (template-date-label-p (substitute #\Space #\_ name))) :date :text)
                           :format (getf place :date) :label (template-field-words name nil)))))))
 
 (defun template-field-words (key label)
@@ -161,7 +163,8 @@ there: # Write the executive summary."
   (let* ((lines (coerce (cl-ppcre:split "\\n" text :limit most-positive-fixnum) 'vector))
          (count (length lines))
          (out (make-string-output-stream)))
-    (flet ((level (line) (let ((m (nth-value 1 (cl-ppcre:scan-to-strings "^(\\*+) " line)))) (and m (length (aref m 0))))))
+    (flet ((level (line)
+             (let ((m (nth-value 1 (cl-ppcre:scan-to-strings "^(\\*+) " line)))) (and m (length (aref m 0))))))
       (loop with i = 0
             while (< i count)
             do (let* ((line (aref lines i))

@@ -13,7 +13,8 @@
 
 (in-package #:tuatara.command)
 
-(defstruct (menu-entry (:constructor make-menu-entry (key label &key command switch option reader replace)) (:copier nil))
+(defstruct (menu-entry (:constructor make-menu-entry (key label &key command switch option reader replace))
+                       (:copier nil))
   "One line of a menu: KEY, as keys are written (- f), and LABEL, what it
 says; then either COMMAND, the action the key runs, or SWITCH, an argument
 the key turns on and off (--force), or OPTION, an argument given a value
@@ -29,8 +30,10 @@ away."
   (reader nil :read-only t)
   (replace nil :read-only t))
 
-(setf (documentation 'make-menu-entry 'function) "A MENU-ENTRY of KEY and LABEL, with a COMMAND, a SWITCH or an OPTION, its READER and whether it is REPLACEd."
-      (documentation 'menu-entry-replace 'function) "True when the option is asked again, its value given, rather than taken away."
+(setf (documentation 'make-menu-entry 'function) "A MENU-ENTRY of KEY and LABEL, with a COMMAND, a
+SWITCH or an OPTION, its READER and whether it is REPLACEd."
+      (documentation 'menu-entry-replace 'function) "True when the option is asked again, its value
+given, rather than taken away."
       (documentation 'menu-entry-p 'function) "True when OBJECT is a MENU-ENTRY."
       (documentation 'menu-entry-key 'function) "The keys of the entry, as keys are written."
       (documentation 'menu-entry-label 'function) "What the entry says in the menu."
@@ -40,14 +43,14 @@ away."
       (documentation 'menu-entry-reader 'function) "The function of a prompt reading an option's value.")
 
 (defstruct (menu (:constructor make-menu (name title groups &key show note summary hold)) (:copier nil))
-  "A menu called NAME, the command opening it, shown under TITLE: GROUPS, each
-\(TITLE . ENTRIES), ENTRIES MENU-ENTRYs. SHOW, when given, a function of an
-entry, says whether the menu has it now (the key of one it leaves out says
-so); NOTE, when given, a function of the menu, gives a line \\`C-h'
-says first (which entries are left out and how to see them); SUMMARY, when
-given, a function of the arguments on, gives lines shown under the entries,
-what they come to. With HOLD true, a key not in the menu leaves it open,
-saying so, and \\`C-g' asks first when an argument was changed."
+  "A menu called NAME, the command opening it, shown under TITLE. GROUPS are
+each (TITLE . ENTRIES), ENTRIES MENU-ENTRYs. SHOW, when given, is a function
+of an entry, and says whether the menu has it now (the key of one it leaves
+out says so). NOTE, when given, is a function of the menu, and gives a line
+\\`C-h' says first (which entries are left out and how to see them). SUMMARY,
+when given, is a function of the arguments on, and gives lines shown under the
+entries, what they come to. With HOLD true, a key not in the menu leaves it
+open, saying so, and \\`C-g' asks first when an argument was changed."
   (name nil :read-only t)
   (title "" :read-only t)
   (groups '() :read-only t)
@@ -57,7 +60,8 @@ saying so, and \\`C-g' asks first when an argument was changed."
   (hold nil :read-only t))
 
 (setf (documentation 'make-menu 'function) "A MENU called NAME under TITLE with GROUPS, SHOW, NOTE, SUMMARY and HOLD."
-      (documentation 'menu-hold 'function) "True when a key not in the menu leaves it open and \\`C-g' asks before leaving."
+      (documentation 'menu-hold 'function) "True when a key not in the menu leaves it open and
+\\`C-g' asks before leaving."
       (documentation 'menu-summary 'function) "The function giving the lines under the entries, or NIL."
       (documentation 'menu-p 'function) "True when OBJECT is a MENU."
       (documentation 'menu-name 'function) "The name of the menu, the command opening it."
@@ -101,12 +105,12 @@ ARGUMENT :READ READER), :REPLACE T after it for one asked again."
 
 (defmacro define-menu (name (&key title show note summary hold) doc &body groups)
   "Define the command NAME, documented by DOC, that opens a menu under TITLE
-of GROUPS, each (GROUP-TITLE ENTRY...), an entry (KEY LABEL COMMAND) for an
-action, (KEY LABEL :SWITCH \"--argument\") for a switch, or (KEY LABEL
-:OPTION \"--argument=\" :READ READER) for an option, READER a function of a
-prompt (READ-STRING when not given), :REPLACE T after it to ask it again
-with its value. SHOW, NOTE and SUMMARY are as MAKE-MENU takes them,
-function names; HOLD too, true or false."
+of GROUPS. Each group is (GROUP-TITLE ENTRY...). An entry is (KEY LABEL
+COMMAND) for an action, (KEY LABEL :SWITCH \"--argument\") for a switch, or
+\(KEY LABEL :OPTION \"--argument=\" :READ READER) for an option. READER is a
+function of a prompt (READ-STRING when not given), and :REPLACE T after it
+asks it again with its value. SHOW, NOTE and SUMMARY are as MAKE-MENU takes
+them, function names. HOLD is too, true or false."
   (check-type doc string "a docstring; every command documents itself")
   `(progn
      (setf (gethash ',name *menus*)
@@ -117,7 +121,8 @@ function names; HOLD too, true or false."
                       :hold ,hold))
      (define-command ,name () ,doc (open-menu (gethash ',name *menus*)))))
 
-(defparameter *menu-keeping-commands* '(menu-toggle-switch menu-set-option menu-entry-left-out menu-entry-refused menu-key-not-here menu-leave)
+(defparameter *menu-keeping-commands*
+  '(menu-toggle-switch menu-set-option menu-entry-left-out menu-entry-refused menu-key-not-here menu-leave)
   "The commands that keep a menu open: those of its switches and options, the
 ones saying an entry is left out or cannot run here, and in a menu that
 holds, the one saying a key is not in it and the one asking whether to
@@ -296,12 +301,12 @@ switch or an option its argument in brackets, an option's with its value."
         (menu-entry-label entry))))
 
 (defun menu-panel-rows (editor width room)
-  "The panel rows of EDITOR's open menu, at most ROOM: its title, then each
-group with entries shown, its title and its entries in columns, an argument
-on in :menu-argument-on and one off in :menu-argument-off, an action that
-cannot run here in :key-hint-unavailable, then the lines of
-its summary; where they do not all fit, the last row says that \\`C-h' lists
-them all."
+  "The panel rows of EDITOR's open menu, at most ROOM. They are its title, then
+each group with entries shown, its title and its entries in columns, an
+argument on in :menu-argument-on and one off in :menu-argument-off, an action
+that cannot run here in :key-hint-unavailable. Then come the lines of its
+summary. Where they do not all fit, the last row says that \\`C-h' lists them
+all."
   (destructuring-bind (menu arguments opened &optional refused) (editor-menu editor)
     (declare (ignore opened))
     (let* ((summary (and (menu-summary menu)
@@ -320,7 +325,9 @@ them all."
             when entries
               do (setf rows (append rows (list (list title nil (list (list 0 (length title) :completion-group-title))))
                                     (mapcar (lambda (row) (menu-row-arguments row entries arguments))
-                                            (key-hint-rows (mapcar (lambda (e) (cons (menu-entry-key e) (menu-entry-text e arguments)))
+                                            (key-hint-rows (mapcar (lambda (e)
+                                                                     (cons (menu-entry-key e)
+                                                                           (menu-entry-text e arguments)))
                                                                    entries)
                                                            width (max 1 (- room (length rows) 1))
                                                            :column-width column

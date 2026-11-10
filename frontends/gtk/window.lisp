@@ -1,4 +1,5 @@
-;;;; frontends/gtk/window.lisp --- The window itself: its size, the work other threads ask of GTK's, how it is drawn and measured, and the editor run in it.
+;;;; frontends/gtk/window.lisp --- The window itself: its size, the work other threads ask of GTK's, how it is drawn and
+;;;; measured, and the editor run in it.
 ;;;; Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
 
 (in-package #:tuatara.frontend.gtk)
@@ -369,10 +370,11 @@ GET-INTERNAL-REAL-TIME, which here counts whole milliseconds."
 
 (defun drawing-figures (keys ends paints)
   "What KEYS (when each key went in), ENDS (when each frame was finished) and
-PAINTS (when each was painted), vectors of microseconds (MEASURE-CLOCK) in order, say of how the
-window drew, as a list: :KEYS, :FRAMES painted while the keys came and half
-a second after, :MEDIAN and :SLOWEST (the slowest of every twenty)
-milliseconds from a key to the painting of the frame that shows it."
+PAINTS (when each was painted) say of how the window drew, as a list. The
+three are vectors of microseconds (MEASURE-CLOCK) in order. The list is
+:KEYS, :FRAMES painted while the keys came and half a second after, and
+:MEDIAN and :SLOWEST (the slowest of every twenty) milliseconds from a key to
+the painting of the frame that shows it."
   (flet ((after (vector time)
            (let ((i (position-if (lambda (x) (>= x time)) vector)))
              (and i (aref vector i)))))
@@ -403,9 +405,9 @@ milliseconds from a key to the painting of the frame that shows it."
   nil)
 
 (defun measure-drawing (f out)
-  "Measure how F's window draws, for \\[check-health]: once it has shown its
+  "Measure how F's window draws, for \\[check-health]. Once it has shown its
 text, hold the down arrow, 60 keys a second for three seconds, each frame
-painted taken from the window's frame clock, then write to the file OUT the
+painted taken from the window's frame clock. Then write to the file OUT the
 renderer's name and DRAWING-FIGURES, and end Tuatara with exit code 0, or 1
 when the measuring failed, said in the debug log."
   (tuatara.runtime:make-guarded-thread
@@ -498,7 +500,8 @@ never one someone else made taken over."
                                           (format nil "XDG_DATA_HOME=~adata" (uiop:native-namestring directory)))
                                     (remove-if (lambda (pair)
                                                  (some (lambda (key) (uiop:string-prefix-p key pair))
-                                                       '("GSK_RENDERER=" "TUATARA_" "XDG_STATE_HOME=" "XDG_CACHE_HOME=" "XDG_DATA_HOME=")))
+                                                       '("GSK_RENDERER=" "TUATARA_" "XDG_STATE_HOME=" "XDG_CACHE_HOME="
+                                                         "XDG_DATA_HOME=")))
                                                (sb-ext:posix-environ))))
               (let ((figures (tuatara.runtime:ignoring-errors-reported ("reading ~a" out)
                                (with-open-file (in out)
@@ -558,11 +561,11 @@ terminal shows it (LOG-STDERR-UNLESS-TERMINAL)."
 which has said hello (GREETED, as TUATARA.FRONTEND:GREET-EDITOR read it),
 asking it for REQUEST, with INPUT, a descriptor, passed to be read, until the
 editor lets the window go or goes. PAINTED, a function of the exit code and
-the words the editor gave, is called when it painted the window; GONE, a
-function of no arguments, once the window has gone, whatever happened, a
-failure to close it too; ANOTHER opens another window when the editor asks
-for one, and ALLOW says what an editor on another machine is given all the
-same (TUATARA.FRONTEND:MAKE-REMOTE-CLIENT). FD is closed here when no
+the words the editor gave, is called when it painted the window. GONE, a
+function of no arguments, is called once the window has gone, whatever
+happened, a failure to close it too. ANOTHER opens another window when the
+editor asks for one. ALLOW says what an editor on another machine is given
+all the same (TUATARA.FRONTEND:MAKE-REMOTE-CLIENT). FD is closed here when no
 client could be made of it."
   (let ((client nil))
     (unwind-protect

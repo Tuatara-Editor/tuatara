@@ -109,7 +109,10 @@ each with the documented rules."
                                       (from made-in))
                                   (loop until (eq from current)
                                         do (let ((next (tuatara.text:version-next from)))
-                                             (setf p (tuatara.text:map-position p (tuatara.text:version-batch next) (tuatara.text:anchor-bias a))
+                                             (setf p
+                                                   (tuatara.text:map-position p
+                                                                              (tuatara.text:version-batch next)
+                                                                              (tuatara.text:anchor-bias a))
                                                    from next)))
                                   p))
                       (resolved (tuatara.text:anchor-position a current)))
@@ -180,6 +183,8 @@ each with the documented rules."
           (when (zerop steps) (is equal '() stretches)))))
     ;; a whole text swapped between: not known
     (let* ((v0 (tuatara.text:make-version (tuatara.text:make-rope "abc")))
-           (v1 (tuatara.text:version-swap v0 (tuatara.text:make-rope "whole") (lambda (p bias) (declare (ignore bias)) p)
+           (v1 (tuatara.text:version-swap v0
+                                          (tuatara.text:make-rope "whole")
+                                          (lambda (p bias) (declare (ignore bias)) p)
                                           (lambda (p bias) (declare (ignore bias)) p))))
       (is eq :whole (tuatara.text:changed-stretches v0 v1)))))

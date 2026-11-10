@@ -16,13 +16,14 @@
 
 (defstruct (display-toggle (:constructor make-display-toggle (name label key lookup global modes values word never))
                            (:copier nil) (:predicate nil))
-  "A way of showing text made by define-display-toggle: its NAME, the LABEL
-its messages begin with, the buffer-local KEY a buffer's own choice is kept
-under, its LOOKUP function of a buffer, the names of its GLOBAL setting and of
-its MODES list, the VALUES it takes when on, each (VALUE WORD), WORD words or
-a function of the buffer, or NIL for every buffer, that returns them, and the
-WORD the mode line shows while it is on, or NIL for none; NEVER, NIL or a list
-\(FUNCTION WHERE) as define-display-toggle's UNLESS, says where it cannot work."
+  "A way of showing text made by define-display-toggle. It holds its NAME and
+the LABEL its messages begin with. KEY is the buffer-local key a buffer's own
+choice is kept under. LOOKUP is its function of a buffer. GLOBAL and MODES are
+the names of its global setting and of its modes list. VALUES are the values
+it takes when on, each (VALUE WORD), WORD words or a function of the buffer,
+or NIL for every buffer, that returns them. WORD is what the mode line shows
+while it is on, or NIL for none. NEVER, NIL or a list (FUNCTION WHERE) as
+define-display-toggle's UNLESS, says where it cannot work."
   name label key lookup global modes values word never)
 
 (defvar *display-toggles* '()
@@ -269,13 +270,13 @@ override, or far into the line, is shown in the order stored, its
 right-to-left letters in the :stored-order face."
   :command text-direction-mode :lookup text-direction-p
   :global *global-text-direction-mode* :default :auto
-  :global-doc "How lines holding right-to-left text are shown in buffers that have
-not chosen, and whose major mode *TEXT-DIRECTION-MODES* says nothing of:
-:AUTO (the default) in the order they are read, each line from left to right
-or from right to left as its first letter is written; :RIGHT-TO-LEFT or
-:LEFT-TO-RIGHT, every line read in that direction, whatever its first
-letter; NIL, the characters in the order they are stored. Set it in the init
-file; \\[text-direction-mode] still chooses for one buffer, and
+  :global-doc "How lines holding right-to-left text are shown in buffers that
+have not chosen, and whose major mode *TEXT-DIRECTION-MODES* says nothing of.
+:AUTO (the default) shows them in the order they are read, each line from left
+to right or from right to left as its first letter is written. :RIGHT-TO-LEFT
+or :LEFT-TO-RIGHT reads every line in that direction, whatever its first
+letter. NIL shows the characters in the order they are stored. Set it in the
+init file; \\[text-direction-mode] still chooses for one buffer, and
 \\[global-text-direction-mode] switches it while the editor runs."
   :what "show right-to-left text in the order it is read"
   :example "'((org-mode . :right-to-left) (csv-mode . nil))"

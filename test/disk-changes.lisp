@@ -189,8 +189,9 @@ whose state changed, and those whose file changed again."
   "Visit the other files in the current buffer's directory, change them all on disk and take in the watcher's news, for the tests."
   (let* ((b (visited-session-buffer))
          (directory (uiop:pathname-directory-pathname (tuatara.buffer:buffer-file b)))
-         (others (mapcar #'tuatara.io:visit-file (remove (tuatara.buffer:buffer-file b) (directory (merge-pathnames "*.txt" directory))
-                                                         :test #'equal)))
+         (others (mapcar #'tuatara.io:visit-file
+                         (remove (tuatara.buffer:buffer-file b) (directory (merge-pathnames "*.txt" directory))
+                                 :test #'equal)))
          (all (cons b others)))
     (tuatara.defaults::files-tick tuatara.command:*editor*)
     (sleep 0.2)
@@ -263,6 +264,95 @@ whose state changed, and those whose file changed again."
           (is string= (format nil "Xl1~%l2~%") (session-text editor))
           (tuatara.buffer:kill-buffer (session-buffer editor)))))))
 
+(define-test (files-changed-on-disk read-again-when-visited)
+  ;; visiting a file whose buffer is open already reads it again when it changed
+  ;; on disk and the buffer has no changes of its own; with changes, it is kept
+  ;; and that is said
+  (with-slow-polling
+    (with-test-directory (dir)
+      (let* ((path (put-file (merge-pathnames "lines.txt" dir) (format nil "l1~%l2~%")))
+             (visit (format nil "C-x C-f C-a C-k ~a RET" (rimu-typed (namestring path))))
+             (change (lambda () (replace-by-rename path (format nil "l0~%l1~%l2~%")))))
+        (multiple-value-bind (f editor) (run-keys (list change visit) :file path :width 220)
+          (true (tuatara.frontend.fake:fake-frame-showing f "Read lines.txt again, changed on disk"))
+          (is string= (format nil "l0~%l1~%l2~%") (session-text editor))
+          (tuatara.buffer:kill-buffer (session-buffer editor)))
+        (replace-by-rename path (format nil "l1~%l2~%"))
+        (multiple-value-bind (f editor) (run-keys (list "i X C-g" change visit) :file path :width 220)
+          (true (tuatara.frontend.fake:fake-frame-showing
+                 f "lines.txt changed on disk but is not read again, having changes of its own"))
+          (is string= (format nil "Xl1~%l2~%") (session-text editor))
+          (tuatara.buffer:kill-buffer (session-buffer editor)))))))
+
+(define-test (files-changed-on-disk visit-keeps-what-it-must)
+  ;; visited again with no look of the watcher between, a buffer that must stay as it is does: one with
+  ;; changes of its own whose file grew, one M-x follow-file stopped following, one whose file is on a
+  ;; network file system (the watcher looks at that); a file deleted is said
+  (with-slow-polling
+    (with-test-directory (dir)
+      (let* ((path (put-file (merge-pathnames "lines.txt" dir) (format nil "l1~%l2~%")))
+             (text nil) (said nil))
+        (flet ((visit-after (change)
+                 (lambda ()
+                   (funcall change)
+                   (let ((buffer (tuatara.defaults::visit-path (namestring path))))
+                     (setf text (tuatara.buffer:buffer-string buffer)
+                           said (tuatara.buffer:buffer-local buffer :disk-state-said)))))
+               (again ()
+                 (tuatara.buffer:kill-buffer (tuatara.buffer:find-buffer "lines.txt"))
+                 (put-file path (format nil "l1~%l2~%"))
+                 (setf text nil said nil)))
+          (multiple-value-bind (f editor)
+              (run-keys (list "i X C-g" (visit-after (lambda () (append-on-disk path (format nil "l3~%"))))) :file path
+                        :width 220)
+            (declare (ignore editor))
+            (is string= (format nil "Xl1~%l2~%") text "changes of its own: nothing added")
+            (true (tuatara.frontend.fake:fake-frame-showing
+                   f "lines.txt changed on disk but is not read again, having changes of its own")))
+          (again)
+          (run-keys (list "M-x f o l l o w - f i l e RET M-x f o l l o w - f i l e RET"
+                          (visit-after (lambda () (replace-by-rename path (format nil "l0~%l1~%l2~%")))))
+                    :file path :width 220)
+          (is string= (format nil "l1~%l2~%") text "not following: not read again")
+          (is eq :changed said)
+          (again)
+          (run-keys (list (lambda ()
+                            (setf (tuatara.buffer:buffer-local (tuatara.command:current-buffer) :file-class) :remote))
+                          (visit-after (lambda () (replace-by-rename path (format nil "l0~%l1~%l2~%")))))
+                    :file path :width 220)
+          (is string= (format nil "l1~%l2~%") text "on a network file system: left to the watcher")
+          (again)
+          (run-keys (list (visit-after (lambda () (delete-file path)))) :file path :width 220)
+          (is eq :deleted said "a file deleted is said")
+          (kill-buffers-visiting dir))))))
+
+(define-test (files-changed-on-disk visited-while-saving)
+  ;; a file visited while its buffer is being saved: what the save wrote is not taken for another
+  ;; program's change
+  (with-slow-polling
+    (with-test-directory (dir)
+      (let ((path (put-file (merge-pathnames "saving.txt" dir) (format nil "l1~%")))
+            (state :unseen))
+        (sb-int:encapsulate 'tuatara.io::write-text-file 'slow
+                            (lambda (write &rest arguments)
+                              (multiple-value-prog1 (apply write arguments) (sleep 2))))
+        (unwind-protect
+             (multiple-value-bind (f editor)
+                 (run-keys (list "i X C-g C-x C-s"
+                                 (lambda ()
+                                   (wait-until (lambda () (string= (format nil "Xl1~%") (file-text path))) 10)
+                                   (let ((buffer (tuatara.defaults::visit-path (namestring path))))
+                                     (setf state (list (and (tuatara.io:saving-p buffer) t)
+                                                       (tuatara.io:file-disk-state buffer))))
+                                   (wait-until (lambda () (null (tuatara.io:saves-running))) 10))
+                                 :tick :tick)
+                           :file path :width 220)
+               (is equal '(t nil) state "visited while saving, the file is not taken as changed")
+               (false (tuatara.frontend.fake:fake-frame-showing f "changed on disk"))
+               (false (tuatara.buffer:buffer-read-only-p (session-buffer editor)))
+               (tuatara.buffer:kill-buffer (session-buffer editor)))
+          (sb-int:unencapsulate 'tuatara.io::write-text-file 'slow))))))
+
 (define-test (files-changed-on-disk following)
   (with-slow-polling
     (with-test-directory (dir)
@@ -289,7 +379,8 @@ whose state changed, and those whose file changed again."
         (multiple-value-bind (f editor)
             (run-keys "M-x t e s t - c h a n g e - a n d - w a i t RET" :file path :width 100)
           (is string= (format nil "start~%more~%more~%") (session-text editor))
-          (true (tuatara.frontend.fake:fake-frame-showing f "run.log changed on disk; M-x revert-buffer reads it again"))
+          (true (tuatara.frontend.fake:fake-frame-showing f
+                                                          "run.log changed on disk; M-x revert-buffer reads it again"))
           (tuatara.buffer:kill-buffer (session-buffer editor)))))))
 
 (define-test (files-changed-on-disk many-at-once)
@@ -301,7 +392,11 @@ whose state changed, and those whose file changed again."
             (run-keys "M-x t e s t - c h a n g e - s e v e r a l - o n - d i s k RET" :file (first paths) :width 160)
           (declare (ignore editor))
           ;; one message for all three
-          (true (tuatara.frontend.fake:fake-frame-showing f "a.txt" "b.txt" "c.txt" "changed on disk; M-x revert-buffer reads each again")))
+          (true (tuatara.frontend.fake:fake-frame-showing f
+                                                          "a.txt"
+                                                          "b.txt"
+                                                          "c.txt"
+                                                          "changed on disk; M-x revert-buffer reads each again")))
         (dolist (name '("a.txt" "b.txt" "c.txt"))
           (let ((b (tuatara.buffer:find-buffer name))) (when b (tuatara.buffer:kill-buffer b))))))))
 

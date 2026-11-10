@@ -40,12 +40,14 @@ the carriage returns before newlines left out only where lines end in CR LF."
   (multiple-value-bind (text returns) (if (tuatara.defaults::buffer-crlf-p buffer)
                                           (tuatara.defaults::org-strip-returns (tuatara.buffer:buffer-string buffer))
                                           (values (tuatara.buffer:buffer-string buffer) nil))
-    (tuatara.defaults::make-org-view (tuatara.defaults::org-parse text) text 0 (tuatara.buffer:buffer-size buffer) returns t)))
+    (tuatara.defaults::make-org-view (tuatara.defaults::org-parse text) text 0
+                                     (tuatara.buffer:buffer-size buffer) returns t)))
 
 (defun org-parts-colours (buffer views)
   "The colours of all of BUFFER from VIEWS, in order of where they begin (code in its language's colours left out)."
   (let ((size (tuatara.buffer:buffer-size buffer)))
-    (with-functions-replaced ((tuatara.defaults::org-src-cached-highlights (lambda (&rest arguments) (declare (ignore arguments)) nil)))
+    (with-functions-replaced ((tuatara.defaults::org-src-cached-highlights (lambda (&rest arguments)
+                                                                             (declare (ignore arguments)) nil)))
       (stable-sort (loop for view in views nconc (tuatara.defaults::org-view-colours buffer view 0 size nil))
                    #'< :key #'first))))
 
@@ -70,8 +72,11 @@ the carriage returns before newlines left out only where lines end in CR LF."
                  (is equal expected (org-parts-colours buffer from-whole)))
                (is equal (loop for (s . e) in (tuatara.defaults::org-hidden-chars (tuatara.defaults::org-view-tree whole) 0 (length (tuatara.defaults::org-view-text whole)))
                                collect (if (consp e)
-                                           (list (tuatara.defaults::org-view-byte buffer whole s) (tuatara.defaults::org-view-byte buffer whole (first e)) (second e) nil)
-                                           (list (tuatara.defaults::org-view-byte buffer whole s) (tuatara.defaults::org-view-byte buffer whole e) "" nil)))
+                                           (list (tuatara.defaults::org-view-byte buffer whole s)
+                                                 (tuatara.defaults::org-view-byte buffer whole (first e))
+                                                 (second e) nil)
+                                           (list (tuatara.defaults::org-view-byte buffer whole s)
+                                                 (tuatara.defaults::org-view-byte buffer whole e) "" nil)))
                    (tuatara.defaults::org-hidden-ranges buffer 0 size :cache nil)))
           (tuatara.buffer:kill-buffer buffer))))))
 
@@ -79,7 +84,10 @@ the carriage returns before newlines left out only where lines end in CR LF."
   ;; after each of many changes, the parts kept up are those found again from nothing, and each part's parse
   ;; that of its text: stars typed and taken away, lines joined and split, a #+TODO: line written, many changes at once
   (let ((*random-state* (sb-ext:seed-random-state 2026))
-        (pieces (list "* " "** " "*" " " (string #\Newline) (format nil "~%* New~%") (format nil "#+TODO: NEXT | DONE~%")
+        (pieces (list "* " "** " "*" " "
+                      (string #\Newline)
+                      (format nil "~%* New~%")
+                      (format nil "#+TODO: NEXT | DONE~%")
                       "NEXT " "é" "x" (format nil "~%~%") ":END:" "#+begin_src")))
     (dolist (entry (org-parts-corpus))
       (destructuring-bind (text . crlf) entry
@@ -90,9 +98,14 @@ the carriage returns before newlines left out only where lines end in CR LF."
                    (let* ((rope (tuatara.buffer:buffer-text buffer))
                           (size (tuatara.text:rope-octet-length rope))
                           (edits (sort (loop repeat (1+ (random 3))
-                                             collect (let* ((start (tuatara.text:rope-char-start rope (random (1+ size))))
+                                             collect (let* ((start (tuatara.text:rope-char-start rope
+                                                                                                 (random (1+ size))))
                                                             (end (if (zerop (random 3))
-                                                                     (tuatara.text:rope-char-start rope (min size (+ start (random 12))))
+                                                                     (tuatara.text:rope-char-start rope
+                                                                                                   (min size
+                                                                                                        (+
+                                                                                                         start
+                                                                                                         (random 12))))
                                                                      start)))
                                                        (tuatara.text:make-edit start end (tuatara.text:string-octets (nth (random (length pieces)) pieces)))))
                                        #'< :key #'tuatara.text:edit-start))
@@ -108,8 +121,9 @@ the carriage returns before newlines left out only where lines end in CR LF."
                          (is equal (org-parts-afresh buffer) kept)
                          ;; each part's parse of its text as it is now
                          (dolist (view (tuatara.defaults::org-views buffer 0 (tuatara.buffer:buffer-size buffer)))
-                           (is string= (tuatara.buffer:buffer-string buffer :start (tuatara.defaults::org-view-from view)
-                                                                            :end (tuatara.defaults::org-view-to view))
+                           (is string=
+                               (tuatara.buffer:buffer-string buffer :start (tuatara.defaults::org-view-from view)
+                                                                    :end (tuatara.defaults::org-view-to view))
                                (tuatara.defaults::org-view-text view))
                            (is equalp (org-tree-data (tuatara.defaults::org-parse (tuatara.defaults::org-view-text view)
                                                                                   :todo-keywords (second kept)))
@@ -118,7 +132,9 @@ the carriage returns before newlines left out only where lines end in CR LF."
 
 (defun org-tree-data (node)
   "NODE and what is under it as data: type, positions and children, to compare two parses."
-  (list (tuatara.defaults::org-node-type node) (tuatara.defaults::org-node-begin node) (tuatara.defaults::org-node-end node)
+  (list (tuatara.defaults::org-node-type node)
+        (tuatara.defaults::org-node-begin node)
+        (tuatara.defaults::org-node-end node)
         (tuatara.defaults::org-node-contents-begin node) (tuatara.defaults::org-node-contents-end node)
         (tuatara.defaults::org-property node :todo-keyword)
         (mapcar #'org-tree-data (tuatara.defaults::org-node-children node))))
@@ -158,10 +174,13 @@ the carriage returns before newlines left out only where lines end in CR LF."
     (flet ((after (at keys)
              (let ((tuatara-user:*org-bullets* nil) (tuatara-user:*org-startup-indented* nil))
                (run-keys (list "M-x o r g - m o d e RET"
-                               (lambda () (setf (tuatara.buffer:buffer-point (session-buffer tuatara.command:*editor*)) (search at text)))
+                               (lambda ()
+                                 (setf (tuatara.buffer:buffer-point (session-buffer tuatara.command:*editor*))
+                                       (search at text)))
                                keys)
                          :text text :width 80 :height 12)))
-           (row-of (f words) (loop for row below 11 when (search words (tuatara.frontend.fake:fake-screen-line f row)) return row)))
+           (row-of (f words)
+             (loop for row below 11 when (search words (tuatara.frontend.fake:fake-screen-line f row)) return row)))
       (let* ((f (after "Text of 20." "i * * SPC N e w RET C-g"))
              (row (row-of f "** New")))
         (true row)
@@ -175,7 +194,9 @@ the carriage returns before newlines left out only where lines end in CR LF."
 (defun org-node-full-data (node)
   "NODE and everything under it as data, every slot and property (a
 headline's title objects too), to tell two parses apart."
-  (list (tuatara.defaults::org-node-type node) (tuatara.defaults::org-node-begin node) (tuatara.defaults::org-node-end node)
+  (list (tuatara.defaults::org-node-type node)
+        (tuatara.defaults::org-node-begin node)
+        (tuatara.defaults::org-node-end node)
         (tuatara.defaults::org-node-contents-begin node) (tuatara.defaults::org-node-contents-end node)
         (tuatara.defaults::org-node-post-blank node) (tuatara.defaults::org-node-post-affiliated node)
         (loop for (key value) on (tuatara.defaults::org-node-properties node) by #'cddr
@@ -205,8 +226,13 @@ headline's title objects too), to tell two parses apart."
   ;; and where its text lost its carriage returns as they are: after each of many changes, CR LF too
   (let ((*random-state* (sb-ext:seed-random-state 2027))
         (tuatara.defaults::*org-parse-at-once* most-positive-fixnum)
-        (pieces (list "* " "** " "*" "*	" " " (string #\Newline) (format nil "~%* New~%") (format nil "#+TODO: NEXT | DONE~%")
-                      "NEXT " "COMMENT " "é" "x" (format nil "~%~%") ":END:" (format nil "~%:PROPERTIES:~%:ID: 1~%:END:~%")
+        (pieces (list "* " "** " "*" "*	" " "
+                      (string #\Newline)
+                      (format nil "~%* New~%")
+                      (format nil "#+TODO: NEXT | DONE~%")
+                      "NEXT " "COMMENT " "é" "x"
+                      (format nil "~%~%") ":END:"
+                      (format nil "~%:PROPERTIES:~%:ID: 1~%:END:~%")
                       "#+begin_src" (format nil "~%#+end_src~%") "[[a][b]] *bold* "))
         (compared 0))
     (dolist (entry (org-parts-corpus))
@@ -217,7 +243,8 @@ headline's title objects too), to tell two parses apart."
                  (when (plusp step)
                    (if crlf
                        ;; lines kept ending in CR LF: no newline typed alone
-                       (org-parts-random-edits buffer (list "* " "x" "é" "*" " " (format nil "~c~%* N~c~%" #\Return #\Return)))
+                       (org-parts-random-edits buffer
+                                               (list "* " "x" "é" "*" " " (format nil "~c~%* N~c~%" #\Return #\Return)))
                        (org-parts-random-edits buffer pieces)))
                  (when (or (evenp step) (= step 59))
                    (let* ((parse (tuatara.defaults::org-buffer-parse buffer))
@@ -228,7 +255,8 @@ headline's title objects too), to tell two parses apart."
                        (is string= whole tree-text)
                        (is equal (org-node-full-data (tuatara.defaults::org-parse whole)) (org-node-full-data tree))
                        (when crlf
-                         (is equalp returns (tuatara.defaults::org-state-returns (tuatara.defaults::org-buffer-state buffer)))
+                         (is equalp returns
+                             (tuatara.defaults::org-state-returns (tuatara.defaults::org-buffer-state buffer)))
                          (is equalp returns (tuatara.defaults::org-parts-returns buffer)))))))
             (tuatara.buffer:kill-buffer buffer)))))
     (true (< 600 compared))))
@@ -258,8 +286,11 @@ headline's title objects too), to tell two parses apart."
          (middle (1+ (position #\Newline text :start (floor (length text) 2))))
          (before 0) (consed 0) (view nil))
     (labels ((buffer () (session-buffer tuatara.command:*editor*))
-             (settled () (loop repeat 400 until (let ((v (tuatara.defaults::org-view-at (buffer) middle))) (and v (tuatara.defaults::org-view-current v)))
-                               do (sleep 0.01))))
+             (settled ()
+               (loop repeat 400
+                     until (let ((v (tuatara.defaults::org-view-at (buffer) middle)))
+                             (and v (tuatara.defaults::org-view-current v)))
+                     do (sleep 0.01))))
       (run-keys (append (list "M-x o r g - m o d e RET"
                               (lambda () (setf (tuatara.buffer:buffer-point (buffer)) middle))
                               "i x" :tick #'settled
@@ -286,7 +317,8 @@ headline's title objects too), to tell two parses apart."
     (unwind-protect
          (let ((tuatara.defaults::*org-parse-at-once* most-positive-fixnum))
            (tuatara.defaults::org-buffer-parse buffer)
-           (tuatara.buffer:buffer-edit buffer (vector (tuatara.text:make-edit 200000 200000 (tuatara.text:string-octets "x"))))
+           (tuatara.buffer:buffer-edit buffer
+                                       (vector (tuatara.text:make-edit 200000 200000 (tuatara.text:string-octets "x"))))
            (with-functions-replaced ((tuatara.defaults::org-parse (lambda (text &rest arguments)
                                                                      (incf parsed (length text))
                                                                      (apply parse text arguments))))
@@ -309,9 +341,12 @@ headline's title objects too), to tell two parses apart."
     (unwind-protect
          (progn
            (tuatara.defaults::org-returns-of buffer)
-           (tuatara.buffer:buffer-edit buffer (vector (tuatara.text:make-edit 200000 200000 (tuatara.text:string-octets "x"))))
+           (tuatara.buffer:buffer-edit buffer
+                                       (vector (tuatara.text:make-edit 200000 200000 (tuatara.text:string-octets "x"))))
            (with-functions-replaced ((tuatara.defaults::org-returns-in-rope
-                                      (lambda (rope &rest arguments &key (start 0) (end (tuatara.text:rope-octet-length rope)))
+                                      (lambda (rope &rest arguments &key
+                                                                      (start 0)
+                                                                      (end (tuatara.text:rope-octet-length rope)))
                                         (incf read (- end start))
                                         (apply find rope arguments))))
              (is equalp (nth-value 1 (tuatara.defaults::org-strip-returns (tuatara.buffer:buffer-string buffer)))
@@ -335,7 +370,8 @@ headline's title objects too), to tell two parses apart."
                     (tuatara.defaults::org-buffer-parts buffer)
                     (let ((step (floor (length text) edits)))
                       (tuatara.buffer:buffer-edit buffer (coerce (loop for i below edits
-                                                                       collect (tuatara.text:make-edit (+ 3 (* i step)) (+ 3 (* i step))
+                                                                       collect (tuatara.text:make-edit (+ 3 (* i step))
+                                                                                                       (+ 3 (* i step))
                                                                                                        (tuatara.text:string-octets "y")))
                                                                  'vector)))
                     (let ((start (get-internal-real-time)))
@@ -405,7 +441,8 @@ headline's title objects too), to tell two parses apart."
   ;; looked through all the block lines of the text, 0.9 s for a note of 10 MB
   (flet ((seconds (count)
            (let ((buffer (org-parts-buffer (with-output-to-string (out)
-                                             (dotimes (i count) (format out "* H~d~%#+begin_src lisp~%(f)~%#+end_src~%" i)))
+                                             (dotimes (i count)
+                                               (format out "* H~d~%#+begin_src lisp~%(f)~%#+end_src~%" i)))
                                            nil)))
              (unwind-protect
                   (loop repeat 2
@@ -428,10 +465,13 @@ headline's title objects too), to tell two parses apart."
          (at (+ (search "* P" text) 10)))
     (unwind-protect
          (flet ((edit (start string)
-                  (tuatara.buffer:buffer-edit buffer (vector (tuatara.text:make-edit start start (tuatara.text:string-octets string)))))
+                  (tuatara.buffer:buffer-edit buffer
+                                              (vector (tuatara.text:make-edit start start
+                                                                              (tuatara.text:string-octets string)))))
                 (view () (tuatara.defaults::org-view-at buffer at)))
            (loop repeat 500
-                 until (every #'tuatara.defaults::org-view-current (tuatara.defaults::org-views buffer 0 (tuatara.buffer:buffer-size buffer)))
+                 until (every #'tuatara.defaults::org-view-current
+                              (tuatara.defaults::org-views buffer 0 (tuatara.buffer:buffer-size buffer)))
                  do (sleep 0.005))
            (loop repeat 500
                  do (tuatara.defaults::org-buffer-parse buffer)
@@ -449,7 +489,9 @@ headline's title objects too), to tell two parses apart."
                   (parts (tuatara.defaults::org-buffer-parts buffer))
                   (part-state (tuatara.defaults::org-part-state
                                (tuatara.defaults::org-part-at parts (tuatara.defaults::org-part-index parts at)))))
-             (loop repeat 500 until (let ((r (tuatara.defaults::org-state-result state))) (and r (sixth r))) do (sleep 0.005))
+             (loop repeat 500
+                   until (let ((r (tuatara.defaults::org-state-result state))) (and r (sixth r)))
+                   do (sleep 0.005))
              (tuatara.defaults::org-take-parse state)
              (true (tuatara.defaults::org-state-tree part-state)))
            ;; coloured at once, as for a part whose parse takes longer than colouring waits
@@ -463,10 +505,14 @@ headline's title objects too), to tell two parses apart."
   ;; headlines nested deeper than a parse reads, pasted into a note: the whole parse made of the parts is the
   ;; parse of the whole text, cut where that is cut, never deeper
   (let* ((tuatara.defaults::*org-parse-at-once* most-positive-fixnum)
-         (chain (with-output-to-string (o) (loop for i from 1 to 400 do (format o "~a h~d~%" (make-string i :initial-element #\*) i))))
+         (chain (with-output-to-string (o)
+                  (loop for i from 1 to 400 do (format o "~a h~d~%" (make-string i :initial-element #\*) i))))
          (buffer (org-parts-buffer (format nil "* top~%x~%* end~%") nil)))
     (unwind-protect
-         (flet ((depth (tree) (labels ((d (n) (1+ (reduce #'max (mapcar #'d (tuatara.defaults::org-node-children n)) :initial-value 0)))) (d tree))))
+         (flet ((depth (tree)
+                  (labels ((d (n)
+                             (1+ (reduce #'max (mapcar #'d (tuatara.defaults::org-node-children n)) :initial-value 0))))
+                    (d tree))))
            (tuatara.defaults::org-buffer-parse buffer)
            (tuatara.buffer:buffer-edit buffer (vector (tuatara.text:make-edit 6 6 (tuatara.text:string-octets chain))))
            (let ((made (tuatara.defaults::org-parse-tree (tuatara.defaults::org-buffer-parse buffer)))
@@ -550,12 +596,15 @@ headline's title objects too), to tell two parses apart."
     (unwind-protect
          (let ((tuatara.defaults::*org-parse-at-once* most-positive-fixnum))
            (is = 2 (length (tuatara.defaults::org-headlines (tuatara.defaults::org-parse-tree (tuatara.defaults::org-buffer-parse buffer)))))
-           (tuatara.buffer:buffer-insert buffer (search "more" (tuatara.buffer:buffer-string buffer)) (format nil "** Three~%"))
+           (tuatara.buffer:buffer-insert buffer
+                                         (search "more" (tuatara.buffer:buffer-string buffer))
+                                         (format nil "** Three~%"))
            (let* ((parse (tuatara.defaults::org-buffer-parse buffer))
                   (tree (tuatara.defaults::org-parse-tree parse))
                   (text (tuatara.defaults::org-parse-text parse)))
              (is equal '("One" "Two" "Three")
-                 (mapcar (lambda (h) (tuatara.defaults::org-property h :raw-value)) (tuatara.defaults::org-headlines tree)))
+                 (mapcar (lambda (h) (tuatara.defaults::org-property h :raw-value))
+                         (tuatara.defaults::org-headlines tree)))
              (is equal (tuatara.buffer:buffer-string buffer) text)
              (false (tuatara.defaults::org-state-failed (tuatara.defaults::org-buffer-state buffer)))))
       (setf (tuatara.buffer:buffer-mapping buffer) nil)

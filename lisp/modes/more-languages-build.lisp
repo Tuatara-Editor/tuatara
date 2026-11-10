@@ -1,4 +1,5 @@
-;;;; lisp/modes/more-languages-build.lisp --- The shells, build files and version control Helix knows, in major modes named as Emacs's.
+;;;; lisp/modes/more-languages-build.lisp --- The shells, build files and version control Helix knows, in major modes
+;;;; named as Emacs's.
 ;;;; Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
 ;;;;
 ;;;; Each language is parsed with the grammar and coloured, indented and
@@ -210,7 +211,12 @@
 
 (define-language starlark
   "Starlark: the build files of Bazel and Buck, parsed with tree-sitter-python."
-  :grammar "python" :modes (bazel-starlark-mode) :indent 4 :queries "starlark" :injection-names "starlark|bzl|bazel|buck" :definitions :textobjects)
+  :grammar "python"
+  :modes (bazel-starlark-mode)
+  :indent 4
+  :queries "starlark"
+  :injection-names "starlark|bzl|bazel|buck"
+  :definitions :textobjects)
 
 (define-major-mode rpm-spec-mode prog-mode
   "RPM spec files: how a package is built."
@@ -251,7 +257,12 @@
 
 (define-language earthfile
   "Earthfiles: builds for Earthly, parsed with tree-sitter-earthfile."
-  :grammar "earthfile" :modes (earthfile-mode) :indent 2 :queries "earthfile" :injection-names "earthfile" :definitions :textobjects)
+  :grammar "earthfile"
+  :modes (earthfile-mode)
+  :indent 2
+  :queries "earthfile"
+  :injection-names "earthfile"
+  :definitions :textobjects)
 
 (define-major-mode gn-mode prog-mode
   "GN build files, as Chromium builds with."

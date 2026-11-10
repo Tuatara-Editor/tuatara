@@ -36,9 +36,13 @@ reading a text: it reads nothing more."
 (setf (documentation 'grammar-p 'function) "True when OBJECT is a GRAMMAR."
       (documentation 'grammar-name 'function) "The grammar's name, as its file is named: rust for rust.so."
       (documentation 'grammar-symbols 'function) "The grammar's node type names, by symbol number."
-      (documentation 'grammar-named 'function) "For each symbol of the grammar, true when it names a node rather than a literal token."
-      (documentation 'grammar-faulted 'function) "What failed once the grammar's own code failed while reading a text (a GRAMMAR-FAILURE, a memory fault, or :CRASHED when it ended the program parsing), else NIL; it reads nothing more."
-      (documentation 'grammar-spans-query 'function) "The grammar's query for strings and comments, compiled when first needed.")
+      (documentation 'grammar-named 'function) "For each symbol of the grammar, true when it names a
+node rather than a literal token."
+      (documentation 'grammar-faulted 'function) "What failed once the grammar's own code failed
+while reading a text (a GRAMMAR-FAILURE, a memory fault, or :CRASHED when it
+ended the program parsing), else NIL; it reads nothing more."
+      (documentation 'grammar-spans-query 'function) "The grammar's query for strings and comments,
+compiled when first needed.")
 
 (defmethod print-object ((grammar grammar) stream)
   (print-unreadable-object (grammar stream :type t)
@@ -55,17 +59,18 @@ break it takes no language's colours away from any other.")
 
 (defun grammar-went-wrong (grammar where fault)
   "Note that GRAMMAR went wrong, FAULT saying how (:CRASHED, :HUNG, or a
-GRAMMAR-FAILURE), reading the text of WHERE, a buffer or a helper: it is off
-for that text from now on (FAULTED-NAMES), and for all text once it has
-gone wrong on *GRAMMAR-FAULTS-BEFORE-OFF* texts, each file counted once by
-where it really is however often it is opened, a text with no file by its
-content (TEXT-IDENTITY). Three different texts turning a language off for
-all is as meant: a grammar going wrong that often is not to be trusted.
-With no WHERE, off for all at once. True when it is now off for all."
+GRAMMAR-FAILURE), reading the text of WHERE, a buffer or a helper. It is off
+for that text from now on (FAULTED-NAMES), and for all text once it has gone
+wrong on *GRAMMAR-FAULTS-BEFORE-OFF* texts. Each file is counted once by where
+it really is however often it is opened, a text with no file by its content
+\(TEXT-IDENTITY). Three different texts turning a language off for all is as
+meant: a grammar going wrong that often is not to be trusted. With no WHERE,
+it is off for all at once. True when it is now off for all."
   (when where
     (note-faulted where (grammar-name grammar)))
   (let ((count (length (sb-ext:with-locked-hash-table (**grammar-faults**)
-                         (pushnew (if where (text-identity where) :none) (gethash (grammar-name grammar) **grammar-faults**)
+                         (pushnew (if where (text-identity where) :none)
+                                  (gethash (grammar-name grammar) **grammar-faults**)
                                   :test #'equal)))))
     (when (or (null where) (>= count *grammar-faults-before-off*))
       (setf (grammar-faulted grammar) fault)
@@ -396,7 +401,8 @@ ended (TREE then no longer matches its text)."
       (let ((number (reply-u32 call 0)))
         (values (and copy (/= number 0) (%make-tree (tree-helper tree) number)) t)))))
 
-(defstruct (tree-node (:constructor make-tree-node (start end name named children &optional broken symbol)) (:copier nil))
+(defstruct (tree-node (:constructor make-tree-node (start end name named children &optional broken symbol))
+                      (:copier nil))
   "A node of a syntax tree: the octets START below END it covers, the NAME of
 its type (for a literal token, its text), whether it is NAMED, how many named
 CHILDREN it has, whether it is BROKEN (a syntax error, or holding one), and
@@ -425,18 +431,19 @@ the number of its type in the grammar, its SYMBOL."
   "Parse ROPE with PARSER and return the new tree, or NIL when the parse was
 cancelled, ran out of time or memory, the grammar went wrong, the text could
 not be read or the helper holding the parser ended. The second value then
-says why: :SLOW when it ran out of time, :MEMORY when it took more memory
-than BUDGET, :SHORT when the memory the helper may take ran short (or was
-short, and it did not start), :FAILED when the grammar's own code gave the
-parser what it cannot have (a token the grammar has no number for), :CRASHED
-when the helper ended while it parsed, and :HUNG when it went on past LIMIT
-and was ended. The third value is true when PARSER is not to be used again,
-not even to be deleted: left half way, memory running out within it, or its
-helper ended. OLD is the tree of the text before, edited to match ROPE with
-EDIT-TREE, or NIL to parse from scratch. CANCEL is a foreign 32-bit flag: the
-parse stops soon after it becomes nonzero. LIMIT is how many seconds the
-parse may take, BUDGET how many octets of memory more than the parsing
-program held before it; NIL for no limit."
+says why. :SLOW means it ran out of time. :MEMORY means it took more memory
+than BUDGET. :SHORT means the memory the helper may take ran short (or was
+short, and it did not start). :FAILED means the grammar's own code gave the
+parser what it cannot have (a token the grammar has no number for). :CRASHED
+means the helper ended while it parsed. :HUNG means it went on past LIMIT and
+was ended. The third value is true when PARSER is not to be used again, not
+even to be deleted: left half way, memory running out within it, or its helper
+ended.
+OLD is the tree of the text before, edited to match ROPE with EDIT-TREE, or
+NIL to parse from scratch. CANCEL is a foreign 32-bit flag: the parse stops
+soon after it becomes nonzero. LIMIT is how many seconds the parse may take,
+BUDGET how many octets of memory more than the parsing program held before it;
+NIL for no limit."
   (let ((helper (parser-helper parser))
         (input (make-parse-input rope (tuatara.text:rope-octet-length rope) (parser-number parser))))
     (unless (helper-alive helper)
@@ -488,12 +495,13 @@ program held before it; NIL for no limit."
 
 (defstruct (query (:constructor %make-query) (:copier nil))
   "A tree-sitter query for GRAMMAR, known to the helpers by NUMBER and compiled
-in each when it first runs there: the SOURCE text, CAPTURES (the name of each
-capture, by number), PREDICATES (for each pattern, a list of the tests its
-matches must pass), STARTS (the octet in the source each pattern starts at),
-PROPERTIES (for each pattern, what its #set! directives set), NON-LOCAL (the
-numbers of its patterns that are not local, see QUERY-NON-LOCAL-PATTERNS) and
-DISABLED (the numbers of those made to match nothing)."
+in each when it first runs there. It holds the SOURCE text. CAPTURES is the
+name of each capture, by number. PREDICATES is, for each pattern, a list of
+the tests its matches must pass. STARTS is the octet in the source each
+pattern starts at. PROPERTIES is, for each pattern, what its #set! directives
+set. NON-LOCAL is the numbers of its patterns that are not local, see
+QUERY-NON-LOCAL-PATTERNS. DISABLED is the numbers of those made to match
+nothing."
   (grammar nil :read-only t)
   (number 0 :type fixnum :read-only t)
   (source "" :type string :read-only t)
@@ -535,7 +543,9 @@ DISABLED (the numbers of those made to match nothing)."
 them ended, or did not answer in time (a busy moment). Asked again later,
 they may compile.")
   (:report (lambda (c s)
-             (format s "the program compiling the ~a rules did not answer" (grammar-name (query-not-answered-grammar c))))))
+             (format s
+                     "the program compiling the ~a rules did not answer"
+                     (grammar-name (query-not-answered-grammar c))))))
 
 (setf (documentation 'query-not-answered-grammar 'function) "The grammar whose rules were not compiled.")
 
@@ -557,7 +567,8 @@ such as a token the grammar has no number for, and the parse stopped.")
 (setf (documentation 'grammar-failure-grammar 'function) "The grammar that went wrong.")
 
 (defparameter *query-error-kinds*
-  #("No error" "Syntax error" "Unknown node type" "Unknown field" "Unknown capture" "Impossible pattern" "Wrong grammar")
+  #("No error" "Syntax error" "Unknown node type" "Unknown field" "Unknown capture" "Impossible pattern"
+    "Wrong grammar")
   "What each tree-sitter query error number means.")
 
 (defun reply-predicate-steps (call at count &optional (longest +reply-most+))
@@ -652,11 +663,12 @@ say, and signal a QUERY-ERROR."
 
 (defun read-query-source (source)
   "Read SOURCE, the text of a tree-sitter query, as tree-sitter reads it, for
-what the editor needs of it: the capture names, numbered in the order they
-first come, as a vector; and a vector holding for each pattern, in order, a
-cons of the octet it starts at and its predicates, each a list of the predicate's name (as
-eq? or set!, without # or .) and its arguments, a capture's number or a
-string. Signals QUERY-SOURCE-ERROR when SOURCE is not a query."
+what the editor needs of it. Returns the capture names, numbered in the order
+they first come, as a vector. It also returns a vector holding for each
+pattern, in order, a cons of the octet it starts at and its predicates. Each
+predicate is a list of its name (as eq? or set!, without # or .) and its
+arguments, a capture's number or a string. Signals QUERY-SOURCE-ERROR when
+SOURCE is not a query."
   (let ((at 0) (octet 0) (end (length source))
         (captures (make-array 0 :adjustable t :fill-pointer t))
         (patterns '()) (predicates '()))
@@ -689,7 +701,12 @@ string. Signals QUERY-SOURCE-ERROR when SOURCE is not a query."
                                ((char= c #\\)
                                 (advance)
                                 (let ((e (or (next) (fail))))
-                                  (write-char (case e (#\n #\Newline) (#\r #\Return) (#\t #\Tab) (#\0 (code-char 0)) (t e)) out)
+                                  (write-char (case e
+                                                (#\n #\Newline)
+                                                (#\r #\Return)
+                                                (#\t #\Tab)
+                                                (#\0 (code-char 0))
+                                                (t e)) out)
                                   (advance)))
                                (t (write-char c out) (advance)))))))
              (capture ()
@@ -869,8 +886,10 @@ time (QUERY-COMPILE-WAIT): the rules may compile when asked again."
                 (unless (and own (= (car own) (aref starts i)) (equal (cdr own) steps))
                   (disagreeing-rules helper grammar)))
               (setf at after
-                    (aref predicates i) (remove nil (mapcar (lambda (step) (parse-predicate step (grammar-symbols grammar))) steps))
-                    (aref properties i) (loop for (key value) in (remove nil (mapcar #'parse-directive steps))
+                    (aref predicates
+                          i) (remove nil
+                                     (mapcar (lambda (step) (parse-predicate step (grammar-symbols grammar))) steps))
+                          (aref properties i) (loop for (key value) in (remove nil (mapcar #'parse-directive steps))
                                               append (list key value)))))
           (unless (= patterns (length own-patterns))
             (disagreeing-rules helper grammar))
@@ -992,7 +1011,8 @@ which look at the first node of each capture named and fail without one."
          ;; a node of the match names a local definition; unknown, it passes
          (or (null *local-references*)
              (not (eq negated (loop for i from 0 below count
-                                    thereis (gethash (logior (ash (aref captures (+ 1 (* 4 i))) 31) (aref captures (+ 2 (* 4 i))))
+                                    thereis (gethash (logior (ash (aref captures (+ 1 (* 4 i))) 31)
+                                                             (aref captures (+ 2 (* 4 i))))
                                                      *local-references*))))))
         (:same-line
          (let ((a (first-node capture)) (b (first-node argument)))
@@ -1193,7 +1213,9 @@ MAP-QUERY-MATCHES takes them from there; FUNCTION's values."
                         do (call-u32 call (query-number query)) (call-u32 call (tree-number tree))
                            (call-u32 call (max 0 start)) (call-u32 call (max 0 end)))
                   (let ((entries (and (eql 0 (call-send call :most (loop for (nil nil start end) in specs
-                                                                         sum (+ 4 (matches-reply-most (max 0 start) (max 0 end))))))
+                                                                         sum (+ 4
+                                                                                (matches-reply-most (max 0 start)
+                                                                                                    (max 0 end))))))
                                       (prefetch-entries call specs nil 0))))
                     (multiple-value-list
                      (if entries
@@ -1331,13 +1353,16 @@ FUNCTION's values. Each is (NIL :CRASHED) when HELPER ended first."
                (let ((status (while-parsing (helper)
                                (call-send call :input input :seconds (+ seconds *syntax-helper-wait*)
                                                :most (loop for parse in parses
-                                                           sum (+ 8 (loop for (nil start end) in (text-parse-queries parse)
+                                                           sum (+ 8
+                                                                  (loop for (nil start
+                                                                                 end) in (text-parse-queries parse)
                                                                           sum (+ 4 (matches-reply-most (max 0 start)
                                                                                                        (max 0 end))))))))))
                  (multiple-value-bind (trees entries)
                      (cond ((eq status :dead) nil)
-                           ((/= 0 status) (values (mapcar (lambda (parse) (declare (ignore parse)) (list nil nil)) parses)
-                                                  #()))
+                           ((/= 0 status)
+                            (values (mapcar (lambda (parse) (declare (ignore parse)) (list nil nil)) parses)
+                                    #()))
                            (t (read-text-parses call helper parses input)))
                    (when trees
                      (setf ran t)

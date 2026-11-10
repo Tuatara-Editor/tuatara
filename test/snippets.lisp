@@ -120,7 +120,8 @@
            (kept (cdr (gethash place tuatara.defaults::*snippet-folders*))))
       (true kept)
       (is eq (first kept) (first (tuatara.defaults::user-snippets-of "fundamental-mode")))
-      (alexandria:write-string-into-file (format nil "# key: zp~%# --~%changed and longer") (concatenate 'string place "zero")
+      (alexandria:write-string-into-file (format nil "# key: zp~%# --~%changed and longer")
+                                         (concatenate 'string place "zero")
                                          :if-exists :supersede)
       (is string= "changed and longer" (session-text (nth-value 1 (run-keys "z p TAB" :text ""))))))
   ;; a choice never closed is text
@@ -137,7 +138,10 @@
 (define-test (snippets long-lines-and-many-fields)
   (with-snippets (("fundamental-mode" "adjacent" (format nil "# key: aj~%# --~%${1:a}$2 $1")))
     ;; a key after a long line of characters of several octets each
-    (let ((text (session-text (nth-value 1 (run-keys "M-> TAB" :text (concatenate 'string (make-string 300 :initial-element #\€) " aj"))))))
+    (let ((text (session-text (nth-value 1
+                                         (run-keys "M-> TAB"
+                                                   :text (concatenate 'string
+                                                                      (make-string 300 :initial-element #\€) " aj"))))))
       (true (alexandria:ends-with-subseq " a a" text))))
   ;; twenty thousand fields put in at once, without a wait
   (with-snippets (("fundamental-mode" "many" (with-output-to-string (out)

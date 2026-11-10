@@ -18,7 +18,8 @@ looked at (KEYMAPS-LOOKUP)."
       (documentation 'keymap-name 'function) "The name of KEYMAP, for help."
       (documentation 'keymap-up 'function) "KEYMAP's parent, as KEYMAP-PARENT gives it."
       (documentation 'keymap-table 'function) "The hash table of KEYMAP's own bindings."
-      (documentation 'keymap-default 'function) "The command KEYMAP runs for a key it and its parents do not bind, or NIL.")
+      (documentation 'keymap-default 'function) "The command KEYMAP runs for a key it and its
+parents do not bind, or NIL.")
 
 (defconstant +key-open+ (code-char #xFDD0)
   "The mark before a key written into a text (a Unicode noncharacter, found in
@@ -32,7 +33,8 @@ no real text).")
   (or (char= char +key-open+) (char= char +key-close+)))
 
 (defvar *keymaps-generation* 0
-  "A count that goes up each time a key is bound or a parent given, so that what is worked out from the keymaps (WHERE-IS,
+  "A count that goes up each time a key is bound or a parent given, so that what is worked out from
+the keymaps (WHERE-IS,
 SUBSTITUTE-COMMAND-KEYS) is kept until they change.")
 
 (defvar *keymaps-lock* (sb-thread:make-mutex :name "keymaps")
@@ -93,11 +95,11 @@ error."
     label))
 
 (defun key-label (keymap spec)
-  "The label of the key SPEC in KEYMAP (SET-KEY-LABEL): the one given where
-SPEC is bound, KEYMAP or the first of its parents that binds it, a binding
-shadowing its parents' labels, but for a prefix key with none of its own,
-which takes the label of the same prefix in the parents; else KEYMAP's own;
-NIL when there is none."
+  "The label of the key SPEC in KEYMAP (SET-KEY-LABEL). It is the one given
+where SPEC is bound, KEYMAP or the first of its parents that binds it, a
+binding shadowing its parents' labels. A prefix key with none of its own takes
+the label of the same prefix in the parents. Else it is KEYMAP's own. The
+result is NIL when there is none."
   (flet ((label-in (map) (let ((table (gethash map *key-labels*))) (and table (values (gethash spec table))))))
     (loop for map = keymap then (keymap-parent map)
           while map

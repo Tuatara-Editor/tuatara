@@ -28,7 +28,8 @@ each in turn in ELEMENTS, the oldest first."
       (documentation 'lisp-frame-p 'function) "True when OBJECT is a LISP-FRAME."
       (documentation 'lisp-frame-open 'function) "The octet of the list's opening bracket."
       (documentation 'lisp-frame-start 'function) "Where the list starts, marks before its bracket included."
-      (documentation 'lisp-frame-elements 'function) "The start and end of each complete expression in the list in turn, the oldest first."
+      (documentation 'lisp-frame-elements 'function)
+      "The start and end of each complete expression in the list in turn, the oldest first."
       (documentation 'lisp-frame-count 'function) "How many complete expressions the list holds so far.")
 
 (declaim (inline frame-add))
@@ -63,12 +64,12 @@ each in turn in ELEMENTS, the oldest first."
   "How many octets reading Lisp text takes from the text at a time.")
 
 (defstruct (lisp-scan (:constructor make-lisp-scan (rope position)) (:copier nil))
-  "ROPE's Lisp, read from the start of a top-level form up to octet POSITION:
-STACK, the lists open there, the innermost first; PREFIX, where the marks
-before an expression not yet read begin, or NIL; INSIDE, :STRING when POSITION
-is inside a string that the octet DELIMITER ends and that began at
-STRING-START, :COMMENT when inside block comments nested DEPTH deep, else NIL.
-CHUNK holds ROPE's octets from CHUNK-START, read ahead."
+  "ROPE's Lisp, read from the start of a top-level form up to octet POSITION.
+STACK is the lists open there, the innermost first. PREFIX is where the marks
+before an expression not yet read begin, or NIL. INSIDE is :STRING when POSITION
+is inside a string that the octet DELIMITER ends and that began at STRING-START,
+:COMMENT when inside block comments nested DEPTH deep, else NIL. CHUNK holds
+ROPE's octets from CHUNK-START, read ahead."
   (rope nil :read-only t)
   (position 0 :type fixnum)
   (stack '())
@@ -290,8 +291,10 @@ now; and TEXT, the line without the blanks it begins with (LISP-LINE-HEAD)."
       (documentation 'lisp-line-rope 'function) "The text."
       (documentation 'lisp-line-point 'function) "The octet the line starts at."
       (documentation 'lisp-line-frames 'function) "The lists open at the line, the innermost first."
-      (documentation 'lisp-line-moved 'function) "The lines before indented in the same pass: start to (COLUMN . WIDTH)."
-      (documentation 'lisp-line-text 'function) "The line without the blanks it begins with, its first *LISP-LINE-HEAD* octets.")
+      (documentation 'lisp-line-moved 'function)
+      "The lines before indented in the same pass: start to (COLUMN . WIDTH)."
+      (documentation 'lisp-line-text 'function)
+      "The line without the blanks it begins with, its first *LISP-LINE-HEAD* octets.")
 
 (defun lisp-octet (line position)
   "The octet at POSITION of LINE's text, or 0 outside it."
@@ -600,7 +603,8 @@ with with-, without- or do-."
                         (setf calculated (1+ sexp-column)))
                        ((null method)
                         (when tentative-defun
-                          (setf tentative (lisp-indent-call-method line *lisp-defun-method* path frame sexp-column normal-indent)
+                          (setf tentative
+                                (lisp-indent-call-method line *lisp-defun-method* path frame sexp-column normal-indent)
                                 normal-indent tentative)))
                        ((integerp method)
                         (setf calculated (cond ((cdr path) normal-indent)

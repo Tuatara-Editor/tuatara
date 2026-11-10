@@ -58,14 +58,14 @@ the repository is shown as it is, with the arguments it was begun with."
                          'git-commit-arguments arguments))))
 
 (defun git-begin-commit (top doing arguments &key amend)
-  "Begin writing a commit of the repository at TOP, DOING said of C-c C-c,
-with ARGUMENTS for git commit: the files staged read in the background, and
-with AMEND the last commit's message, else the one git made ready for a
-merge stopped half way, written in the buffer to begin with; a new commit
-with nothing staged, and nothing in ARGUMENTS that commits without it, is
-refused."
+  "Begin writing a commit of the repository at TOP, DOING said of C-c C-c, with
+ARGUMENTS for git commit. The files staged are read in the background. With
+AMEND the last commit's message is written in the buffer to begin with, else the
+one git made ready for a merge stopped half way. A new commit with nothing
+staged, and nothing in ARGUMENTS that commits without it, is refused."
   (git-ask "Reading what is staged" top
-           (lambda (job top) (values (git-staged-files job top) (if amend (git-last-message job top) (git-merge-message job top))))
+           (lambda (job top)
+             (values (git-staged-files job top) (if amend (git-last-message job top) (git-merge-message job top))))
            (lambda (staged last)
              (cond ((and amend (null last)) (message "No commit yet to amend"))
                    ((and (not amend) (null staged)
@@ -75,8 +75,9 @@ refused."
 
 (define-command git-commit ()
   "Write a commit of what is staged: its message in a buffer of its own, what
-is staged listed under it as comments; \\<git-commit-mode>\\[git-commit-finish] commits it, \\[git-commit-cancel] gives it up.
-The commit menu's switches go with it."
+is staged listed under it as comments; \\<git-commit-mode>\\[git-commit-finish]
+commits it, \\[git-commit-cancel] gives it up. The commit menu's switches go
+with it."
   (with-git-repository (top switches)
     (git-begin-commit top "commit what is staged" switches)))
 
@@ -84,13 +85,19 @@ The commit menu's switches go with it."
   "Amend the last commit: what is staged goes into it, and its message,
 written in a buffer to begin with, is written again; \\<git-commit-mode>\\[git-commit-finish] amends it."
   (with-git-repository (top switches)
-    (git-begin-commit top "amend the last commit with this message and what is staged" (cons "--amend" switches) :amend t)))
+    (git-begin-commit top
+                      "amend the last commit with this message and what is staged"
+                      (cons "--amend" switches)
+                      :amend t)))
 
 (define-command git-commit-reword ()
   "Reword the last commit: its message, written in a buffer to begin with, is
 written again, nothing staged going into it; \\<git-commit-mode>\\[git-commit-finish] rewords it."
   (with-git-repository (top switches)
-    (git-begin-commit top "reword the last commit, nothing staged going into it" (list* "--amend" "--only" switches) :amend t)))
+    (git-begin-commit top
+                      "reword the last commit, nothing staged going into it"
+                      (list* "--amend" "--only" switches)
+                      :amend t)))
 
 (define-command git-commit-extend ()
   "Extend the last commit with what is staged, its message as it is."

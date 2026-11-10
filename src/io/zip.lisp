@@ -157,11 +157,13 @@ than *ZIP-LARGEST-DIRECTORY*. Only the directory is read."
 
 ;;; Inflating, as RFC 1951 says, after Mark Adler's puff
 
-(defparameter *inflate-length-base* #(3 4 5 6 7 8 9 10 11 13 15 17 19 23 27 31 35 43 51 59 67 83 99 115 131 163 195 227 258)
+(defparameter *inflate-length-base*
+  #(3 4 5 6 7 8 9 10 11 13 15 17 19 23 27 31 35 43 51 59 67 83 99 115 131 163 195 227 258)
   "The lengths the length codes 257 to 285 begin at.")
 (defparameter *inflate-length-extra* #(0 0 0 0 0 0 0 0 1 1 1 1 2 2 2 2 3 3 3 3 4 4 4 4 5 5 5 5 0)
   "The extra bits after each length code.")
-(defparameter *inflate-distance-base* #(1 2 3 4 5 7 9 13 17 25 33 49 65 97 129 193 257 385 513 769 1025 1537 2049 3073 4097 6145 8193 12289 16385 24577)
+(defparameter *inflate-distance-base*
+  #(1 2 3 4 5 7 9 13 17 25 33 49 65 97 129 193 257 385 513 769 1025 1537 2049 3073 4097 6145 8193 12289 16385 24577)
   "The distances the distance codes 0 to 29 begin at.")
 (defparameter *inflate-distance-extra* #(0 0 0 0 1 1 2 2 3 3 4 4 5 5 6 6 7 7 8 8 9 9 10 10 11 11 12 12 13 13)
   "The extra bits after each distance code.")
@@ -225,8 +227,11 @@ that is damaged or would unpack to more."
                               (when (>= s 29) (zip-fail "damaged packed data: a length that is none"))
                               (let* ((length (+ (aref *inflate-length-base* s) (bits (aref *inflate-length-extra* s))))
                                      (d (decode distances-table))
-                                     (distance (progn (when (>= d 30) (zip-fail "damaged packed data: a distance that is none"))
-                                                      (+ (aref *inflate-distance-base* d) (bits (aref *inflate-distance-extra* d))))))
+                                     (distance (progn
+                                                 (when (>= d 30)
+                                                   (zip-fail "damaged packed data: a distance that is none"))
+                                                 (+ (aref *inflate-distance-base* d)
+                                                    (bits (aref *inflate-distance-extra* d))))))
                                 (when (> distance fill) (zip-fail "damaged packed data: a distance too far back"))
                                 (dotimes (i length) (put (aref out (- fill distance))))))))))))
       (loop
@@ -239,7 +244,8 @@ that is damaged or would unpack to more."
                  (when (> (+ at n) end) (zip-fail "damaged packed data: a stored block ends too soon"))
                  (loop repeat n do (put (aref octets at)) (incf at))))
             (1 (let ((lengths (make-array 288 :initial-element 0)))
-                 (loop for i below 288 do (setf (aref lengths i) (cond ((< i 144) 8) ((< i 256) 9) ((< i 280) 7) (t 8))))
+                 (loop for i below 288 do (setf (aref lengths i)
+                                                (cond ((< i 144) 8) ((< i 256) 9) ((< i 280) 7) (t 8))))
                  (codes (table lengths) (table (make-array 30 :initial-element 5)))))
             (2 (let* ((nlen (+ 257 (bits 5))) (ndist (+ 1 (bits 5))) (ncode (+ 4 (bits 4)))
                       (lengths (make-array 19 :initial-element 0)))
@@ -253,8 +259,12 @@ that is damaged or would unpack to more."
                                   (let* ((previous (if (= symbol 16)
                                                        (if (zerop i) (zip-fail "damaged packed data: a repeat with nothing before") (aref all (1- i)))
                                                        0))
-                                         (times (case symbol (16 (+ 3 (bits 2))) (17 (+ 3 (bits 3))) (t (+ 11 (bits 7))))))
-                                    (when (> (+ i times) (+ nlen ndist)) (zip-fail "damaged packed data: too many lengths"))
+                                         (times (case symbol
+                                                  (16 (+ 3 (bits 2)))
+                                                  (17 (+ 3 (bits 3)))
+                                                  (t (+ 11 (bits 7))))))
+                                    (when (> (+ i times) (+ nlen ndist))
+                                      (zip-fail "damaged packed data: too many lengths"))
                                     (dotimes (k times) (setf (aref all i) previous) (incf i))))))
                    (codes (table (subseq all 0 nlen)) (table (subseq all nlen))))))
             (t (zip-fail "damaged packed data: a block of no kind")))
@@ -531,7 +541,8 @@ it: in dynamic Huffman blocks, or stored when that would not be smaller."
 checked by its CRC; refused (ZIP-ERROR) when larger than *ZIP-LARGEST-ENTRY*,
 growing by more than *ZIP-LARGEST-RATIO*, packed in a way not read, or damaged."
   (destructuring-bind (&key name method crc packed size data) entry
-    (when (> size *zip-largest-entry*) (zip-fail "~a unpacks to ~:d octets, more than ~:d" name size *zip-largest-entry*))
+    (when (> size *zip-largest-entry*)
+      (zip-fail "~a unpacks to ~:d octets, more than ~:d" name size *zip-largest-entry*))
     (when (and (> size (* 1024 1024)) (> size (* *zip-largest-ratio* (max 1 packed))))
       (zip-fail "~a grows ~d times when unpacked: an archive made to fill the memory" name (floor size (max 1 packed))))
     (when (> (+ data packed) (length octets)) (zip-fail "a damaged zip archive: ~a ends too soon" name))

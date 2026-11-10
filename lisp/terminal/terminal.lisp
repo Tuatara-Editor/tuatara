@@ -75,12 +75,13 @@ screen's width (0.5, half of it), or a number of columns (80).")
 (define-major-mode terminal-mode special-mode
   "A terminal: the screen of a program run on a pseudo-terminal, your shell
 unless *TERMINAL-PROGRAM* says otherwise. Typing there goes to the program,
-every key but those *TERMINAL-EDITOR-KEYS* keep: C-g or C-\\ stops
+every key but those *TERMINAL-EDITOR-KEYS* keep. C-g or C-\\ stops
 typing there for its history view, its whole history as text to move through,
-select and copy (\\<terminal-mode>\\[terminal-start-typing], or C-\\ again, types into it again; \\[terminal-copy-and-type] copies what is
-selected first); \\[terminal-send-key] sends the next key to the program whatever it is;
-C-V (*TERMINAL-PASTE-KEYS*) pastes, as \\[terminal-paste] in the history view does; C-x
-and its keys work as anywhere."
+select and copy. \\<terminal-mode>\\[terminal-start-typing], or C-\\ again,
+types into it again, and \\[terminal-copy-and-type] copies what is selected
+first. \\[terminal-send-key] sends the next key to the program whatever it is.
+C-V (*TERMINAL-PASTE-KEYS*) pastes, as \\[terminal-paste] in the history view
+does. C-x and its keys work as anywhere."
   :lighter "Terminal" :interactive nil)
 
 (defmethod mode-wraps-p ((mode terminal-mode))
@@ -148,8 +149,12 @@ basic colours are the theme's (THEME-TERMINAL-COLOUR), else the terminal's own."
     (unless (and (tuatara.display:find-face name) (equal shown (tuatara.display:face-attribute name kind)))
       (setf (gethash name *terminal-colour-faces*) (cons kind colour))
       (if (eq kind :fg)
-          (tuatara.display:set-face-attributes name :doc "A colour a program in a terminal chose for its text." :fg shown)
-          (tuatara.display:set-face-attributes name :doc "A colour a program in a terminal chose for its ground." :bg shown)))
+          (tuatara.display:set-face-attributes name
+                                               :doc "A colour a program in a terminal chose for its text."
+                                               :fg shown)
+          (tuatara.display:set-face-attributes name
+                                               :doc "A colour a program in a terminal chose for its ground."
+                                               :bg shown)))
     name))
 
 (defvar *terminal-face-generation* nil
@@ -183,7 +188,8 @@ cursor's move, a shell's marks) left out."
     (flet ((flush ()
              (let ((s (get-output-stream-string out)))
                (when (plusp (length s))
-                 (let ((faces (terminal-faces (make-look fg bg (logior (if bold (look-bit :bold) 0) (if italic (look-bit :italic) 0)
+                 (let ((faces (terminal-faces (make-look fg bg (logior (if bold (look-bit :bold) 0)
+                                                                       (if italic (look-bit :italic) 0)
                                                                        (if underline (look-bit :underline) 0))))))
                    (push (if faces (list s faces) s) pieces))))))
       (loop while (< i n)
@@ -207,7 +213,8 @@ cursor's move, a shell's marks) left out."
                                        (setf code (case (first code)
                                                     ;; an underline's style: 0 none, else one
                                                     (4 (if (eql 0 (second code)) 24 4))
-                                                    ((38 48) (multiple-value-bind (colour) (sgr-colour (sgr-colour-parts (rest code)))
+                                                    ((38 48) (multiple-value-bind (colour)
+                                                                 (sgr-colour (sgr-colour-parts (rest code)))
                                                                (if (= (first code) 38) (setf fg colour) (setf bg colour)))
                                                      nil)
                                                     (t nil))))
@@ -285,31 +292,38 @@ window showing BUFFER."
     (let ((window (and column row emulator (window-at-cell column row))))
       (when (and window (eq (tuatara.display:window-buffer window) buffer))
         (multiple-value-bind (x y) (window-text-cell window column row)
-          (when (and (< -1 x (emulator-columns emulator)) (< -1 y (min (emulator-rows emulator) (tuatara.display:window-height window))))
+          (when (and (< -1 x (emulator-columns emulator))
+                     (< -1 y (min (emulator-rows emulator) (tuatara.display:window-height window))))
             (values x y)))))))
 
 (defun terminal-mouse (buffer emulator key)
   "Give the mouse KEY over BUFFER's terminal to its program, while typing
-there: clicks, drags and the wheel to a program that tracks the mouse (Shift
-held keeps them the editor's); the wheel to a full-screen program that does
-not as the up and down keys, which scroll a pager such as less; else the wheel up shows the
-history view, to scroll through; the middle button pastes what is selected
-anywhere (the primary selection) to a program that does not track it; the
-button let go with nothing bound to it, as after a click on a link, is
-dropped. True when it took KEY."
+there. Clicks, drags and the wheel go to a program that tracks the mouse
+\(Shift held keeps them the editor's). The wheel goes to a full-screen program
+that does not, as the up and down keys, which scroll a pager such as less.
+Else the wheel up shows the history view, to scroll through. The middle button
+pastes what is selected anywhere (the primary selection) to a program that
+does not track it. The button let go with nothing bound to it, as after a
+click on a link, is dropped. True when it took KEY."
   (let ((base (tuatara.frontend:key-base key)))
-    (when (member base '(:down-mouse-1 :double-mouse-1 :triple-mouse-1 :drag-mouse-1 :up-mouse-1 :mouse-2 :wheel-up :wheel-down))
+    (when (member base
+                  '(:down-mouse-1 :double-mouse-1
+                    :triple-mouse-1 :drag-mouse-1
+                    :up-mouse-1 :mouse-2
+                    :wheel-up :wheel-down))
       (multiple-value-bind (x y) (terminal-cell buffer key)
         (when x
           (flet ((tell (action button &optional pressed)
                    (and (not (tuatara.frontend:key-shift key))
                         (emulator-mouse emulator action button x y :ctrl (tuatara.frontend:key-ctrl key)
-                                                                   :meta (tuatara.frontend:key-meta key) :pressed pressed))))
+                                                                   :meta (tuatara.frontend:key-meta key)
+                                                                   :pressed pressed))))
             (case base
               ((:wheel-up :wheel-down)
                (cond ((tell :press base))
                      ((emulator-scrolls-by-keys-p emulator)
-                      (loop repeat 3 do (emulator-key emulator (tuatara.frontend:make-key (if (eq base :wheel-up) :up :down))))
+                      (loop repeat 3
+                            do (emulator-key emulator (tuatara.frontend:make-key (if (eq base :wheel-up) :up :down))))
                       t)
                      ((eq base :wheel-up) (terminal-stop-typing) t)
                      (t t)))
@@ -693,16 +707,17 @@ says, as \\[terminal] opens one; quitting it brings back what the window showed.
 
 (defun open-terminal (&optional place)
   "Open a terminal in a buffer of its own, where *TERMINAL-PLACE* says or, with
-PLACE, in a new window there (SHOW-TERMINAL), in the current buffer's directory
-\(in your home directory instead when that buffer was opened safely or its
-directory is in one of *SAFE-DIRECTORIES* or *EVIDENCE-FOLDERS*, so that your shell's prompt and
-its helpers read nothing a folder of evidence holds, such as its .git or
-.envrc; the echo area says so): your shell (or *TERMINAL-PROGRAM*) on a
-screen as large as the window, which follows the window's size. Everything typed there goes to the program, Escape
+PLACE, in a new window there (SHOW-TERMINAL). It opens in the current buffer's
+directory. It opens in your home directory instead when that buffer was opened
+safely or its directory is in one of *SAFE-DIRECTORIES* or *EVIDENCE-FOLDERS*,
+so that your shell's prompt and its helpers read nothing a folder of evidence
+holds, such as its .git or .envrc; the echo area says so. It runs your shell
+\(or *TERMINAL-PROGRAM*) on a screen as large as the window, which follows the
+window's size. Everything typed there goes to the program, Escape
 and C-c too, but for the keys *TERMINAL-EDITOR-KEYS* keep: C-x and its
 windows and buffers, M-x, and C-g or C-\\, which stop typing there,
 the screen standing still as text to move through, select and copy (i or a
-types into it again); \\[terminal-send-key] sends the next key to the program
+types into it again). \\[terminal-send-key] sends the next key to the program
 whatever it is. Each \\[terminal] opens another; killing the buffer ends its
 program, and the program ending (exit) kills the buffer; a terminal that
 cannot be shown or started leaves no buffer behind. The sixteen basic
@@ -806,7 +821,9 @@ paste."
   "Paste into the terminal's program the text selected last in any program
 \(the primary selection), as the middle button does, and type into it."
   (let ((buffer (current-buffer)))
-    (paste-into-terminal buffer (live-emulator buffer) (tuatara.frontend:frontend-primary-selection (editor-frontend *editor*)))))
+    (paste-into-terminal buffer
+                         (live-emulator buffer)
+                         (tuatara.frontend:frontend-primary-selection (editor-frontend *editor*)))))
 
 (defun terminal-paste-handler (buffer text)
   "Paste TEXT, pasted into the terminal Tuatara runs in while BUFFER, a

@@ -27,12 +27,12 @@ after the option of a named daemon and @TITLE@ for its name in the title.")
 entry is tuatara-daemon-NAME.desktop.")
 
 (defun exec-argument (argument &key plain)
-  "ARGUMENT as one word of a desktop entry's Exec line: in double quotes, with
-\\, \", ` and $ escaped by a backslash and that backslash and every other
-doubled again, as the line is read as a string first, and % written %%, so
-that it is no field code; with PLAIN, a word of letters, digits and - _ = .
-alone as it is. Refused for a word holding a control character, which no
-Exec line can hold."
+  "ARGUMENT as one word of a desktop entry's Exec line. It is in double quotes,
+with \\, \", ` and $ escaped by a backslash, and that backslash and every other
+doubled again, as the line is read as a string first. % is written %%, so
+that it is no field code. With PLAIN, a word of letters, digits and - _ = .
+is left alone as it is. Refused for a word holding a control character, which
+no Exec line can hold."
   (when (some (lambda (char) (< (char-code char) 32)) argument)
     (tuatara.runtime:refuse "~a holds a control character, which a desktop entry cannot start" (shown argument)))
   (if (and plain (plusp (length argument))
@@ -75,13 +75,13 @@ asked by TUATARA_DESKTOP_ENTRIES naming FOLDER in its environment."
           collect path)))
 
 (defun desktop-entries-refusal (folder arguments &key (self tuatara.io:*saved-program*))
-  "Why the request to write desktop entries into FOLDER for ARGUMENTS, the
-program they start and the words before the entries' own, is not taken, in
-words, or NIL when it is: FOLDER must be named from the root, the program be
-tuatara, or named from the root and be this program SELF (the AppImage's
-path when it runs from one) or the launcher tools/tuatara-tui.sh of the
-checkout SELF was built in, and every other word an option (--dark), so that
-no file named on the command line becomes a program the desktop runs."
+  "Why the request to write desktop entries into FOLDER for ARGUMENTS is not
+taken, in words, or NIL when it is. ARGUMENTS are the program they start and
+the words before the entries' own. FOLDER must be named from the root. The
+program must be tuatara, or named from the root and be this program SELF (the
+AppImage's path when it runs from one) or the launcher tools/tuatara-tui.sh of
+the checkout SELF was built in. Every other word must be an option (--dark),
+so that no file named on the command line becomes a program the desktop runs."
   (flet ((real (path) (and path (tuatara.runtime:ignoring-errors-reported ("finding ~a" path)
                                   (tuatara.io:real-path path)))))
     (let* ((program (first arguments))

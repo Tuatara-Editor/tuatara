@@ -1,0 +1,511 @@
+#+title: Selecting, rectangles and many cursors
+#+language: en
+
+* Selecting, rectangles and many cursors
+
+How to pick out text, a block of columns, or many places at once.
+
+Most commands in an editor act on something: a word to delete, a line to
+copy, a block to indent. A selection is the text the next command acts on. It
+shows in the =:region= face, usually as reversed colours. This chapter teaches
+how to make a selection by hand, by the shape of the text and by the shape of
+the code. It then goes on to blocks of columns, called rectangles, and to
+working in many places at once, with many cursors or with a pattern that holds
+every match.
+
+Chapter 4 showed what ~d~, ~y~ and ~p~ do with a selection. Chapter 2 showed
+how to move without selecting. Here the keys only make the selection, and a
+few commands that work on it follow.
+
+** Selections and the mark
+
+Tuatara has two ways to select, and both end up as the same thing.
+
+The Emacs way uses the mark. The mark is a second place in the buffer, kept
+beside the cursor. The region is the text between the mark and the cursor.
+~C-SPC~ sets the mark where the cursor is and shows the region, and every
+move after that stretches it. ~C-g~ lets go. ~C-x C-x~ swaps the cursor and
+the mark, which is how you reach the other end of a region to change it.
+Chapter 2 describes the mark and the mark ring, the list of places the mark
+has been.
+
+The NORMAL state way has keys for it. ~v~ starts a selection at the cursor and
+any move stretches it. Pressing ~v~ again while it is live starts it afresh
+from where the cursor is now. ~V~ selects whole lines instead. ~%~ selects the
+whole buffer. You can use whichever you like in either state, and a selection
+made by one is a region for the other.
+
+Figure 5.1 shows a selection made with ~v~ and one made with ~V~.
+
+#+caption: Figure 5.1. The same cursor, with ~v w w~ and with ~V J~. [ ] marks the selected text.
+#+name: fig-selections
+#+begin_example
+ v w w, from the u of "tui":
+
+   The t[ui sings at] dawn.
+   A kereru eats berries.
+   The fantail is small.
+
+ V J, two whole lines, line ends included:
+
+   [The tui sings at dawn.
+   A kereru eats berries.]
+   The fantail is small.
+#+end_example
+
+With a selection live, most letter keys act on it: ~d~ cuts it, ~c~ cuts it
+and starts INSERT state, ~y~ copies it. A line selection is widened to whole
+lines before it is cut or copied, so a deleted line leaves no empty line
+behind.
+
+#+begin_try Try it, with a recipe
+1. Press ~C-x C-f~, type =~/pancakes.txt= and press ~RET~. Press ~i~ and type
+   =Pancakes=, ~RET~, =2 eggs, 200 g flour, 1 cup milk=, ~RET~,
+   =Mix and rest.=, ~RET~, =Fry in butter.= Press ~C-g~.
+2. Press ~g g j~ to go to the second line. Press ~v~, then ~w w~. The first
+   words of the line are selected. Press ~C-g~ to let go.
+3. Press ~V~. The whole line is selected. Press ~J~. The line below is
+   selected too. Press ~d~. Both lines are cut. Press ~u~ (non-modal: ~C-/~) to
+   undo.
+4. Press ~V~ on the second line, then ~K~: the line above joins the
+   selection. Press ~C-g~. (~K~ alone, with nothing selected, only moves up.)
+5. Press ~%~. The whole buffer is selected. Press ~C-g~.
+#+end_try
+
+*** Keys that select
+
+| Modal    | Non-modal | Command                                       | What it does                      |
+|----------+-----------+-----------------------------------------------+-----------------------------------|
+| ~v~      | none      | =start-selection=                             | Starts a selection at the cursor. Any move stretches it. |
+| ~V~      | none      | =select-lines=                                | Selects the cursor's line. Pressed with a line selection live, it lets go. |
+| ~J~, ~K~ | none      | =select-next-line= and =select-previous-line= | Move down or up a line, adding it to a line selection. Without one they only move. |
+| ~%~      | none      | =select-whole-buffer=                         | Selects everything, the cursor at the start. |
+| none     | ~C-x h~   | =mark-whole-buffer=                           | The same with the Emacs keys, the cursor at the start and the mark at the end. |
+
+With a line selection, ~j~ and ~k~ (non-modal: ~C-n~, ~C-p~) move a
+character-wise cursor, while ~J~ and ~K~ move by whole lines. Press ~C-g~ in
+NORMAL state to let go of any selection.
+
+#+table: commands start-selection select-lines select-next-line select-previous-line select-whole-buffer set-mark-command exchange-point-and-mark mark-whole-buffer tuatara-quit
+
+** Text objects, the m keys
+
+Typing ~v w w w~ works, but it is slow when you want exactly one word, one
+sentence or the text inside a pair of brackets. Tuatara has keys that take
+such a piece whole. They all begin with ~m~, which you can remember as "mark".
+The piece is called a text object.
+
+The small letter takes the piece as a word, a sentence or a paragraph.
+Pressed again, it takes one more. The capital letter does the same but grows
+the selection the other way, backward, for the objects that have a direction.
+For brackets and quotes it takes the pair with its brackets instead of what
+is inside.
+
+| Modal        | Non-modal | Command                                         | What it selects                     |
+|--------------+-----------+-------------------------------------------------+-------------------------------------|
+| ~m w~        | none      | =select-word=                                   | The word at the cursor. In a gap between two words, the next one. |
+| ~m b~        | none      | =select-word-backward=                          | The same, growing backward.         |
+| ~m W~, ~m B~ | none      | =select-symbol=, =select-symbol-backward=       | A symbol: a name with its ~-~ and ~_~, so =shopping-list= is one symbol. |
+| ~m s~, ~m S~ | none      | =select-sentence=, =select-sentence-backward=   | The sentence, as far as its full stop. |
+| ~m p~, ~m P~ | none      | =select-paragraph=, =select-paragraph-backward= | The paragraph with one blank line next to it. |
+| ~m i~        | none      | =select-inside-pair=                            | What is inside a pair of brackets or quotes, without them. |
+| ~m a~        | none      | =select-pair=                                   | The pair of brackets or quotes and what is inside. |
+| ~m I~, ~m A~ | none      | =select-sexp-inside=, =select-sexp=             | What a bracketed expression holds, and the expression with its brackets. |
+
+A paragraph selection takes one blank line with it, the one before it. When
+you delete it, one blank line is left between its neighbours, which is what you
+want most of the time.
+
+The pairs that ~m i~ and ~m a~ know are in the setting =*pair-delimiters*=.
+Put the cursor on a bracket and press ~m i~. The echo area tells you it
+selected the content, and ~m a~ the content with the brackets. The pair of the
+bracket under the cursor is taken at once. With the cursor anywhere else,
+~m i~ and ~m a~ ask for a bracket: press the one you mean, such as ~(~.
+
+#+begin_try Try it, with a letter
+1. Press ~C-x C-f~, type =~/letter.txt= and press ~RET~. Press ~i~ and type
+   =Dear Hana,=, ~RET~, =The kereru ate (all 12) of the berries.=, ~RET~,
+   =It was a good day. See you at Easter.= Press ~C-g~.
+2. Press ~g g j w~ to land on =kereru=. Press ~m w~. The word is selected.
+   Press ~m w~ again and =kereru ate= is selected. Press ~C-g~.
+3. Move to the brackets: press ~g g j~, then press ~w~ (non-modal: ~M-f~) until
+   the cursor is on the closing bracket after =12=. Press ~m i~. The text
+   inside, =all 12=, is selected without its brackets. Press ~m a~, then ~(~,
+   and the brackets come in. Press ~c~, type =(many)= and press ~C-g~. Press ~u~
+   to undo.
+4. Press ~j~ (non-modal: ~C-n~), then ~m s~. The sentence =It was a good day.=
+   is selected. Press ~m s~ again and the second sentence joins it. Press ~C-g~.
+5. Press ~m p~. The paragraph is selected, with the blank line before it.
+   Press ~C-g~.
+#+end_try
+
+*** Wrapping a selection
+
+With a selection live, a bracket or a quote wraps it. Press ~m w~ on a word
+and then ~"~ to put quotes round the word. Press ~"~ once more while the word
+is selected inside its quotes and they come off. This works with the other
+brackets and quotes of =*pair-delimiters*=, and on a rectangle it wraps each
+row.
+
+#+table: commands select-word select-word-backward select-symbol select-symbol-backward select-sentence select-sentence-backward select-paragraph select-paragraph-backward select-inside-pair select-pair select-sexp-inside select-sexp wrap-selection-with-key
+
+#+table: settings *pair-delimiters*
+
+*** The Emacs keys for the same
+
+These keys do much the same with Emacs's names for them. They work in both
+states.
+
+| Modal | Non-modal                  | Command                | What it does                    |
+|-------+----------------------------+------------------------+---------------------------------|
+| none  | ~M-@~                      | =mark-word=            | Sets the mark at the end of the next word. Again, one word more. |
+| none  | ~M-h~                      | =mark-paragraph=       | Selects the paragraph. Again, the next one too. |
+| none  | ~C-M-SPC~, ~C-M-@~         | =mark-sexp=            | Sets the mark after the next bracketed expression. |
+| none  | ~M-x mark-end-of-sentence~ | =mark-end-of-sentence= | Sets the mark at the end of the sentence. A number sets it that many sentences on. |
+| none  | ~M-x mark-defun~           | =mark-defun=           | Selects the definition the cursor is in, in a file of code. |
+
+#+table: commands mark-word mark-paragraph mark-sexp mark-end-of-sentence mark-defun push-mark-command pop-to-mark-command pop-global-mark
+
+** The mark run
+
+Sometimes one object is not enough. You want a word, then the next word,
+then the symbol before it. A mark run lets you keep adding to a selection
+with single keys. Press ~M~, the ~m~ held down, and you are in a run. The
+keys of a run are the ones you would have pressed after ~m~, without the ~m~.
+
+| Modal              | Non-modal | What it does in a run                                          |
+|--------------------+-----------+----------------------------------------------------------------|
+| ~w~, ~b~           | none      | Add the next word, or the one before.                          |
+| ~W~, ~B~           | none      | Add a symbol forward or backward.                              |
+| ~s~, ~S~           | none      | Add a sentence forward or backward.                            |
+| ~m p~, ~m P~       | none      | Add a paragraph forward or backward.                           |
+| ~h~, ~l~, ~j~, ~k~ | none      | Move the cursor end by one character or line, without ending the run. |
+| ~g h~, ~g l~       | none      | Stretch the cursor end to the start or end of its line.        |
+| ~g g~, ~g e~       | none      | Stretch the cursor end to the start or end of the buffer.      |
+| ~J~, ~K~           | none      | Grow the run down or up by whole lines.                        |
+| ~*~                | none      | Swap the two ends, so that ~h j k l~ then move the other end.  |
+| ~u~, ~U~           | none      | Take the last step back, or put it forward again.              |
+| ~M~                | none      | End the run and let go of the selection.                       |
+
+~v~ and ~V~ are refused in a run, because a run is already making a
+selection. To take a selection you made another way into a run, so that these
+keys grow it from where it is, use =mark-run-adopt=.
+
+#+begin_try Try it, with a shopping list
+1. Press ~C-x C-f~, type =~/list.txt= and press ~RET~. Press ~i~ and type
+   =fresh bread and butter from the shop=. Press ~C-g~ and ~g g g h~.
+2. Press ~M~. The first word, =fresh=, is selected. Press ~w~ (non-modal: ~M-f~)
+   twice. Now =fresh bread and= is selected.
+3. Press ~u~ (non-modal: ~C-/~). One step goes back. Press ~U~ (non-modal:
+   ~C-?~) and it is forward again.
+4. Press ~M~ to end the run.
+#+end_try
+
+The echo area names the keys of the run while it lasts. See also the section
+on many cursors below, where the run goes on at every cursor.
+
+#+table: commands mark-run-toggle mark-run-adopt mark-run-cancel mark-run-exchange mark-run-step-back mark-run-step-forward mark-run-left mark-run-right mark-run-up mark-run-down mark-run-line-forward mark-run-line-backward mark-run-line-start mark-run-line-end mark-run-buffer-start mark-run-buffer-end
+
+** Growing a selection by the code
+
+In a file whose language Tuatara reads, it knows the structure: which words
+make an expression, which expressions make a statement, and so on up to the
+whole file. The keys below select by that structure. They work in NORMAL
+state, in files that have a syntax tree. In a file with no tree, such as a
+plain text file, the echo area says there is none.
+
+| Modal | Non-modal | Command                   | What it does                           |
+|-------+-----------+---------------------------+----------------------------------------|
+| ~M-o~ | none      | =expand-selection=        | Selects the smallest piece of syntax around the selection, or at the cursor. Again, a larger one. |
+| ~M-i~ | none      | =shrink-selection=        | Goes back to the selection before the last ~M-o~. |
+| ~M-n~ | none      | =select-next-sibling=     | Selects the piece beside it, the next argument, statement or item. |
+| ~M-p~ | none      | =select-previous-sibling= | The one before it.                     |
+
+A number before ~M-o~ grows that many steps at once.
+
+The ~m~ keys have a second set that picks out pieces of code. The small letter
+takes what is inside, and the capital the whole piece. Pressed again at once,
+they take the next one out.
+
+| Modal        | Non-modal | Command                                       | What it selects                    |
+|--------------+-----------+-----------------------------------------------+------------------------------------|
+| ~m f~, ~m F~ | none      | =select-function-inside=, =select-function=   | A function's body, or all of it.   |
+| ~m t~, ~m T~ | none      | =select-type-inside=, =select-type=           | The fields or items of a type, or all of it. |
+| ~m r~, ~m R~ | none      | =select-parameter-inside=, =select-parameter= | A parameter or argument, or the same with its comma. |
+| ~m c~, ~m C~ | none      | =select-comment-inside=, =select-comment=     | A comment, or with the comment lines next to it. |
+| ~m y~, ~m Y~ | none      | =select-test-inside=, =select-test=           | A test's body, or the whole test.  |
+| ~m e~, ~m E~ | none      | =select-entry-inside=, =select-entry=         | The key or value of an entry in JSON, YAML or TOML, or the whole entry. |
+| ~m x~, ~m X~ | none      | =select-element-inside=, =select-element=     | What the tags of an HTML or XML element hold, or the element with its tags. |
+
+#+begin_try Try it, with a small Python file
+1. Press ~C-x C-f~, type =~/count.py= and press ~RET~. Press ~i~ and type
+   =def count(birds, colour):=, ~RET~, and then, without any spaces of your
+   own, =found = [b for b in birds if b.colour == colour]=, ~RET~,
+   =return len(found)=. Press ~C-g~ and ~C-x C-s~.
+2. Press ~g g~ (non-modal: ~M-<~) and ~w w~ to reach =count=, then ~l~
+   (non-modal: ~C-f~) to land on =birds=.
+3. Press ~M-n~. The next parameter, =colour=, is selected. Press ~M-p~ to go
+   back to =birds=.
+4. Press ~M-o~. The parameters are selected, with their brackets. Press ~M-o~
+   again. The whole function is selected, which in this small file is also
+   the whole file. Press ~M-o~ once more and the echo area says that nothing
+   larger can be selected.
+5. Press ~M-i~ until you are on =birds= again. Press ~C-g~.
+6. Press ~j~ (non-modal: ~C-n~) to go down into the body. Press ~m f~. The body
+   of the function is selected; on the =def= line itself it says there is no
+   function around point. Press ~C-g~ and then ~m F~ for the whole function.
+#+end_try
+
+#+table: commands expand-selection shrink-selection select-next-sibling select-previous-sibling select-function-inside select-function select-type-inside select-type select-parameter-inside select-parameter select-comment-inside select-comment select-test-inside select-test select-entry-inside select-entry select-element-inside select-element
+
+** Rectangles
+
+A rectangle is a block of columns over several lines. It is the right tool
+for a column of numbers, a bullet at the start of each line, or text that
+lines up. Figure 5.2 shows one.
+
+#+caption: Figure 5.2. A rectangle made with ~m v~ and ~j j j l l l~. The block is the first four columns of four lines.
+#+name: fig-rectangle
+#+begin_example
+   column  0123456789
+   line 1  [The ]tui sings
+   line 2  [The ]kereru eats
+   line 3  [The ]fantail is small
+   line 4  [The ]morepork calls
+#+end_example
+
+A rectangle covers the columns between the cursor and the mark on every line
+from one to the other. A line that ends inside the block gives only the part
+it has. The character under the cursor is part of the block, so three ~l~
+(non-modal: ~C-f~) presses from the first column cover four columns.
+
+*** Rectangles in NORMAL state
+
+~m v~ (non-modal: ~C-x r SPC~) starts a rectangle in NORMAL state, and any move
+sizes it. ~y~ copies the block, ~d~ cuts it and ~c~ cuts it and starts INSERT
+state with a cursor on every row, so that what you type goes on every line. ~P~
+(non-modal: ~C-x r y~) pastes the block back as a block, one row to a line.
+~m v~ again, or ~C-g~, ends the rectangle without doing anything.
+
+#+begin_try Try it, with a price list
+1. Press ~C-x C-f~, type =~/prices.txt= and press ~RET~. Press ~i~ and type
+   four lines, each followed by ~RET~ but the last:
+   =coffee  4.50=, =scone   5.50=, =pie     7.00= and =tea     3.80=. Each
+   price starts in the ninth column. Press ~C-g~.
+2. Press ~g g g h~, then ~l~ (non-modal: ~C-f~) eight times. The cursor is on
+   the =4=. Press ~m v~ (non-modal: ~C-x r SPC~), then ~j j j l l l~. The four
+   prices are the block. The echo area says any move sizes the block.
+3. Press ~y~. The echo area says it copied a rectangle of four rows. Press
+   ~g e~ and ~P~ (non-modal: ~M->~, ~C-x r y~). The prices are pasted again at
+   the end of the last line, one row to a line, below it. Press ~u~ (non-modal:
+   ~C-/~) to undo.
+4. Press ~g g g h~ and ~l~ eight times, then ~m v j j j l l l~ and ~d~. The
+   prices are cut. Press ~g g g h~ and ~P~. The column of prices has moved
+   to the front of the lines. Press ~u~ twice to bring it all back.
+5. With the block made again, press ~c~, type =n/a= and press ~C-g~ twice.
+   Every price is now =n/a=. Press ~u~.
+#+end_try
+
+*** Rectangles with the Emacs keys
+
+The keys under ~C-x r~ work on the block between the cursor and the mark. You
+can start a rectangle with ~C-x r SPC~, which does what ~m v~ does. Pressing it
+again, or ~C-g~, cancels. Outside NORMAL state a new rectangle starts with no
+width, and ~C-f~ and ~C-n~ (modal: ~l~, ~j~) size it.
+
+| Modal | Non-modal                            | Command                          | What it does                       |
+|-------+--------------------------------------+----------------------------------+------------------------------------|
+| none  | ~C-x r k~                            | =kill-rectangle=                 | Cuts the block to a store of its own, apart from the kill ring. |
+| none  | ~C-x r M-w~                          | =copy-rectangle-as-kill=         | Copies the block to that store.    |
+| none  | ~C-x r d~                            | =delete-rectangle=               | Deletes the block and keeps nothing. The store keeps what it had. |
+| ~P~   | ~C-x r y~                            | =yank-rectangle=                 | Pastes the store as a block.       |
+| none  | ~C-x r t~                            | =string-rectangle=               | Asks for a text and puts it on every row in place of the block. |
+| none  | ~C-x r c~                            | =clear-rectangle=                | Turns the block into spaces.       |
+| none  | ~C-x r N~                            | =number-rectangle-lines=         | Numbers the rows 1, 2, 3 at the block's left column. |
+| none  | ~M-x number-rectangle-lines-replace~ | =number-rectangle-lines-replace= | Puts numbers in place of the block, with nothing after them. |
+
+#+begin_try Try it, with the same price list
+1. Open =~/prices.txt= again. Press ~g g g h~ and ~m v j j j~. The block is
+   the first column of the four lines.
+2. Press ~C-x r N~. The lines are numbered 1 to 4 and the text moves over.
+   Press ~u~ (non-modal: ~C-/~).
+3. Make the block again and press ~C-x r t~. Type =- = and press ~RET~. Every
+   line now starts with a dash and a space, which take the place of its first
+   letter. Press ~u~.
+4. Press ~g g g h~ and ~l~ (non-modal: ~C-f~) eight times, then
+   ~m v j j j l l l~ and ~C-x r c~. The prices are blanked and the lines are
+   shorter. Press ~u~.
+5. Make the block once more and press ~C-x r k~. Press ~g e~ (non-modal: ~M->~),
+   then ~C-x r y~ (modal: ~P~). The prices are pasted as a block at the end.
+   Press ~u u~.
+#+end_try
+
+#+table: commands rectangle-mark-mode kill-rectangle copy-rectangle-as-kill delete-rectangle yank-rectangle string-rectangle clear-rectangle number-rectangle-lines number-rectangle-lines-replace
+
+#+table: settings *rectangle-cursors-limit*
+
+** Many cursors
+
+~t~ puts another cursor on the line below, at the same column. ~T~ puts one
+above. From then on, nearly every key you press works at every cursor. Move,
+select, type, delete: each key runs once at each place. This is the fast way to
+do the same small edit on many lines.
+
+Figure 5.3 shows four cursors made with three presses of ~t~.
+
+#+caption: Figure 5.3. Cursors after ~t t t~ from the start of the first line. A cursor is shown as a vertical bar.
+#+name: fig-cursors
+#+begin_example
+   |Hana Raglan
+   |Aroha Kerikeri
+   |Tane Napier
+   |Mere Taupo
+#+end_example
+
+A line shorter than the column gets its cursor at its end. If lines are
+selected, the first ~t~ puts one cursor on every selected line instead. At the
+start of each line when the selection was made with ~V~, or in the cursor's
+column otherwise.
+
+Press ~i~ and type, and the text appears at every cursor. Press ~C-g~ and you
+are back in NORMAL state with the cursors still there. Press ~C-g~ again and
+the cursors end. One ~u~ (non-modal: ~C-/~) takes back what was done at all of
+them.
+
+#+begin_try Try it, with a list of names
+1. Press ~C-x C-f~, type =~/names.txt= and press ~RET~. Press ~i~ and type four
+   lines, each followed by ~RET~ but the last: =Hana Raglan=, =Aroha Kerikeri=,
+   =Tane Napier= and =Mere Taupo=. Press ~C-g~, then ~g g~.
+2. Press ~t t t~. There are four cursors, one on each line. Press ~i~, type
+   =- = and press ~C-g~. Each name has a dash in front. Press ~C-g~ to end the
+   cursors. Press ~u~ (non-modal: ~C-/~) to take the dashes back.
+3. Press ~g g t t t~ then ~DEL~. The last cursor goes and three remain.
+   Press ~C-g~ twice.
+4. Press ~g g t t t~, then ~m w~. Each cursor selects the word it is on. Press
+   ~M-u~ to put them in capitals. Press ~u~, then ~C-g~ twice.
+5. Press ~g g t t t~, then ~A~. Type =.= and press ~C-g~ twice. Each line now
+   ends with a full stop.
+#+end_try
+
+*** What each key does at the cursors
+
+While the cursors stand, a key in NORMAL state does what it always does, at
+each cursor. The table lists the keys that need a word of explanation.
+
+| Modal               | Non-modal | What it does at every cursor                          |
+|---------------------+-----------+-------------------------------------------------------|
+| ~t~, ~T~            | none      | Add one more cursor below or above.                   |
+| ~DEL~               | none      | Takes back the cursor added last.                     |
+| moves, ~m~ keys     | none      | Move or select at each cursor on its own line.        |
+| ~v~, ~V~            | none      | Start a selection at each, or select each cursor's line. |
+| ~i~, ~a~            | none      | Type before or after the character, or the selection. |
+| ~I~, ~A~            | none      | Type at the start or the end of the line.             |
+| ~o~, ~O~            | none      | Open a line below or above each and type on them all. |
+| ~c~                 | none      | Empty each selection, or as many characters as a number says, then type. |
+| ~d~, ~D~            | none      | Delete each selection or character, or kill to the end of the line. |
+| ~y~, ~p~            | none      | Copy every selection as one kill, a line to a cursor. Paste: a kill of as many parts as there are cursors gives each its own. |
+| ~>~, ~C~            | none      | Indent each line, or comment or uncomment it.         |
+| ~M-u~, ~M-l~, ~M-c~ | none      | Put each selection in capitals, small letters, or capitalised. |
+| ~u~, ~U~            | none      | Undo or redo, the cursors kept.                       |
+| ~.~                 | none      | Run the last command again at every cursor.           |
+| ~=~                 | none      | Bring every cursor to the column of the first.        |
+| ~M~                 | none      | Start a mark run at every cursor, or end it.          |
+| ~C-g~               | none      | Let go of the selections. Again, end the cursors.     |
+
+A key the cursors do not know ends them and then does its own work.
+
+The copy and paste rule is worth a moment. Say you select four lines, one at
+each of four cursors, and press ~y~. The four lines are one kill. ~p~ at the
+same four cursors puts each line back at its own cursor. If you paste a
+kill that has as many lines as there are cursors, each cursor gets one line.
+In every other case each cursor gets the whole kill.
+
+~M~ at the cursors starts a mark run at each one. Each run begins as the
+word at its cursor, or as the selection it had. ~w~ (non-modal: ~M-f~) then adds
+a word to every run at once, and ~u~ (non-modal: ~C-/~) takes the last step back
+at all of them.
+
+*** Limits
+
+Every key but typing runs once at every cursor, so a great many cursors make
+every key slow. Tuatara holds up to =*cursors-limit*= cursors. A cursor in
+sight beyond the limit still works as one. Those out of sight are written to in
+the background as each thing is done, and they move only together: ~h~, ~l~,
+~g h~ and ~g l~ (non-modal: ~C-b~, ~C-f~, ~C-a~, ~C-e~) move them all alike, and
+~i~, ~a~, ~I~, ~A~, ~c~ and ~d~ edit at them. Any other key says what works and
+leaves them as they were.
+
+#+table: commands add-cursor-below add-cursor-above drop-last-cursor align-cursors cursors-select cursors-select-lines cursors-insert cursors-append cursors-insert-line cursors-append-line cursors-open-below cursors-open-above cursors-line-end cursors-change cursors-delete cursors-kill-line cursors-copy cursors-yank cursors-indent cursors-comment cursors-upcase cursors-downcase cursors-capitalise cursors-undo cursors-redo cursors-repeat cursors-replay cursors-run-toggle cursors-run-step-back cursors-run-step-forward cursors-move-past-limit cursors-bank cursors-unbank
+
+#+table: settings *cursors-limit*
+
+*** Showing the cursors
+
+The cursors other than the real one are drawn in their own colours, one for
+NORMAL state and one while you type. The places a split holds, described next,
+have a face as well.
+
+#+table: faces :region :split-cursor :split-cursor-insert :split-place
+
+** Splitting a selection on what matches
+
+A pattern can make the cursors for you. Select some text and press ~f~. Tuatara
+asks for a regular expression, a pattern as used in a search (chapter 6). It
+holds every match inside the selection at once, one place for each, and waits
+for you to say what to do with them.
+
+| Modal              | Non-modal | Command          | What it does with every match         |
+|--------------------+-----------+------------------+---------------------------------------|
+| ~i~                | none      | =split-insert=   | Types before every match.             |
+| ~a~                | none      | =split-append=   | Types after every match.              |
+| ~c~                | none      | =split-change=   | Empties every match and types there.  |
+| ~d~                | none      | =split-delete=   | Deletes every match.                  |
+| a bracket or quote | none      | =split-wrap-key= | Wraps every match in the pair. Press it again to take it off. |
+| ~C-g~              | none      | =split-quit=     | Lets go and ends the split.           |
+
+Without a selection, ~f~ searches the line the cursor is on. If you put ~%~ in
+front of the pattern, as in =%kereru=, the whole buffer is searched whatever is
+selected. What you type at one match appears at all of them, and the writing
+is one change, so ~u~ (non-modal: ~C-/~) takes it all back. Case is ignored when
+the pattern has no capital letter. As you type the pattern, the number of
+matches shows before the prompt.
+
+If the selection is a rectangle, ~f~ searches its block. With a number first
+it searches each row's whole line.
+
+#+begin_try Try it, with the recipe
+1. Open =~/pancakes.txt=. Press ~g g j V~ to select the second line, the one
+   with the quantities.
+2. Press ~f~, type =[0-9]+= and press ~RET~. The three numbers are held. The
+   echo area says how many places it holds and what you can do.
+3. Press ~(~. Each number is wrapped in brackets. Press ~u~.
+4. Press ~V~, then ~f~, type =,= and press ~RET~. Press ~c~, type =;= and press
+   ~C-g~. The commas are now semicolons. Press ~u~ (non-modal: ~C-/~).
+5. Press ~%~ and ~f~, type =pancake=, press ~RET~ and then ~i~. Type =*= and
+   press ~C-g~. The word =Pancakes= has a star in front of it. Press ~u~.
+#+end_try
+
+=f= may miss a match of more than 4 KB that runs across several lines. For
+text where that matters, =split-selection-thorough= finds every match of up
+to a megabyte. It is slower, so it has no key of its own. A pattern with
+many matches is limited by =*split-limit*=, and =*split-limit-ask*= lets you
+hold them all even so.
+
+#+table: commands split-selection split-selection-thorough split-wrap
+
+#+table: settings *split-limit* *split-limit-ask*
+
+** Summary of the NORMAL keys
+
+For quick reference, in one place.
+
+| Modal                             | Non-modal | Use them to                                       |
+|-----------------------------------+-----------+---------------------------------------------------|
+| ~v~, ~V~, ~J~, ~K~, ~%~           | none      | Select by character, by line, or everything.      |
+| ~m w~, ~m s~, ~m p~, ~m i~, ~m a~ | none      | Select by what the text is.                       |
+| ~M-o~, ~M-i~, ~M-n~, ~M-p~        | none      | Select by what the code is.                       |
+| ~M~                               | none      | Keep adding to a selection with single keys.      |
+| ~m v~                             | none      | Start a rectangle.                                |
+| ~t~, ~T~                          | none      | Add a cursor below or above.                      |
+| ~f~                               | none      | Hold every match of a pattern in the selection.   |
+| ~C-g~                             | none      | Let go. Press it again to end the cursors.        |

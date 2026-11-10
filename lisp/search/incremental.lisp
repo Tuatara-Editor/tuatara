@@ -17,35 +17,36 @@
   "The keys of an incremental search, before the minibuffer's: every other
 key edits the text typed as in any question there.")
 
-(defstruct (search-state (:constructor make-search-state (origin direction regex &optional region preset filtering)) (:copier nil))
-  "State of an incremental search: STRING typed so far; DIRECTION, true when
-forward; REGEX, true when the pattern is a regular expression rather than
-literal text; ORIGIN, where point was when it started; REGION, the active
-region then as (START . END), or NIL; PRESET, for a prompt opened for
-replacing (\\[query-replace]), a plist whose :FLAGS apply as though typed and
-whose :EVERY-AFTER-PERCENT, true for \\[replace-regexp], has a leading % stand
-for every match rather than the whole buffer, flags refused, or NIL; MATCH, the current
-\(START . END) or NIL; FAILING when the last search found nothing; WRAPPED after
-continuing from the other end; STOPPED, the offset a search began from when
-the next key cut it short, or NIL; BACKGROUND, while a search goes on on a
-thread of its own, (RESULT CANCEL), RESULT a cons whose car it fills, CANCEL
-one whose car stops it; EXIT-WHEN-FOUND, true when the search is to end once
-that thread has found its match; SLOW, true when the pattern was found so slow
-on this text that one line held the search up, which then goes on in the
-background and lights no other matches; REFUSED, true when
-\\<search>\\[search-exit] was refused because the pattern cannot be used,
-until the string changes; HISTORY of earlier states,
-newest first, gone back to as what was typed is taken back; FILTERING, for a
-search that narrows a list (SEARCH-FILTER-REGEX), that list, or for the
-matches of a list's filters lit elsewhere (LIGHT-SEARCH-FILTERS) the buffer
-they are lit in, its string then all pattern, a slash or a leading % in it
-standing for itself; COUNT, how many matches there are and which the current
-one is, as (KEY TOTAL ANCHOR BEFORE), KEY what they were counted for, BEFORE
-how many come before the match starting at ANCHOR; COUNTING, while they are
-counted on a thread of its own, (KEY RESULT CANCEL); COUNT-WORDS, what the
-prompt last said of the count; TALLY, for a replacement, its count of the
-matches it replaces (a PATTERN-COUNT); and caches of the parsed string and
-its compiled pattern."
+(defstruct (search-state (:constructor make-search-state (origin direction regex &optional region preset filtering))
+                         (:copier nil))
+  "State of an incremental search. STRING is what has been typed so far.
+DIRECTION is true when forward. REGEX is true when the pattern is a regular
+expression rather than literal text. ORIGIN is where point was when it started.
+REGION is the active region then as (START . END), or NIL. PRESET, for a prompt
+opened for replacing (\\[query-replace]), is a plist whose :FLAGS apply as
+though typed. Its :EVERY-AFTER-PERCENT, true for \\[replace-regexp], has a
+leading % stand for every match rather than the whole buffer, flags refused.
+PRESET is NIL otherwise. MATCH is the current (START . END) or NIL. FAILING is
+true when the last search found nothing. WRAPPED is true after continuing from
+the other end. STOPPED is the offset a search began from when the next key cut
+it short, or NIL. BACKGROUND, while a search goes on on a thread of its own, is
+\(RESULT CANCEL): RESULT is a cons whose car it fills, and CANCEL one whose car
+stops it. EXIT-WHEN-FOUND is true when the search is to end once that thread has
+found its match. SLOW is true when the pattern was found so slow on this text
+that one line held the search up. The search then goes on in the background and
+lights no other matches. REFUSED is true when \\<search>\\[search-exit] was
+refused because the pattern cannot be used, until the string changes. HISTORY is
+the earlier states, newest first, gone back to as what was typed is taken back.
+FILTERING is, for a search that narrows a list (SEARCH-FILTER-REGEX), that list.
+For the matches of a list's filters lit elsewhere (LIGHT-SEARCH-FILTERS), it is
+the buffer they are lit in, its string then all pattern, a slash or a leading %
+in it standing for itself. COUNT is how many matches there are and which the
+current one is, as (KEY TOTAL ANCHOR BEFORE). KEY is what they were counted for,
+and BEFORE how many come before the match starting at ANCHOR. COUNTING, while
+they are counted on a thread of its own, is (KEY RESULT CANCEL). COUNT-WORDS is
+what the prompt last said of the count. TALLY is, for a replacement, its count
+of the matches it replaces (a PATTERN-COUNT). The last slots are caches of the
+parsed string and its compiled pattern."
   (string "" :type string)
   (direction t)
   (regex t)
@@ -73,26 +74,38 @@ its compiled pattern."
       (documentation 'search-state-p 'function) "True when OBJECT is a SEARCH-STATE."
       (documentation 'search-state-string 'function) "The search string typed so far."
       (documentation 'search-state-direction 'function) "True when searching forward."
-      (documentation 'search-state-regex 'function) "True when the pattern is a regular expression, NIL for literal text."
+      (documentation 'search-state-regex 'function)
+      "True when the pattern is a regular expression, NIL for literal text."
       (documentation 'search-state-origin 'function) "Point when the search started."
-      (documentation 'search-state-region 'function) "The region active when the search started, as (START . END), or NIL."
-      (documentation 'search-state-preset 'function) "For a prompt opened for replacing, a plist with the :FLAGS that apply; else NIL."
+      (documentation 'search-state-region 'function)
+      "The region active when the search started, as (START . END), or NIL."
+      (documentation 'search-state-preset 'function)
+      "For a prompt opened for replacing, a plist with the :FLAGS that apply; else NIL."
       (documentation 'search-state-match 'function) "The current match as (START . END), or NIL."
       (documentation 'search-state-failing 'function) "True when the last search found nothing."
       (documentation 'search-state-wrapped 'function) "True once the search continued from the other end."
       (documentation 'search-state-stopped 'function) "Where a search that gave way to the next key began, or NIL."
-      (documentation 'search-state-background 'function) "While the search goes on in the background, (RESULT CANCEL); else NIL."
-      (documentation 'search-state-exit-when-found 'function) "True when the search ends once its search in the background is done."
-      (documentation 'search-state-slow 'function) "True when the pattern was found too slow on this text to search for on the editor's thread."
-      (documentation 'search-state-refused 'function) "True when the search's question was not ended because its pattern cannot be used."
+      (documentation 'search-state-background 'function)
+      "While the search goes on in the background, (RESULT CANCEL); else NIL."
+      (documentation 'search-state-exit-when-found 'function)
+      "True when the search ends once its search in the background is done."
+      (documentation 'search-state-slow 'function)
+      "True when the pattern was found too slow on this text to search for on the editor's thread."
+      (documentation 'search-state-refused 'function)
+      "True when the search's question was not ended because its pattern cannot be used."
       (documentation 'search-state-history 'function) "Earlier states, gone back to as what was typed is taken back."
-      (documentation 'search-state-filtering 'function) "For a search that narrows a list, that list (or where its filters are lit); else NIL."
+      (documentation 'search-state-filtering 'function)
+      "For a search that narrows a list, that list (or where its filters are lit); else NIL."
       (documentation 'search-state-count 'function) "The matches counted, as (KEY TOTAL ANCHOR BEFORE): how many there are, and how many come before the match starting at ANCHOR; or NIL."
-      (documentation 'search-state-counting 'function) "While the matches are counted in the background, (KEY RESULT CANCEL); else NIL."
-      (documentation 'search-state-tally 'function) "For a replacement, its count of the matches it replaces (a PATTERN-COUNT), or NIL."
-      (documentation 'search-state-count-words 'function) "What the prompt last said of the count, kept while the matches are counted again."
+      (documentation 'search-state-counting 'function)
+      "While the matches are counted in the background, (KEY RESULT CANCEL); else NIL."
+      (documentation 'search-state-tally 'function)
+      "For a replacement, its count of the matches it replaces (a PATTERN-COUNT), or NIL."
+      (documentation 'search-state-count-words 'function)
+      "What the prompt last said of the count, kept while the matches are counted again."
       (documentation 'search-state-parsed 'function) "Cache: (KEY . SEARCH-LINE) for the string last parsed."
-      (documentation 'search-state-compiled 'function) "Cache: (KEY . (KIND MATCHER FOLD)) for the pattern last compiled.")
+      (documentation 'search-state-compiled 'function)
+      "Cache: (KEY . (KIND MATCHER FOLD)) for the pattern last compiled.")
 
 (defvar *search* nil "The active incremental search, or NIL.")
 (defvar *search-foreground-seconds* 1/100
@@ -128,14 +141,13 @@ as the counts made so far went (COUNT-TIMED); before any, the rate that has a
 text of 64 MB counted at each key.")
 
 (defun count-timed (octets cancel function)
-  "Call FUNCTION, a count of a pattern's matches over OCTETS of text, and
-return what it returns, noting how fast it went for the counts after it: a
-count slower than *COUNT-AT-ONCE-SECONDS* gives the rate, a quicker one only
-raises it, and one stopped (CANCEL, a cell, turned true) after that long
-lowers it to the rate that would have finished by then. A count of no more
-than *COUNT-AT-ONCE-LEAST* octets is not timed, nor one that did not go
-through its text: FUNCTION returning NIL or (:ERROR ...), or leaving
-otherwise, not stopped."
+  "Call FUNCTION, a count of a pattern's matches over OCTETS of text, and return
+what it returns, noting how fast it went for the counts after it. A count slower
+than *COUNT-AT-ONCE-SECONDS* gives the rate, and a quicker one only raises it.
+One stopped (CANCEL, a cell, turned true) after that long lowers it to the rate
+that would have finished by then. A count of no more than *COUNT-AT-ONCE-LEAST*
+octets is not timed. Nor is one that did not go through its text: FUNCTION
+returning NIL or (:ERROR ...), or leaving otherwise, not stopped."
   (let ((start (get-internal-real-time)) (result nil) (whole nil))
     (unwind-protect (progn (setf result (funcall function)
                                  whole (not (or (null result) (and (consp result) (eq (car result) :error)))))
@@ -173,7 +185,8 @@ what it was typed as and its filter, (TEXT REGEX FILTER), made once
       (documentation 'pattern-count-total 'function) "How many matches a PATTERN-COUNT found for its KEY, or NIL."
       (documentation 'pattern-count-job 'function) "While a PATTERN-COUNT counts, (KEY RESULT CANCEL); else NIL."
       (documentation 'pattern-count-words 'function) "What a PATTERN-COUNT showed last, kept while it counts again."
-      (documentation 'pattern-count-filter 'function) "The pattern a PATTERN-COUNT last counted, as (TEXT REGEX FILTER).")
+      (documentation 'pattern-count-filter 'function)
+      "The pattern a PATTERN-COUNT last counted, as (TEXT REGEX FILTER).")
 
 (defun stop-pattern-count (counter)
   "Stop COUNTER's count in the background, when one goes on."
@@ -183,14 +196,15 @@ what it was typed as and its filter, (TEXT REGEX FILTER), made once
       (setf (pattern-count-job counter) nil))))
 
 (defun pattern-count-update (counter key octets count)
-  "Keep COUNTER's count for KEY up to date while a pattern is typed, KEY
-saying what is counted (the pattern, the text, the scope), NIL for nothing:
-COUNT, a function of a function telling it to stop, run on a thread of its
-own over OCTETS of text, returns how many (NIL when stopped); over a large
-text it starts once typing pauses (TYPING-PAUSE-LEFT). Two values, as a
-question's UPDATE takes them: true while it counts, or the seconds still to
-wait; and what to show before the prompt, such as \"12\", what it showed last until
-the new count comes, \"\" before any or with nothing to count."
+  "Keep COUNTER's count for KEY up to date while a pattern is typed. KEY says
+what is counted (the pattern, the text, the scope), NIL for nothing. COUNT, a
+function of a function telling it to stop, is run on a thread of its own over
+OCTETS of text, and returns how many (NIL when stopped). Over a large text it
+starts once typing pauses (TYPING-PAUSE-LEFT). Two values come back, as a
+question's UPDATE takes them. The first is true while it counts, or the seconds
+still to wait. The second is what to show before the prompt: such as \"12\",
+what it showed last until the new count comes, or \"\" before any or with
+nothing to count."
   (let* ((job (pattern-count-job counter))
          (result (and job (car (second job)))))
     (when result
@@ -289,7 +303,9 @@ for replacing."
   "How to find STATE's pattern, as SEARCH-LINE-MATCHER returns it (a MATCHER,
 or NIL and why the pattern does not compile), compiled once per pattern."
   (let* ((line (search-line-of state))
-         (key (list (search-line-pattern line) (search-state-regex state) (search-line-fold line (search-state-regex state))))
+         (key (list (search-line-pattern line)
+                    (search-state-regex state)
+                    (search-line-fold line (search-state-regex state))))
          (cache (search-state-compiled state)))
     (values-list
      (if (and cache (equal (car cache) key))
@@ -441,7 +457,9 @@ and how many there are shows before it (SEARCH-COUNT-WORDS)."
                            (refused-pattern-words problem (substitute-command-keys "\\<search>\\[search-abort]"))
                            problem)))
                 (and (search-state-background state)
-                     (or (search-state-slow state) (search-state-exit-when-found state) (not (search-count-shown-p state)))
+                     (or (search-state-slow state)
+                         (search-state-exit-when-found state)
+                         (not (search-count-shown-p state)))
                      (format nil "~:[~;slow pattern: still ~]~:[searching~;searching, then done~]"
                              (search-state-slow state) (search-state-exit-when-found state)))
                 (and (search-state-filtering state) (filtering-slowly-p (search-state-filtering state))
@@ -565,14 +583,13 @@ for moved by the matches counted between the two, while they stand within
 
 (defun update-search-count (state)
   "Keep STATE's count of matches (SEARCH-STATE-COUNT) up to date while it is a
-search standing at a match, or failing (how many there are then, wherever
-they stand): take in a count done in the background, and start
-one, on a thread of its own, when the pattern or the text searched has changed
-since, or the match is far from the one counted for (SEARCH-COUNT-PLACE);
-going from match to match counts only the matches between. Nothing is kept
-for each match, so millions of them take no memory. A count of a pattern
-changed waits till typing pauses (*TYPING-PAUSE*). True while one goes on,
-or the seconds still to wait."
+search standing at a match, or failing (how many there are then, wherever they
+stand). It takes in a count done in the background. It starts one, on a thread
+of its own, when the pattern or the text searched has changed since, or the
+match is far from the one counted for (SEARCH-COUNT-PLACE). Going from match to
+match counts only the matches between. Nothing is kept for each match, so
+millions of them take no memory. A count of a pattern changed waits till typing
+pauses (*TYPING-PAUSE*). True while one goes on, or the seconds still to wait."
   (when (search-replacing-p state)
     (return-from update-search-count (update-replace-count state)))
   (let* ((counting (search-state-counting state))
@@ -646,12 +663,12 @@ or the seconds still to wait."
           going)))))
 
 (defun search-count-words (state)
-  "What STATE's question shows before its prompt, as a completing read shows
-its count: for a search which match it is at and how many there are,
-\"3/12\" (0/12 past the last, 0/0 with none); for a filter what it leaves of
-the list or file, \"100/300\" (FILTER-COUNT-FIGURES); for a replacement how
-many matches it replaces, \"12\" (UPDATE-REPLACE-COUNT); until they are
-counted again what it showed last; \"\" while there is none to show, keeping
+  "What STATE's question shows before its prompt, as a completing read shows its
+count. For a search it is which match it is at and how many there are, \"3/12\"
+\(0/12 past the last, 0/0 with none). For a filter it is what it leaves of the
+list or file, \"100/300\" (FILTER-COUNT-FIGURES). For a replacement it is how
+many matches it replaces, \"12\" (UPDATE-REPLACE-COUNT). Until they are counted
+again it is what it showed last. It is \"\" while there is none to show, keeping
 its place."
   (let ((count (search-state-count state))
         (match (search-state-match state))
@@ -721,7 +738,8 @@ here to its end, \\`C-g' stopping it and the play."
                (let ((from (max low (min from high)))
                      (forward (search-state-direction state)))
                  (multiple-value-bind (start end)
-                     (tuatara.runtime:stoppable-work ((list nil) :slow (and (not (keys-playing-p)) tuatara.runtime:*slow-call-seconds*))
+                     (tuatara.runtime:stoppable-work ((list nil) :slow (and (not (keys-playing-p))
+                                                                            tuatara.runtime:*slow-call-seconds*))
                        (pieces-search state b rope matcher from (if forward high low) forward high
                                       (search-stopper state (and (not (search-count-shown-p state)) "searching")
                                                       (and *search-in-loop* (not (keys-playing-p))
@@ -878,7 +896,10 @@ shown with :search-outside-scope."
                                                                                                     :end (min high (+ scan-to n))
                                                                                                     :case-fold (matcher-fold matcher)
                                                                                                     :threads 1 :limit (+ 2 (- scan-to scan-from)))))
-                                   (tuatara.syntax:regex-search-all rope (matcher-scanner matcher) :start scan-from :end scan-to
+                                   (tuatara.syntax:regex-search-all rope
+                                                                    (matcher-scanner matcher)
+                                                                    :start scan-from
+                                                                    :end scan-to
                                                                                                    :bound high :limit (+ 2 (- scan-to scan-from))))))
             ;; too slow on the lines shown: the current match alone is lit from now on
             (when (eq cut :slow) (setf (search-state-slow state) t))
@@ -893,7 +914,9 @@ shown with :search-outside-scope."
                 (unless (or (<= (second m) from) (and match (= (first m) (car match))))
                   (push (list (first m) (second m) (if preview :replace-going :search-other)) ranges))))))))
     (when match
-      (push (list (car match) (cdr match) (if (and preview (not (find #\c (search-flags state)))) :replace-going :search-current))
+      (push (list (car match)
+                  (cdr match)
+                  (if (and preview (not (find #\c (search-flags state)))) :replace-going :search-current))
             ranges))
     ;; dim what lies outside a limited scope; first in the list, so matches win
     (when scope
@@ -974,6 +997,11 @@ mode shows otherwise; returns a function that puts the display back."
               (search-state-stopped state) (point))
         (search-state-history state)))
 
+(defun search-afresh (state)
+  "Have STATE's next search begin where the search began, its match and its
+going round the end forgotten."
+  (setf (search-state-match state) nil (search-state-wrapped state) nil))
+
 (defun search-set-string (state string &key afresh)
   "Make STRING STATE's string and search again, unless only the replacement
 or the flags other than i and I changed; AFRESH, from where the search
@@ -981,7 +1009,7 @@ began rather than from its match."
   (search-push-history state)
   (let ((before (search-key state)))
     (when afresh
-      (setf (search-state-match state) nil (search-state-wrapped state) nil))
+      (search-afresh state))
     (setf (search-state-string state) string)
     (unless (and (equal before (search-key state)) (not (search-state-stopped state)))
       (search-again state))))
@@ -1055,10 +1083,27 @@ list's text has changed since, so where point was then means nothing now."
                  (when stopped (search-find state stopped))))))))
 
 (defun search-toggle (state)
-  "Switch STATE between a regular expression and literal text, and search again."
+  "Switch STATE between a regular expression and literal text, and search again
+from as far before its match as the pattern is long, never from before where
+the search began: read the other way, the pattern may match a little earlier,
+and a match further on stays the one found. Without a match, the search starts
+again from where it began."
   (search-push-history state)
   (setf (search-state-regex state) (not (search-state-regex state)))
-  (search-again state))
+  (let ((match (search-state-match state)))
+    (if (or (null match) (search-replacing-p state))
+        (progn (search-afresh state)
+               (search-again state))
+        (let ((b (current-buffer))
+              (reach (length (search-line-pattern (search-line-of state))))
+              (start (search-start-offset state))
+              (wrapped (search-state-wrapped state)))
+          (multiple-value-bind (low high) (search-bounds state)
+            (search-find state (if (search-state-direction state)
+                                   (max (if wrapped low start)
+                                        (tuatara.buffer:buffer-forward-char b (car match) (- reach)))
+                                   (min (if wrapped high start)
+                                        (tuatara.buffer:buffer-forward-char b (cdr match) reach)))))))))
 
 (defun search-remember (state)
   "Keep STATE's string and pattern for the next search:
@@ -1079,9 +1124,9 @@ seen; the other folds stay as they are."
 (defun search-ready-to-end-p (state)
   "Whether \\<search>\\[search-exit] ends STATE's question now. Opened for
 replacing with only a pattern typed, it types the / before the replacement
-instead; a search, filter, count or replacement whose pattern
-cannot be used goes on, its prompt saying why and how to go on; a search still going on in
-the background ends once it has found its match; one cut short by this key is
+instead. A search, filter, count or replacement whose pattern cannot be used
+goes on, its prompt saying why and how to go on. A search still going on in the
+background ends once it has found its match. One cut short by this key is
 finished first."
   (let ((line (search-line-of state)))
     (cond ((search-problem state)
@@ -1261,13 +1306,13 @@ without upper-case letters ignores case, unless it names a case: [[:upper:]],
 \\xNN from 80 to FF finds the octet NN where it stands on its own, not inside
 a character (shown as \\xNN), and \\x{E9} the character of that code; where lines end with a carriage return and
 a newline, $ matches before the carriage return and . matches neither.
-A set may hold POSIX classes, [[:alpha:]_], of ASCII characters only; \\p{L} and
-\\P{L} match by a Unicode property or script (\\p{Lu}, \\p{Greek}); (?<year>...)
-is a named group, numbered as any other, \\k<year> matching it again;
-\\Q...\\E is literal text; \\h and \\v match horizontal and vertical space,
-\\R any line break; a++, a*+, a?+ and a{2,5}+ repeat possessively, taking as
-much as they can and never giving it back, as (?>a+) does. An escape this
-search lacks, as \\K or \\G, is refused in the prompt as not
+A set may hold POSIX classes, [[:alpha:]_], of ASCII characters only.
+\\p{L} and \\P{L} match by a Unicode property or script (\\p{Lu}, \\p{Greek}).
+A named group, (?<year>...), is numbered as any other, \\k<year>
+matching it again. \\Q...\\E is literal text. \\h and \\v match horizontal and
+vertical space, \\R any line break. The forms a++, a*+, a?+ and a{2,5}+ repeat
+possessively, taking as much as they can and never giving it back, as (?>a+)
+does. An escape this search lacks, as \\K or \\G, is refused in the prompt as not
 supported, never read as a letter.
 A pattern that cannot be used shows why in the prompt, and \\<search>\\[search-exit] waits
 for it to be mended. A pattern so slow on some line (a nested repeat such as
@@ -1281,12 +1326,12 @@ to where the search was for the shorter text.
 \\<search>\\[search-repeat-forward] goes to the next match,
 \\[search-repeat-backward] turns around, \\[search-toggle-regex] switches to
 literal text, \\[search-exit] stops at
-the match and \\[search-abort] goes back to where the search began; after
+the match and \\[search-abort] goes back to where the search began. After
 \\[search-exit], \\[search-repeat-forward] and \\[search-repeat-backward] pressed right away go to the next and the
 previous match without the prompt (search-next-match), till another key.
-\\[search-insert-symbol] puts the symbol at point into the search;
+\\[search-insert-symbol] puts the symbol at point into the search.
 \\<minibuffer>\\[minibuffer-previous-history] brings back the pattern typed before, in this or any question
-that takes one, and again the one before that, \\[minibuffer-next-history] going forward again
+that takes one, and again the one before that. \\[minibuffer-next-history] goes forward again
 \(*PATTERN-HISTORY*, kept while the editor runs).\\<search> With a region
 holding text the search stays within it; a search right after the mark is
 set extends the region to the match instead. Everything typed is the

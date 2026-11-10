@@ -122,7 +122,8 @@ through to NORMAL's. Does nothing until the editor has a window (during setup)."
              (editor-fallback-keymap editor) nil
              (editor-self-insert-command editor) 'self-insert-command))
       (:support
-       ;; the mode's keys first, then NORMAL's reading keys (or the buffer's choice of them) and SPC, then the global map
+       ;; the mode's keys first, then NORMAL's reading keys (or the buffer's choice of them) and SPC, then the global
+       ;; map
        (setf (editor-state-keymap editor) nil
              (editor-fallback-keymap editor) (or (tuatara.buffer:buffer-local buffer :tuatara-support-keymap)
                                                  *tuatara-support-keymap*)

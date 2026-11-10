@@ -6,7 +6,9 @@
 (define-test buffers
   :description "SPC , selects a buffer with completion; C-x C-b lists buffers as a support buffer with mark, kill, save, visit and quit.")
 
-(defun current-name (editor) "Name of the editor's current buffer." (tuatara.buffer:buffer-name (tuatara.display:window-buffer (tuatara.command:editor-window editor))))
+(defun current-name (editor)
+  "Name of the editor's current buffer."
+  (tuatara.buffer:buffer-name (tuatara.display:window-buffer (tuatara.command:editor-window editor))))
 
 (defun fresh-list-session (keys &key (width 40) (height 8))
   "Run KEYS with no *Buffers* buffer left over from an earlier session, so the
@@ -29,7 +31,9 @@ list starts on its first line, on a screen WIDTH by HEIGHT."
     (let ((scratch (tuatara.buffer:find-buffer "*scratch*"))) (when scratch (tuatara.buffer:kill-buffer scratch)))
     (tuatara.buffer:make-buffer "*scratch*" :text "")
     (tuatara.frontend.fake:fake-queue-keys f "SPC")
-    (tuatara.command:run-editor f :setup #'tuatara.defaults:install-defaults :buffer (tuatara.buffer:find-buffer "*scratch*"))
+    (tuatara.command:run-editor f
+                                :setup #'tuatara.defaults:install-defaults
+                                :buffer (tuatara.buffer:find-buffer "*scratch*"))
     (true (tuatara.frontend.fake:fake-frame-showing f ", switch-to-buffer"))))
 
 (define-test (buffers leader-list)
@@ -108,7 +112,8 @@ list starts on its first line, on a screen WIDTH by HEIGHT."
            ;; the list shows the other buffers with sizes; d marks, x kills; q returns
            (multiple-value-bind (f editor) (fresh-list-session "C-x C-b")
              (is string= "*Buffers*" (current-name editor))
-             (true (search "TUATARA[S]" (tuatara.frontend.fake:fake-screen-line f (- (tuatara.command:editor-height editor) 2))))
+             (true (search "TUATARA[S]"
+                           (tuatara.frontend.fake:fake-screen-line f (- (tuatara.command:editor-height editor) 2))))
              (let ((text (session-text editor)))
                (true (search "extra" text)) (true (search "*scratch*" text)) (true (search "5 Fundamental" text))))
            ;; find a buffer's line by searching for its name, then l (or RET) opens it
@@ -123,9 +128,11 @@ list starts on its first line, on a screen WIDTH by HEIGHT."
              (declare (ignore f))
              (is string= "extra" (current-name editor))
              (true (find "*Buffers*" (tuatara.command:editor-windows editor)
-                         :key (lambda (w) (tuatara.buffer:buffer-name (tuatara.display:window-buffer w))) :test #'string=)))
+                         :key (lambda (w) (tuatara.buffer:buffer-name (tuatara.display:window-buffer w)))
+                         :test #'string=)))
            ;; opened again, the list starts on its first buffer as well
-           (multiple-value-bind (f editor) (fresh-list-session "C-x C-b j j q C-x b e x t r a RET C-x C-b" :width 100 :height 16)
+           (multiple-value-bind (f editor)
+               (fresh-list-session "C-x C-b j j q C-x b e x t r a RET C-x C-b" :width 100 :height 16)
              (declare (ignore f))
              (let ((list (tuatara.buffer:find-buffer "*Buffers*")))
                (is = (1+ tuatara.defaults::*buffers-title-lines*)
@@ -148,7 +155,8 @@ list starts on its first line, on a screen WIDTH by HEIGHT."
            (let ((one (tuatara.buffer:make-buffer "one" :text "1"))
                  (two (tuatara.buffer:make-buffer "two" :text "2")))
              (flet ((line (editor name)
-                      (find-if (lambda (l) (search name l)) (uiop:split-string (session-text editor) :separator '(#\Newline)))))
+                      (find-if (lambda (l) (search name l))
+                               (uiop:split-string (session-text editor) :separator '(#\Newline)))))
                (multiple-value-bind (f editor) (fresh-list-session "C-x C-b C-s t w o RET m m" :width 100 :height 16)
                  (declare (ignore f))
                  (true (uiop:string-prefix-p ">" (line editor "one")))
@@ -164,7 +172,8 @@ list starts on its first line, on a screen WIDTH by HEIGHT."
                  (declare (ignore f))
                  (true (tuatara.buffer:find-buffer "one"))
                  (true (search "No buffers marked for deletion" (or (tuatara.command:editor-message editor) ""))))
-               (multiple-value-bind (f editor) (fresh-list-session "C-x C-b C-s t w o RET m m D y RET" :width 100 :height 16)
+               (multiple-value-bind (f editor)
+                   (fresh-list-session "C-x C-b C-s t w o RET m m D y RET" :width 100 :height 16)
                  (true (tuatara.frontend.fake:fake-frame-showing f "Kill the 2 buffers?"))
                  (true (search "Killed 2 buffers" (or (tuatara.command:editor-message editor) "")))
                  (false (tuatara.buffer:find-buffer "one"))
@@ -187,7 +196,8 @@ list starts on its first line, on a screen WIDTH by HEIGHT."
         (long (tuatara.buffer:make-buffer "a-name-longer-than-the-column.lisp" :text "(x)")))
     (setf (tuatara.buffer:buffer-local long :read-only) t)
     (unwind-protect
-         (flet ((line-of (text name) (find-if (lambda (l) (search name l)) (uiop:split-string text :separator '(#\Newline))))
+         (flet ((line-of (text name)
+                  (find-if (lambda (l) (search name l)) (uiop:split-string text :separator '(#\Newline))))
                 (faces-on (f text)
                   ;; the faces the last frame painted over the first cell showing TEXT
                   (loop for row from 0 below (length (tuatara.frontend.fake:fake-screen f))
@@ -197,7 +207,8 @@ list starts on its first line, on a screen WIDTH by HEIGHT."
                                        when (and (<= start column) (< column end))
                                          append (if (listp face) face (list face))))))
            ;; notes changed and seen last: first, with * in the M column
-           (multiple-value-bind (f editor) (fresh-list-session "C-x b n o t e s RET i x C-g C-x C-b" :width 100 :height 16)
+           (multiple-value-bind (f editor)
+               (fresh-list-session "C-x b n o t e s RET i x C-g C-x C-b" :width 100 :height 16)
              (let* ((text (session-text editor))
                     (lines (uiop:split-string text :separator '(#\Newline))))
                (is string= (format nil " MR  ~18a ~9@a ~16a Filename/Process" "Name" "Size" "Mode") (first lines))
@@ -264,7 +275,8 @@ list starts on its first line, on a screen WIDTH by HEIGHT."
 (define-test (buffers support-keys-read-and-select)
   ;; every support buffer moves, selects and copies as NORMAL state does, its own keys first
   (flet ((in-help (keys)
-           (multiple-value-bind (f editor) (run-keys (format nil "C-h f u n d o RET C-x o ~a" keys) :text "" :width 80 :height 24)
+           (multiple-value-bind (f editor)
+               (run-keys (format nil "C-h f u n d o RET C-x o ~a" keys) :text "" :width 80 :height 24)
              (declare (ignore f))
              editor)))
     (let* ((editor (in-help "g e"))
@@ -319,7 +331,8 @@ list starts on its first line, on a screen WIDTH by HEIGHT."
   ;; with no other buffer left, the one made to show is *lisp-scratch* as at
   ;; startup, in its mode with its first text: *lisp-scratch* killed last too
   (dolist (keep '("*scratch*" "*lisp-scratch*"))
-    (multiple-value-bind (f editor) (run-keys (format nil "C-x b ~a RET" (key-string keep)) :text "abc" :width 100 :height 12)
+    (multiple-value-bind (f editor)
+        (run-keys (format nil "C-x b ~a RET" (key-string keep)) :text "abc" :width 100 :height 12)
       (declare (ignore f))
       (let ((tuatara.command:*editor* editor))
         (dolist (b (remove (tuatara.buffer:find-buffer keep) (copy-list tuatara.buffer:*buffers*)))
@@ -330,7 +343,8 @@ list starts on its first line, on a screen WIDTH by HEIGHT."
           (is string= "*lisp-scratch*" (tuatara.buffer:buffer-name b))
           (true (typep (tuatara.modes:buffer-major-mode b) 'tuatara.defaults::lisp-interaction-mode))
           (true (search ";; This buffer holds unsaved text" (tuatara.buffer:buffer-string b)))
-          (is = 1 (count "*lisp-scratch*" tuatara.buffer:*buffers* :key #'tuatara.buffer:buffer-name :test #'string=)))))))
+          (is = 1
+              (count "*lisp-scratch*" tuatara.buffer:*buffers* :key #'tuatara.buffer:buffer-name :test #'string=)))))))
 
 (define-test (buffers reading-again-what-has-no-source)
   ;; r in *Messages*: said plainly, nothing changed
@@ -347,15 +361,22 @@ list starts on its first line, on a screen WIDTH by HEIGHT."
   (let ((odd (tuatara.buffer:make-buffer (format nil "nl~%name.txt") :text "x")))
     (unwind-protect
          (progn
-           (true (search "nl^Jname.txt" (session-text (nth-value 1 (fresh-list-session "C-x C-b" :width 100 :height 16)))))
+           (true (search "nl^Jname.txt"
+                         (session-text (nth-value 1 (fresh-list-session "C-x C-b" :width 100 :height 16)))))
            (fresh-list-session "C-x C-b C-s n l RET d x" :width 100 :height 16)
            (false (tuatara.buffer:live-buffer-p odd))
            (true (tuatara.buffer:find-buffer "*Messages*")))
       (when (tuatara.buffer:live-buffer-p odd) (tuatara.buffer:kill-buffer odd))
       (let ((l (tuatara.buffer:find-buffer "*Buffers*"))) (when l (tuatara.buffer:kill-buffer l)))))
   (is string= "a^Ib^Mc" (tuatara.command:escape-controls (format nil "a~cb~cc" #\Tab #\Return)))
-  (is string= "rtl<202E>gnp.exe<2066>\\x85" (tuatara.command:escape-controls (format nil "rtl~cgnp.exe~c~c" (code-char #x202E) (code-char #x2066) (code-char #x85))))
-  (is string= "zw<200B>sp<FEFF>" (tuatara.command:escape-controls (format nil "zw~csp~c" (code-char #x200B) (code-char #xFEFF))))
+  (is string= "rtl<202E>gnp.exe<2066>\\x85"
+      (tuatara.command:escape-controls (format nil
+                                               "rtl~cgnp.exe~c~c"
+                                               (code-char #x202E)
+                                               (code-char #x2066)
+                                               (code-char #x85))))
+  (is string= "zw<200B>sp<FEFF>"
+      (tuatara.command:escape-controls (format nil "zw~csp~c" (code-char #x200B) (code-char #xFEFF))))
   ;; joiners stay, for the emoji and scripts they build
   (let ((family (format nil "~c~c~c" (code-char #x1F468) (code-char #x200D) (code-char #x1F469))))
     (is eq family (tuatara.command:escape-controls family)))
@@ -371,7 +392,8 @@ list starts on its first line, on a screen WIDTH by HEIGHT."
   (let ((made (loop for name in '("one" "two" "three") collect (tuatara.buffer:make-buffer name :text "1"))))
     (unwind-protect
          (flet ((marked (editor)
-                  (count-if (lambda (l) (uiop:string-prefix-p ">" l)) (uiop:split-string (session-text editor) :separator '(#\Newline)))))
+                  (count-if (lambda (l) (uiop:string-prefix-p ">" l))
+                            (uiop:split-string (session-text editor) :separator '(#\Newline)))))
            (is = 2 (marked (nth-value 1 (fresh-list-session "C-x C-b C-u 2 m" :width 100 :height 16))))
            (is = 0 (marked (nth-value 1 (fresh-list-session "C-x C-b C-u 2 m C-p C-p C-u 2 u" :width 100 :height 16)))))
       (dolist (b made) (when (tuatara.buffer:live-buffer-p b) (tuatara.buffer:kill-buffer b)))
@@ -385,7 +407,10 @@ list starts on its first line, on a screen WIDTH by HEIGHT."
     (unwind-protect
          (flet ((marked (keys sign)
                   (count-if (lambda (l) (uiop:string-prefix-p sign l))
-                            (uiop:split-string (session-text (nth-value 1 (fresh-list-session keys :width 100 :height 16)))
+                            (uiop:split-string (session-text (nth-value 1
+                                                                        (fresh-list-session keys
+                                                                                            :width 100
+                                                                                            :height 16)))
                                                :separator '(#\Newline)))))
            (let ((all (marked "C-x C-b t" ">")))
              (true (>= all 4))
@@ -436,7 +461,8 @@ list starts on its first line, on a screen WIDTH by HEIGHT."
              (is eq nil (section-of-line 6))
              (is eq :b (section-of-line 9))
              (tuatara.defaults::list-toggle-section list :a)
-             (is string= (format nil "▸ A (5)~%▾ B (1)~%  three~%    more of three~%") (tuatara.buffer:buffer-string list)))
+             (is string= (format nil "▸ A (5)~%▾ B (1)~%  three~%    more of three~%")
+                 (tuatara.buffer:buffer-string list)))
         (tuatara.buffer:kill-buffer list)))))
 
 (define-test (buffers project-sections)
@@ -446,10 +472,14 @@ list starts on its first line, on a screen WIDTH by HEIGHT."
     (let ((one (merge-pathnames "one/" dir)) (two (merge-pathnames "two/" dir)))
       (ensure-directories-exist (merge-pathnames ".project/" one))
       (ensure-directories-exist (merge-pathnames ".git/" two))
-      (dolist (file (list (merge-pathnames "a.txt" one) (merge-pathnames "sub/b.txt" one) (merge-pathnames "c.txt" two)))
+      (dolist (file (list (merge-pathnames "a.txt" one)
+                          (merge-pathnames "sub/b.txt" one)
+                          (merge-pathnames "c.txt" two)))
         (alexandria:write-string-into-file "x" (ensure-directories-exist file)))
       (flet ((open-files ()
-               (dolist (file (list (merge-pathnames "c.txt" two) (merge-pathnames "sub/b.txt" one) (merge-pathnames "a.txt" one)))
+               (dolist (file (list (merge-pathnames "c.txt" two)
+                                   (merge-pathnames "sub/b.txt" one)
+                                   (merge-pathnames "a.txt" one)))
                  (tuatara.io:visit-file (tuatara.io:native file))))
              (lines (editor) (uiop:split-string (session-text editor) :separator '(#\Newline)))
              (live (name) (tuatara.buffer:find-buffer name)))
@@ -467,7 +497,9 @@ list starts on its first line, on a screen WIDTH by HEIGHT."
         ;; a rimu list of the project: under its heading, its folder in the last column
         (let ((tuatara-user:*rimu-preview* nil))
           (multiple-value-bind (f editor)
-              (fresh-list-session (format nil "C-x d C-a C-k ~a C-j C-x C-b" (rimu-typed (namestring (merge-pathnames "sub/" one))))
+              (fresh-list-session (format nil
+                                          "C-x d C-a C-k ~a C-j C-x C-b"
+                                          (rimu-typed (namestring (merge-pathnames "sub/" one))))
                                   :width 140 :height 24)
             (declare (ignore f))
             (let ((row (find-if (lambda (l) (search "sub/" l :end2 (min 30 (length l)))) (lines editor))))

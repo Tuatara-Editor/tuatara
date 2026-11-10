@@ -25,21 +25,24 @@ and long.xml deflated (fixed and dynamic codes), stored.bin stored."
         (mapcar (lambda (e) (getf e :name)) (tuatara.defaults::zip-entries octets)))
     (is string= (format nil "~{~a~}" (make-list 3 :initial-element "Kia ora, Tuatara! "))
         (sb-ext:octets-to-string (tuatara.defaults::zip-entry-octets octets (zip-entry-named octets "short.txt"))))
-    (let ((long (sb-ext:octets-to-string (tuatara.defaults::zip-entry-octets octets (zip-entry-named octets "long.xml")))))
+    (let ((long (sb-ext:octets-to-string (tuatara.defaults::zip-entry-octets octets
+                                                                             (zip-entry-named octets "long.xml")))))
       (is = 5088 (length long))
       (true (search "kakapo" long)))
     (true (equalp (coerce (loop for i below 256 collect i) '(vector (unsigned-byte 8)))
                   (tuatara.defaults::zip-entry-octets octets (zip-entry-named octets "stored.bin"))))
     ;; a part larger unpacked than allowed, refused before it is unpacked
     (let ((tuatara.defaults::*zip-largest-entry* 1000))
-      (fail (tuatara.defaults::zip-entry-octets octets (zip-entry-named octets "long.xml")) 'tuatara.defaults::zip-error))
+      (fail (tuatara.defaults::zip-entry-octets octets (zip-entry-named octets "long.xml"))
+            'tuatara.defaults::zip-error))
     ;; damaged: an octet of the deflated data changed
     (let* ((entry (zip-entry-named octets "long.xml"))
            (broken (copy-seq octets))
            (at (+ (getf entry :data) 40)))
       (setf (aref broken at) (logxor (aref broken at) #x5A))
       (fail (tuatara.defaults::zip-entry-octets broken entry) 'tuatara.defaults::zip-error))
-    (fail (tuatara.defaults::zip-entries (sb-ext:string-to-octets "no archive at all, only words")) 'tuatara.defaults::zip-error)))
+    (fail (tuatara.defaults::zip-entries (sb-ext:string-to-octets "no archive at all, only words"))
+          'tuatara.defaults::zip-error)))
 
 (defun stored-deflate-data (octets)
   "OCTETS as deflated data of stored blocks, each of at most 65,535 octets."
@@ -86,7 +89,8 @@ and long.xml deflated (fixed and dynamic codes), stored.bin stored."
   ;; one tag of megabytes with no = in it is read in time growing with its length, not its square
   (flet ((tag-seconds (size)
            (let ((text (concatenate 'string "<a " (make-string size :initial-element #\x) "></a>")))
-             (is string= "a" (tuatara.defaults::xml-name (tuatara.defaults::xml-root (tuatara.defaults::xml-parse text))))
+             (is string= "a"
+                 (tuatara.defaults::xml-name (tuatara.defaults::xml-root (tuatara.defaults::xml-parse text))))
              (max 1/1000 (least-seconds (lambda () (tuatara.defaults::xml-parse text)))))))
     (let ((small (tag-seconds (* 512 1024))) (large (tag-seconds (* 4 1024 1024))))
       (true (< (/ large small) 24) "~,3fs for 512 KB, ~,3fs for 4 MB" small large))))
@@ -215,7 +219,8 @@ and long.xml deflated (fixed and dynamic codes), stored.bin stored."
                        (format s "<w:r><w:t>~a</w:t></w:r>" words)
                        (loop repeat depth do (write-string "</w:ins>" s))
                        (write-string "</w:p></w:body></w:document>" s)))
-           (parts (cons (cons "word/document.xml" document) (remove "word/document.xml" *docx-test-parts* :key #'car :test #'string=)))
+           (parts (cons (cons "word/document.xml" document)
+                        (remove "word/document.xml" *docx-test-parts* :key #'car :test #'string=)))
            (path (namestring (merge-pathnames "nested.docx" dir)))
            (start (get-internal-real-time)))
       (with-open-file (out path :direction :output :element-type '(unsigned-byte 8) :if-exists :supersede)
@@ -240,7 +245,9 @@ and long.xml deflated (fixed and dynamic codes), stored.bin stored."
                    (sleep 0.02)
                    (tuatara.frontend.fake:fake-queue-action f #'check))))
         (tuatara.frontend.fake:fake-queue-action f #'check))
-      (tuatara.command:run-editor f :setup #'tuatara.defaults:install-defaults :buffer (tuatara.buffer:find-buffer "*scratch*"))
+      (tuatara.command:run-editor f
+                                  :setup #'tuatara.defaults:install-defaults
+                                  :buffer (tuatara.buffer:find-buffer "*scratch*"))
       (let ((buffer (tuatara.buffer:find-buffer "survey.docx (text)")))
         (true buffer)
         (when buffer
@@ -260,9 +267,13 @@ has the frontend show pictures. Returns the frontend and the editor."
     (tuatara.buffer:make-buffer "*scratch*" :text "")
     (tuatara.frontend.fake:fake-queue-keys f (format nil "C-x C-f C-a C-k ~a RET" (rimu-typed (namestring path))))
     (labels ((busy ()
-               (or (some (lambda (job) (or (tuatara.defaults::office-read-job-p job) (tuatara.defaults::metadata-job-p job))) tuatara.runtime:*jobs*)
+               (or (some (lambda (job)
+                           (or (tuatara.defaults::office-read-job-p job) (tuatara.defaults::metadata-job-p job)))
+                         tuatara.runtime:*jobs*)
                    (some (lambda (b) (let ((view (tuatara.defaults::pdf-view-of b)))
-                                       (and view (or (tuatara.defaults::pdf-view-job view) (tuatara.defaults::pdf-view-text-job view)))))
+                                       (and view
+                                            (or (tuatara.defaults::pdf-view-job view)
+                                                (tuatara.defaults::pdf-view-text-job view)))))
                          tuatara.defaults::*pdf-views*)))
              (check ()
                (if (and (busy) (< (- (get-internal-real-time) start) (* 60 internal-time-units-per-second)))
@@ -289,7 +300,8 @@ has the frontend show pictures. Returns the frontend and the editor."
             (true (tuatara.frontend.fake:fake-frame-showing f "Sandboxed"))
             (true (last-images f))
             (true (tuatara.frontend.fake:fake-frame-showing f "About this document"))
-            (is string= "survey.docx" (tuatara.buffer:buffer-name (tuatara.display:window-buffer (tuatara.command:editor-window editor)))))
+            (is string= "survey.docx"
+                (tuatara.buffer:buffer-name (tuatara.display:window-buffer (tuatara.command:editor-window editor)))))
           (let ((reading (tuatara.buffer:find-buffer "survey.docx (text)")))
             (true reading)
             (when reading (tuatara.buffer:kill-buffer reading)))
@@ -298,7 +310,8 @@ has the frontend show pictures. Returns the frontend and the editor."
           (let ((tuatara.defaults::*office-view-pages* nil))
             (multiple-value-bind (f editor) (docx-session path '() :cell-pixels '(10 20))
               (declare (ignore f))
-              (is string= "survey.docx (text)" (tuatara.buffer:buffer-name (tuatara.display:window-buffer (tuatara.command:editor-window editor))))))
+              (is string= "survey.docx (text)"
+                  (tuatara.buffer:buffer-name (tuatara.display:window-buffer (tuatara.command:editor-window editor))))))
           (let ((reading (tuatara.buffer:find-buffer "survey.docx (text)")))
             (when reading (tuatara.buffer:kill-buffer reading)))))))
 
@@ -315,7 +328,11 @@ has the frontend show pictures. Returns the frontend and the editor."
     (when (and (eq :ready (tuatara.io:sandbox-status))
                (tuatara.io:sandbox-find-program tuatara.defaults::*office-page-program*)
                (tuatara.defaults::find-pdf-decoder))
-      (let ((f (rimu-session dir (format nil "g f ~a RET" (rimu-typed "survey.docx")) :preview t :width 250 :cell-pixels '(10 20))))
+      (let ((f (rimu-session dir
+                             (format nil "g f ~a RET" (rimu-typed "survey.docx"))
+                             :preview t
+                             :width 250
+                             :cell-pixels '(10 20))))
         (true (tuatara.frontend.fake:fake-frame-showing f "Word document (OOXML), 1 page"))
         (true (last-images f))))
     (rimu-forget)))
@@ -335,12 +352,13 @@ has the frontend show pictures. Returns the frontend and the editor."
   "The namespaces of the test report's parts.")
 
 (defun docx-report-parts ()
-  "The parts of a small report as a word processor writes one: a cover with
-its fields (a title, a table of labels and values, a date control, a
-labelled line, placeholder text in the header), contents, then its text
-(headings, a numbered list, a table in a table style, an endnote, a text
-box, an equation, sub- and superscripts, a cell spanning two columns);
-tracking on, an attached template, a comment and macros besides."
+  "The parts of a small report as a word processor writes one. It has a
+cover with its fields (a title, a table of labels and values, a date
+control, a labelled line, placeholder text in the header), contents, then
+its text (headings, a numbered list, a table in a table style, an endnote,
+a text box, an equation, sub- and superscripts, a cell spanning two
+columns). Tracking is on, and there are an attached template, a comment and
+macros besides."
   (let ((w *docx-report-w*))
     (flet ((p (text &key style (rpr "")) (format nil "<w:p>~@[<w:pPr><w:pStyle w:val=\"~a\"/></w:pPr>~]<w:r><w:rPr>~a</w:rPr><w:t xml:space=\"preserve\">~a</w:t></w:r></w:p>" style rpr text))
            (cell (text) (format nil "<w:tc><w:tcPr><w:tcW w:w=\"2000\" w:type=\"dxa\"/></w:tcPr><w:p><w:r><w:t>~a</w:t></w:r></w:p></w:tc>" text)))
@@ -362,7 +380,13 @@ tracking on, an attached template, a comment and macros besides."
              (format nil "<w:document ~a><w:body>" w)
              (p "Bird Survey" :style "Title")
              "<w:tbl><w:tblPr><w:tblW w:w=\"0\" w:type=\"auto\"/></w:tblPr><w:tblGrid><w:gridCol w:w=\"2000\"/><w:gridCol w:w=\"2000\"/></w:tblGrid>"
-             "<w:tr>" (cell "Version") (cell "0.3") "</w:tr><w:tr>" (cell "Reviewer") (cell "[Enter reviewer name]") "</w:tr></w:tbl>"
+             "<w:tr>"
+             (cell "Version")
+             (cell "0.3")
+             "</w:tr><w:tr>"
+             (cell "Reviewer")
+             (cell "[Enter reviewer name]")
+             "</w:tr></w:tbl>"
              "<w:p><w:r><w:t xml:space=\"preserve\">Date: </w:t></w:r><w:sdt><w:sdtPr><w:tag w:val=\"issue date\"/><w:showingPlcHdr/><w:date><w:dateFormat w:val=\"d MMMM yyyy\"/></w:date></w:sdtPr><w:sdtContent><w:r><w:rPr><w:rStyle w:val=\"PlaceholderText\"/></w:rPr><w:t>Click to enter a date.</w:t></w:r></w:sdtContent></w:sdt></w:p>"
              "<w:p><w:r><w:rPr><w:b/></w:rPr><w:t xml:space=\"preserve\">Made for: </w:t></w:r><w:r><w:t>The Office</w:t></w:r></w:p>"
              "<w:p><w:commentRangeStart w:id=\"0\"/><w:del w:author=\"A\"><w:r><w:delText>Struck words</w:delText></w:r></w:del><w:ins w:author=\"A\"><w:r><w:t>Kept words</w:t></w:r></w:ins><w:commentRangeEnd w:id=\"0\"/><w:r><w:commentReference w:id=\"0\"/></w:r></w:p>"
@@ -408,11 +432,15 @@ tracking on, an attached template, a comment and macros besides."
         (write-sequence (tuatara.defaults::zip-octets
                          (mapcar (lambda (part)
                                    (if (string= (car part) "word/_rels/document.xml.rels")
-                                       (cons (car part) (cl-ppcre:regex-replace "Target=\"header1.xml\"" (cdr part) "Target=\"/word/header1.xml\""))
+                                       (cons (car part)
+                                             (cl-ppcre:regex-replace "Target=\"header1.xml\""
+                                                                     (cdr part)
+                                                                     "Target=\"/word/header1.xml\""))
                                        part))
                                  (docx-report-parts)))
                         out))
-      (true (search "- Header (word/header1.xml) :: Survey [Plan code] page 1" (tuatara.defaults::docx-read-note path))))))
+      (true (search "- Header (word/header1.xml) :: Survey [Plan code] page 1"
+                    (tuatara.defaults::docx-read-note path))))))
 
 (define-test (docx-view report-exported)
   (with-test-directory (dir)
@@ -447,7 +475,10 @@ tracking on, an attached template, a comment and macros besides."
 (define-test (docx-view latex-date-places)
   ;; {{{NAME:date=PATTERN}}}: a date written in Word's pattern, else the value as it is
   (flet ((filled (template value)
-           (tuatara.defaults::fill-latex-template template (lambda (name way) (declare (ignore way)) (and (string= name "when") value)))))
+           (tuatara.defaults::fill-latex-template template
+                                                  (lambda (name way)
+                                                    (declare (ignore way))
+                                                    (and (string= name "when") value)))))
     (is string= "On 30 September 2026." (filled "On {{{when:date=d MMMM yyyy}}}." "2026-09-30"))
     (is string= "Wednesday, 30 Sep 2026" (filled "{{{when:date=dddd, d MMM yyyy}}}" "<2026-09-30 Wed>"))
     (is string= "soon" (filled "{{{when:date=d MMMM yyyy}}}" "soon"))
@@ -486,7 +517,11 @@ tracking on, an attached template, a comment and macros besides."
     (let ((path (concatenate 'string (namestring dir) "[Content_Types]*.xml")))
       (tuatara.io:replace-file path "first")
       (tuatara.io:replace-file path (sb-ext:string-to-octets "second" :external-format :utf-8))
-      (is string= "second" (tuatara.io:call-with-file path (lambda (fd p size) (declare (ignore size)) (sb-ext:octets-to-string (tuatara.io:read-fd-octets fd :path p)))))
+      (is string= "second"
+          (tuatara.io:call-with-file path
+                                     (lambda (fd p size)
+                                       (declare (ignore size))
+                                       (sb-ext:octets-to-string (tuatara.io:read-fd-octets fd :path p)))))
       (is = 1 (length (tuatara.io:directory-entries (namestring dir)))))))
 
 (define-test (docx-view hostile-documents)
@@ -537,7 +572,9 @@ tracking on, an attached template, a comment and macros besides."
       (let ((tuatara.defaults::*xml-most-elements* 10))
         (fail (read-body (format nil "~{~a~}" (make-list 20 :initial-element "<w:p/>")))))
       ;; and the elements of all the parts read together, not each part alone
-      (let ((rels (format nil "<Relationships>~{~a~}</Relationships>" (make-list 25 :initial-element "<Relationship/>"))))
+      (let ((rels (format nil
+                          "<Relationships>~{~a~}</Relationships>"
+                          (make-list 25 :initial-element "<Relationship/>"))))
         (true (read-body "<w:p/>" (cons "word/_rels/a.xml.rels" rels)))
         (let ((tuatara.defaults::*xml-most-elements* 40))
           (fail (read-body "<w:p/>" (cons "word/_rels/a.xml.rels" rels) (cons "word/_rels/b.xml.rels" rels)))))
@@ -595,7 +632,9 @@ tracking on, an attached template, a comment and macros besides."
                      (note (subseq whole (or (search "* The text" whole) 0))))
                  (tuatara.defaults::org-find-in-tree (tuatara.defaults::org-parse note)
                                                      (lambda (n) (pushnew (tuatara.defaults::org-node-type n) kinds) nil))
-                 (dolist (kind '(tuatara.defaults::export-snippet tuatara.defaults::latex-fragment tuatara.defaults::latex-environment
+                 (dolist (kind '(tuatara.defaults::export-snippet
+                                 tuatara.defaults::latex-fragment
+                                 tuatara.defaults::latex-environment
                                  tuatara.defaults::macro tuatara.defaults::table tuatara.defaults::property-drawer
                                  tuatara.defaults::drawer))
                    (false (member kind kinds) "~a in~%~a" kind note))
@@ -651,10 +690,13 @@ tracking on, an attached template, a comment and macros besides."
                (source (write-docx-report (merge-pathnames "report.docx" dir)))
                (note-path (namestring (merge-pathnames "note.org" dir))))
           (dolist (folder (list logos elsewhere))
-            (with-open-file (out (merge-pathnames "logo.png" folder) :direction :output :element-type '(unsigned-byte 8))
+            (with-open-file (out (merge-pathnames "logo.png" folder)
+                                 :direction :output
+                                 :element-type '(unsigned-byte 8))
               (write-sequence (png-octets 40 20) out)))
           (tuatara.defaults::docx-import source "pair" :folder (namestring (merge-pathnames "pair/" dir))
-                                                       :tex (namestring (merge-pathnames "pair.tex" dir)) :note note-path)
+                                                       :tex (namestring (merge-pathnames "pair.tex" dir))
+                                                       :note note-path)
           (alexandria:write-string-into-file
            (format nil "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>~%<w:hdr xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\" xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\"><w:p><w:r><w:t>{{{logo:path:height=1.8cm}}}</w:t></w:r></w:p></w:hdr>")
            (merge-pathnames "pair/word/header1.xml" dir) :if-exists :supersede)
@@ -664,7 +706,9 @@ tracking on, an attached template, a comment and macros besides."
                                   (or more ""))))
                  (part (octets name)
                    (let ((entry (zip-entry-named octets name)))
-                     (and entry (sb-ext:octets-to-string (tuatara.defaults::zip-entry-octets octets entry) :external-format :utf-8)))))
+                     (and entry
+                          (sb-ext:octets-to-string (tuatara.defaults::zip-entry-octets octets entry)
+                                                   :external-format :utf-8)))))
             ;; a name alone: the logos folder's picture, in the header
             (let ((octets (tuatara.defaults::org-docx-document (note "logo.png") :file note-path)))
               (true (search "<w:drawing>" (part octets "word/header1.xml")))
@@ -689,7 +733,10 @@ tracking on, an attached template, a comment and macros besides."
                 (false (search "includegraphics" from-elsewhere)))
               ;; one that is not there: left out, said so, the PDF still made
               (multiple-value-bind (latex a b c notes)
-                  (tuatara.defaults::org-latex-document (format nil "#+template: ./plain.tex~%#+logo: gone.png~%~%Text~%") :file note-path :enhanced t)
+                  (tuatara.defaults::org-latex-document (format nil
+                                                                "#+template: ./plain.tex~%#+logo: gone.png~%~%Text~%")
+                                                        :file note-path
+                                                        :enhanced t)
                 (declare (ignore a b c))
                 (false (search "includegraphics" latex))
                 (true (find-if (lambda (n) (search "gone.png: no such picture, so left out" n)) notes))))))))))

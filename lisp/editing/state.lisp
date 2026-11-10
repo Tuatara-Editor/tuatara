@@ -1,4 +1,5 @@
-;;;; lisp/editing/state.lisp --- The lists kept between sessions: recent files, places in files, PDF places, paths chosen.
+;;;; lisp/editing/state.lisp --- The lists kept between sessions: recent files, places in files, PDF places, paths
+;;;; chosen.
 ;;;; Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
 ;;;;
 ;;;; Each list is a file of lines in the state directory, shared by the
@@ -45,7 +46,11 @@ so that a list may part its fields by tabs."
       (loop while (< i (length text))
             do (let ((c (char text i)))
                  (if (and (char= c #\\) (< (1+ i) (length text)))
-                     (progn (write-char (case (char text (1+ i)) (#\n #\Newline) (#\r #\Return) (#\t #\Tab) (t (char text (1+ i)))) out)
+                     (progn (write-char (case (char text (1+ i))
+                                          (#\n #\Newline)
+                                          (#\r #\Return)
+                                          (#\t #\Tab)
+                                          (t (char text (1+ i)))) out)
                             (incf i 2))
                      (progn (write-char c out) (incf i))))))))
 
@@ -96,38 +101,39 @@ other line."
                                                       &key header (path-of #'identity) key (version 1) (class :remembered)
                                                         (fields 1) trust line-key))
                        (:copier nil))
-  "A list kept between sessions in a file of the state directory: NAME, the
-file's name there; PARSE, a function making an entry of a line (NIL for a
-line to pass over); PRINT, one making the line of an entry; LIMIT-VARIABLE,
-the variable saying how many entries are kept; HEADER, lines written first, or
-NIL; PATH-OF, a function giving the path an entry is about; KEY, one giving
-what makes two entries one (PATH-OF when NIL); VERSION, the version of the
-format its lines are written in, said in the file's first line; CLASS, :KEPT
-for a list you make yourself, whose loss would lose work, or :REMEMBERED for
-one of what you did, kept for convenience; FIELDS, how many fields parted by
-tabs a line of today's format has at most; TRUST, true for a list of what you
-trusted, whose lines of a later version with more fields are not read;
-LINE-KEY, a function giving the name or path a line is about, read or not, to
-match PATH-OF, or NIL for a line not of the shape of its entries
-\(FIELD-LINE-KEY, SPACED-LINE-KEY; the first field, STATE-LINE-PATH, when
-NIL). What is known of it: FILE, the
-native name of the file read last, its STAMP then and the entries it had
-then, DISK; PENDING, the changes made and not yet taken to be written, and
-WRITING, those being written, the latest first, each (FILE . CHANGE); SHOWN,
-the entries as STATE-LIST-ENTRIES gave them last; NOTED and TRIED, how many
-changes were made, and how many there were when the writer last took them;
-LOCK, held while these change; UNREADABLE, the file last said could not be
-read, until it is written; KNOWN-PATH, the native name of its file as last
-worked out, and PLACE, the setting of the state directory it was worked out
-for; CHANGES, how many times the entries may have changed, and LOOKED, when
-the file was last looked at for another session's change (STATE-LIST-GENERATION)."
+  "A list kept between sessions in a file of the state directory. NAME is the
+file's name there. PARSE is a function making an entry of a line (NIL for a
+line to pass over). PRINT is one making the line of an entry. LIMIT-VARIABLE
+is the variable saying how many entries are kept. HEADER is lines written
+first, or NIL. PATH-OF is a function giving the path an entry is about. KEY is
+one giving what makes two entries one (PATH-OF when NIL). VERSION is the
+version of the format its lines are written in, said in the file's first line.
+CLASS is :KEPT for a list you make yourself, whose loss would lose work, or
+:REMEMBERED for one of what you did, kept for convenience. FIELDS is how many
+fields parted by tabs a line of today's format has at most. TRUST is true for
+a list of what you trusted, whose lines of a later version with more fields
+are not read. LINE-KEY is a function giving the name or path a line is about,
+read or not, to match PATH-OF, or NIL for a line not of the shape of its
+entries \(FIELD-LINE-KEY, SPACED-LINE-KEY; the first field, STATE-LINE-PATH,
+when NIL). What is known of it: FILE is the native name of the file read last,
+its STAMP then and the entries it had then, DISK. PENDING is the changes made
+and not yet taken to be written, and WRITING is those being written, the
+latest first, each (FILE . CHANGE). SHOWN is the entries as STATE-LIST-ENTRIES
+gave them last. NOTED and TRIED are how many changes were made, and how many
+there were when the writer last took them. LOCK is held while these change.
+UNREADABLE is the file last said could not be read, until it is written.
+KNOWN-PATH is the native name of its file as last worked out, and PLACE is the
+setting of the state directory it was worked out for. CHANGES is how many
+times the entries may have changed, and LOOKED is when the file was last
+looked at for another session's change (STATE-LIST-GENERATION)."
   name parse print limit-variable header path-of key version class fields trust line-key
   (unreadable nil) (known-path nil) (place nil) (changes 0) (looked nil)
   (file nil) (stamp nil) (disk '()) (pending '()) (writing '()) (shown nil)
   (noted 0) (tried 0)
   (lock (sb-thread:make-mutex :name "state list")))
 
-(setf (documentation 'make-state-list 'function) "Return a STATE-LIST: a list kept between sessions in the state directory."
+(setf (documentation 'make-state-list 'function)
+      "Return a STATE-LIST: a list kept between sessions in the state directory."
       (documentation 'state-list-p 'function) "True when OBJECT is a STATE-LIST."
       (documentation 'state-list-name 'function) "The name of a STATE-LIST's file in the state directory.")
 
@@ -223,11 +229,12 @@ a place by its file; NIL when there is none."
 
 (defstruct (state-contents (:constructor make-state-contents (entries unread version lines comments))
                            (:copier nil) (:predicate nil))
-  "What the file of a list kept between sessions holds: ENTRIES, the latest
-first; UNREAD, the lines that are no entry this release reads, in their order;
-VERSION, the version its first line says, 1 when it says none; LINES, a table
-from each of ENTRIES to the line it was read from; COMMENTS, the comment lines
-of a file of a later version than the list's, but the version line."
+  "What the file of a list kept between sessions holds. ENTRIES is the
+entries, the latest first. UNREAD is the lines that are no entry this release
+reads, in their order. VERSION is the version its first line says, 1 when it
+says none. LINES is a table from each of ENTRIES to the line it was read from.
+COMMENTS is the comment lines of a file of a later version than the list's,
+but the version line."
   entries unread version lines comments)
 
 (defun state-line-key (list line)
@@ -257,16 +264,16 @@ says (STATE-VERSION-LINE), or NIL when it says none."
            (and (plusp version) version)))))
 
 (defun read-state-contents (list file)
-  "What FILE, LIST's file, holds (STATE-CONTENTS): its entries, the latest
+  "What FILE, LIST's file, holds (STATE-CONTENTS). Its entries are the latest
 first, each once (the first of those with one key), at most as many as LIST
-keeps (STATE-LIST-MOST); the lines that make no entry, as many again at most
-and every one for a list you make, to be written back as they are; the
-version its version line says, wherever it stands, and the comment lines of a
-later version but LIST's own header. In a list of what you trusted (TRUST),
-no line of a file of a later version with more fields than LIST's makes an
-entry. Empty when there is no FILE, and NIL when it is there and cannot be
-read. Lines beginning with # are comments, and lines beginning with @ are of
-a kind a later release adds, never read as entries."
+keeps (STATE-LIST-MOST). The lines that make no entry are as many again at
+most, and every one for a list you make, to be written back as they are. The
+version is the one its version line says, wherever it stands. The comment
+lines of a later version are held, but not LIST's own header. In a list of
+what you trusted (TRUST), no line of a file of a later version with more
+fields than LIST's makes an entry. Empty when there is no FILE, and NIL when
+it is there and cannot be read. Lines beginning with # are comments, and lines
+beginning with @ are of a kind a later release adds, never read as entries."
   (ignoring-errors-reported ("reading ~a" file)
     (with-open-file (in (sb-ext:parse-native-namestring file)
                         :if-does-not-exist nil :external-format '(:utf-8 :replacement #\?))
@@ -327,14 +334,15 @@ as they were."
       (write-line line out))))
 
 (defun apply-state-changes (list entries changes &optional unread)
-  "ENTRIES of LIST with CHANGES made to them in turn, the oldest first: each
-\(:PUT NEW MOST), NEW put first, those of ENTRIES with one of their keys taken
-out, and at most MOST kept (all when MOST is NIL); (:REPLACE NEW), each entry
-with the key of one of NEW that one instead, where it stands, those not there
-left out; (:DROP PATHS), the entries about PATHS taken out; (:FORGET KEYS
-PATHS), the entries of KEYS taken out; or (:CUT N), the first N kept. UNREAD,
-lines of LIST's file that make no entry, lose those about the paths each
-change is about (STATE-LINE-KEY); what is left of them is the second value."
+  "ENTRIES of LIST with CHANGES made to them in turn, the oldest first. Each
+change is one of these. \(:PUT NEW MOST) puts NEW first, takes out those of
+ENTRIES with one of their keys, and keeps at most MOST (all when MOST is NIL).
+\(:REPLACE NEW) replaces each entry that has the key of one of NEW with that
+one, where it stands, and leaves out those of NEW not there. \(:DROP PATHS)
+takes out the entries about PATHS. \(:FORGET KEYS PATHS) takes out the entries
+of KEYS. \(:CUT N) keeps the first N. UNREAD, lines of LIST's file that make
+no entry, lose those about the paths each change is about (STATE-LINE-KEY).
+What is left of them is the second value."
   (flet ((forget-unread (paths)
            (when (and unread paths)
              (setf unread (remove-if (lambda (line) (member (state-line-key list line) paths :test #'equal)) unread))))
@@ -463,13 +471,13 @@ could not be written."
 (defun compact-state-changes (list changes)
   "CHANGES to one file of LIST, each (FILE . CHANGE), the latest first, as
 fewer doing just what they do to any entries, the latest first. What they put
-is one :PUT, of the latest entry for each key still there; what they replace
-of what was there before, one :REPLACE; what they do to what was there
-before, the entries taken out (:DROP, :FORGET) and the cuts of the limit
-\(:CUT), in their order, those taken out between two cuts made one of each
-kind and a cut no smaller than the one before it left out, so that there are
-at most as many as the limit and the keys and paths named. Nothing is cut that
-the changes in turn would keep."
+is one :PUT, of the latest entry for each key still there. What they replace
+of what was there before is one :REPLACE. What they do to what was there
+before is the entries taken out (:DROP, :FORGET) and the cuts of the limit
+\(:CUT), in their order. Those taken out between two cuts are made one of each
+kind, and a cut no smaller than the one before it is left out, so that there
+are at most as many as the limit and the keys and paths named. Nothing is cut
+that the changes in turn would keep."
   (let ((file (car (first changes)))
         (front '()) (replace '()) (program '()) (gone-paths '()) (cut nil))
     (labels ((key (entry) (state-entry-key list entry))
@@ -545,11 +553,13 @@ once in the echo area and the debug log. True when there were any."
                 (say nil))
             (sb-thread:with-mutex ((state-list-lock list))
               (let ((mine (remove-if-not (lambda (change) (string= (car change) file)) changes)))
-                (setf (state-list-writing list) (remove-if (lambda (change) (member change mine :test #'eq)) (state-list-writing list)))
+                (setf (state-list-writing list)
+                      (remove-if (lambda (change) (member change mine :test #'eq)) (state-list-writing list)))
                 (case how
                   (:busy (setf (state-list-pending list) (append (state-list-pending list) mine)))
                   (:unreadable
-                   (let ((waiting (append (remove-if-not (lambda (change) (string= (car change) file)) (state-list-pending list))
+                   (let ((waiting (append (remove-if-not (lambda (change) (string= (car change) file))
+                                                         (state-list-pending list))
                                           mine)))
                      (setf (state-list-pending list)
                            (append (remove-if (lambda (change) (string= (car change) file)) (state-list-pending list))

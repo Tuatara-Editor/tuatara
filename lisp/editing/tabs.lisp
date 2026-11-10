@@ -170,10 +170,10 @@ for \\`ESC'; NIL for any other key, a Meta one among them."
 
 (defvar *tab-always-indent* :complete
   "What \\[indent-for-tab-command] does where the major mode indents lines
-(Lisp, Rust, C, shell scripts): :COMPLETE (the standard) indents the current
+\(Lisp, Rust, C, shell scripts): :COMPLETE (the standard) indents the current
 line, and when that changes nothing completes the name at point, as
-\\<lisp-mode>\\[completion-at-point] does in Lisp; T only indents it, wherever
-point is; NIL indents it when point is in its leading blanks, else goes on to
+\\<lisp-mode>\\[completion-at-point] does in Lisp. T only indents it, wherever
+point is. NIL indents it when point is in its leading blanks, else goes on to
 the next tab stop. Where the mode does not indent (text, Org, CSV),
 \\[indent-for-tab-command] goes on to the next tab stop.")
 

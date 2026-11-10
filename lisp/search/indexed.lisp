@@ -1,4 +1,5 @@
-;;;; lisp/search/indexed.lisp --- Directories kept read in memory, so that searching and choosing files there answer at once.
+;;;; lisp/search/indexed.lisp --- Directories kept read in memory, so that searching and choosing files there answer
+;;;; at once.
 ;;;; Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
 ;;;;
 ;;;; The directories of *INDEXED-DIRECTORIES* are read on a thread of their own
@@ -51,40 +52,49 @@ looking glass such as \"\" (nf-fa-search, U+F002) or \"󰍉\"
 
 
 (defstruct (directory-index (:constructor make-directory-index (root)) (:copier nil))
-  "What is kept of a directory of *INDEXED-DIRECTORIES*: ROOT, its native name
-ending in /; FILES, every file under it as (RELATIVE . STAMP), the ones
-changed last first; CORPORA, the text of those a search reads, as FILE-CORPUS
-pieces; LEFT-OUT, true when the walk left some out; LARGE, the text files too
-large to keep within the limit, each (RELATIVE PATH), which a search reads
-from disk (LINES-ON-DISK); DIRECTORIES, those under
-it, watched on disk; READY once it has been read; READING while a thread
-reads it, AGAIN when it is to be read once more after, the directories
-reported changed meanwhile in PENDING (:ALL for all); RESULT, what the thread
-read, until taken in; TREE, each directory's entries as last listed
+  "What is kept of a directory of *INDEXED-DIRECTORIES*. ROOT is its native
+name ending in /. FILES is every file under it as (RELATIVE . STAMP), the ones
+changed last first. CORPORA is the text of those a search reads, as
+FILE-CORPUS pieces. LEFT-OUT is true when the walk left some out. LARGE is the
+text files too large to keep within the limit, each (RELATIVE PATH), which a
+search reads from disk (LINES-ON-DISK). DIRECTORIES is those under it, watched
+on disk. READY is true once it has been read. READING is true while a thread
+reads it, and AGAIN when it is to be read once more after, the directories
+reported changed meanwhile in PENDING (:ALL for all). RESULT is what the
+thread read, until taken in. TREE is each directory's entries as last listed
 \(INDEX-DIRECTORY, by native name), which the walks of other threads look at
-too (DIRECTORY-LISTING). What only the reading thread uses:
-PIECES, the text's pieces with the stamps of their files (INDEX-PIECE); and
-NOT-TEXT, the files found not to be text, with their stamps."
+too (DIRECTORY-LISTING). What only the reading thread uses: PIECES is the
+text's pieces with the stamps of their files (INDEX-PIECE), and NOT-TEXT is
+the files found not to be text, with their stamps."
   root (files '()) (corpora #()) (left-out nil) (large '()) (directories '())
   (ready nil) (reading nil) (again nil) (pending '()) (result nil)
   (tree nil) (pieces #()) (not-text (make-hash-table :test 'equal)))
 
 (setf (documentation 'directory-index-p 'function) "True when OBJECT is a DIRECTORY-INDEX."
-      (documentation 'directory-index-root 'function) "The directory a DIRECTORY-INDEX keeps, a native name ending in /."
-      (documentation 'directory-index-files 'function) "The files under a DIRECTORY-INDEX's root, each (RELATIVE . STAMP), the ones changed last first."
-      (documentation 'directory-index-corpora 'function) "The text a search reads under a DIRECTORY-INDEX's root, in pieces."
+      (documentation 'directory-index-root 'function)
+      "The directory a DIRECTORY-INDEX keeps, a native name ending in /."
+      (documentation 'directory-index-files 'function)
+      "The files under a DIRECTORY-INDEX's root, each (RELATIVE . STAMP), the ones changed last first."
+      (documentation 'directory-index-corpora 'function)
+      "The text a search reads under a DIRECTORY-INDEX's root, in pieces."
       (documentation 'directory-index-left-out 'function) "True when a DIRECTORY-INDEX's walk left files out."
-      (documentation 'directory-index-large 'function) "The text files of a DIRECTORY-INDEX too large to keep, searched from disk.")
+      (documentation 'directory-index-large 'function)
+      "The text files of a DIRECTORY-INDEX too large to keep, searched from disk.")
 (setf
-      (documentation 'directory-index-directories 'function) "The directories under a DIRECTORY-INDEX's root, watched on disk."
+      (documentation 'directory-index-directories 'function)
+      "The directories under a DIRECTORY-INDEX's root, watched on disk."
       (documentation 'directory-index-ready 'function) "True once a DIRECTORY-INDEX has been read."
       (documentation 'directory-index-reading 'function) "True while a thread reads a DIRECTORY-INDEX."
-      (documentation 'directory-index-again 'function) "True when a DIRECTORY-INDEX is to be read once more after the reading under way."
-      (documentation 'directory-index-pending 'function) "The directories of a DIRECTORY-INDEX reported changed while it was read, or :ALL."
+      (documentation 'directory-index-again 'function)
+      "True when a DIRECTORY-INDEX is to be read once more after the reading under way."
+      (documentation 'directory-index-pending 'function)
+      "The directories of a DIRECTORY-INDEX reported changed while it was read, or :ALL."
       (documentation 'directory-index-result 'function) "What a DIRECTORY-INDEX's thread read, until it is taken in."
-      (documentation 'directory-index-tree 'function) "Each directory under a DIRECTORY-INDEX's root as last listed, by native name."
+      (documentation 'directory-index-tree 'function)
+      "Each directory under a DIRECTORY-INDEX's root as last listed, by native name."
       (documentation 'directory-index-pieces 'function) "A DIRECTORY-INDEX's text pieces with their files' stamps."
-      (documentation 'directory-index-not-text 'function) "The files of a DIRECTORY-INDEX found not to be text, with their stamps.")
+      (documentation 'directory-index-not-text 'function)
+      "The files of a DIRECTORY-INDEX found not to be text, with their stamps.")
 
 (defstruct (index-directory (:constructor make-index-directory (path entries rules)) (:copier nil))
   "A directory as an index last listed it: PATH, its native name ending in /;
@@ -263,13 +273,13 @@ not in TREE (INDEX-TREE-WALK). Nothing on disk is asked."
 (defun index-pieces (texts old not-text root limit piece)
   "The pieces of an index's text for TEXTS (INDEX-TREE-FILES), as a vector of
 INDEX-PIECE, and as a second value the text files LIMIT octets left no room
-for, each (RELATIVE PATH), to be searched from disk: a
-piece of OLD kept as it is where its files come in the same order, all as
-they were; the others made anew as a search of many files makes them
-\(GATHER-TEXT-FILE), the text of a file as it was copied from its old piece,
-that of a file changed read from disk, one found not to be text noted in
-NOT-TEXT with its stamp and not read again while it stays so. Pieces made
-anew hold about PIECE octets."
+for, each (RELATIVE PATH), to be searched from disk. A piece of OLD is kept as
+it is where its files come in the same order, all as they were. The others are
+made anew as a search of many files makes them \(GATHER-TEXT-FILE): the text
+of a file as it was is copied from its old piece, and that of a file changed
+is read from disk. One found not to be text is noted in NOT-TEXT with its
+stamp and not read again while it stays so. Pieces made anew hold about PIECE
+octets."
   (let* ((where (make-hash-table :test 'equal))
          (starting (make-hash-table :test 'equal))
          (made '()) (large '())
@@ -277,7 +287,8 @@ anew hold about PIECE octets."
          (gatherer (make-corpus-gatherer
                     limit piece
                     (lambda (texts size)
-                      (push (make-index-piece (make-corpus (mapcar (lambda (text) (cons (first text) (second text))) texts) size root)
+                      (push (make-index-piece (make-corpus (mapcar (lambda (text) (cons (first text) (second text)))
+                                                                   texts) size root)
                                               (map 'vector #'third texts))
                             made))
                     (lambda (relative path) (push (list relative path) large)))))
@@ -322,7 +333,8 @@ anew hold about PIECE octets."
                               (incf k (length (file-corpus-paths (index-piece-corpus p)))))
                        (destructuring-bind (relative path stamp) text
                          (let ((entry (gethash relative where)))
-                           (case (cond ((and entry (same-stamp-p stamp (aref (index-piece-stamps (car entry)) (cdr entry))))
+                           (case (cond ((and entry
+                                             (same-stamp-p stamp (aref (index-piece-stamps (car entry)) (cdr entry))))
                                         (gather-text-file gatherer relative path :stamp stamp :octets (old-octets entry)))
                                        ((same-stamp-p stamp (gethash relative not-text)) :not-text)
                                        (t (gather-text-file gatherer relative path :stamp stamp)))
@@ -382,12 +394,15 @@ left to the other when it holds the lock long."
                (let* ((name (format nil "piece-~36r" (random (expt 36 12) random)))
                       (corpus (index-piece-corpus p))
                       (rope (file-corpus-rope corpus)))
-                 (tuatara.io:write-new-file (concatenate 'string directory name) (tuatara.text:rope-octets rope) :mode #o600)
+                 (tuatara.io:write-new-file (concatenate 'string directory name)
+                                            (tuatara.text:rope-octets rope)
+                                            :mode #o600)
                  (setf (index-piece-file p) name)
                  ;; read from the file kept from now on: its text out of the heap
                  (setf (index-piece-corpus p)
                        (or (ignoring-errors-reported ("reading back ~a~a" directory name)
-                             (mapped-piece-corpus (concatenate 'string directory name) (tuatara.text:rope-octet-length rope)
+                             (mapped-piece-corpus (concatenate 'string directory name)
+                                                  (tuatara.text:rope-octet-length rope)
                                                   (file-corpus-paths corpus) (file-corpus-starts corpus)
                                                   (file-corpus-root corpus)))
                            corpus))))

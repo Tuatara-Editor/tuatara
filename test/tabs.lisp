@@ -30,7 +30,9 @@ for major modes, and the settings made for modes before it put back afterwards."
   (is string= "ab  c" (session-text (nth-value 1 (run-keys "l l i TAB" :text "abc"))))
   (is string= "        abc" (session-text (nth-value 1 (run-keys "i C-u 2 TAB" :text "abc"))))
   ;; a tab before point counts to its stop: x at column 4, point at 5, the stop at 8
-  (is string= (format nil "~cx   y" #\Tab) (session-text (nth-value 1 (run-keys "l l i TAB" :text (format nil "~cxy" #\Tab)))))
+  (is string=
+      (format nil "~cx   y" #\Tab)
+      (session-text (nth-value 1 (run-keys "l l i TAB" :text (format nil "~cxy" #\Tab)))))
   ;; tabs where they are wanted
   (let ((tuatara-user:*indent-tabs-mode* t))
     (is string= (format nil "~cabc" #\Tab) (session-text (nth-value 1 (run-keys "i TAB" :text "abc")))))
@@ -61,20 +63,26 @@ for major modes, and the settings made for modes before it put back afterwards."
     ;; other modes keep *tab-width*
     (is string= "    abc" (session-text (nth-value 1 (run-keys "M-x l i s p - m o d e RET i M-i" :text "abc")))))
   (with-mode-tabs ((lisp-mode :tabs t))
-    (is string= (format nil "~cabc" #\Tab) (session-text (nth-value 1 (run-keys "M-x l i s p - m o d e RET i M-i" :text "abc"))))
+    (is string=
+        (format nil "~cabc" #\Tab)
+        (session-text (nth-value 1 (run-keys "M-x l i s p - m o d e RET i M-i" :text "abc"))))
     (is string= "    abc" (session-text (nth-value 1 (run-keys "i TAB" :text "abc")))))
   ;; the nearest setting counts
   (with-mode-tabs ((text :width 2) (org :width 6))
     (is string= "      abc" (session-text (nth-value 1 (run-keys "M-x o r g - m o d e RET i TAB" :text "abc")))))
   ;; tab-separated data has tabs
-  (is string= (format nil "~cabc" #\Tab) (session-text (nth-value 1 (run-keys "M-x t s v - m o d e RET i TAB" :text "abc"))))
+  (is string=
+      (format nil "~cabc" #\Tab)
+      (session-text (nth-value 1 (run-keys "M-x t s v - m o d e RET i TAB" :text "abc"))))
   ;; every language has spaces unless the init file asks for tabs: the
   ;; starter init file asks for them where a language's own tools require
   ;; them (a Makefile's recipes, Go's gofmt), a line each
   (is string= "    abc" (session-text (nth-value 1 (run-keys "M-x m a k e f i l e - m o d e RET i M-i" :text "abc"))))
   (is string= "    abc" (session-text (nth-value 1 (run-keys "M-x g o - m o d e RET i M-i" :text "abc"))))
   (with-mode-tabs ((makefile :tabs t))
-    (is string= (format nil "~cabc" #\Tab) (session-text (nth-value 1 (run-keys "M-x m a k e f i l e - m o d e RET i M-i" :text "abc")))))
+    (is string=
+        (format nil "~cabc" #\Tab)
+        (session-text (nth-value 1 (run-keys "M-x m a k e f i l e - m o d e RET i M-i" :text "abc")))))
   ;; names are checked
   (fail (tuatara-user:set-tab-width 'no-such 4) error)
   (fail (tuatara-user:set-tab-width 'org 0) error)
@@ -133,34 +141,47 @@ for major modes, and the settings made for modes before it put back afterwards."
 (define-test (tabs lisp-bars-inside-a-name)
   ;; |...| inside a name is part of it, brackets and blanks too: the list goes on to the next line
   (let ((text (format nil "(list a|b (c|~%d)")))
-    (is equal (list (cons 14 6)) (tuatara.defaults::lisp-indent-lines (tuatara.text:string->rope text) 14 (length text)))))
+    (is equal
+        (list (cons 14 6))
+        (tuatara.defaults::lisp-indent-lines (tuatara.text:string->rope text) 14 (length text)))))
 
 (define-test (tabs tab-indents-where-the-mode-indents)
   (flet ((typed (keys text) (session-text (nth-value 1 (run-keys keys :text text :width 120)))))
     ;; in Lisp TAB indents the line, point from the blanks to the text
-    (multiple-value-bind (f editor) (run-keys "M-x l i s p - m o d e RET j i TAB" :text (format nil "(defun f ()~%foo)") :width 120)
+    (multiple-value-bind (f editor) (run-keys "M-x l i s p - m o d e RET j i TAB"
+                                              :text (format nil "(defun f ()~%foo)")
+                                              :width 120)
       (declare (ignore f))
       (is string= (format nil "(defun f ()~%  foo)") (session-text editor))
       (is = (+ 12 2) (session-point editor)))
     ;; in Rust too
-    (is string= (format nil "fn f() {~%    x~%}") (typed "M-x r u s t - m o d e RET j i TAB" (format nil "fn f() {~%x~%}")))
+    (is string=
+        (format nil "fn f() {~%    x~%}")
+        (typed "M-x r u s t - m o d e RET j i TAB" (format nil "fn f() {~%x~%}")))
     ;; indented already: TAB completes the name at point (*tab-always-indent* :complete, as standard)
     (true (search "(buffer-substring" (typed "M-x l i s p - m o d e RET j A TAB" (format nil "(progn~%  (buffer-subs"))))
     ;; but not where no name is being typed
-    (is string= (format nil "(progn~%  (foo ") (typed "M-x l i s p - m o d e RET j A TAB" (format nil "(progn~%  (foo ")))
+    (is string=
+        (format nil "(progn~%  (foo ")
+        (typed "M-x l i s p - m o d e RET j A TAB" (format nil "(progn~%  (foo ")))
     ;; T only indents
     (let ((tuatara-user:*tab-always-indent* t))
-      (is string= (format nil "(progn~%  (buffer-subs") (typed "M-x l i s p - m o d e RET j A TAB" (format nil "(progn~%  (buffer-subs"))))
+      (is string=
+          (format nil "(progn~%  (buffer-subs")
+          (typed "M-x l i s p - m o d e RET j A TAB" (format nil "(progn~%  (buffer-subs"))))
     ;; NIL: in the line's text, the next tab stop
     (let ((tuatara-user:*tab-always-indent* nil))
       ;; point at column 5, the stop at 8
-      (is string= (format nil "(progn~%  (x)   ") (typed "M-x l i s p - m o d e RET j A TAB" (format nil "(progn~%  (x)"))))
+      (is string=
+          (format nil "(progn~%  (x)   ")
+          (typed "M-x l i s p - m o d e RET j A TAB" (format nil "(progn~%  (x)"))))
     ;; with the selection active, the lines it touches
-    (is string= (format nil "(progn~%  foo~%  bar)") (typed "M-x l i s p - m o d e RET i C-x h TAB" (format nil "(progn~%foo~%bar)")))
+    (is string=
+        (format nil "(progn~%  foo~%  bar)")
+        (typed "M-x l i s p - m o d e RET i C-x h TAB" (format nil "(progn~%foo~%bar)")))
     ;; where the mode does not indent, the tab stop; M-i there anywhere
     (is string= "    abc" (typed "M-x t e x t - m o d e RET i TAB" "abc"))
     (is string= "(a) b" (typed "M-x l i s p - m o d e RET A M-i b" "(a)"))))
-
 
 (define-test (tabs widths-kept-sensible)
   (let ((b (tuatara.buffer:make-buffer "*tab widths*" :text "")))
@@ -184,7 +205,8 @@ for major modes, and the settings made for modes before it put back afterwards."
   ;; indenting a line copies no more of it than its blanks and the words it begins with
   (flet ((per-octet (function)
            (flet ((consed (length)
-                    (let ((rope (tuatara.text:string->rope (format nil "(foo~%  ~a" (make-string length :initial-element #\x)))))
+                    (let ((rope (tuatara.text:string->rope (format nil "(foo~%  ~a"
+                                                                   (make-string length :initial-element #\x)))))
                       (loop repeat 3 minimize (nth-value 2 (tuatara.bench::measuring (funcall function rope)))))))
              (consed 1000)
              (/ (- (consed 1000000) (consed 100000)) 900000.0))))

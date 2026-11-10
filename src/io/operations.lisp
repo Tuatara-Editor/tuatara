@@ -36,7 +36,9 @@ the system finds it; NIL when it is not there."
                   name (sb-sys:int-sap 0))))
       (unless (null-pointer-p found)
         (unwind-protect (tuatara.text:octets-string (sap-octets found))
-          (sb-alien:alien-funcall (sb-alien:extern-alien "free" (function sb-alien:void sb-sys:system-area-pointer)) found))))))
+          (sb-alien:alien-funcall (sb-alien:extern-alien "free"
+                                                         (function sb-alien:void
+                                                                   sb-sys:system-area-pointer)) found))))))
 
 (defun real-path-so-far (path)
   "PATH with every link in it followed and . and .. taken out as far as it is
@@ -66,20 +68,22 @@ is /etc/file."
 FLAGS (1 never over one there already). 0 when done, else -1 and the errno."
   (if (zerop (sb-alien:alien-funcall
               (sb-alien:extern-alien "renameat2" (function sb-alien:int sb-alien:int sb-sys:system-area-pointer
-                                                           sb-alien:int sb-sys:system-area-pointer sb-alien:unsigned-int))
+                                                           sb-alien:int
+                                                           sb-sys:system-area-pointer
+                                                           sb-alien:unsigned-int))
               from-dirfd old to-dirfd new flags))
       0
       (values -1 (sb-alien:get-errno))))
 
 (defun rename-without-replacing (from-dirfd from to-dirfd to path)
   "Give the entry FROM (octets) of the directory open as FROM-DIRFD the name
-TO (octets) in the directory open as TO-DIRFD, never over one there already:
-in one step where the file system can; where it cannot (NFS, SMB and many
-FUSE file systems), a file by giving it the second name, which is refused
-when that is taken, and then taking its first away; a directory, or a file
-where there are no second names, renamed once nothing has the name. A
-FILE-SYSTEM-ERROR, PATH named, when it cannot be: EXDEV when TO is on
-another file system."
+TO (octets) in the directory open as TO-DIRFD, never over one there already.
+It is done in one step where the file system can. Where it cannot (NFS, SMB
+and many FUSE file systems), a file is given the second name, which is refused
+when that is taken, and then its first is taken away. A directory, or a file
+where there are no second names, is renamed once nothing has the name. A
+FILE-SYSTEM-ERROR, PATH named, is signalled when it cannot be done: EXDEV when
+TO is on another file system."
   (let ((old (terminated-octets from)) (new (terminated-octets to)))
     (with-octets-sap (old-sap old)
       (with-octets-sap (new-sap new)
@@ -95,7 +99,11 @@ another file system."
                         from-dirfd old-sap to-dirfd new-sap 0))
                 (return-from rename-without-replacing
                   (check-call (sb-alien:alien-funcall
-                               (sb-alien:extern-alien "unlinkat" (function sb-alien:int sb-alien:int sb-sys:system-area-pointer sb-alien:int))
+                               (sb-alien:extern-alien "unlinkat"
+                                                      (function sb-alien:int
+                                                                sb-alien:int
+                                                                sb-sys:system-area-pointer
+                                                                sb-alien:int))
                                from-dirfd old-sap 0)
                               "rename" path))
                 (let ((errno (sb-alien:get-errno)))
@@ -197,7 +205,9 @@ which may be there."
      (let ((stamp (and (writing-refused-anywhere-p) (values (statx-octets dirfd name #x100)))))
        (when (and stamp (eq (stamp-kind stamp) :regular) (> (stamp-nlink stamp) 1))
          (error 'writing-refused :operation "touch" :path (native path)
-                                 :reason (format nil "it has ~d names, and one may be in an evidence folder" (stamp-nlink stamp)))))
+                                 :reason (format nil
+                                                 "it has ~d names, and one may be in an evidence folder"
+                                                 (stamp-nlink stamp)))))
      (with-octets-sap (sap (terminated-octets name))
        (check-call (sb-alien:alien-funcall
                     (sb-alien:extern-alien "utimensat" (function sb-alien:int sb-alien:int sb-sys:system-area-pointer
@@ -333,7 +343,11 @@ as the umask allows; a FILE-SYSTEM-ERROR, PATH named, when it cannot be made."
   (let ((held (terminated-octets name)))
     (with-octets-sap (sap held)
       (check-call (sb-alien:alien-funcall
-                   (sb-alien:extern-alien "mkdirat" (function sb-alien:int sb-alien:int sb-sys:system-area-pointer sb-alien:unsigned-int))
+                   (sb-alien:extern-alien "mkdirat"
+                                          (function sb-alien:int
+                                                    sb-alien:int
+                                                    sb-sys:system-area-pointer
+                                                    sb-alien:unsigned-int))
                    dirfd sap mode)
                   "make the directory" path))))
 
@@ -344,7 +358,8 @@ PATH named, when it cannot be."
   (let ((held (terminated-octets name)))
     (with-octets-sap (sap held)
       (check-call (sb-alien:alien-funcall
-                   (sb-alien:extern-alien "unlinkat" (function sb-alien:int sb-alien:int sb-sys:system-area-pointer sb-alien:int))
+                   (sb-alien:extern-alien "unlinkat"
+                                          (function sb-alien:int sb-alien:int sb-sys:system-area-pointer sb-alien:int))
                    dirfd sap (if directory #x200 0))                     ; AT_REMOVEDIR
                   "delete" path))))
 
@@ -400,9 +415,9 @@ holds part of it)."
 (defun copy-file-at (from-dirfd from-name to-dirfd to-name path to-path &key cancel progress)
   "Copy the regular file FROM-NAME of the directory open as FROM-DIRFD to the
 new file TO-NAME of the one open as TO-DIRFD (names octets, PATH and TO-PATH
-for messages), as COPY-OPEN-FILE does, FROM-NAME read without changing its
-access time where the system allows; neither name followed when it is a
-symbolic link; what is not a regular file refused unopened (OPEN-EXAMINED)."
+for messages), as COPY-OPEN-FILE does. FROM-NAME is read without changing its
+access time where the system allows. Neither name is followed when it is a
+symbolic link. What is not a regular file is refused unopened (OPEN-EXAMINED)."
   (let ((in (open-examined from-dirfd from-name (logior sb-posix:o-rdonly sb-posix:o-nonblock +o-nofollow+) path
                            :safe t :operation "copy")))
     (unwind-protect (copy-open-file in to-dirfd to-name path to-path :cancel cancel :progress progress)
@@ -469,7 +484,9 @@ their paths, for messages), DEPTH folders down the tree (CHECK-TREE-DEPTH)."
       (:regular (copy-file-at from-dirfd from-name to-dirfd to-name path to-path
                               :cancel cancel
                               :progress (and progress (let ((last 0))
-                                                        (lambda (done) (funcall progress (- done last)) (setf last done))))))
+                                                        (lambda (done)
+                                                          (funcall progress (- done last))
+                                                          (setf last done))))))
       (:symlink
        (let ((target (or (link-octets from-dirfd from-name) (fail "read the link" path))))
          (let ((held-target (terminated-octets target)) (held-name (terminated-octets to-name)))
@@ -700,7 +717,9 @@ when neither is."
                (uid (sb-posix:getuid))
                (shared (path-join top ".Trash"))
                (shared-stamp (path-stamp shared :follow nil)))
-          (dolist (trash (append (and shared-stamp (eq (stamp-kind shared-stamp) :directory) (logtest (stamp-mode shared-stamp) #o1000)
+          (dolist (trash (append (and shared-stamp
+                                      (eq (stamp-kind shared-stamp) :directory)
+                                      (logtest (stamp-mode shared-stamp) #o1000)
                                       (list (path-join shared (format nil "~d/" uid))))
                                  (list (path-join top (format nil ".Trash-~d/" uid))))
                          (error 'file-system-error :operation "put in the trash" :path path
@@ -776,9 +795,16 @@ it always fits in a folder. True as a second value when it was shortened."
     (loop with i = 0
           while (< i (length text))
           do (let ((c (char text i)))
-               (if (and (char= c #\%) (< (+ i 2) (length text)) (digit-char-p (char text (1+ i)) 16) (digit-char-p (char text (+ i 2)) 16))
-                   (progn (vector-push-extend (parse-integer text :start (1+ i) :end (+ i 3) :radix 16) octets) (incf i 3))
-                   (progn (loop for o across (tuatara.text:string-octets (string c)) do (vector-push-extend o octets)) (incf i)))))
+               (if (and (char= c #\%)
+                        (< (+ i 2) (length text))
+                        (digit-char-p (char text (1+ i)) 16)
+                        (digit-char-p (char text (+ i 2)) 16))
+                   (progn
+                     (vector-push-extend (parse-integer text :start (1+ i) :end (+ i 3) :radix 16) octets)
+                     (incf i 3))
+                   (progn
+                     (loop for o across (tuatara.text:string-octets (string c)) do (vector-push-extend o octets))
+                     (incf i)))))
     (coerce octets '(simple-array (unsigned-byte 8) (*)))))
 
 (defun percent-decoded (text)
@@ -864,7 +890,11 @@ written, told by DIRECTORY, held open."
            do (when (funcall usable n)
                 (multiple-value-bind (fd errno)
                     (openat-octets dirfd (tuatara.text:string-octets name)
-                                   (logior sb-posix:o-wronly sb-posix:o-creat sb-posix:o-excl +o-nofollow+ +o-cloexec+) mode)
+                                   (logior sb-posix:o-wronly
+                                           sb-posix:o-creat
+                                           sb-posix:o-excl
+                                           +o-nofollow+
+                                           +o-cloexec+) mode)
                   (cond (fd (return (values fd path n)))
                         ((/= errno sb-posix:eexist) (fail "make" path errno)))))
            finally (error 'file-system-error :operation "find a free name in" :path directory
@@ -906,7 +936,8 @@ octets overwritten so far, all passes counted. Returns T once it is gone."
     (call-with-parent
      native
      (lambda (dirfd own)
-       (let ((fd (open-examined dirfd own (logior sb-posix:o-wronly +o-nofollow+) native :operation "wipe" :wanted "a file"))
+       (let ((fd (open-examined dirfd own (logior sb-posix:o-wronly
+                                                  +o-nofollow+) native :operation "wipe" :wanted "a file"))
              (random nil)
              (buffer (make-array 65536 :element-type '(unsigned-byte 8))))
          (unwind-protect
@@ -915,7 +946,9 @@ octets overwritten so far, all passes counted. Returns T once it is gone."
                 (setf random (sb-posix:open "/dev/urandom" (logior sb-posix:o-rdonly +o-cloexec+)))
                 (when (> (stamp-nlink stamp) 1)
                   (error 'file-system-error :operation "wipe" :path native
-                                            :reason (format nil "it has ~d names: the others keep its contents" (stamp-nlink stamp))))
+                                            :reason (format nil
+                                                            "it has ~d names: the others keep its contents"
+                                                            (stamp-nlink stamp))))
                 (dotimes (pass passes)
                   (sb-posix:lseek fd 0 sb-posix:seek-set)
                   (let ((done 0))

@@ -9,7 +9,7 @@
   (:use #:cl)
   (:import-from #:tuatara.defaults #:forwardable-path-p)
   (:documentation "Tuatara in the terminal: the entry point shared by tools/tui.lisp and the saved executable.")
-  (:export #:main #:image-toplevel #:*built-heap* #:*options* #:*option-help* #:*usage-forms* #:write-man-pages))
+  (:export #:main #:image-toplevel #:*built-heap* #:*options* #:*option-help* #:*environment-help* #:*usage-forms* #:write-man-pages))
 
 (in-package #:tuatara.terminal)
 
@@ -39,16 +39,32 @@ License, version 3 or later.
 
 (defparameter *option-help*
   '((:flags (("--gui"))
-     :text ("open a window of its own instead (as when started with no terminal)"))
+     :text ("open a window of its own instead (as when started with no terminal)")
+     :why ("Use it when the terminal is the limit: the window draws pictures and PDFs"
+           "itself, shows 24-bit colour whatever TERM says, and takes the desktop's"
+           "clipboard through GTK. It needs a graphical session (WAYLAND_DISPLAY or"
+           "DISPLAY), which a console or an ssh login has not. How the window is drawn"
+           "is the setting *gui-renderer*."))
     (:flags (("--frames" "N"))
      :text ("open N frames, from 1 to 16: with --gui each a window of its"
             "own, in the terminal screens shown one at a time (C-x 5 o goes"
             "to the next); the files named are shown one in each frame in"
             "turn, those left over open behind the first; --frames=N does as"
-            "well"))
+            "well")
+     :why ("Use it to start with several views of the same buffers. With --gui they are"
+           "windows you can put on different screens. In a terminal only one frame"
+           "shows at a time, so more than one is for C-x 5 o; to see two views at once,"
+           "split the window (C-x 2, C-x 3). The cost is small: measured once here,"
+           "16 frames on a small file added about 30 ms to the first screen and no"
+           "memory worth naming."))
     (:flags (("-c" "INIT-FILE") ("--config" "INIT-FILE"))
      :text ("read INIT-FILE as the init file instead of"
-            "~/.config/tuatara/init.lisp; --config=INIT-FILE does as well"))
+            "~/.config/tuatara/init.lisp; --config=INIT-FILE does as well")
+     :why ("Use it to keep several setups (one for writing, one for a work machine), to"
+           "try a changed init file without touching the one you rely on, or to start"
+           "from a file kept elsewhere. The file is read as the usual one is, so the"
+           "packages it names are loaded. A file that is not there ends the start with"
+           "status 2; the usual init file is not used in its place."))
     (:flags (("+LINE[:COLUMN]"))
      :text ("before a file: open it with the cursor on that line (from 1;"
             "the last line when the file has fewer) and column (from 1;"
@@ -66,13 +82,26 @@ License, version 3 or later.
             "\"$REMOTE\" \"$MERGED\"' and mergetool.tuatara.trustExitCode true"))
     (:flags (("--safe") ("-R"))
      :text ("open the files safely, whatever folder they are in: read only,"
-            "no mode or hook acting on them, nothing written"))
+            "no mode or hook acting on them, nothing written")
+     :why ("Use it to look at a file you do not trust or must not alter: a download,"
+           "the contents of a disk image, evidence. Nothing in the folder acts on the"
+           "file and nothing is written, so opening it leaves it as it was. What you"
+           "give up is what the folder's own settings and tools would add, and saving"
+           "changes."))
     (:flags (("--hex"))
-     :text ("open the files in the hex view, never first as text"))
+     :text ("open the files in the hex view, never first as text")
+     :why ("Use it for a file that is not text (a program, an image, a database), or"
+           "for text whose bytes you must read as stored, where the text view could"
+           "hide a stray byte or a different line ending. A byte takes more room on"
+           "the screen than a character. Measured once here, a 1 GB file showed its"
+           "first screen in the same time as hex or as text (about 0.35 s)."))
     (:flags (("-"))
      :text ("as a file: read standard input into a buffer, *stdin*, opened"
             "safely (tuatara - < data, or ... | tuatara -); the terminal stays"
-            "the keyboard"))
+            "the keyboard")
+     :why ("Use it to look at what another program writes, in a pipe, before it goes"
+           "on. The buffer is opened safely, as --safe does, so it is for reading and"
+           "for taking parts of out."))
     (:flags (("--tutor"))
      :text ("start in the tutor"))
     (:flags (("--daemon[=NAME]"))
@@ -84,7 +113,14 @@ License, version 3 or later.
             "saved as auto-saved copies and asks nothing; NAME, default when"
             "none is given, tells several apart; its log is"
             "~/.cache/tuatara/daemon-NAME.log, its session"
-            "~/.local/state/tuatara/session-daemon-NAME"))
+            "~/.local/state/tuatara/session-daemon-NAME")
+     :why ("Use it for an editor that is already there when you want one: a client"
+           "(tuatara --client) shows a frame in about 0.23 s, against about 0.32 s to"
+           "start an editor of its own (measured once here, on a small file), and the"
+           "buffers stay open when a terminal closes. Several names keep several"
+           "separate sessions. The cost is a process that stays in memory until it is"
+           "stopped, with whatever it has open: a large file stays held. It needs"
+           "XDG_RUNTIME_DIR, where its socket is."))
     (:flags (("--client[=NAME]"))
      :text ("show the daemon NAME in this terminal, or with --gui in a window"
             "of its own (C-x 5 2 opens another), a frame of its own, the files"
@@ -94,7 +130,12 @@ License, version 3 or later.
             "daemon, and the daemon goes on; as git's editor"
             "(GIT_EDITOR='tuatara --client') the commit is made when the"
             "message is finished; exits 1 when no daemon of that name runs, or"
-            "when it ends"))
+            "when it ends")
+     :why ("Use it for the quicker start a daemon gives (about 0.23 s against about"
+           "0.32 s here) and one set of buffers in every terminal. In return, a change"
+           "to the init file or a package reaches the daemon only when it is stopped"
+           "and started again, and every client works in the one editor. As git's"
+           "editor, add --start so that it works when no daemon runs."))
     (:flags (("--client=HOST[:NAME]"))
      :text ("show the daemon NAME running on the machine HOST, reached with"
             "the system's ssh, as --client shows one here: HOST as ssh takes"
@@ -105,7 +146,14 @@ License, version 3 or later.
             "and pictures stay on each side, the clipboard, dropped files and"
             "your agents too unless HOST is trusted with them (M-x"
             "server-list); with --start, the daemon there is started first"
-            "when none runs; --stop=HOST[:NAME] stops it"))
+            "when none runs; --stop=HOST[:NAME] stops it")
+     :why ("Use it to work on the machine that has the files, a build server or a"
+           "remote box, with your own screen and keys. Tuatara must be installed there,"
+           "and the system's ssh is all it needs here. The editor runs there, so files"
+           "are read at the speed of its disks, and each key crosses the network: a slow"
+           "link shows as lag. The clipboard, dropped files and pictures stay on each"
+           "side unless HOST is trusted with them, so a copy made there does not reach"
+           "this machine's clipboard by itself."))
     (:flags (("--daemon-socket[=NAME]"))
      :text ("say where the daemon NAME listens, which Tuatara this is and"
             "whether it runs, in lines a client on another machine reads"
@@ -117,32 +165,55 @@ License, version 3 or later.
             "begins with /, for you alone and under a name nothing has yet;"
             "say where, and exit"))
     (:flags (("--start"))
-     :text ("with --client: start the daemon first when none runs"))
+     :text ("with --client: start the daemon first when none runs")
+     :why ("Use it in a script or as git's editor, where there may be no daemon yet:"
+           "the first call starts one and later calls find it. Without it, a client"
+           "with no daemon exits 1."))
     (:flags (("--fallback"))
      :text ("with --client: when no daemon runs, start Tuatara as it starts"
             "without --client instead, the files opened in an editor of its"
-            "own; the desktop's Tuatara (client) starts it so"))
+            "own; the desktop's Tuatara (client) starts it so")
+     :why ("Use it where an editor must always open, as in a desktop entry. When no"
+           "daemon runs it costs the ordinary start (about 0.32 s here) and gives an"
+           "editor of its own, not shared with later clients."))
     (:flags (("--stop[=NAME]"))
      :text ("stop the daemon NAME, asking in this terminal about the changes"
             "not saved in it, as M-x daemon-quit does; with no terminal,"
             "nothing is asked, and the changes are kept as auto-saved copies"
-            "that M-x recover-file offers"))
+            "that M-x recover-file offers")
+     :why ("Use it to free the memory of a daemon you no longer need, or to start it"
+           "again after you change the init file or a package. With no terminal"
+           "nothing is asked, so a script can stop it without waiting; what was not"
+           "saved is kept as auto-saved copies."))
     (:flags (("-Q") ("--no-init"))
      :text ("start without the init file and so without packages, with what"
             "Tuatara keeps between sessions (files visited lately, the"
             "session, bookmarks) kept apart in a folder that goes with the"
-            "session, the real one neither read nor changed"))
+            "session, the real one neither read nor changed")
+     :why ("Use it when something in the init file or a package gets in the way: a"
+           "setting that slows the editor or a package that fails to load. You get the"
+           "editor as it ships, so you can tell whether the fault is yours. What you do"
+           "meanwhile is not remembered. It is no faster to start: with the starter"
+           "init file the first screen took the same time with and without it (about"
+           "0.3 s, measured once)."))
     (:flags (("--generate-config"))
      :text ("write the init file Tuatara writes when there is none, every"
             "setting in it commented out, as"
             "~/.config/tuatara/generated-init.lisp, and exit; a file there"
-            "already is left as it is"))
+            "already is left as it is")
+     :why ("Use it for a fresh list of every setting after an update, to compare with"
+           "your own init file. It never replaces a file that is there, and the list"
+           "is all comments, so you copy out the few settings you want to change."))
     (:flags (("--generate-autostart"))
      :text ("write the entry that has the desktop start the daemon as you log"
             "in, ~/.config/autostart/tuatara-daemon.desktop, running tuatara"
             "--daemon, and exit; with --daemon=NAME, the daemon NAME's,"
             "tuatara-daemon-NAME.desktop; a file there already is left as it"
-            "is"))
+            "is")
+     :why ("Use it for a daemon that is ready from login, so that the first terminal"
+           "or window you open starts quickly. It costs the daemon's memory from the"
+           "start of every session, whether or not you edit that day. Delete the file"
+           "to undo it."))
     (:flags (("--help") ("-h"))
      :text ("show this and exit"))
     (:flags (("--version") ("-V"))
@@ -153,22 +224,155 @@ License, version 3 or later.
     (:flags (("--install-desktop")) :only :appimage
      :text ("(the AppImage) copy it to ~/.local/bin/tuatara and put Tuatara"
             "and Tuatara (client) in the desktop's applications, the icon"
-            "too"))
+            "too")
+     :why ("Use it to start the AppImage from the application menu. The copy at"
+           "~/.local/bin/tuatara does not update itself: run this again from a new"
+           "AppImage."))
     (:flags (("--remove-desktop")) :only :appimage
      :text ("(the AppImage) take them away again"))
     (:flags (("--dark") ("--light")) :only :appimage
      :text ("(the AppImage) show the window's title bar in the dark or the"
             "light style; with --install-desktop, for the desktop's"
-            "applications"))
+            "applications")
+     :why ("Use it when the window's title bar clashes with the desktop. It changes"
+           "only the title bar's style; the text and colours come from the theme."))
     (:flags (("--dynamic-space-size" "SIZE")) :only :runtime
      :text ("the most memory Tuatara's own data may take, such as 6GB; by"
             "default half the machine's memory, from 2GB to 16GB, or"
-            "$TUATARA_HEAP_MB megabytes")))
+            "$TUATARA_HEAP_MB megabytes")
+     :why ("Use it to set the heap for one run; $TUATARA_HEAP_MB does for every run."
+           "That variable says what raising or lowering it does.")))
   "The options, in the order --help lists them, each a property list: :FLAGS,
 the ways of writing it, each (FLAG) or (FLAG ARGUMENT); :TEXT, what it does,
-as lines; :ONLY, :APPIMAGE for an option only the AppImage's launcher takes or
-:RUNTIME for one the program's runtime takes out of the command line before
-Tuatara sees it. The manual page is made from this table too.")
+as lines; :WHY, as lines, for an option with a choice: why someone would take
+it, what that gets past and what to expect, the cost included (an empty line
+starts a new paragraph; --help leaves it out, the manual page has it); :ONLY,
+:APPIMAGE for an option only the AppImage's launcher takes or :RUNTIME for one
+the program's runtime takes out of the command line before Tuatara sees it. The
+manual page is made from this table too.")
+
+(defparameter *environment-help*
+  '((:names ("HOME")
+     :text ("The home folder, where the folders below are when the variables that follow"
+            "are not set."))
+    (:names ("XDG_CONFIG_HOME")
+     :text ("Where the configuration folder, tuatara/, is: the init file, snippets and"
+            "templates; and the desktop's autostart/ folder. Not set: ~/.config.")
+     :why ("Set it to keep the init file and templates in a folder you back up or share"
+           "between machines, or to run a second setup beside your own (a trial, a"
+           "test): Tuatara then reads and writes only there. A daemon takes the value"
+           "of the call that started it."))
+    (:names ("XDG_STATE_HOME")
+     :text ("Where the state folder, tuatara/, is: what Tuatara remembers between sessions"
+            "and the auto-saved copies. Not set: ~/.local/state.")
+     :why ("Set it to keep what Tuatara remembers on another drive, or apart for a"
+           "trial. The auto-saved copies are there too, so choose a drive that is"
+           "mounted when you want to recover a file."))
+    (:names ("XDG_DATA_HOME")
+     :text ("Where the data folder, tuatara/, is: the grammars you added and the packages"
+            "fetched. Not set: ~/.local/share.")
+     :why ("Set it to keep fetched packages and added grammars on a drive with room, or"
+           "apart for a trial."))
+    (:names ("XDG_CACHE_HOME")
+     :text ("Where the cache folder, tuatara/, is: files made again when they are gone, and"
+            "the logs. Not set: ~/.cache.")
+     :why ("Set it to a fast or temporary drive, as nothing there is lost for good: the"
+           "next start makes again what it needs (compiled packages, previews), and"
+           "takes longer for it. The debug log, stderr.log and the daemons' logs are"
+           "there too, so a fresh folder starts them empty."))
+    (:names ("XDG_RUNTIME_DIR")
+     :text ("Where a folder named by a setting is kept in memory while it is not there, as"
+            "when its drive is not mounted; and where a daemon's socket is, in tuatara/,"
+            "for you alone. Not set: no daemon starts, and no client finds one.")
+     :why ("Your login sets it. Set it by hand only where there is none (a container, a"
+           "cron job), to a folder only you can enter, or no daemon will start there."))
+    (:names ("NO_COLOR")
+     :text ("When set and not empty, tuatara uses no colours in the terminal, unless the"
+            "setting *tui-colours* says how many.")
+     :why ("Set it for a terminal or a screen where colour gets in the way. What colour"
+           "told (a changed line, an error, the current match) is then shown by the"
+           "plain theme in their place."))
+    (:names ("TERM")
+     :text ("The terminal's type, whose description says how many colours it shows.")
+     :why ("Your terminal sets it. Change it for one run when a host does not know your"
+           "terminal's name (over ssh, say): xterm-256color is understood nearly"
+           "everywhere, at the price of the colours and keys that terminal alone has."))
+    (:names ("COLORTERM")
+     :text ("When it is truecolor or 24bit, the terminal shows 24-bit colour and the"
+            "theme's colours are sent exactly.")
+     :why ("ssh does not pass it on, so over ssh the theme is drawn with as many colours"
+           "as TERM's description gives, 256 at most. Set it to truecolor on the far"
+           "side when your terminal shows 24-bit colour, or set *tui-colours* once."
+           "If the terminal does not show it, the colours come out wrong. A client of"
+           "a daemon brings its own value."))
+    (:names ("TERMINFO" "TERMINFO_DIRS")
+     :text ("Where the terminal's description is looked for, besides the usual folders.")
+     :why ("Set one when a terminal's description is installed in your home folder and"
+           "not in the system's; the terminal is otherwise taken for one the usual"
+           "folders describe."))
+    (:names ("WAYLAND_DISPLAY" "DISPLAY")
+     :text ("With neither input nor output a terminal, a desktop to show a window on.")
+     :why ("The desktop sets them. Set one by hand to open the window on another"
+           "display, or over ssh -X, where each frame crosses the network."))
+    (:names ("GSK_RENDERER")
+     :text ("How the window is drawn, as GTK names it: gl, vulkan or cairo. It goes before"
+            "the setting *gui-renderer*.")
+     :why ("Set it when the window draws slowly or wrongly with your graphics driver: gl"
+           "and vulkan draw on the graphics card, cairo on the processor alone, which"
+           "is usually slower for a large window but works where the drivers do not. C-h"
+           "check-health in the window measures them."))
+    (:names ("TUATARA_HEAP_MB")
+     :text ("The most memory, in megabytes, tuatara's data may take. Not set: half the"
+            "machine's memory, from 2 GB to 16 GB. --dynamic-space-size overrides it.")
+     :why ("The heap holds what the editor builds in memory: text you have typed or"
+           "pasted and the undo history, the places of a split or many cursors,"
+           "search indexes, pictures. Files you open are mapped, not held in it."
+           "Measured here: a 1 GB file shows its first screen in about 0.35 s with"
+           "any heap, and a replacement across it ran in the background in about"
+           "0.4 s with a heap of 256 MB as with 2 GB, because large replacements,"
+           "sorts and counts are written to files in pieces."
+           ""
+           "Raise it for work held in memory. With *split-limit* or *cursors-limit*"
+           "raised, a split or many cursors plan 768 bytes a place out of a quarter"
+           "of the free heap: about 700,000 places at 2 GB and 5 million at 16 GB"
+           "(from the code). A bigger heap costs memory only as it is used, but it"
+           "lets live data grow, and a full collection copies live data while the"
+           "editor stands still: measured, 0.1 to 0.2 s with 300 to 600 MB live,"
+           "1.6 s with 1.1 GB. Collections come after each 256 MB of new data"
+           "whatever the heap, so the size does not set the pauses; the live data"
+           "does."
+           ""
+           "Lower it on a small or shared machine: the editor started and showed a"
+           "256 MB file with a heap of 64 MB. The limits above shrink with it."
+           ""
+           "When the heap runs out in a command, the command stops with a message"
+           "and the editor goes on (measured at 512 MB: stopped at about 480 MB in"
+           "use, and keys still worked). Running out in the middle of a collection"
+           "cannot be recovered and ends the editor, which is why work planned in"
+           "memory keeps to a quarter of what is free. Changes not saved are then"
+           "in the auto-saved copies that M-x recover-file offers."))
+    (:names ("LC_ALL" "LC_MESSAGES" "LANG")
+     :text ("The language spelling is checked in, when no setting says.")
+     :why ("Set one to check spelling in a language other than the system's for one"
+           "run; the setting *spellcheck-languages* does it for every run and"
+           "goes before these."))
+    (:names ("TZ")
+     :text ("The time zone, when set; else the system's.")
+     :why ("Set it to have the editor use another zone for one run, as when you travel"
+           "and keep the machine's clock as it is, Europe/Stockholm or"
+           "Pacific/Auckland. Times stored in files do not change."))
+    (:names ("SHELL")
+     :text ("The shell commands typed in the editor run with. Not set: /bin/sh.")
+     :why ("Set it to run typed commands with a shell whose aliases or syntax you use."
+           "A daemon takes the one of the call that started it."))
+    (:names ("GIT_EDITOR" "EDITOR" "VISUAL")
+     :text ("Not read by tuatara. Set to tuatara (or git's core.editor to it), git starts"
+            "it to write a commit message; see EXAMPLES.")))
+  "The environment variables the program reads, in the order tuatara(1) lists
+them, each a property list: :NAMES, the variables it is for; :TEXT, what they
+do, as lines; :WHY, as lines, when there is a choice: why someone would
+change it, what that gets past, and what to expect, the cost included (an empty
+line starts a new paragraph). The manual page is made from this table.")
 
 (defun option-label (flags)
   "The way FLAGS, those of an entry of *OPTION-HELP*, are written in --help:
@@ -247,8 +451,7 @@ says, or less under a memory limit (MEMORY-LIMIT-KB). NIL when unknown."
 (defun wanted-heap-mb (&key (setting (tuatara.io:own-variable "TUATARA_HEAP_MB")) (memory (memory-kb)))
   "The heap Tuatara wants, in megabytes: SETTING ($TUATARA_HEAP_MB) when it is
 a number, else half of MEMORY (kilobytes, the machine's), from 2 GB to 16 GB,
-so that a replacement across a file of many gigabytes has room while the heap
-cannot outgrow the memory. NIL when neither is known."
+so that work held in memory has room while the heap cannot outgrow the memory. NIL when neither is known."
   (or (let ((mb (tuatara.text:whole-number setting))) (and mb (plusp mb) mb))
       (and memory (max 2048 (min 16384 (floor memory 2048))))))
 
@@ -273,11 +476,12 @@ and a heap of MB megabytes. Returns only when that fails."
   "The options SBCL's runtime takes out of the command line, each with the value after it.")
 
 (defun command-line-arguments (&key (argv sb-ext:*posix-argv*) (from "/proc/self/cmdline"))
-  "The program's command line, its name first, as SB-EXT:*POSIX-ARGV* has it:
-ARGV itself, or, when it is NIL because an argument is not UTF-8, read again
-as octets FROM the system's record of it, each octet that is not UTF-8 kept
-as its raw byte's character, so that such a file name still opens, the
-runtime's options (*RUNTIME-OPTIONS-WITH-VALUES*) left out as it leaves them out."
+  "The program's command line, its name first, as SB-EXT:*POSIX-ARGV* has it.
+This is ARGV itself. When ARGV is NIL because an argument is not UTF-8, the
+line is read again as octets FROM the system's record of it, each octet that
+is not UTF-8 kept as its raw byte's character, so that such a file name
+still opens. The runtime's options (*RUNTIME-OPTIONS-WITH-VALUES*) are left
+out, as the runtime leaves them out."
   (or argv
       (let* ((octets (tuatara.runtime:ignoring-errors-reported ("reading ~a" from) (tuatara.io:file-octets from)))
              (parts (and octets
@@ -399,19 +603,21 @@ one (HOST-REFUSAL) gives NIL, NIL and why, as a third value."
 (defun read-options (arguments &key (directory (uiop:getcwd)))
   "The options of ARGUMENTS, the program's (strings), as a plist: :GUI,
 :FRAMES (how many --frames opens), :CONFIG (the init file -c names),
-:GENERATE-CONFIG, :VERSION, :HELP,
-:DIFF (the two names after --diff), :MERGE (the four after --merge), :SAFE,
-:HEX, :TUTOR, :BARE (-Q), :DAEMON, :CLIENT and :STOP (each the daemon's
-name, *DAEMON-DEFAULT-NAME* when none is given), :HOST (the machine a
---client or --stop daemon runs on, REMOTE-DAEMON), :DAEMON-SOCKET (a daemon's
-name), :START, :FALLBACK, :GENERATE-AUTOSTART and :FILES, the
-files named; or :ERROR, what is wrong with them. Options may stand anywhere before --, among the files; --safe
-and --hex hold for every file of the call, a +LINE[:COLUMN] for the file after
-it, which is then (NAME LINE COLUMN) in :FILES, the column NIL when none was
-given; a - (standard input) is (:STANDARD-INPUT). What starts with a dash and
-is no option is refused, and so is an option or +LINE that is also a file's
-name in DIRECTORY, where the program was started: write ./NAME for the file,
-or -- before the files. After --, every argument is a file's name."
+:GENERATE-CONFIG, :VERSION, :HELP, :DIFF (the two names after --diff), :MERGE
+\(the four after --merge), :SAFE, :HEX, :TUTOR and :BARE (-Q).
+The daemon's options follow. :DAEMON, :CLIENT and :STOP are each the daemon's
+name, *DAEMON-DEFAULT-NAME* when none is given. :HOST is the machine a
+--client or --stop daemon runs on (REMOTE-DAEMON). :DAEMON-SOCKET is a
+daemon's name. :START, :FALLBACK and :GENERATE-AUTOSTART come last, and
+:FILES, the files named.
+The plist holds :ERROR instead, what is wrong with them.
+Options may stand anywhere before --, among the files. --safe and --hex hold
+for every file of the call. A +LINE[:COLUMN] holds for the file after it,
+which is then (NAME LINE COLUMN) in :FILES, the column NIL when none was
+given. A - (standard input) is (:STANDARD-INPUT). What starts with a dash and
+is no option is refused. So is an option or +LINE that is also a file's name
+in DIRECTORY, where the program was started: write ./NAME for the file, or --
+before the files. After --, every argument is a file's name."
   (let ((options '()) (named '()))
     (flet ((given (key) (setf (getf options key) t))
            (fail (&rest words) (return-from read-options (list :error (apply #'format nil words)))))
@@ -483,9 +689,11 @@ or -- before the files. After --, every argument is a file's name."
                 (t (push argument named)))))
       (setf named (nreverse named))
       (cond ((and (getf options :diff) named)
-             (fail "--diff takes the two files to compare, not ~a too" (let ((n (first named))) (if (consp n) (second n) n))))
+             (fail "--diff takes the two files to compare, not ~a too"
+                   (let ((n (first named))) (if (consp n) (second n) n))))
             ((and (getf options :merge) named)
-             (fail "--merge takes the four files to merge, not ~a too" (let ((n (first named))) (if (consp n) (second n) n))))
+             (fail "--merge takes the four files to merge, not ~a too"
+                   (let ((n (first named))) (if (consp n) (second n) n))))
             ((and (getf options :diff) (getf options :merge))
              (fail "--diff and --merge are not given together"))
             ((and (getf options :tutor) named)
@@ -618,13 +826,13 @@ written out, to be put on the terminal."
   "fcntl's request for a copy of a descriptor that no program started from here inherits.")
 
 (defun startup-from (options &key (input 0))
-  "What the editor is started with for OPTIONS (READ-OPTIONS), as two values,
-the files to open, as RUN-EDITOR takes them (a name, or a list of it and
-:SAFE and :HEX as asked, or (:STANDARD-INPUT FD) for a copy of the input kept
-for - before the terminal takes its place: of INPUT, the descriptor of
-standard input), the names from where Tuatara was started; and
-START-FUNCTION for the rest. With -Q the editor is set to start bare first
-\(TUATARA.DEFAULTS::START-BARE)."
+  "What the editor is started with for OPTIONS (READ-OPTIONS), as two values.
+The first is the files to open, as RUN-EDITOR takes them: a name, or a list of
+it and :SAFE and :HEX as asked, or (:STANDARD-INPUT FD) for a copy of the
+input kept for - before the terminal takes its place (of INPUT, the
+descriptor of standard input). It also gives the names from where Tuatara
+was started. The second is START-FUNCTION for the rest. With -Q the editor is
+set to start bare first (TUATARA.DEFAULTS::START-BARE)."
   (when (getf options :bare)
     (tuatara.defaults::start-bare))
   (let* ((safe (getf options :safe))
@@ -633,7 +841,8 @@ START-FUNCTION for the rest. With -Q the editor is set to start bare first
          (places '())
          (files (loop for file in (if merge (list (fourth merge)) (getf options :files))
                       collect (cond ((stringp file) (startup-file (named-here file) safe hex))
-                                    ((eq (first file) :standard-input) (list :standard-input (sb-posix:fcntl input +f-dupfd-cloexec+ 3)))
+                                    ((eq (first file) :standard-input)
+                                     (list :standard-input (sb-posix:fcntl input +f-dupfd-cloexec+ 3)))
                                     (t (let ((path (named-here (first file))))
                                          (push (list path (second file) (third file)) places)
                                          (startup-file path safe hex)))))))
@@ -648,11 +857,12 @@ START-FUNCTION for the rest. With -Q the editor is set to start bare first
 
 (defun start-function (&key places diff merge tutor bare frames)
   "What the editor does once the files are shown, as a function of the editor,
-or NIL when there is nothing to do: go to the line each of PLACES asks for,
-\(PATH LINE COLUMN); show the differences of DIFF, the old and the new file;
-merge MERGE, the local, base and remote file and the one the merge goes into;
-open the tutor; say that it started BARE; and open FRAMES frames in all, the
-files spread over them (TUATARA.DEFAULTS::OPEN-START-FRAMES)."
+or NIL when there is nothing to do. It goes to the line each of PLACES asks
+for, (PATH LINE COLUMN). It shows the differences of DIFF, the old and the new
+file. It merges MERGE, the local, base and remote file and the one the merge
+goes into. It opens the tutor. It says that it started BARE. It opens FRAMES
+frames in all, the files spread over them
+\(TUATARA.DEFAULTS::OPEN-START-FRAMES)."
   (when (or places diff merge tutor bare (and frames (> frames 1)))
     (lambda (editor)
       (when places (tuatara.defaults::show-start-places places))
@@ -667,18 +877,18 @@ files spread over them (TUATARA.DEFAULTS::OPEN-START-FRAMES)."
 (defun main (arguments)
   "Run Tuatara in this terminal on the files named in ARGUMENTS (strings), or
 in the scratch buffers when there are none, as its options say
-\(READ-OPTIONS): --version, --help and --generate-config do what they say
-instead; --diff OLD NEW shows what differs between two files; -c names the
-init file; +LINE[:COLUMN] before a file opens it there; -- before the files
-lets a file's name start with a dash or a plus. With --gui, or when started with no terminal on a
-desktop, Tuatara opens a window of its own (RUN-INSTANCE). --daemon starts an
-editor in the background (START-DAEMON), --client shows one in this terminal,
-or a window with --gui, here or on another machine, and --stop stops one
-\(RUN-CLIENT), --daemon-socket says where one listens (REPORT-DAEMON-SOCKET),
---receive-file takes a file dropped on such a client's window (RECEIVE-DROPPED-FILE),
---client --fallback starting an editor of its own when none runs;
---generate-autostart writes the entry that starts the daemon with the
-desktop (GENERATE-AUTOSTART).
+\(READ-OPTIONS). --version, --help and --generate-config do what they say
+instead. --diff OLD NEW shows what differs between two files. -c names the
+init file. +LINE[:COLUMN] before a file opens it there. -- before the files
+lets a file's name start with a dash or a plus.
+With --gui, or when started with no terminal on a desktop, Tuatara opens a
+window of its own (RUN-INSTANCE). --daemon starts an editor in the background
+\(START-DAEMON). --client shows one in this terminal, or a window with --gui,
+here or on another machine. --stop stops one (RUN-CLIENT). --daemon-socket
+says where one listens (REPORT-DAEMON-SOCKET). --receive-file takes a file
+dropped on such a client's window (RECEIVE-DROPPED-FILE). --client --fallback
+starts an editor of its own when none runs. --generate-autostart writes the
+entry that starts the daemon with the desktop (GENERATE-AUTOSTART).
 Returns the exit code: 0, or what the session left (*EXIT-CODE*); 2 for
 options it cannot take."
   (let* ((options (read-options arguments))
@@ -708,7 +918,9 @@ options it cannot take."
           ((getf options :host)
            (run-client options))
           ((missing-file (getf options :diff))
-           (format *error-output* "tuatara: ~a is not there: nothing to compare~%" (shown (missing-file (getf options :diff))))
+           (format *error-output*
+                   "tuatara: ~a is not there: nothing to compare~%"
+                   (shown (missing-file (getf options :diff))))
            2)
           ((and (find '(:standard-input) (getf options :files) :test #'equal) (terminal-p 0))
            (format *error-output* "tuatara: - reads standard input, which is the terminal here: pipe something in~%")
@@ -720,7 +932,9 @@ options it cannot take."
           ((and config (not (eq (tuatara.runtime:ignoring-errors-reported ("examining ~a" config-path)
                                   (tuatara.io:path-kind config-path))
                                 :regular)))
-           (format *error-output* "tuatara: no init file at ~a (tuatara --generate-config writes one to start from)~%" (shown config))
+           (format *error-output*
+                   "tuatara: no init file at ~a (tuatara --generate-config writes one to start from)~%"
+                   (shown config))
            2)
           ((or (getf options :client) (getf options :stop))
            (let ((code (run-client options)))
@@ -802,20 +1016,21 @@ editor of its own instead (--fallback) has its heap fitted then."
 
 (defun image-toplevel ()
   "What the saved executable runs: MAIN on its command-line arguments, then exit
-with its code at once, the terminal already given back. First, when this
-machine wants a heap of another size than the executable was saved with, it
-starts again with that one (HEAP-TO-RESTART-WITH), and its random numbers are
-new (FRESH-RANDOM-STATE), its arguments read even when one is not UTF-8
-\(COMMAND-LINE-ARGUMENTS); run from the AppImage, the
-programs it starts are given the environment as it was before
-\(LEAVE-APPIMAGE-ENVIRONMENT). Run again by the editor itself with
-TUATARA_COMPILE_PACKAGE in its environment, it compiles a package apart from
-it instead, its arguments never looked at
-\(TUATARA.PACKAGES:COMPILE-PACKAGE-CHILD); run again by tuatara --daemon
-with TUATARA_DAEMON, it is that daemon (RUN-DAEMON); run by the scripts
-installing it with TUATARA_DESKTOP_ENTRIES, it writes its desktop entries
-\(DESKTOP-ENTRIES-CHILD), a request it does not take said and left alone. A
-client keeps the heap it was saved with (FIT-HEAP) until it starts an editor
+with its code at once, the terminal already given back.
+First, when this machine wants a heap of another size than the executable was
+saved with, it starts again with that one (HEAP-TO-RESTART-WITH). Its random
+numbers are new (FRESH-RANDOM-STATE), and its arguments are read even when
+one is not UTF-8 (COMMAND-LINE-ARGUMENTS). Run from the AppImage, the programs
+it starts are given the environment as it was before
+\(LEAVE-APPIMAGE-ENVIRONMENT).
+Run again by the editor itself with TUATARA_COMPILE_PACKAGE in its
+environment, it compiles a package apart from it instead, its arguments never
+looked at (TUATARA.PACKAGES:COMPILE-PACKAGE-CHILD). Run again by tuatara
+--daemon with TUATARA_DAEMON, it is that daemon (RUN-DAEMON). Run by the
+scripts installing it with TUATARA_DESKTOP_ENTRIES, it writes its desktop
+entries (DESKTOP-ENTRIES-CHILD), a request it does not take said and left
+alone.
+A client keeps the heap it was saved with (FIT-HEAP) until it starts an editor
 of its own (--fallback)."
   (sb-ext:disable-debugger)
   (setf sb-ext:*posix-argv* (command-line-arguments))

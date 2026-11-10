@@ -339,13 +339,14 @@ runs in words as a second value."
 
 (defstruct (facts (:constructor make-facts ()) (:copier copy-facts))
   "What a client said of its screen, from which the editor's questions to a
-remote frontend are answered: WINDOW, true for a window of its own, else a
-terminal; WIDTH and HEIGHT in cells; COLOURS it can show; CELL-WIDTH and
-CELL-HEIGHT in pixels, or NIL; IMAGES, true when it shows pictures; REORDERS,
-true when it turns right-to-left text round itself; STYLE, the desktop's,
-:dark, :light or NIL; FONT-STEPS, or NIL; DESCRIPTION, words for where it
-shows the editor; HEALTH, (LABEL . TEXT) pairs; FONTS and FONT-FACES, as
-FRONTEND-FONTS and FRONTEND-FONT-FACES give them."
+remote frontend are answered. WINDOW is true for a window of its own, else a
+terminal. WIDTH and HEIGHT are in cells. COLOURS is what it can show.
+CELL-WIDTH and CELL-HEIGHT are in pixels, or NIL. IMAGES is true when it shows
+pictures. REORDERS is true when it turns right-to-left text round itself.
+STYLE is the desktop's, :dark, :light or NIL. FONT-STEPS is a number, or NIL.
+DESCRIPTION is words for where it shows the editor. HEALTH is (LABEL . TEXT)
+pairs. FONTS and FONT-FACES are as FRONTEND-FONTS and FRONTEND-FONT-FACES give
+them."
   (window nil) (width 80 :type fixnum) (height 24 :type fixnum) (colours 256)
   (cell-width nil) (cell-height nil) (images nil) (reorders nil) (style nil) (font-steps nil)
   (description nil) (health '()) (fonts '()) (font-faces '()))
@@ -364,7 +365,8 @@ FRONTEND-FONTS and FRONTEND-FONT-FACES give them."
       (documentation 'facts-style 'function) "The desktop's style the client knows, :dark, :light or NIL."
       (documentation 'facts-font-steps 'function) "The steps the client's font is scaled by, or NIL."
       (documentation 'facts-description 'function) "Where the client shows the editor, in words, or NIL."
-      (documentation 'facts-health 'function) "What the client says of itself for the health check, (LABEL . TEXT) pairs."
+      (documentation 'facts-health 'function) "What the client says of itself for the health check,
+(LABEL . TEXT) pairs."
       (documentation 'facts-fonts 'function) "The fixed-width font families the client can show."
       (documentation 'facts-font-faces 'function) "The font families and their variants the client can show.")
 
@@ -499,22 +501,23 @@ given as (NAME . VALUE), in the order of *DISPLAY-SETTINGS*."
                                                       diff merge (frames 1) wait stop joins far agent notes))
                     (:copier nil))
   "What a client asks of the editor as it attaches, beside what its screen
-is: DIRECTORY, the folder it was started in, an absolute path; TERMINAL, the
-device of its terminal (/dev/pts/3), or NIL; ENVIRONMENT, its variables the
-editor keeps for it, each (NAME . VALUE); FILES, each (PATH LINE COLUMN), an
-absolute path and the line and column to go to, or NIL; SAFE and HEX, true to
-open them so; STANDARD-INPUT, true when its standard input is passed with the
-attach to be read into a buffer (on the editor's side, the descriptor); DIFF,
-the two paths to compare, MERGE the four to merge, or NIL; FRAMES, how many
-frames to open; WAIT, true when the program that started it waits for the
-files to be done with; STOP, true when it asks the editor to stop; JOINS,
-the word the editor gave a client asking it for another window, which this
-connection then is (FRONTEND-ANOTHER), or NIL; FAR, true when the client is
-on another machine, its connection carried by ssh: it passes no descriptor
-and names no terminal, and its paths are the editor's machine's; AGENT, for
-such a client, the socket on the editor's machine its ssh connection brings
-the desk's agent to, for the programs of its frames alone, or NIL; NOTES,
-what its connection said, at most eight lines, to be shown in its frame."
+is. DIRECTORY is the folder it was started in, an absolute path. TERMINAL is
+the device of its terminal (/dev/pts/3), or NIL. ENVIRONMENT is its variables
+the editor keeps for it, each (NAME . VALUE). FILES is each (PATH LINE COLUMN),
+an absolute path and the line and column to go to, or NIL. SAFE and HEX are
+true to open them so. STANDARD-INPUT is true when its standard input is passed
+with the attach to be read into a buffer (on the editor's side, the
+descriptor). DIFF is the two paths to compare, MERGE the four to merge, or
+NIL. FRAMES is how many frames to open. WAIT is true when the program that
+started it waits for the files to be done with. STOP is true when it asks the
+editor to stop. JOINS is the word the editor gave a client asking it for
+another window, which this connection then is (FRONTEND-ANOTHER), or NIL.
+FAR is true when the client is on another machine, its connection carried by
+ssh. Such a client passes no descriptor and names no terminal, and its paths
+are the editor's machine's. AGENT, for such a client, is the socket on the
+editor's machine its ssh connection brings the desk's agent to, for the
+programs of its frames alone, or NIL. NOTES is what its connection said, at
+most eight lines, to be shown in its frame."
   (directory nil) (terminal nil) (environment '()) (files '()) (safe nil) (hex nil) (standard-input nil)
   (diff nil) (merge nil) (frames 1 :type fixnum) (wait nil) (stop nil) (joins nil) (far nil) (agent nil)
   (notes '()))
@@ -1119,9 +1122,11 @@ THREAD, unless CANCELLED, told to forget it meanwhile."
       (documentation 'arriving-picture-height 'function) "The picture arriving's height in pixels."
       (documentation 'arriving-picture-channels 'function) "The octets of each pixel of the picture arriving."
       (documentation 'arriving-picture-total 'function) "How many packed octets the picture arriving goes in."
-      (documentation 'arriving-picture-octets 'function) "The packed octets of the picture arriving come so far, and room."
+      (documentation 'arriving-picture-octets 'function) "The packed octets of the picture arriving
+come so far, and room."
       (documentation 'arriving-picture-filled 'function) "How many of the picture arriving's packed octets have come."
-      (documentation 'arriving-picture-cancelled 'function) "True when the client was told to forget the picture unpacking."
+      (documentation 'arriving-picture-cancelled 'function) "True when the client was told to forget
+the picture unpacking."
       (documentation 'arriving-picture-thread 'function) "The thread unpacking the picture arriving, once it is whole.")
 
 (defun put-picture-begin (box id width height channels total)
@@ -1170,7 +1175,8 @@ were the last. Malformed for a piece of any other picture or place."
       (unless (and (plusp count) (<= end total)) (malformed "a piece of ~d octets, past its picture" count))
       (when (> end (length (arriving-picture-octets arriving)))
         (setf (arriving-picture-octets arriving)
-              (replace (tuatara.text:make-octets (min total (max end (* 2 (length (arriving-picture-octets arriving))))))
+              (replace (tuatara.text:make-octets (min total
+                                                      (max end (* 2 (length (arriving-picture-octets arriving))))))
                        (arriving-picture-octets arriving) :end2 start)))
       (replace (arriving-picture-octets arriving) (inbox-octets inbox)
                :start1 start :start2 (take-place inbox count) :end2 (inbox-stop inbox))

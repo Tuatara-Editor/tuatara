@@ -17,8 +17,12 @@ the same way over its prompt; the boxes are laid over the screen's rows.")
     (is equal '("ab   X" ()) (spliced "ab" '() 5 "X" '()))
     ;; a wide character cut by an edge becomes spaces
     (is string= "a Xbc" (first (spliced (format nil "a~cbc" (code-char #x4E2D)) '() 2 "X" '())))
-    (is string= (format nil "a Xb~cc" (code-char #x4E2D)) (first (spliced (format nil "a~cb~cc" (code-char #x4E2D) (code-char #x4E2D)) '() 2 "X" '())))
-    (is string= (format nil "a~cb Xc" (code-char #x4E2D)) (first (spliced (format nil "a~cb~cc" (code-char #x4E2D) (code-char #x4E2D)) '() 5 "X" '()))))
+    (is string=
+        (format nil "a Xb~cc" (code-char #x4E2D))
+        (first (spliced (format nil "a~cb~cc" (code-char #x4E2D) (code-char #x4E2D)) '() 2 "X" '())))
+    (is string=
+        (format nil "a~cb Xc" (code-char #x4E2D))
+        (first (spliced (format nil "a~cb~cc" (code-char #x4E2D) (code-char #x4E2D)) '() 5 "X" '()))))
   ;; a row under a face of its own keeps it outside the box
   (multiple-value-bind (string spans face)
       (tuatara.command:lay-boxes-over "ab" '() :mode-line 0 (list (list 0 1 (list (list "X" '((0 1 :popup)))))) 4)
@@ -50,7 +54,9 @@ the same way over its prompt; the boxes are laid over the screen's rows.")
       (is eq :any (tuatara.defaults::lisp-completion-context "(f buf" 3))
       ;; the name around the cursor, whatever comes before and after it
       (is equal '(1 10) (multiple-value-list (tuatara.defaults::text-word-bounds "(buffer-na)" 5 #'tuatara.defaults::lisp-name-part-p)))
-      (is equal '(2 5) (multiple-value-list (tuatara.defaults::text-word-bounds "#'car" 5 #'tuatara.defaults::lisp-name-part-p)))
+      (is equal
+          '(2 5)
+          (multiple-value-list (tuatara.defaults::text-word-bounds "#'car" 5 #'tuatara.defaults::lisp-name-part-p)))
       ;; operators after a bracket, the editor's own functions among them; variables elsewhere
       (true (member "buffer-substring" (names "buffer" :operator) :test #'string=))
       (true (member "mapcar" (names "map" :operator) :test #'string=))
@@ -59,14 +65,17 @@ the same way over its prompt; the boxes are laid over the screen's rows.")
       ;; keywords, and a package's names with its prefix
       (true (member ":test-not" (names ":test" :any) :test #'string=))
       (true (member "cl:mapcar" (names "cl:map" :operator) :test #'string=))
-      (true (member "tuatara.defaults::lisp-name-candidates" (names "tuatara.defaults::lisp-name" :operator) :test #'string=))
+      (true (member "tuatara.defaults::lisp-name-candidates"
+                    (names "tuatara.defaults::lisp-name" :operator)
+                    :test #'string=))
       (false (names "no-such-package:x" :any))
       ;; what each is, and what the box beside the list says
       (is string= "function" (tuatara.defaults::lisp-name-kind 'tuatara-user:buffer-substring))
       (is string= "macro" (tuatara.defaults::lisp-name-kind 'tuatara-user:save-excursion))
       (is string= "variable" (tuatara.defaults::lisp-name-kind 'tuatara-user:*tab-width*))
       (is string= "keyword" (tuatara.defaults::lisp-name-kind :test))
-      (true (search "(buffer-substring start end)" (tuatara.defaults::lisp-name-documentation 'tuatara-user:buffer-substring)))
+      (true (search "(buffer-substring start end)"
+                    (tuatara.defaults::lisp-name-documentation 'tuatara-user:buffer-substring)))
       (true (search "*tab-width* = 4" (tuatara.defaults::lisp-name-documentation 'tuatara-user:*tab-width*))))))
 
 (define-test (in-text-completion in-a-buffer)
@@ -96,7 +105,10 @@ the same way over its prompt; the boxes are laid over the screen's rows.")
       (false (tuatara.command:editor-popup editor)))
     ;; leaving INSERT state closes it too (C-g closes the list first: here a key of one's own)
     (multiple-value-bind (f editor)
-        (fresh-start (format nil "M-: ~a RET o ~a C-M-i <f5>" (lisp "(bind-key \"<f5>\" 'tuatara-normal)") (lisp "(buffer-"))
+        (fresh-start (format nil
+                             "M-: ~a RET o ~a C-M-i <f5>"
+                             (lisp "(bind-key \"<f5>\" 'tuatara-normal)")
+                             (lisp "(buffer-"))
                      :width 120)
       (declare (ignore f))
       (false (tuatara.command:editor-popup editor))
@@ -136,7 +148,8 @@ the same way over its prompt; the boxes are laid over the screen's rows.")
   (true (showing (fresh-start (format nil "M-: ~a C-M-i ) RET" (key-string "(buffer-subs")) :width 120)
                  "Eval: (buffer-substring)"))
   ;; C-g closes the list and leaves the prompt, still reading
-  (true (showing (fresh-start (format nil "M-: ~a TAB C-g ~a RET" (key-string "(buffer-") (key-string "name)")) :width 120)
+  (true (showing (fresh-start (format nil "M-: ~a TAB C-g ~a RET" (key-string "(buffer-") (key-string "name)"))
+                              :width 120)
                  "=> \"*lisp-scratch*\"")))
 
 (define-test (in-text-completion where-nothing-can-be-typed)
@@ -254,10 +267,14 @@ read (TUATARA.DEFAULTS::*PATH-LISTING*), for the editor to list it next."
           (is string= (format nil "~aalpha.txt" native) (namestring (tuatara.buffer:buffer-file b)))
           (false (tuatara.io:safe-visit-p b)))
         (tuatara.buffer:kill-buffer (find (format nil "~aalpha.txt" native) tuatara.buffer:*buffers*
-                                          :key (lambda (b) (let ((file (tuatara.buffer:buffer-file b))) (and file (namestring file))))
+                                          :key (lambda (b)
+                                                 (let ((file (tuatara.buffer:buffer-file b)))
+                                                   (and file (namestring file))))
                                           :test #'equal))
         ;; taken from the buffer's directory; a file: link's; the full stop of a sentence left out
-        (dolist (typed (list "./alpha.txt" (format nil "[[file:~aalpha.txt][alpha]]" native) (format nil "see ~aalpha.txt." native)))
+        (dolist (typed (list "./alpha.txt"
+                             (format nil "[[file:~aalpha.txt][alpha]]" native)
+                             (format nil "see ~aalpha.txt." native)))
           (let ((b (shown (nth-value 1 (opened typed (if (char= #\] (char typed (1- (length typed))))
                                                          "C-b C-b C-b C-b C-b C-b C-b C-b C-b C-b C-x C-p"
                                                          "C-x C-p"))))))

@@ -28,13 +28,17 @@ out), a CLOCK: line, where a logged line goes, and clocking in from any key.")
         (options (format nil "#+TITLE: x~%#+STARTUP: overview~%* A~%  #+startup:  Indent   literallinks~%text~%#+STARTUP: content~%")))
     (is equal '() (options (format nil "* A~%text #+STARTUP: overview~%#+STARTUPS: content~%")))
     ;; past a large start of text, still in the first megabyte
-    (is equal '("content") (options (concatenate 'string (org-internals-filler 600000) (format nil "#+STARTUP: content~%"))))
+    (is equal
+        '("content")
+        (options (concatenate 'string (org-internals-filler 600000) (format nil "#+STARTUP: content~%"))))
     ;; not past the first megabyte
     (is equal '("overview")
         (options (concatenate 'string (format nil "#+STARTUP: overview~%") (org-internals-filler (* 1100 1024))
                               (format nil "#+STARTUP: content~%")))))
   ;; read where the text is kept: a buffer of 3 MB, its lines copied out, not its text
-  (let ((buffer (org-internals-buffer (concatenate 'string (format nil "#+STARTUP: content~%") (org-internals-filler (* 3 1024 1024))))))
+  (let ((buffer (org-internals-buffer (concatenate 'string
+                                                   (format nil "#+STARTUP: content~%")
+                                                   (org-internals-filler (* 3 1024 1024))))))
     (unwind-protect
          (progn
            (is equal '("content") (tuatara.defaults::org-startup-options buffer))
@@ -85,7 +89,9 @@ out), a CLOCK: line, where a logged line goes, and clocking in from any key.")
       (let* ((text (format nil "* Task~%~a~%" line))
              (tree (tuatara.defaults::org-parse text))
              (headline (first (tuatara.defaults::org-node-children tree)))
-             (section (find 'tuatara.defaults::section (tuatara.defaults::org-node-children headline) :key #'tuatara.defaults::org-node-type))
+             (section (find 'tuatara.defaults::section
+                            (tuatara.defaults::org-node-children headline)
+                            :key #'tuatara.defaults::org-node-type))
              (node (first (tuatara.defaults::org-node-children section))))
         ;; the parse
         (is eq clock-p (eq (tuatara.defaults::org-node-type node) 'tuatara.defaults::clock) "a clock: ~s" line)
@@ -115,7 +121,8 @@ out), a CLOCK: line, where a logged line goes, and clocking in from any key.")
     (is string= (format nil "* T~%  CLOCK: [2026-10-01 Thu 17:10]--[2026-10-01 Thu 17:20] =>  0:10~%")
         (org-text-after "j C-c C-c" (format nil "* T~%  CLOCK: [2026-10-01 Thu 17:10]--[2026-10-01 Thu 17:20]~%")))
     (is string= (format nil "* T~%CLOCK:    [2026-10-01 Thu 14:00]--[2026-10-01 Thu 14:05] =>  0:05~%")
-        (org-text-after "j C-c C-c" (format nil "* T~%CLOCK:    [2026-10-01 Thu 14:00]--[2026-10-01 Thu 14:05]   =>    1:05~%")))))
+        (org-text-after "j C-c C-c"
+                        (format nil "* T~%CLOCK:    [2026-10-01 Thu 14:00]--[2026-10-01 Thu 14:05]   =>    1:05~%")))))
 
 (defparameter *org-internals-skipping*
   (format nil "#+FILETAGS: :f:~%* TODO Plain task :b:~%SCHEDULED: <2026-10-01 Thu>~%:LOGBOOK:~%CLOCK: [2026-10-01 Thu 09:00]--[2026-10-01 Thu 10:00] =>  1:00~%:END:~%** TODO Child with a tag twice :f:c:b:~%SCHEDULED: <2026-10-01 Thu>~%* COMMENT TODO Commented task~%SCHEDULED: <2026-10-01 Thu>~%CLOCK: [2026-10-01 Thu 11:00]--[2026-10-01 Thu 11:30] =>  0:30~%** TODO Under a commented one :b:~%DEADLINE: <2026-10-01 Thu>~%* TODO Archived task :ARCHIVE:~%SCHEDULED: <2026-10-01 Thu>~%CLOCK: [2026-10-01 Thu 13:00]--[2026-10-01 Thu 13:45] =>  0:45~%** TODO Under an archived one :b:~%<2026-10-01 Thu 15:00>~%* TODO After them~%<2026-10-01 Thu 16:00>~%CLOCK: [2026-10-01 Thu 17:00]--[2026-10-01 Thu 17:30] =>  0:30~%# CLOCK: [2026-10-01 Thu 19:00]--[2026-10-01 Thu 19:05] =>  0:05~%# a comment <2026-10-01 Thu 20:00>~%")
@@ -135,7 +142,8 @@ out), a CLOCK: line, where a logged line goes, and clocking in from any key.")
                                          archived :if-exists :supersede)
       (flet ((rows (items)
                (mapcar (lambda (item) (let ((entry (tuatara.defaults::org-item-entry item)))
-                                        (list (tuatara.defaults::org-item-type item) (tuatara.defaults::agenda-entry-title entry)
+                                        (list (tuatara.defaults::org-item-type item)
+                                              (tuatara.defaults::agenda-entry-title entry)
                                               (tuatara.defaults::agenda-entry-tags entry))))
                        items)))
         (let ((files (list file archived)))
@@ -145,7 +153,10 @@ out), a CLOCK: line, where a logged line goes, and clocking in from any key.")
           (is equal '(("clock" "Plain task" ("f" "b")) ("timestamp" "After them" ("f")) ("clock" "After them" ("f"))
                       ("scheduled" "Plain task" ("f" "b")) ("scheduled" "Child with a tag twice" ("f" "c" "b")))
               (rows (tuatara.defaults::org-agenda-day today :files files :log t)))
-          (is equal '(("todo" "Plain task" ("f" "b")) ("todo" "Child with a tag twice" ("f" "c" "b")) ("todo" "After them" ("f")))
+          (is equal
+              '(("todo" "Plain task" ("f" "b"))
+                ("todo" "Child with a tag twice" ("f" "c" "b"))
+                ("todo" "After them" ("f")))
               (rows (tuatara.defaults::org-agenda-todo-list :files files)))
           (is equal '(("tagsmatch" "Plain task" ("f" "b")) ("tagsmatch" "Child with a tag twice" ("f" "c" "b")))
               (rows (tuatara.defaults::org-agenda-match "b" :files files)))
@@ -155,8 +166,10 @@ out), a CLOCK: line, where a logged line goes, and clocking in from any key.")
          (rows (tuatara.defaults::clocktable-rows (tuatara.defaults::org-parse text) text "/x/skip.org" 3 nil nil)))
     (is equal '((1 "Plain task" 60 ("f" "b")) (1 "TODO Commented task" 30 ("f"))
                 (1 "Archived task" 45 ("f" "ARCHIVE")) (1 "After them" 30 ("f")))
-        (mapcar (lambda (row) (list (tuatara.defaults::clocktable-entry-level row) (tuatara.defaults::clocktable-entry-title row)
-                                    (tuatara.defaults::clocktable-entry-minutes row) (tuatara.defaults::clocktable-entry-tags row)))
+        (mapcar (lambda (row)
+                  (list (tuatara.defaults::clocktable-entry-level row) (tuatara.defaults::clocktable-entry-title row)
+                        (tuatara.defaults::clocktable-entry-minutes row)
+                        (tuatara.defaults::clocktable-entry-tags row)))
                 rows))))
 
 (define-test (org-internals logbook-lines-placed-alike)
@@ -182,16 +195,20 @@ out), a CLOCK: line, where a logged line goes, and clocking in from any key.")
           (after "C-c C-s 2 0 2 6 - 1 0 - 0 5 RET" (format nil "* TODO Task~%SCHEDULED: <2026-09-28 Mon>~%~a" body)))
       ;; none yet: one made after the planning line and properties, before another drawer
       (is string= (format nil "* TODO Task~%SCHEDULED: <2026-10-05 Mon>~%:PROPERTIES:~%:ID: x~%:END:~%:LOGBOOK:~%CLOCK: [2026-10-01 Thu 18:00]--[2026-10-01 Thu 18:00] =>  0:00~%:END:~%:NOTES:~%x~%:END:~%")
-          (after "C-c C-x C-i C-c C-x C-o" (format nil "* TODO Task~%SCHEDULED: <2026-10-05 Mon>~%:PROPERTIES:~%:ID: x~%:END:~%:NOTES:~%x~%:END:~%")))
+          (after "C-c C-x C-i C-c C-x C-o"
+                 (format nil
+                         "* TODO Task~%SCHEDULED: <2026-10-05 Mon>~%:PROPERTIES:~%:ID: x~%:END:~%:NOTES:~%x~%:END:~%")))
       (is string= (format nil "* TODO Task~%:LOGBOOK:~%- Note taken on [2026-10-01 Thu 18:00] \\\\~%  hi~%:END:~%:NOTES:~%x~%:END:~%")
           (after "C-c C-z h i RET" (format nil "* TODO Task~%:NOTES:~%x~%:END:~%")))
       ;; a note with no drawer goes right after the planning line, a drawer there left alone
       (let ((tuatara.defaults::*org-log-into-drawer* nil))
         (is string= (format nil "* TODO Task~%SCHEDULED: <2026-10-05 Mon>~%- Note taken on [2026-10-01 Thu 18:00] \\\\~%  hi~%:LOGBOOK:~%- old~%:END:~%Body~%")
-            (after "C-c C-z h i RET" (format nil "* TODO Task~%SCHEDULED: <2026-10-05 Mon>~%:LOGBOOK:~%- old~%:END:~%Body~%"))))
+            (after "C-c C-z h i RET"
+                   (format nil "* TODO Task~%SCHEDULED: <2026-10-05 Mon>~%:LOGBOOK:~%- old~%:END:~%Body~%"))))
       ;; a list item with a checkbox: its own drawer under it, each line on top
       (is string= (format nil "* Errands~%- [X] call Anna~%  :LOGBOOK:~%  - State \"DONE\"       from \"TODO\"       [2026-10-01 Thu 18:00]~%  - Note taken on [2026-10-01 Thu 18:00] \\\\~%    hi~%  CLOCK: [2026-10-01 Thu 18:00]--[2026-10-01 Thu 18:00] =>  0:00~%  :END:~%- [ ] buy milk~%")
-          (after "j C-c C-x C-i C-c C-x C-o C-c C-z h i RET C-c C-t" (format nil "* Errands~%- [ ] call Anna~%- [ ] buy milk~%"))))))
+          (after "j C-c C-x C-i C-c C-x C-o C-c C-z h i RET C-c C-t"
+                 (format nil "* Errands~%- [ ] call Anna~%- [ ] buy milk~%"))))))
 
 (define-test (org-internals clock-in-alike-from-every-key)
   ;; C-c C-x C-i in the file, I on the agenda's line: the same line in the same place, a task's or a checkbox item's
@@ -225,7 +242,8 @@ out), a CLOCK: line, where a logged line goes, and clocking in from any key.")
         (fresh "")))))
 
 (define-test (org-internals links-shown-as-labels)
-  ;; a link with a label shows its label, one without its target, escapes taken off, wherever a note's text is shown plain
+  ;; a link with a label shows its label, one without its target, escapes taken off, wherever a note's text is shown
+  ;; plain
   (let ((labelled "Read [[a\\]b][x]] first") (bare "Read [[target]] first") (escaped "Read [[a\\]b]] first"))
     (is string= "Read x first" (tuatara.defaults::org-links-as-labels labelled))
     (is string= "Read target first" (tuatara.defaults::org-links-as-labels bare))
@@ -265,10 +283,13 @@ out), a CLOCK: line, where a logged line goes, and clocking in from any key.")
   ;; what the parse calls a dynamic block is what updating the blocks finds: no blank needed after
   ;; #+BEGIN:, #+END with or without its colon, a line with more after #+END: no end
   (flet ((found (text)
-           (mapcar (lambda (block) (list (fourth block) (fifth block))) (tuatara.defaults::dblock-blocks (tuatara.defaults::org-parse text) text)))
+           (mapcar (lambda (block) (list (fourth block) (fifth block)))
+                   (tuatara.defaults::dblock-blocks (tuatara.defaults::org-parse text) text)))
          (parsed (text)
            (and (tuatara.defaults::org-find-in-tree (tuatara.defaults::org-parse text)
-                                                    (lambda (n) (eq (tuatara.defaults::org-node-type n) 'tuatara.defaults::dynamic-block)))
+                                                    (lambda (n)
+                                                      (eq (tuatara.defaults::org-node-type n)
+                                                          'tuatara.defaults::dynamic-block)))
                 t)))
     (let ((text (format nil "#+BEGIN:clocktable :scope file  ~%old~%#+END~%after~%")))
       (is equal '(("clocktable" ":scope file")) (found text))
@@ -287,25 +308,32 @@ out), a CLOCK: line, where a logged line goes, and clocking in from any key.")
          (text (format nil "* TODO Task~%~a~%" line)))
     (is equal `(("SCHEDULED" . ,range) ("DEADLINE" . "<2026-10-05 Mon>")) (tuatara.defaults::org-planning-tokens line))
     (let ((planning (tuatara.defaults::org-find-in-tree (tuatara.defaults::org-parse text)
-                                                        (lambda (n) (eq (tuatara.defaults::org-node-type n) 'tuatara.defaults::planning)))))
+                                                        (lambda (n)
+                                                          (eq (tuatara.defaults::org-node-type n)
+                                                              'tuatara.defaults::planning)))))
       (is string= range (tuatara.defaults::org-property planning :scheduled)))
     (with-test-directory (dir)
       (let ((file (namestring (merge-pathnames "plan.org" dir))))
         (alexandria:write-string-into-file text file :if-exists :supersede)
-        (is string= range (tuatara.defaults::agenda-entry-scheduled (first (tuatara.defaults::org-agenda-entries file))))))))
+        (is string= range
+            (tuatara.defaults::agenda-entry-scheduled (first (tuatara.defaults::org-agenda-entries file))))))))
 
 (define-test (org-internals tree-walk-takes-titles)
   ;; every node is visited, a headline's title too: a <<target>> in a heading is found
   (let* ((text (format nil "* A heading <<here>>~%#+NAME: one~%#+begin_src sh~%echo~%#+end_src~%** B~%#+begin_src python~%x~%#+end_src~%"))
          (tree (tuatara.defaults::org-parse text)))
-    (true (tuatara.defaults::org-find-in-tree tree (lambda (n) (and (eq (tuatara.defaults::org-node-type n) 'tuatara.defaults::target)
-                                                                     (equal (tuatara.defaults::org-property n :value) "here")))))
+    (true (tuatara.defaults::org-find-in-tree tree
+                                              (lambda (n)
+                                                (and (eq (tuatara.defaults::org-node-type n) 'tuatara.defaults::target)
+                                                      (equal (tuatara.defaults::org-property n :value) "here")))))
     (is equal '("python" "sh") (sort (copy-list (tuatara.defaults::org-src-language-names tree)) #'string<))
     (true (gethash "one" (tuatara.defaults::org-named-blocks tree)))
     (is equal "B"
         (let ((seen '()))
-          (tuatara.defaults::org-walk-tree tree (lambda (n) (when (eq (tuatara.defaults::org-node-type n) 'tuatara.defaults::headline)
-                                                              (push (tuatara.defaults::org-property n :raw-value) seen))))
+          (tuatara.defaults::org-walk-tree tree
+                                           (lambda (n)
+                                             (when (eq (tuatara.defaults::org-node-type n) 'tuatara.defaults::headline)
+                                               (push (tuatara.defaults::org-property n :raw-value) seen))))
           (first seen)))))
 
 (define-test (org-internals imported-tables-alike)
@@ -328,14 +356,20 @@ out), a CLOCK: line, where a logged line goes, and clocking in from any key.")
                                              '(("MACRO" . "m one") ("MACRO" . "M  two")))
                                        (tuatara.defaults::org-macro-definitions))
                                 :test #'string-equal)))
-  (true (search "Say two." (tuatara.defaults::org-latex-document (format nil "#+MACRO: m one~%#+MACRO: m two~%Say {{{m}}}.~%"))))
+  (true (search "Say two."
+                (tuatara.defaults::org-latex-document (format nil "#+MACRO: m one~%#+MACRO: m two~%Say {{{m}}}.~%"))))
   (let ((b (tuatara.buffer:make-buffer "*macros*" :text (format nil "#+macro: who first~%#+macro: who second~%"))))
     (unwind-protect
-         (let ((who (find "who" (tuatara.export::org-macro-choices b) :key #'tuatara.command:candidate-string :test #'string=)))
+         (let ((who (find "who"
+                          (tuatara.export::org-macro-choices b)
+                          :key #'tuatara.command:candidate-string
+                          :test #'string=)))
            (is string= "declared: second" (tuatara.command:candidate-annotation who)))
       (tuatara.buffer:kill-buffer b)))
   (with-test-directory (dir)
-    (alexandria:write-string-into-file (format nil "#+MACRO: R [$1]~%") (merge-pathnames "setup.org" dir) :if-exists :supersede)
+    (alexandria:write-string-into-file (format nil "#+MACRO: R [$1]~%")
+                                       (merge-pathnames "setup.org" dir)
+                                       :if-exists :supersede)
     (let ((folder (tuatara.io:parent-path (namestring (merge-pathnames "note.org" dir)))))
       (is eq nil (tuatara.export::only-enhanced-macro (format nil "#+SETUPFILE: setup.org~%See {{{R(x)}}}.~%") folder))
       (is string= "R" (tuatara.export::only-enhanced-macro (format nil "See {{{R(x)}}}.~%") folder)))))
@@ -346,8 +380,12 @@ out), a CLOCK: line, where a logged line goes, and clocking in from any key.")
          (tree (tuatara.defaults::org-parse text)))
     (is string= ":a 1 :b 2" (tuatara.defaults::org-file-properties tree "header-args"))
     (flet ((at (title)
-             (tuatara.defaults::org-find-in-tree tree (lambda (n) (and (eq (tuatara.defaults::org-node-type n) 'tuatara.defaults::headline)
-                                                                        (equal (tuatara.defaults::org-property n :raw-value) title))))))
+             (tuatara.defaults::org-find-in-tree tree
+                                                 (lambda (n)
+                                                   (and (eq (tuatara.defaults::org-node-type n)
+                                                            'tuatara.defaults::headline)
+                                                         (equal (tuatara.defaults::org-property n
+                                                                                                :raw-value) title))))))
       (is string= ":a 1 :b 2 :c 3" (tuatara.defaults::org-inherited-property tree (first (tuatara.defaults::org-node-children (at "H"))) "header-args"))
       (is string= ":d 4" (tuatara.defaults::org-inherited-property tree (first (tuatara.defaults::org-node-children (at "I"))) "header-args")))))
 
@@ -365,8 +403,10 @@ out), a CLOCK: line, where a logged line goes, and clocking in from any key.")
   (flet ((types (text)
            (let ((found '()))
              (tuatara.defaults::org-walk-tree (tuatara.defaults::org-parse text)
-                                              (lambda (n) (when (eq (tuatara.defaults::org-node-type n) 'tuatara.defaults::timestamp)
-                                                            (push (tuatara.defaults::org-property n :type) found))))
+                                              (lambda (n)
+                                                (when (eq (tuatara.defaults::org-node-type n)
+                                                          'tuatara.defaults::timestamp)
+                                                  (push (tuatara.defaults::org-property n :type) found))))
              (nreverse found))))
     (is equal '(tuatara.defaults::active) (types (format nil "Due <2026-10-01 Thu --2d> then.~%")))
     (is equal '(tuatara.defaults::inactive) (types (format nil "Was [2026-10-01 Thu --2d] then.~%")))
@@ -375,8 +415,11 @@ out), a CLOCK: line, where a logged line goes, and clocking in from any key.")
     (is equal '(tuatara.defaults::active-range) (types (format nil "At <2026-10-01 Thu 09:00-10:00>.~%")))))
 
 (define-test (org-internals returns-counted-across-chunk-edge)
-  ;; a carriage return ending one megabyte of the text, its newline beginning the next: the returns after it where the stripped text has them
-  (let ((text (concatenate 'string (make-string 1048575 :initial-element #\a) (format nil "~C~%b~C~%c~C~%" #\Return #\Return #\Return))))
+  ;; a carriage return ending one megabyte of the text, its newline beginning the next: the returns after it where the
+  ;; stripped text has them
+  (let ((text (concatenate 'string
+                           (make-string 1048575 :initial-element #\a)
+                           (format nil "~C~%b~C~%c~C~%" #\Return #\Return #\Return))))
     (is equalp (nth-value 1 (tuatara.defaults::org-strip-returns text))
         (tuatara.defaults::org-returns-in-rope (tuatara.text:string->rope text)))))
 
@@ -389,7 +432,10 @@ out), a CLOCK: line, where a logged line goes, and clocking in from any key.")
 (define-test (org-internals headline-index-costs-no-copy)
   ;; where the headlines begin, found by reading the text a window at a time: no copy of it, however long it is
   (flet ((consed (octets)
-           (let ((buffer (org-internals-buffer (concatenate 'string (format nil "* A~%") (org-internals-filler octets) (format nil "* B~%")))))
+           (let ((buffer (org-internals-buffer (concatenate 'string
+                                                            (format nil "* A~%")
+                                                            (org-internals-filler octets)
+                                                            (format nil "* B~%")))))
              (unwind-protect
                   (progn
                     (is = 2 (org-internals-headline-count buffer))
@@ -404,9 +450,11 @@ out), a CLOCK: line, where a logged line goes, and clocking in from any key.")
       (true (< per-megabyte (* 16 1024)) "~:d octets for each megabyte" per-megabyte))))
 
 (define-test (org-internals bullets-look-only-at-shown-headlines)
-  ;; the signs of the headlines in sight: found by halves, not by walking every headline of the file for each window drawn
+  ;; the signs of the headlines in sight: found by halves, not by walking every headline of the file for each window
+  ;; drawn
   (flet ((seconds (headlines)
-           (let ((buffer (org-internals-buffer (with-output-to-string (s) (dotimes (i headlines) (format s "* h~d~%" i))))))
+           (let ((buffer (org-internals-buffer (with-output-to-string (s)
+                                                 (dotimes (i headlines) (format s "* h~d~%" i))))))
              (unwind-protect
                   (progn (is = headlines (org-internals-headline-count buffer))
                          (is = 4 (length (tuatara.defaults::org-headline-signs buffer 0 20)))
@@ -421,7 +469,9 @@ out), a CLOCK: line, where a logged line goes, and clocking in from any key.")
 
 (define-test (org-internals line-head-cut-between-characters)
   ;; the start of a long line read to its limit, cut before a character the limit falls in; a short line whole
-  (let ((buffer (org-internals-buffer (concatenate 'string "a" (make-string 600 :initial-element #\é) (string #\Newline) "- [ ] x"))))
+  (let ((buffer (org-internals-buffer (concatenate 'string "a"
+                                                   (make-string 600 :initial-element #\é)
+                                                   (string #\Newline) "- [ ] x"))))
     (unwind-protect
          (let ((head (tuatara.defaults::buffer-line-head buffer 0)))
            (is = 256 (length head))
@@ -430,7 +480,8 @@ out), a CLOCK: line, where a logged line goes, and clocking in from any key.")
       (tuatara.buffer:kill-buffer buffer))))
 
 (define-test (org-internals unclosed-openings-parsed-in-a-line-each)
-  ;; drawers, blocks and environments never closed, and \( or @@ never closed in a paragraph: each line looked at a few times, not to the end again for each
+  ;; drawers, blocks and environments never closed, and \( or @@ never closed in a paragraph: each line looked at a few
+  ;; times, not to the end again for each
   (flet ((per-line (line)
            (flet ((seconds (lines)
                     (let ((text (with-output-to-string (s) (dotimes (i lines) (write-line line s)))))
@@ -439,10 +490,27 @@ out), a CLOCK: line, where a logged line goes, and clocking in from any key.")
                                        (tuatara.defaults::org-parse text)
                                        (/ (- (thread-cpu-time) start) internal-time-units-per-second))))))
              (/ (- (seconds 8000) (seconds 2000)) 6000))))
-    (dolist (line '(":a:" "#+BEGIN_X" "\\begin{x}" "- item" "word \\( and @@b:x and [[a][b"))
+    (dolist (line '(":a:" "#+BEGIN_X" "\\begin{x}" "- item" "word \\( and @@b:x and [[a][b" "word {{{r(a and {{{n(b"))
       (let ((seconds (per-line line)))
         ;; a line: microseconds; looking to the end again for each was milliseconds
         (true (< seconds 1/10000) "~a: ~,1f µs a line" line (* seconds 1000000))))))
+
+(define-test (org-internals macro-calls-closed-at-the-first-closer)
+  ;; a call's arguments end at the first )}}} after its (, over lines too; the
+  ;; calls after it are found from there
+  (flet ((calls (text)
+           (let ((calls '()))
+             (tuatara.defaults::org-walk-tree
+              (tuatara.defaults::org-parse text)
+              (lambda (node)
+                (when (eq (tuatara.defaults::org-node-type node) 'tuatara.defaults::macro)
+                  (push (list (tuatara.defaults::org-property node :key) (tuatara.defaults::org-property node :args))
+                        calls))))
+             (nreverse calls))))
+    (is equal '(("a" ("x {{{b(y")) ("c" ("z" "w"))) (calls "{{{a(x {{{b(y)}}} {{{c(z, w)}}}"))
+    (is equal `(("n" nil) ("r" ("")) ("p" ("one" ,(format nil "~%two"))))
+        (calls (format nil "{{{n}}} {{{r()}}} {{{p(one,~%two)}}}")))
+    (is equal '() (calls "{{{r( and {{{n( never closed"))))
 
 (define-test (org-internals drawers-folded-in-a-pass)
   ;; a section of lines like drawers, none ended: each line looked at once, not to the section's end again for each
@@ -462,7 +530,8 @@ out), a CLOCK: line, where a logged line goes, and clocking in from any key.")
       (true (< per-line 1/20000) "~,1f µs a line" (* per-line 1000000)))))
 
 (define-test (org-internals dynamic-block-found-in-the-parse)
-  ;; the block point is in found in the parse: in place, a #+BEGIN: line inside a source block none, no line copied for it
+  ;; the block point is in found in the parse: in place, a #+BEGIN: line inside a source block none, no line copied for
+  ;; it
   (let* ((text (format nil "* A~%#+BEGIN: clocktable :maxlevel 2~%| x |~%#+END:~%#+begin_src org~%#+BEGIN: clocktable~%#+END:~%#+end_src~%"))
          (tree (tuatara.defaults::org-parse text)))
     (is equal (list 4 36 42 "clocktable" ":maxlevel 2") (tuatara.defaults::dblock-at tree text 10))
@@ -471,7 +540,9 @@ out), a CLOCK: line, where a logged line goes, and clocking in from any key.")
     (false (tuatara.defaults::dblock-at tree text (search (format nil "#+BEGIN: clocktable~%") text)))
     (is = 1 (length (tuatara.defaults::dblock-blocks tree text))))
   (flet ((consed (lines)
-           (let* ((text (concatenate 'string (format nil "#+BEGIN: clocktable~%#+END:~%") (org-internals-filler (* lines 64))))
+           (let* ((text (concatenate 'string
+                                     (format nil "#+BEGIN: clocktable~%#+END:~%")
+                                     (org-internals-filler (* lines 64))))
                   (tree (tuatara.defaults::org-parse text)))
              (loop repeat 3
                    minimize (let ((before (sb-ext:get-bytes-consed)))
@@ -482,7 +553,8 @@ out), a CLOCK: line, where a logged line goes, and clocking in from any key.")
       (true (< per-line 1) "~,1f octets a line" per-line))))
 
 (define-test (org-internals top-level-found-by-halves)
-  ;; in a flat note of many headlines, what is in sight is found by halves: the node at a place, the hidden parts of links, alike to before
+  ;; in a flat note of many headlines, what is in sight is found by halves: the node at a place, the hidden parts of
+  ;; links, alike to before
   (flet ((note (headlines)
            (with-output-to-string (s)
              (dotimes (i headlines) (format s "* h~d~%" i))
@@ -490,9 +562,14 @@ out), a CLOCK: line, where a logged line goes, and clocking in from any key.")
     (let* ((text (note 3))
            (tree (tuatara.defaults::org-parse text))
            (at (search "[[" text)))
-      (is equal (list (cons at (+ at 5)) (cons (+ at 6) (+ at 8))) (tuatara.defaults::org-hidden-chars tree 0 (length text)))
+      (is equal
+          (list (cons at (+ at 5)) (cons (+ at 6) (+ at 8)))
+          (tuatara.defaults::org-hidden-chars tree 0 (length text)))
       (is eq 'tuatara.defaults::headline
-          (tuatara.defaults::org-node-type (tuatara.defaults::org-node-at tree at (lambda (n) (eq (tuatara.defaults::org-node-type n) 'tuatara.defaults::headline)))))
+          (tuatara.defaults::org-node-type (tuatara.defaults::org-node-at tree at
+                                                                          (lambda (n)
+                                                                            (eq (tuatara.defaults::org-node-type n)
+                                                                                'tuatara.defaults::headline)))))
       (false (tuatara.defaults::org-hidden-chars tree 0 at)))
     (flet ((seconds (headlines)
              (let* ((text (note headlines))
@@ -513,7 +590,8 @@ out), a CLOCK: line, where a logged line goes, and clocking in from any key.")
            (let* ((text (with-output-to-string (s) (dotimes (i headlines) (format s "* h~d~%** sub~%" i))))
                   (tree (tuatara.defaults::org-parse text))
                   (at (- (length text) 3)))
-             (is equal "sub" (tuatara.defaults::org-property (tuatara.defaults::org-headline-on-line tree text at) :raw-value))
+             (is equal "sub"
+                 (tuatara.defaults::org-property (tuatara.defaults::org-headline-on-line tree text at) :raw-value))
              (loop repeat 3
                    minimize (let ((before (sb-ext:get-bytes-consed)))
                               (tuatara.defaults::org-headline-on-line tree text at)
@@ -552,8 +630,12 @@ out), a CLOCK: line, where a logged line goes, and clocking in from any key.")
       (let* ((text (note kind 100))
              (tree (tuatara.defaults::org-parse text))
              (at (search "[[" text)))
-        (is equal (list (cons at (+ at 5)) (cons (+ at 6) (+ at 8))) (tuatara.defaults::org-hidden-chars tree 0 (length text)))
-        (is equal (list (cons at (+ at 5)) (cons (+ at 6) (+ at 8))) (tuatara.defaults::org-hidden-chars tree at (length text)))
+        (is equal
+            (list (cons at (+ at 5)) (cons (+ at 6) (+ at 8)))
+            (tuatara.defaults::org-hidden-chars tree 0 (length text)))
+        (is equal
+            (list (cons at (+ at 5)) (cons (+ at 6) (+ at 8)))
+            (tuatara.defaults::org-hidden-chars tree at (length text)))
         (false (tuatara.defaults::org-hidden-chars tree 0 at)))
       (flet ((seconds (count)
                (let* ((text (note kind count))
@@ -603,7 +685,9 @@ out), a CLOCK: line, where a logged line goes, and clocking in from any key.")
            (false (tuatara.defaults::markdown-follow-link buffer)))
       (tuatara.buffer:kill-buffer buffer)))
   (flet ((consed (octets)
-           (let ((buffer (org-internals-buffer (concatenate 'string (format nil "plain words~%") (org-internals-filler octets)))))
+           (let ((buffer (org-internals-buffer (concatenate 'string
+                                                            (format nil "plain words~%")
+                                                            (org-internals-filler octets)))))
              (unwind-protect
                   (loop repeat 3
                         minimize (let ((before (sb-ext:get-bytes-consed)))
@@ -618,7 +702,10 @@ out), a CLOCK: line, where a logged line goes, and clocking in from any key.")
   ;; TAB on a headline of a large file not yet parsed reads at most a few megabytes for its
   ;; subtree, whatever its length; a longer one is left to the parse
   (flet ((seconds (octets)
-           (let ((buffer (org-internals-buffer (concatenate 'string (format nil "* A~%") (org-internals-filler octets) (format nil "* B~%")))))
+           (let ((buffer (org-internals-buffer (concatenate 'string
+                                                            (format nil "* A~%")
+                                                            (org-internals-filler octets)
+                                                            (format nil "* B~%")))))
              (unwind-protect
                   (let ((start (thread-cpu-time)))
                     (false (tuatara.defaults::org-cycle-headline-at buffer 0))
@@ -654,7 +741,8 @@ out), a CLOCK: line, where a logged line goes, and clocking in from any key.")
   ;; words kept from markup on one line say what they said, line breaks apart
   (dolist (words '("Cost $5 [[file:x]] \\input{y} @@latex:z@@ {{{m}}}" "\\dollar{} as written" "plain"))
     (is string= words (tuatara.defaults::org-safe-line-words (tuatara.defaults::org-safe-line words))))
-  (is string= "two lines" (tuatara.defaults::org-safe-line-words (tuatara.defaults::org-safe-line (format nil "two~%lines")))))
+  (is string= "two lines"
+      (tuatara.defaults::org-safe-line-words (tuatara.defaults::org-safe-line (format nil "two~%lines")))))
 
 (define-test (org-internals parse-positions-and-octets)
   ;; a parse turns its characters into the buffer's octets and back, the carriage returns before
@@ -679,7 +767,8 @@ out), a CLOCK: line, where a logged line goes, and clocking in from any key.")
            (is = (search "Two" text) (tuatara.defaults::org-parse-point parse))
            ;; the root's end is its text's: a headline at the very end is found by its subtree
            (is string= "Two" (tuatara.defaults::org-property
-                              (tuatara.defaults::org-current-headline (tuatara.defaults::org-parse-tree parse) (length text))
+                              (tuatara.defaults::org-current-headline (tuatara.defaults::org-parse-tree parse)
+                                                                      (length text))
                               :raw-value))
            ;; one edit, then a position of the text after it
            (tuatara.defaults::org-replace-chars parse 0 0 (format nil "* New~%") :point 2)

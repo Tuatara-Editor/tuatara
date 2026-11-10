@@ -5,9 +5,9 @@
 
 (define-test waits
   :description "A command that waits for work in the background (a thread, a large file's lines
-being counted, a parse, the characters' names) keeps reading keys: it goes on when the work ends,
+being counted, a parse, the characters' names) keeps reading keys. It goes on when the work ends,
 showing what it waits for and how far the work has got; C-g gives the waiting up at once, the work
-going on unless the wait stops it too; other keys typed meanwhile are handled after it, in order.")
+going on unless the wait stops it too. Other keys typed meanwhile are handled after it, in order.")
 
 (defun waiting-session (wait keys &key (text "") file (width 100) (height 10))
   "Start a session on a scratch buffer holding TEXT, or visiting FILE, call WAIT,
@@ -47,14 +47,18 @@ it took."
     ;; the work ends: true, what is waited for shown with the key that stops the waiting
     (let ((thread (sleeping-thread 0.4)))
       (multiple-value-bind (f editor result)
-          (waiting-session (lambda (e) (declare (ignore e)) (tuatara.command:wait-interruptibly thread :message "Waiting a while...")) "")
+          (waiting-session (lambda (e)
+                             (declare (ignore e))
+                             (tuatara.command:wait-interruptibly thread :message "Waiting a while...")) "")
         (declare (ignore editor))
         (is eq t result)
         (true (tuatara.frontend.fake:fake-frame-showing f "Waiting a while... (C-g stops waiting)"))))
     ;; work that ends within the grace shows nothing
     (let ((thread (sleeping-thread 0.01)))
       (multiple-value-bind (f editor result)
-          (waiting-session (lambda (e) (declare (ignore e)) (tuatara.command:wait-interruptibly thread :message "Quick work...")) "")
+          (waiting-session (lambda (e)
+                             (declare (ignore e))
+                             (tuatara.command:wait-interruptibly thread :message "Quick work...")) "")
         (declare (ignore editor))
         (is eq t result)
         (false (tuatara.frontend.fake:fake-frame-showing f "Quick work"))))
@@ -102,7 +106,9 @@ it took."
           (waiting-session (lambda (e) (declare (ignore e))
                              (multiple-value-list
                               (tuatara.command:wait-interruptibly thread :message "Busy..."
-                                                                         :stop (lambda (thread) (declare (ignore thread)) (setf told t)))))
+                                                                         :stop (lambda (thread)
+                                                                                 (declare (ignore thread))
+                                                                                 (setf told t)))))
                            "C-g")
         (declare (ignore editor))
         (is equal '(nil) result)
@@ -171,7 +177,9 @@ it took."
                        (f (tuatara.frontend.fake:make-fake-frontend :width 100 :height 10)))
                    (setf (tuatara.frontend.fake:fake-pending f) (lambda (f) (tuatara.frontend.fake::fake-events f)))
                    (tuatara.frontend.fake:fake-queue-keys f "M-g g 4 2 RET x")
-                   (let* ((editor (tuatara.command:run-editor f :files (list path) :setup #'tuatara.defaults:install-defaults))
+                   (let* ((editor (tuatara.command:run-editor f
+                                                              :files (list path)
+                                                              :setup #'tuatara.defaults:install-defaults))
                           (b (buffer-of editor))
                           (text (tuatara.buffer:buffer-string b)))
                      (true (tuatara.frontend.fake:fake-frame-showing f "Counting the lines of big.txt up to line 42"))
@@ -192,7 +200,9 @@ most the seconds given for it to end."
   ;; the outline waits on the parse itself, no thread of its own polling it
   (let* ((done nil)
          (parse (sleeping-thread 0.4 (lambda () (setf done t)))))
-    (with-functions-replaced ((tuatara.syntax:syntax-ready-tree (lambda (syntax) (declare (ignore syntax)) (and done :tree)))
+    (with-functions-replaced ((tuatara.syntax:syntax-ready-tree (lambda (syntax)
+                                                                  (declare (ignore syntax))
+                                                                  (and done :tree)))
                               (tuatara.syntax:parse-under-way-p (thread-under-way parse)))
       (multiple-value-bind (f editor result)
           (waiting-session (lambda (e) (declare (ignore e)) (tuatara.defaults::outline-tree :syntax)) "")
@@ -226,10 +236,14 @@ most the seconds given for it to end."
                                   (tuatara.defaults::set-major-mode b 'tuatara.defaults::org-mode)
                                   (setf pause seconds)
                                   ;; a change, so that the parse is behind the text
-                                  (tuatara.buffer:buffer-insert b (tuatara.buffer:buffer-size b) (format nil "* Four~%"))
+                                  (tuatara.buffer:buffer-insert b
+                                                                (tuatara.buffer:buffer-size b)
+                                                                (format nil "* Four~%"))
                                   (funcall wait b)))
                               keys :text text)))
-      (with-functions-replaced ((tuatara.defaults::org-parse (lambda (text &rest arguments) (sleep pause) (apply parse text arguments))))
+      (with-functions-replaced ((tuatara.defaults::org-parse (lambda (text &rest arguments)
+                                                               (sleep pause)
+                                                               (apply parse text arguments))))
         (let ((tuatara.defaults::*org-parse-at-once* 0))
           ;; the tree of the text as it is now, once it is parsed
           (multiple-value-bind (f editor result)
@@ -259,11 +273,15 @@ most the seconds given for it to end."
                  (loop while (<= (file-position out) tuatara.defaults::*org-parse-at-once*)
                        for i from 0 do (format out "* Heading ~d~%Some body text.~%" i))))
          (buffer (tuatara.buffer:make-buffer "large.org" :text text)))
-    (with-functions-replaced ((tuatara.defaults::org-parse (lambda (text &rest arguments) (push sb-thread:*current-thread* threads) (apply parse text arguments))))
+    (with-functions-replaced ((tuatara.defaults::org-parse (lambda (text &rest arguments)
+                                                             (push sb-thread:*current-thread* threads)
+                                                             (apply parse text arguments))))
       (let ((tuatara.defaults::*org-parse-wait* 5))
         (tuatara.buffer:buffer-insert buffer 0 "x")
         (tuatara.defaults::org-buffer-parse buffer)
-        (is eql (tuatara.buffer:buffer-version buffer) (tuatara.defaults::org-state-version (tuatara.defaults::org-buffer-state buffer)))
+        (is eql
+            (tuatara.buffer:buffer-version buffer)
+            (tuatara.defaults::org-state-version (tuatara.defaults::org-buffer-state buffer)))
         (is = 1 (length threads))
         (false (member sb-thread:*current-thread* threads))))
     (tuatara.buffer:buffer-mark-saved buffer)
@@ -308,7 +326,8 @@ most the seconds given for it to end."
                (setf (tuatara.frontend.fake:fake-pending f) (lambda (f) (tuatara.frontend.fake::fake-events f))))
              (let ((scratch (tuatara.buffer:find-buffer "*scratch*")))
                (when scratch (tuatara.buffer:kill-buffer scratch)))
-             (tuatara.buffer:make-buffer "*scratch*" :text (format nil "~{line ~d~%~}" (loop for i from 1 to 60 collect i)))
+             (tuatara.buffer:make-buffer "*scratch*"
+                                         :text (format nil "~{line ~d~%~}" (loop for i from 1 to 60 collect i)))
              (queue-test-keys f (format nil "~{~a~^ ~}" (loop repeat 40 collect "j")))
              (let ((editor (tuatara.command:run-editor f :setup #'tuatara.defaults:install-defaults
                                                          :buffer (tuatara.buffer:find-buffer "*scratch*"))))

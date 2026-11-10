@@ -50,7 +50,8 @@
     (is string= "aé b c d" (tuatara.buffer:buffer-string b))
     ;; positions in, between and after the spans follow the text, undo brings it back
     (setf (tuatara.buffer:buffer-point b) 8 (tuatara.buffer:buffer-mark b) 5)
-    (is = 2 (tuatara.buffer:buffer-splice-spans b (list (cons 0 1) (cons 4 6) (cons 7 8)) (tuatara.text:string->rope "XY")))
+    (is = 2
+        (tuatara.buffer:buffer-splice-spans b (list (cons 0 1) (cons 4 6) (cons 7 8)) (tuatara.text:string->rope "XY")))
     (is string= "XYé cd" (tuatara.buffer:buffer-string b))
     (is = 6 (tuatara.buffer:buffer-point b))
     (is = 5 (tuatara.buffer:buffer-mark b))
@@ -265,7 +266,8 @@
   ;; the buffer's oldest changes let go many times over, said the first time only
   (let* ((said '())
          (tuatara.buffer:*undo-limit* 500)
-         (tuatara.buffer:*undo-let-go-functions* (list (lambda (buffer) (push (tuatara.buffer:buffer-name buffer) said)))))
+         (tuatara.buffer:*undo-let-go-functions* (list (lambda (buffer)
+                                                         (push (tuatara.buffer:buffer-name buffer) said)))))
     (with-test-buffer (b "*undo limit said*" :text "")
       (loop repeat 50 do (hundred-octets-at-end b))
       (is equal '("*undo limit said*") said))))
@@ -274,7 +276,9 @@
   ;; random edits, undo, redo, merges, swaps and splices: the running count of what undo holds
   ;; is always what counting its batches afresh gives, and keeps within the limit
   (dolist (limit '(nil 3000))
-    (let ((tuatara.buffer:*undo-limit* limit) (tuatara.buffer:*undo-let-go-functions* '()) (*random-state* (sb-ext:seed-random-state 41)))
+    (let ((tuatara.buffer:*undo-limit* limit)
+          (tuatara.buffer:*undo-let-go-functions* '())
+          (*random-state* (sb-ext:seed-random-state 41)))
       (with-test-buffer (b "*undo count*" :text (make-string 500 :initial-element #\a))
         (let ((since (tuatara.buffer:buffer-undo-stack b)))
           (loop repeat 400
@@ -315,7 +319,9 @@
                     (same (lambda (p bias) (declare (ignore bias)) p)))
                (dotimes (i keys)
                  (tuatara.buffer:buffer-insert b (tuatara.buffer:buffer-size b) "x"))
-               (let ((final (tuatara.text:string->rope (concatenate 'string "ABCdef" (make-string keys :initial-element #\x))))
+               (let ((final (tuatara.text:string->rope (concatenate 'string
+                                                                    "ABCdef"
+                                                                    (make-string keys :initial-element #\x))))
                      (start (get-internal-real-time)))
                  (is eq :where-begun (tuatara.buffer:buffer-take-in-job-result
                                       b final same same
@@ -328,7 +334,8 @@
     (let ((ten (seconds 10)) (twenty (seconds 20)))
       (when (true (< twenty (+ 0.05 (* 4 ten))) "10 keys ~,3f s, 20 keys ~,3f s" ten twenty)
         (let ((thousand (seconds 1000)) (four-thousand (seconds 4000)))
-          (true (< four-thousand (+ 0.02 (* 8 thousand))) "1,000 keys ~,3f s, 4,000 keys ~,3f s" thousand four-thousand))))))
+          (true (< four-thousand
+                   (+ 0.02 (* 8 thousand))) "1,000 keys ~,3f s, 4,000 keys ~,3f s" thousand four-thousand))))))
 
 (define-test (buffer undo-limit-change-where-begun)
   ;; with a limit, a job's change laid out where it began still undoes right: the edits made

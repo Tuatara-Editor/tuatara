@@ -35,26 +35,26 @@ it is NIL, whatever *SENTENCE-END-DOUBLE-SPACE* says."
 
 (defun agenda-entry-get (entry field)
   "What the agenda entry ENTRY (as ORG-AGENDA-FILE-ENTRIES gives them) holds
-for FIELD: :FILE, the path of its file; :TEXT, the whole text of that file as
-it was read; :POSITION and :END, the characters of that text its headline
-begins at and its own text ends at, its headlines below left out; :LEVEL, how
-many stars it has; :TODO, its TODO keyword, or NIL; :TODO-TYPE, TODO or DONE
-for that keyword, NIL for none; :TITLE, its headline without stars, keyword,
-priority and tags; :HEADING, its headline after the stars as written; :TAGS,
-its tags, those it inherits first; :LOCAL-TAGS, its own, on its headline;
-:SCHEDULED, :DEADLINE and :CLOSED, the texts of those timestamps, or NIL;
-:PROPERTIES, an alist of names and values; :STAMPS, the texts of the active
-timestamps in its text, its planning line's left out; :RANGES, its ranges of
-days, each (FROM TO), the two timestamps' texts; :KIND, :HEADLINE, or
-:CHECKBOX for a list item with a checkbox kept as a task; :PRIORITY, Org's
-number for it, 2000 for [#A], 1000 for [#B] and none, 0 for [#C];
-:CATEGORY, its category; :LOGS, what its log says, in order, each one of
-\(:CLOSED TIMESTAMP NIL NIL) for its CLOSED: line; (:CLOCK FROM DURATION
-STOPPED OPEN) for a CLOCK: line, FROM its start as written, DURATION as
-written (1:05) and STOPPED the time of day it stopped (10:00) when it has an
-end, OPEN true while it has none; (:DONE-NOTE TIMESTAMP NIL NIL TICKED) for
-a note of being done, TICKED (DONE . TOTAL) of its checkboxes when the line
-after says so, else NIL."
+for FIELD. :FILE is the path of its file. :TEXT is the whole text of that file
+as it was read. :POSITION and :END are the characters of that text its
+headline begins at and its own text ends at, its headlines below left out.
+:LEVEL is how many stars it has. :TODO is its TODO keyword, or NIL. :TODO-TYPE
+is TODO or DONE for that keyword, NIL for none. :TITLE is its headline without
+stars, keyword, priority and tags. :HEADING is its headline after the stars as
+written. :TAGS is its tags, those it inherits first. :LOCAL-TAGS is its own,
+on its headline. :SCHEDULED, :DEADLINE and :CLOSED are the texts of those
+timestamps, or NIL. :PROPERTIES is an alist of names and values. :STAMPS is
+the texts of the active timestamps in its text, its planning line's left out.
+:RANGES is its ranges of days, each (FROM TO), the two timestamps' texts.
+:KIND is :HEADLINE, or :CHECKBOX for a list item with a checkbox kept as a
+task. :PRIORITY is Org's number for it, 2000 for [#A], 1000 for [#B] and none,
+0 for [#C]. :CATEGORY is its category. :LOGS is what its log says, in order.
+Each is one of \(:CLOSED TIMESTAMP NIL NIL) for its CLOSED: line. \(:CLOCK
+FROM DURATION STOPPED OPEN) is for a CLOCK: line, FROM its start as written,
+DURATION as written (1:05) and STOPPED the time of day it stopped (10:00) when
+it has an end, OPEN true while it has none. \(:DONE-NOTE TIMESTAMP NIL NIL
+TICKED) is for a note of being done, TICKED (DONE . TOTAL) of its checkboxes
+when the line after says so, else NIL."
   (ecase field
     (:file (agenda-entry-file entry))
     (:text (agenda-entry-text entry))
@@ -79,16 +79,16 @@ after says so, else NIL."
     (:logs (agenda-entry-logs entry))))
 
 (defun org-ts-get (ts field)
-  "What the timestamp TS (as ORG-READ-TS reads one) holds for FIELD: :ACTIVE,
-true for <...>, NIL for [...]; :YEAR, :MONTH and :DAY, its date as written;
-:DAY-NUMBER, its day as a day number (DAY-NUMBER), a date past its month's
-end counted on into the next; :HOUR and :MINUTE, its time, NIL without one;
-:END-HOUR and :END-MINUTE, the end of its time range, NIL without one;
-:REPEATER, how it repeats, :CUMULATE (+), :CATCH-UP (++) or :RESTART (.+), NIL
-when it does not; :REPEAT-VALUE and :REPEAT-UNIT, how often, the unit #\\h,
-#\\d, #\\w, #\\m or #\\y; :WARNING, how its warning counts, :ALL (-) or :FIRST
-\(--), NIL without one; :WARNING-VALUE and :WARNING-UNIT, how long before,
-in the same units."
+  "What the timestamp TS (as ORG-READ-TS reads one) holds for FIELD. :ACTIVE
+is true for <...>, NIL for [...]. :YEAR, :MONTH and :DAY are its date as
+written. :DAY-NUMBER is its day as a day number (DAY-NUMBER), a date past its
+month's end counted on into the next. :HOUR and :MINUTE are its time, NIL
+without one. :END-HOUR and :END-MINUTE are the end of its time range, NIL
+without one. :REPEATER is how it repeats, :CUMULATE (+), :CATCH-UP (++) or
+:RESTART (.+), NIL when it does not. :REPEAT-VALUE and :REPEAT-UNIT are how
+often, the unit #\\h, #\\d, #\\w, #\\m or #\\y. :WARNING is how its warning
+counts, :ALL (-) or :FIRST \(--), NIL without one. :WARNING-VALUE and
+:WARNING-UNIT are how long before, in the same units."
   (ecase field
     (:active (org-ts-active ts))
     (:year (org-ts-year ts))
@@ -107,14 +107,14 @@ in the same units."
     (:warning-unit (org-ts-warning-unit ts))))
 
 (defun org-rule-get (rule field)
-  "What the date by rule RULE (as ORG-READ-RULE reads one) holds for FIELD:
-:KIND, one of :FLOAT (the Nth or last weekday of a month), :CYCLIC (every N
+  "What the date by rule RULE (as ORG-READ-RULE reads one) holds for FIELD.
+:KIND is one of :FLOAT (the Nth or last weekday of a month), :CYCLIC (every N
 days), :BLOCK (every day from one date to another), :ANNIVERSARY (a day each
-year), :DATE (the days whose year, month and day are as given), :WEEKDAYS
-\(the days of the week listed, 0 for Sunday to 6 for Saturday), :ALL (the days
-all its rules take) or :ANY (the days any of them takes); :ARGUMENTS, what
-its form says, as ORG-READ-RULE reads them; :HOUR, :MINUTE, :END-HOUR and
-:END-MINUTE, the time written after it, or NIL."
+year) and :DATE (the days whose year, month and day are as given). It is also
+one of :WEEKDAYS \(the days of the week listed, 0 for Sunday to 6 for
+Saturday), :ALL (the days all its rules take) or :ANY (the days any of them
+takes). :ARGUMENTS is what its form says, as ORG-READ-RULE reads them. :HOUR,
+:MINUTE, :END-HOUR and :END-MINUTE are the time written after it, or NIL."
   (ecase field
     (:kind (org-rule-kind rule))
     (:arguments (org-rule-arguments rule))
@@ -133,23 +133,50 @@ its form says, as ORG-READ-RULE reads them; :HOUR, :MINUTE, :END-HOUR and
     ;; the editor and its buffers
     current-buffer message buffer-list tuatara.command:prefix-argument package-file load-package-file
     tuatara.buffer:make-buffer tuatara.buffer:find-buffer tuatara.buffer:kill-buffer tuatara.buffer:live-buffer-p
-    tuatara.buffer:unique-buffer-name tuatara.buffer:buffer-name tuatara.buffer:buffer-file tuatara.command:buffer-directory
+    tuatara.buffer:unique-buffer-name
+    tuatara.buffer:buffer-name
+    tuatara.buffer:buffer-file
+    tuatara.command:buffer-directory
     tuatara.buffer:buffer-point tuatara.buffer:buffer-string tuatara.buffer:buffer-size tuatara.buffer:buffer-region
-    tuatara.buffer:buffer-start tuatara.buffer:buffer-end tuatara.buffer:buffer-narrowed-p tuatara.buffer:with-narrowing-lifted
+    tuatara.buffer:buffer-start
+    tuatara.buffer:buffer-end
+    tuatara.buffer:buffer-narrowed-p
+    tuatara.buffer:with-narrowing-lifted
     tuatara.buffer:buffer-line-start tuatara.buffer:buffer-line-end tuatara.buffer:buffer-line-text
     tuatara.buffer:buffer-char-at tuatara.buffer:buffer-forward-char buffer-char-before buffer-crlf-p
     tuatara.buffer:buffer-mark-active-p tuatara.buffer:buffer-version tuatara.buffer:buffer-local delete-spans
     tuatara.modes:buffer-major-mode tuatara.modes:set-major-mode buffer-in-mode
-    tuatara.command:show-buffer tuatara.command:display-buffer tuatara.command:display-buffer-at tuatara.command:buffer-window tuatara.command:leave-window tuatara.display:window-point tuatara.command:pop-to-buffer tuatara.command:abbreviated-path
+    tuatara.command:show-buffer
+    tuatara.command:display-buffer
+    tuatara.command:display-buffer-at
+    tuatara.command:buffer-window
+    tuatara.command:leave-window
+    tuatara.display:window-point
+    tuatara.command:pop-to-buffer
+    tuatara.command:abbreviated-path
     tuatara.modes:find-or-make-buffer
     ;; a buffer's text as it stands, unchanged by later edits, for work in the background
     tuatara.buffer:buffer-text tuatara.text:rope-octet-length rope-octet tuatara.text:rope-copy-into
     rope-find-octet tuatara.text:rope-line-start tuatara.text:rope-line-end
     ;; asking and waiting
-    tuatara.command:read-string tuatara.command:finish-minibuffer tuatara.command:quit tuatara.command:completing-read tuatara.command:completing-read-value tuatara.command:make-candidate tuatara.command:yes-or-no-p* tuatara.command:y-or-n-p*
+    tuatara.command:read-string
+    tuatara.command:finish-minibuffer
+    tuatara.command:quit
+    tuatara.command:completing-read
+    tuatara.command:completing-read-value
+    tuatara.command:make-candidate
+    tuatara.command:yes-or-no-p*
+    tuatara.command:y-or-n-p*
     tuatara.command:complete-in-minibuffer tuatara.command:*question-variables* tuatara.command:*buffers-asked-about*
     read-date tuatara.dates:read-date-text
-    read-path read-file-path read-directory-path read-native-path read-new-native-path read-whole-number tuatara.command:wait-interruptibly tuatara.command:wait-until-interruptibly
+    read-path
+    read-file-path
+    read-directory-path
+    read-native-path
+    read-new-native-path
+    read-whole-number
+    tuatara.command:wait-interruptibly
+    tuatara.command:wait-until-interruptibly
     tuatara.command:first-line tuatara.text:one-line
     ;; telling what has just happened, on the desktop and in *Notifications*
     notify
@@ -166,25 +193,68 @@ its form says, as ORG-READ-RULE reads them; :HOUR, :MINUTE, :END-HOUR and
     tuatara.command:define-menu tuatara.command:menu-arguments show-help show-help-pieces define-display-toggle
     ;; work in the background
     tuatara.runtime:job tuatara.runtime:start-job-thread tuatara.runtime:job-check-stop tuatara.runtime:job-cancel
-    tuatara.runtime:job-buffer tuatara.runtime:job-running-p tuatara.runtime:job-ending-words tuatara.runtime:running-percent
-    tuatara.runtime:jobs-of tuatara.runtime:make-guarded-thread tuatara.runtime:deadline-in tuatara.runtime:deadline-passed-p
+    tuatara.runtime:job-buffer
+    tuatara.runtime:job-running-p
+    tuatara.runtime:job-ending-words
+    tuatara.runtime:running-percent
+    tuatara.runtime:jobs-of
+    tuatara.runtime:make-guarded-thread
+    tuatara.runtime:deadline-in
+    tuatara.runtime:deadline-passed-p
     tuatara.runtime:job-take-in tuatara.runtime:job-percent tuatara.runtime:job-state-words tuatara.runtime:job-status
     tuatara.runtime:job-program-started tuatara.runtime:running-job take-in-soon
     ;; failures nothing can be done about, kept in the debug log, and failures said
     tuatara.runtime:ignoring-errors-reported tuatara.runtime:*secret-at-hand*
     tuatara.runtime:failure-words
     ;; hooks, each a list a package adds its function to
-    *post-self-insert-functions* tuatara.buffer:*kill-buffer-functions* *kill-buffer-query-functions* tuatara.command:*mode-line-functions*
-    *health-decoder-functions* *preview-text-functions* *file-local-setting-functions* *file-local-taken-functions* *file-views*
+    *post-self-insert-functions*
+    tuatara.buffer:*kill-buffer-functions*
+    *kill-buffer-query-functions*
+    tuatara.command:*mode-line-functions*
+    *health-decoder-functions*
+    *preview-text-functions*
+    *file-local-setting-functions*
+    *file-local-taken-functions*
+    *file-views*
     *org-agenda-file-functions* tuatara.command:*tick-functions*
     ;; showing a file a way of its own
-    file-view-path file-view-show file-view-refuses file-view-can-draw-p reading-buffer show-reading-result buffer-private-folder
+    file-view-path
+    file-view-show
+    file-view-refuses
+    file-view-can-draw-p
+    reading-buffer
+    show-reading-result
+    buffer-private-folder
     visit-path visit-path-as-text image-view-visit pdf-view-visit pdf-file-p office-view-visit view-made-text tuatara.io:safe-visit-p *file-changing-commands*
     ;; files and paths
-    tuatara.io:native tuatara.io:native-file-name tuatara.io:native-file-stem tuatara.io:native-file-type tuatara.io:expand-path tuatara.io:parent-path
-    tuatara.io:slash-ended tuatara.io:path-within-p tuatara.io:real-path-or-parent tuatara.io:path-join tuatara.io:path-kind tuatara.io:path-stamp tuatara.io:stamp-size tuatara.io:free-octets
-    tuatara.io:directory-entries walk-directory tuatara.io:call-with-file tuatara.io:file-head tuatara.io:binary-head-p tuatara.io:read-fd-start
-    tuatara.io:read-fd-octets tuatara.io:write-octets tuatara.io:file-system-error tuatara.io:copy-regular-file tuatara.io:write-new-file tuatara.io:make-directory tuatara.io:remove-file tuatara.io:delete-tree
+    tuatara.io:native
+    tuatara.io:native-file-name
+    tuatara.io:native-file-stem
+    tuatara.io:native-file-type
+    tuatara.io:expand-path
+    tuatara.io:parent-path
+    tuatara.io:slash-ended
+    tuatara.io:path-within-p
+    tuatara.io:real-path-or-parent
+    tuatara.io:path-join
+    tuatara.io:path-kind
+    tuatara.io:path-stamp
+    tuatara.io:stamp-size
+    tuatara.io:free-octets
+    tuatara.io:directory-entries
+    walk-directory
+    tuatara.io:call-with-file
+    tuatara.io:file-head
+    tuatara.io:binary-head-p
+    tuatara.io:read-fd-start
+    tuatara.io:read-fd-octets
+    tuatara.io:write-octets
+    tuatara.io:file-system-error
+    tuatara.io:copy-regular-file
+    tuatara.io:write-new-file
+    tuatara.io:make-directory
+    tuatara.io:remove-file
+    tuatara.io:delete-tree
     ;; evidence, and the places nothing is written in
     tuatara.io:writing-refusal tuatara.io:writing-refused copy-file-checked
     tuatara.io:percent-decoded-octets file-kind tuatara.io:octets-kind tuatara.io:kind-name-disagrees-p
@@ -192,25 +262,68 @@ its form says, as ORG-READ-RULE reads them; :HOUR, :MINUTE, :END-HOUR and
     ;; octets, text and dates
     tuatara.text:octets tuatara.io:octets-at-p tuatara.io:octets-search tuatara.io:octets-integer
     tuatara.io:octets-signed tuatara.io:base64-octets tuatara.io:octets-words
-    tuatara.text:octets-string tuatara.text:octets-latin-1 tuatara.text:charset-text tuatara.text:utf-16-text tuatara.text:string-octets
+    tuatara.text:octets-string
+    tuatara.text:octets-latin-1
+    tuatara.text:charset-text
+    tuatara.text:utf-16-text
+    tuatara.text:string-octets
     tuatara.text:string-octet-length tuatara.text:string-line-start tuatara.text:parse-decimal tuatara.text:whole-number
     tuatara.text:lenient-string tuatara.text:merge-ranges tuatara.text:string-hash
-    tuatara.text:xml-entity tuatara.text:xml-tag-end tuatara.text:xml-text-value tuatara.io:fd-octets tuatara.io:file-octets tuatara.text:xml-escape
+    tuatara.text:xml-entity
+    tuatara.text:xml-tag-end
+    tuatara.text:xml-text-value
+    tuatara.io:fd-octets
+    tuatara.io:file-octets
+    tuatara.text:xml-escape
     tuatara.text:xml-attribute tuatara.text:xml-children tuatara.text:xml-root
     tuatara.text:xml-local-name tuatara.text:xml-local-children tuatara.text:xml-find-all tuatara.text:xml-all-text
-    tuatara.text:json-read tuatara.text:json-get tuatara.text:json-items tuatara.text:json-integer tuatara.text:json-text
-    tuatara.dates:format-time tuatara.dates:valid-date-p tuatara.dates:time-words tuatara.dates:short-time-words tuatara.dates:utc-time-words iso-date-time
+    tuatara.text:json-read
+    tuatara.text:json-get
+    tuatara.text:json-items
+    tuatara.text:json-integer
+    tuatara.text:json-text
+    tuatara.dates:format-time
+    tuatara.dates:valid-date-p
+    tuatara.dates:time-words
+    tuatara.dates:short-time-words
+    tuatara.dates:utc-time-words
+    iso-date-time
     ;; days as numbers, and time zones by name
-    tuatara.dates:day-number tuatara.dates:day-date tuatara.dates:weekday tuatara.dates:month-length tuatara.dates:leap-year-p tuatara.dates:add-months
-    tuatara.dates:time-zone tuatara.dates:time-zone-p tuatara.dates:time-zone-name tuatara.dates:time-zone-rule tuatara.dates:fixed-time-zone tuatara.dates:ruled-time-zone
-    tuatara.dates:time-zone-named tuatara.dates:time-zone-name-p tuatara.dates:system-time-zone-name tuatara.dates:system-time-zone
+    tuatara.dates:day-number
+    tuatara.dates:day-date
+    tuatara.dates:weekday
+    tuatara.dates:month-length
+    tuatara.dates:leap-year-p
+    tuatara.dates:add-months
+    tuatara.dates:time-zone
+    tuatara.dates:time-zone-p
+    tuatara.dates:time-zone-name
+    tuatara.dates:time-zone-rule
+    tuatara.dates:fixed-time-zone
+    tuatara.dates:ruled-time-zone
+    tuatara.dates:time-zone-named
+    tuatara.dates:time-zone-name-p
+    tuatara.dates:system-time-zone-name
+    tuatara.dates:system-time-zone
     tuatara.dates:zone-offset tuatara.dates:zone-local-time tuatara.dates:zone-universal-time tuatara.dates:rule-day
-    tuatara.dates:zone-rule tuatara.dates:make-zone-rule tuatara.dates:zone-rule-standard-name tuatara.dates:zone-rule-standard-offset
-    tuatara.dates:zone-rule-daylight-name tuatara.dates:zone-rule-daylight-offset tuatara.dates:zone-rule-to-daylight tuatara.dates:zone-rule-to-standard
+    tuatara.dates:zone-rule
+    tuatara.dates:make-zone-rule
+    tuatara.dates:zone-rule-standard-name
+    tuatara.dates:zone-rule-standard-offset
+    tuatara.dates:zone-rule-daylight-name
+    tuatara.dates:zone-rule-daylight-offset
+    tuatara.dates:zone-rule-to-daylight
+    tuatara.dates:zone-rule-to-standard
     ;; Org entries as the agenda reads them, their timestamps, dates by rule and times cancelled or moved
     org-agenda-file-entries agenda-entry-get org-read-ts make-org-ts org-ts-get org-ts-text org-ts-time-text
     org-day-timestamp-text org-read-rule org-rule-get org-rule-text-p org-rule-next
-    org-occurrence-notes org-occurrence-note repeat-rule-text repeat-months repeat-open-end org-agenda-main-file org-capture-with
+    org-occurrence-notes
+    org-occurrence-note
+    repeat-rule-text
+    repeat-months
+    repeat-open-end
+    org-agenda-main-file
+    org-capture-with
     org-planning-line-p org-ends-with-newline-p org-ensure-newline tuatara.io:file-text
     ;; an Org file written to while it may be open: its buffer, its new text by lines, saved
     tuatara.io:visit-file put-text-by-lines save-buffer-with-care
@@ -224,19 +337,37 @@ its form says, as ORG-READ-RULE reads them; :HOUR, :MINUTE, :END-HOUR and
     map-pdf-cross-reference-table map-pdf-cross-reference-stream pdf-stream-filters pdf-stream-octets
     *pdf-picture-filters* pdf-object-stream-offsets pdf-packed-object map-pdf-content
     ;; octets shown as a hex dump, text shortened, and text from a file with its control characters shown
-    show-octets-in-hex tuatara.text:octets-hex tuatara.display:shorten-string tuatara.command:escape-controls tuatara.text:xml-unprefixed tuatara.io:ensure-directories
+    show-octets-in-hex
+    tuatara.text:octets-hex
+    tuatara.display:shorten-string
+    tuatara.command:escape-controls
+    tuatara.text:xml-unprefixed
+    tuatara.io:ensure-directories
     ;; programs from outside, shut in
     tuatara.io:find-program tuatara.io:program-missing tuatara.io:program-output tuatara.io:sandbox-run
     tuatara.io:program-variable tuatara.io:own-variable tuatara.io:own-directory
     ;; a program of your own run on what a job gives it through a pipe, its arguments split as a shell would
-    tuatara.io:call-with-program tuatara.io:filter-through-program tuatara.io:command-words tuatara.io:read-stream-octets
+    tuatara.io:call-with-program
+    tuatara.io:filter-through-program
+    tuatara.io:command-words
+    tuatara.io:read-stream-octets
     tuatara.io:sandbox-find-program run-on-copies copies-original-names
     run-on-copies-for-report sandbox-outcome-words sandbox-pdf program-health-words likelihood-face
     read-decimal-number read-fraction fraction-p tuatara.io:random-name tuatara.io:copy-to-free-name tuatara.io:percent-decoded tuatara.dates:*short-month-names*
-    user-program-path start-detached open-externally-file new-private-folder private-cache-directory private-state-directory tuatara.io:replace-file
+    user-program-path
+    start-detached
+    open-externally-file
+    new-private-folder
+    private-cache-directory
+    private-state-directory
+    tuatara.io:replace-file
     tuatara.io:memory-file sandbox-font-directories pdf-view-make
     ;; pictures turned into pixels in the sandbox, and their pixels read
-    decode-picture tuatara.frontend:image-width tuatara.frontend:image-height tuatara.frontend:image-channels tuatara.frontend:image-pixels
+    decode-picture
+    tuatara.frontend:image-width
+    tuatara.frontend:image-height
+    tuatara.frontend:image-channels
+    tuatara.frontend:image-pixels
     write-private-copy attachment-file-name
     ;; rimu, the file manager
     rimu-mode *rimu-keymap* rimu-chosen-paths rimu-paths-marked-anywhere rimu-paths-marked-apart *rimu-master-mark* rimu-mark-master rimu-chosen rimu-marks rimu-take-out rimu-mark-and-go-on rimu-each-line
@@ -250,7 +381,14 @@ its form says, as ORG-READ-RULE reads them; :HOUR, :MINUTE, :END-HOUR and
     *removed-sentence-abbreviations* sentence-abbreviations-in-force abbreviation-before-p
     switched-by-count too-large-here-p
     ;; the selection, banked lines, and whether a buffer may be changed
-    selected-region selection-range banked-spans span-line-count buffer-banks check-writable buffer-read-only-p list-preview-p
+    selected-region
+    selection-range
+    banked-spans
+    span-line-count
+    buffer-banks
+    check-writable
+    buffer-read-only-p
+    list-preview-p
     file-declares set-file-local-setting *file-local-variables*)
   "The names a package may use, exported from TUATARA: each keeps its meaning
 from one version of Tuatara to the next.")

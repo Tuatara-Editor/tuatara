@@ -10,18 +10,27 @@
 (defpackage #:tuatara.gtk
   (:use #:cl)
   (:import-from #:tuatara.io #:define-c-function #:null-pointer #:null-pointer-p #:sap-string)
-  (:documentation "The calls into GTK4, GDK, GLib, GObject, GIO, Pango and Cairo that Tuatara's window makes, loaded when a window is opened.")
+  (:documentation "The calls into GTK4, GDK, GLib, GObject, GIO, Pango and Cairo that Tuatara's
+window makes, loaded when a window is opened.")
   (:export #:load-gtk-libraries #:+pango-scale+ #:with-gtk-float-traps #:callback
            #:pango-cairo-layout-path
            ;; glib and gobject
-           #:g-signal-connect #:g-signal-handler-disconnect #:g-idle-add #:g-timeout-add #:g-main-context-iteration #:g-object-unref #:g-free
+           #:g-signal-connect #:g-signal-handler-disconnect #:g-idle-add #:g-timeout-add #:g-main-context-iteration
+           #:g-object-unref #:g-free
            #:g-settings-string #:g-object-class-find-property
            ;; gtk and gdk
-           #:gtk-init #:gtk-widget-get-frame-clock #:g-bytes-new #:g-bytes-unref #:gdk-memory-texture-new #:gdk-texture-download #:gtk-picture-new #:gtk-picture-set-paintable #:gtk-picture-set-content-fit #:gtk-widget-set-size-request #:gtk-widget-set-can-target #:gtk-widget-set-visible #:gtk-fixed-new #:gtk-fixed-put #:gtk-fixed-set-child-transform #:gsk-transform-unref #:gsk-transform-move #:gtk-fixed-remove #:gtk-overlay-new #:gtk-overlay-set-child #:gtk-overlay-add-overlay #:gtk-widget-realize #:gtk-native-get-renderer #:g-type-name-from-instance #:g-set-prgname #:g-set-application-name #:gtk-window-new #:gtk-window-set-title #:gtk-window-set-default-size #:gtk-window-set-child
+           #:gtk-init #:gtk-widget-get-frame-clock #:g-bytes-new #:g-bytes-unref #:gdk-memory-texture-new
+           #:gdk-texture-download #:gtk-picture-new #:gtk-picture-set-paintable #:gtk-picture-set-content-fit
+           #:gtk-widget-set-size-request #:gtk-widget-set-can-target #:gtk-widget-set-visible #:gtk-fixed-new
+           #:gtk-fixed-put #:gtk-fixed-set-child-transform #:gsk-transform-unref #:gsk-transform-move #:gtk-fixed-remove
+           #:gtk-overlay-new #:gtk-overlay-set-child #:gtk-overlay-add-overlay #:gtk-widget-realize
+           #:gtk-native-get-renderer #:g-type-name-from-instance #:g-set-prgname #:g-set-application-name
+           #:gtk-window-new #:gtk-window-set-title #:gtk-window-set-default-size #:gtk-window-set-child
            #:gtk-window-present #:gtk-window-destroy #:gtk-drawing-area-new #:gtk-drawing-area-set-draw-func
            #:gtk-widget-set-focusable #:gtk-widget-grab-focus #:gtk-widget-queue-draw #:gtk-widget-add-controller
            #:gtk-widget-get-width #:gtk-widget-get-height #:gtk-widget-set-cursor-from-name
-           #:gtk-event-controller-key-new #:gtk-event-controller-key-set-im-context #:gtk-event-controller-set-propagation-phase #:gtk-event-controller-focus-new
+           #:gtk-event-controller-key-new #:gtk-event-controller-key-set-im-context
+           #:gtk-event-controller-set-propagation-phase #:gtk-event-controller-focus-new
            #:gtk-event-controller-scroll-new #:gtk-event-controller-motion-new
            #:gtk-event-controller-get-current-event-state #:gtk-gesture-click-new #:gtk-gesture-drag-new
            #:gtk-gesture-single-set-button #:gtk-im-multicontext-new #:gtk-im-context-set-client-widget
@@ -31,7 +40,8 @@
            #:gtk-window-maximize #:gtk-window-unmaximize #:gtk-window-is-maximized
            #:gtk-drop-target-new #:gdk-file-list-get-type #:gdk-file-list-get-files #:g-value-get-boxed
            #:g-file-get-path #:g-slist-free
-           #:gdk-display-get-default #:gdk-display-get-clipboard #:gdk-display-get-primary-clipboard #:gdk-clipboard-set-text
+           #:gdk-display-get-default #:gdk-display-get-clipboard #:gdk-display-get-primary-clipboard
+           #:gdk-clipboard-set-text
            #:gtk-icon-theme-get-for-display #:gtk-icon-theme-add-search-path #:gtk-window-set-default-icon-name
            #:gdk-clipboard-read-text-async #:gdk-clipboard-read-text-finish #:gdk-keyval-to-unicode
            ;; pango
@@ -45,7 +55,8 @@
            #:pango-font-face-describe #:pango-font-face-is-synthesized
            ;; cairo
            #:cairo-set-source-rgb #:cairo-rectangle #:cairo-fill #:cairo-move-to #:cairo-line-to #:cairo-stroke
-           #:cairo-translate #:cairo-save #:cairo-restore #:cairo-clip #:cairo-set-antialias #:gtk-settings-get-default #:g-object-get-int #:widget-theme-colour
+           #:cairo-translate #:cairo-save #:cairo-restore #:cairo-clip #:cairo-set-antialias #:gtk-settings-get-default
+           #:g-object-get-int #:widget-theme-colour
            #:cairo-set-line-width #:cairo-paint #:cairo-image-surface-create #:cairo-create #:cairo-destroy
            #:cairo-surface-destroy #:cairo-surface-set-device-scale #:cairo-surface-flush #:cairo-surface-write-to-png
            #:cairo-image-surface-get-data #:cairo-image-surface-get-stride
@@ -536,7 +547,9 @@ icon themes' directories are (hicolor/48x48/apps/NAME.png)."
 (defun pango-layout-get-pixel-size (layout)
   "Two values: LAYOUT's width and height in pixels."
   (sb-alien:with-alien ((width sb-alien:int 0) (height sb-alien:int 0))
-    (%pango-layout-get-pixel-size layout (sb-alien:alien-sap (sb-alien:addr width)) (sb-alien:alien-sap (sb-alien:addr height)))
+    (%pango-layout-get-pixel-size layout
+                                  (sb-alien:alien-sap (sb-alien:addr width))
+                                  (sb-alien:alien-sap (sb-alien:addr height)))
     (values width height)))
 
 (define-c-function ("pango_layout_get_baseline" pango-layout-get-baseline) :int

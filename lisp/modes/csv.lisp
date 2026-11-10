@@ -97,13 +97,13 @@ comma when none does. True as a second value when one does."
       (if (plusp (cdr best)) (values (car best) t) 44))))
 
 (defvar *csv-separator* :detect
-  "What separates the fields of the files CSV mode shows: :DETECT, the
+  "What separates the fields of the files CSV mode shows. :DETECT, the
 default, takes whichever of comma, semicolon, tab and pipe the first line of
-each file has most of (a comma while it has none, until one is typed there,
-in an empty file, or one made empty); a character, such as #\\,
-#\\; or #\\Tab, is taken always, whatever the file holds. Files ending in .tsv
-or .tab are separated by tabs. \\<csv-mode>\\[csv-define-separator] sets the
-separator for one buffer.")
+each file has most of (a comma while it has none, until one is typed there, in
+an empty file, or one made empty). A character, such as #\\, #\\; or #\\Tab, is
+taken always, whatever the file holds. Files ending in .tsv or .tab are
+separated by tabs. \\<csv-mode>\\[csv-define-separator] sets the separator for
+one buffer.")
 
 (defvar *csv-header* t
   "True when the first line of the files CSV mode shows is their header,
@@ -181,7 +181,8 @@ again while it is open."
 
 (defmethod mode-exit ((mode csv-mode) buffer)
   "Stop following BUFFER's edits for its separator."
-  (setf (tuatara.buffer:buffer-change-functions buffer) (remove 'csv-note-change (tuatara.buffer:buffer-change-functions buffer))
+  (setf (tuatara.buffer:buffer-change-functions buffer)
+        (remove 'csv-note-change (tuatara.buffer:buffer-change-functions buffer))
         (tuatara.buffer:buffer-local buffer :csv-detecting) nil)
   (call-next-method))
 
@@ -532,14 +533,17 @@ one."
 
 (defmethod mode-line-extra ((mode csv-mode) buffer)
   "What the mode line says of the column point is in (CSV-COLUMN-WORDS),
-worked out once for the text and point as they are."
+worked out once for the text, point, separator and header setting as they are."
   (let ((version (tuatara.buffer:buffer-version buffer))
         (point (tuatara.buffer:buffer-point buffer))
+        (delimiter (csv-delimiter buffer))
+        (header (list-header-p buffer))
         (kept (tuatara.buffer:buffer-local buffer 'csv-mode-line)))
-    (if (and kept (eq (first kept) version) (eql (second kept) point))
-        (third kept)
+    (if (and kept (eq (first kept) version) (eql (second kept) point)
+             (eql (third kept) delimiter) (eq (fourth kept) header))
+        (fifth kept)
         (let ((words (csv-column-words buffer point)))
-          (setf (tuatara.buffer:buffer-local buffer 'csv-mode-line) (list version point words))
+          (setf (tuatara.buffer:buffer-local buffer 'csv-mode-line) (list version point delimiter header words))
           words))))
 
 (defun csv-column-words (buffer point)
@@ -553,15 +557,18 @@ record too long to read at every key."
       (multiple-value-bind (r field) (csv-scan rope record point (csv-delimiter buffer) 0 nil :ranges nil)
         (declare (ignore r))
         (let ((header (and (list-header-p buffer) (csv-header-name buffer field))))
-          (format nil "col ~:d~@[ ~a~]" field (and header (plusp (length header)) (tuatara.display:shorten-string header 24))))))))
+          (format nil "col ~:d~@[ ~a~]" field (and header
+                                                   (plusp (length header))
+                                                   (tuatara.display:shorten-string header 24))))))))
 
 (define-command csv-define-separator ()
   "Ask for the character that separates the fields of this buffer and show
-them separated by it: comma, semicolon, tab, pipe, colon or space by name, or
-any other character of ASCII typed as itself (\\<minibuffer>\\[minibuffer-submit-input]
-takes what is typed as it is); detect takes whichever of comma, semicolon, tab
-and pipe the first line has most of, or has once one is typed there.
-*CSV-SEPARATOR* sets it for every CSV buffer."
+them separated by it. Give comma, semicolon, tab, pipe, colon or space by
+name, or any other character of ASCII typed as itself
+\(\\<minibuffer>\\[minibuffer-submit-input] takes what is typed as it is).
+Giving detect takes whichever of comma, semicolon, tab and pipe the first line
+has most of, or has once one is typed there. *CSV-SEPARATOR* sets it for every
+CSV buffer."
   (let* ((buffer (current-buffer))
          (current (csv-delimiter buffer))
          (candidates (append (loop for (name . char) in *csv-separator-names*

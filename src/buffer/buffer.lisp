@@ -17,19 +17,26 @@
    (mark-active :initform nil :accessor buffer-mark-active-p
                 :documentation "True while the region between point and mark is active.")
    (narrowing :initform nil :accessor buffer-narrowing
-              :documentation "While the buffer is narrowed (NARROW-BUFFER), the anchors its part shown starts and ends at, (START . END); NIL while all of it is.")
+              :documentation "While the buffer is narrowed (NARROW-BUFFER), the anchors its part
+shown starts and ends at, (START . END); NIL while all of it is.")
    (file :initform nil :initarg :file :accessor buffer-file
          :documentation "The pathname the buffer visits, or NIL.")
    (mapping :initform nil :accessor buffer-mapping
             :documentation "The tuatara.text:mapping of the visited file while it is memory-mapped, or NIL.")
    (lent :initform nil :accessor buffer-lent-p
-         :documentation "True once text of the buffer is kept elsewhere sharing its octets (BUFFER-SLICE), so that its file must stay readable after the buffer is killed.")
+         :documentation "True once text of the buffer is kept elsewhere sharing its octets
+(BUFFER-SLICE), so that its file must stay readable after the buffer is
+killed.")
    (saved-number :initform 0 :accessor buffer-saved-number
-                 :documentation "The content number last saved or loaded; the buffer is modified when its content number differs.")
+                 :documentation "The content number last saved or loaded; the buffer is modified
+when its content number differs.")
    (content-number :initform 0 :accessor buffer-content-number
-                   :documentation "A number for what the text holds now: a new one with every edit, and the one it had before (or after) when undo (or redo) brings a text back, so that undoing back to the text last saved leaves the buffer unmodified.")
+                   :documentation "A number for what the text holds now: a new one with every edit,
+and the one it had before (or after) when undo (or redo) brings a text back, so
+that undoing back to the text last saved leaves the buffer unmodified.")
    (batch-contents :initform (make-hash-table :test 'eq :weakness :key) :accessor buffer-batch-contents
-                   :documentation "For each batch on the undo and redo stacks, the content numbers before and after it, as a cons.")
+                   :documentation "For each batch on the undo and redo stacks, the content numbers
+before and after it, as a cons.")
    (undo :initform '() :accessor buffer-undo-stack
          :documentation "Undo groups, newest first; each group is a list of batches, newest first, undone together.")
    (redo :initform '() :accessor buffer-redo-stack
@@ -39,7 +46,8 @@
    (redo-held :initform 0 :accessor buffer-redo-held
               :documentation "The octets of memory the redo stack holds, counted as for the undo stack.")
    (swap-held :initform (make-hash-table :test 'eq :weakness :key) :accessor buffer-swap-held
-              :documentation "For each batch on the undo and redo stacks that swapped the whole text, the octets it holds, worked out once.")
+              :documentation "For each batch on the undo and redo stacks that swapped the whole
+text, the octets it holds, worked out once.")
    (locals :initform (make-hash-table :test 'eq :synchronized t) :accessor buffer-locals
            :documentation "Buffer-local variable values, keyed by symbol; safe to read and write from
 several threads at once (redisplay reads them while an evaluation may write them).")
@@ -49,21 +57,30 @@ several threads at once (redisplay reads them while an evaluation may write them
 Every edit commits a new version; snapshots are versions and stay valid."))
 
 (setf (documentation 'buffer-name 'function) "The name of BUFFER, unique among live buffers."
-      (documentation 'buffer-version 'function) "The current text version of BUFFER; setting it is for the buffer's own editing functions."
+      (documentation 'buffer-version 'function) "The current text version of BUFFER; setting it is
+for the buffer's own editing functions."
       (documentation 'buffer-file 'function) "The pathname BUFFER visits, or NIL."
       (documentation 'buffer-mark-active-p 'function) "True while BUFFER's region between point and mark is active."
-      (documentation 'buffer-narrowing 'function) "While BUFFER is narrowed, the anchors its part shown starts and ends at, (START . END); else NIL."
-      (documentation 'buffer-undo-stack 'function) "Undo groups of BUFFER, newest first; each a list of batches undone together."
+      (documentation 'buffer-narrowing 'function) "While BUFFER is narrowed, the anchors its part
+shown starts and ends at, (START . END); else NIL."
+      (documentation 'buffer-undo-stack 'function) "Undo groups of BUFFER, newest first; each a list
+of batches undone together."
       (documentation 'buffer-redo-stack 'function) "Groups of BUFFER undone and available for redo, newest first."
       (documentation 'buffer-undo-held 'function) "The octets of memory BUFFER's undo stack holds."
       (documentation 'buffer-redo-held 'function) "The octets of memory BUFFER's redo stack holds."
-      (documentation 'buffer-swap-held 'function) "BUFFER's table of the octets each swap of its whole text on its undo and redo stacks holds."
-      (documentation 'buffer-change-functions 'function) "Functions called with (BUFFER BATCH) after every edit batch of BUFFER."
+      (documentation 'buffer-swap-held 'function) "BUFFER's table of the octets each swap of its
+whole text on its undo and redo stacks holds."
+      (documentation 'buffer-change-functions 'function) "Functions called with (BUFFER BATCH) after
+every edit batch of BUFFER."
       (documentation 'buffer-content-number 'function) "The number for what BUFFER's text holds now (see the slot)."
-      (documentation 'buffer-batch-contents 'function) "BUFFER's table of the content numbers before and after each batch."
-      (documentation 'buffer-mapping 'function) "The mapping of the file BUFFER's text reads, while it reads one, or NIL."
-      (documentation 'buffer-lent-p 'function) "True once text of BUFFER is kept elsewhere sharing its octets (BUFFER-SLICE)."
-      (documentation 'buffer-saved-number 'function) "The content number of BUFFER last saved or read; it is modified when its content number differs.")
+      (documentation 'buffer-batch-contents 'function) "BUFFER's table of the content numbers before
+and after each batch."
+      (documentation 'buffer-mapping 'function) "The mapping of the file BUFFER's text reads, while
+it reads one, or NIL."
+      (documentation 'buffer-lent-p 'function) "True once text of BUFFER is kept elsewhere sharing
+its octets (BUFFER-SLICE)."
+      (documentation 'buffer-saved-number 'function) "The content number of BUFFER last saved or
+read; it is modified when its content number differs.")
 
 ;; the jobs in the background name their buffers in their reports
 (setf tuatara.runtime:*job-buffer-name* (lambda (buffer) (if buffer (buffer-name buffer) "no buffer")))
@@ -173,13 +190,13 @@ the part shown)."
 
 (defun buffer-slice (buffer start end)
   "BUFFER's text from byte START below END as a rope sharing the buffer's
-octets rather than copying them (TUATARA.TEXT:ROPE-SLICE), made at once
-whatever its size, for text kept elsewhere, such as a large kill; while the
-buffer's lines are still being counted too, the slice then holding text not
-yet counted, which a buffer it goes into counts in the background as it does
-a large file just opened. The buffer is then lent (BUFFER-LENT-P): once
-killed, its file stays mapped, and guarded against other programs, until
-nothing holds text read from it."
+octets rather than copying them (TUATARA.TEXT:ROPE-SLICE). It is made at once
+whatever its size, for text kept elsewhere, such as a large kill. While the
+buffer's lines are still being counted, the slice holds text not yet counted,
+which a buffer it goes into counts in the background as it does a large file
+just opened. The buffer is then lent (BUFFER-LENT-P): once killed, its file
+stays mapped, and guarded against other programs, until nothing holds text
+read from it."
   (check-position buffer start) (check-position buffer end)
   (when (< end start) (rotatef start end))
   (setf (buffer-lent-p buffer) t)
@@ -378,7 +395,7 @@ says, and return what it returns."
 (defmacro with-narrowing-lifted ((buffer) &body body)
   "Run BODY with all of BUFFER's text reachable though it is narrowed, for a
 change asked for on something outside the part shown (a task clocked out,
-an entry of the agenda, a name renamed in every file); then narrow it again
+an entry of the agenda, a name renamed in every file). Then narrow it again
 as it was, its edges moved by the changes, point back where it was, before
 what went in there. A jump BODY makes outside the part (to a subtree just
 refiled) leaves the buffer widened instead, point where the jump took it."
@@ -586,7 +603,9 @@ at once: the count is made again around the edits once it ends
     (check-hex-view-size buffer (reduce #'+ edits :key (lambda (e) (- (tuatara.text:edit-insert-length e)
                                                                       (tuatara.text:edit-delete-length e))))))
   (when (and (buffer-narrowing buffer) (plusp (length edits)))
-    (check-within-narrowing buffer (tuatara.text:edit-start (elt edits 0)) (tuatara.text:edit-end (elt edits (1- (length edits))))))
+    (check-within-narrowing buffer
+                            (tuatara.text:edit-start (elt edits 0))
+                            (tuatara.text:edit-end (elt edits (1- (length edits))))))
   (run-before-edit buffer edits)
   (multiple-value-bind (version batch) (tuatara.text:version-commit (buffer-version buffer) edits)
     (setf (buffer-version buffer) version)
@@ -730,7 +749,8 @@ while a command runs in a narrowed BUFFER an edit reaching outside the part show
           (and (tuatara.text:rope-p text) (> (tuatara.text:rope-octet-length text) *large-edit-octets*)))
       (buffer-splice buffer start end (text-rope text))
       (let ((octets (text-octets text)))
-        (aref (buffer-edit buffer (vector (tuatara.text:make-edit start end (if (plusp (length octets)) octets nil)))) 0))))
+        (aref (buffer-edit buffer
+                           (vector (tuatara.text:make-edit start end (if (plusp (length octets)) octets nil)))) 0))))
 
 (defun commit-without-record (buffer edits)
   "Commit EDITS to BUFFER without touching the undo stacks; return the batch.
@@ -783,7 +803,8 @@ Returns where the first edit taken back starts, or NIL."
                (commit-swap-without-record buffer (tuatara.text:swap-before swap)
                                            (tuatara.text:swap-backward swap) (tuatara.text:swap-forward swap))
                nil)
-        (let ((inverse (tuatara.text:inverse-edits (tuatara.text:batch-edits batch) (tuatara.text:batch-positions batch))))
+        (let ((inverse (tuatara.text:inverse-edits (tuatara.text:batch-edits batch)
+                                                   (tuatara.text:batch-positions batch))))
           (when check (run-before-edit buffer inverse))
           (commit-without-record buffer inverse)
           (and (plusp (length inverse)) (tuatara.text:edit-start (aref inverse 0)))))))
@@ -814,7 +835,8 @@ looking."
         while next
         do (let ((batch (tuatara.text:version-batch next)))
              (when (tuatara.text:batch-swap batch) (return nil))
-             (when (some (lambda (edit) (or (< (tuatara.text:edit-start edit) start) (> (tuatara.text:edit-end edit) end)))
+             (when (some (lambda (edit)
+                           (or (< (tuatara.text:edit-start edit) start) (> (tuatara.text:edit-end edit) end)))
                          (tuatara.text:batch-edits batch))
                (return t))
              (setf start (tuatara.text:map-position start batch :before)
@@ -893,7 +915,8 @@ FORGET-UNDO-PLACE."
 of that text, as a new cons; NIL when BATCH swapped the whole text or one of
 its edits touches SPAN (TUATARA.RUNTIME:SPAN-TOUCHED-P)."
   (unless (or (tuatara.text:batch-swap batch)
-              (some (lambda (e) (tuatara.runtime:span-touched-p span (tuatara.text:edit-start e) (tuatara.text:edit-end e)))
+              (some (lambda (e)
+                      (tuatara.runtime:span-touched-p span (tuatara.text:edit-start e) (tuatara.text:edit-end e)))
                     (tuatara.text:batch-edits batch)))
     (cons (tuatara.text:map-position (car span) batch :after)
           (tuatara.text:map-position (cdr span) batch :before))))
@@ -987,7 +1010,8 @@ is made again, the rest moved by what the edits before it took and put, in
 either text. Only the pieces the edits touch are made again; those after are
 moved where they stand, so carrying a batch past costs its edits and the
 pieces after them, not the batches carried before."
-  (let* ((theres (map 'simple-vector (lambda (e) (carried-position pieces map (tuatara.text:edit-start e) :before)) edits))
+  (let* ((theres (map 'simple-vector (lambda (e)
+                                       (carried-position pieces map (tuatara.text:edit-start e) :before)) edits))
          (ends (map 'simple-vector (lambda (e) (carried-position pieces map (tuatara.text:edit-end e) :after)) edits))
          (count (fill-pointer pieces))
          (first (carry-piece-at pieces (tuatara.text:edit-start (aref edits 0))))
@@ -1001,7 +1025,9 @@ pieces after them, not the batches carried before."
                ;; PIECE from FROM on, after the edits passed so far
                (if (carry-piece-linear piece)
                    (make-carry-piece (+ from delta) t (+ (carry-piece-move piece) (- delta) shift) 0)
-                   (make-carry-piece (+ from delta) nil (+ (carry-piece-move piece) delta) (+ (carry-piece-shift piece) shift))))
+                   (make-carry-piece (+ from
+                                        delta) nil (+ (carry-piece-move piece)
+                                                      delta) (+ (carry-piece-shift piece) shift))))
              (keep (from below)
                ;; the old pieces over FROM up to BELOW, in the text before the edits
                (loop for i from first to last

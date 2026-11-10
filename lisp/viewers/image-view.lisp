@@ -43,9 +43,9 @@ TUATARA.IO:OCTETS-KIND tells it) and that in WORDS."
   "The IMAGE-VIEW of BUFFER, or NIL when it shows no image file."
   (and (live-buffer-p buffer) (tuatara.buffer:buffer-local buffer 'image-view)))
 
-(defstruct (image-draw-job (:include tuatara.runtime:job) (:constructor make-image-draw-job (buffer view)) (:copier nil))
-  "VIEW's image being drawn for BUFFER, a job: RESULT, once done, (IMAGE . NOTES)
-as DECODE-IMAGE gives them."
+(defstruct (image-draw-job (:include decoding-job) (:constructor make-image-draw-job (buffer view)) (:copier nil))
+  "VIEW's image being drawn for BUFFER, a decoding job: RESULT, once done,
+\(IMAGE . NOTES) as DECODE-IMAGE gives them."
   view result)
 
 (setf (documentation 'image-draw-job-p 'function) "True when OBJECT is an IMAGE-DRAW-JOB.")
@@ -56,16 +56,14 @@ as DECODE-IMAGE gives them."
   :verb "draw it"
   :left-words "nothing drawn")
 
-(defmethod tuatara.runtime:job-at-exit ((job image-draw-job))
-  "Drawing a picture only shows something: stopped without asking."
-  :quiet)
-
 (defmethod tuatara.runtime:job-take-in ((job image-draw-job))
-  "Give the image's buffer its picture (IMAGE-VIEW-SHOW)."
+  "Give the image's buffer its picture (IMAGE-VIEW-SHOW), or say it was stopped."
   (let ((buffer (tuatara.runtime:job-buffer job)))
     (when (image-view-of buffer)
       (image-view-show buffer (image-draw-job-view job)
-                       (or (and (eq (tuatara.runtime:job-status job) :done) (image-draw-job-result job))
+                       (or (case (tuatara.runtime:job-status job)
+                             (:done (image-draw-job-result job))
+                             (:stopped (cons nil (list (cons ", not shown: stopped" :comment)))))
                            (cons nil (list (cons ", not shown: it could not be read" :comment))))))))
 
 (defun image-file-kind (native)
@@ -147,8 +145,9 @@ not shown, the file's octets in its place (FILE-VIEW-FALL-TO-OCTETS)."
           (setf (tuatara.buffer:buffer-local buffer :picture-pending) nil
                 (tuatara.buffer:buffer-local buffer :picture-view) nil)))
     (cond ((null image)
-           (file-view-fall-to-octets buffer (format nil "The picture could not be drawn (~a~{~a~})" (image-view-words view)
-                                                    (mapcar #'car notes))))
+           (file-view-fall-to-octets buffer
+                                     (format nil "The picture could not be drawn (~a~{~a~})" (image-view-words view)
+                                             (mapcar #'car notes))))
           ((not (and *editor* (tuatara.frontend:frontend-images-p (editor-frontend *editor*))))
            (file-view-fall-to-octets buffer "Pictures are not shown here")))))
 
@@ -160,4 +159,5 @@ not shown, the file's octets in its place (FILE-VIEW-FALL-TO-OCTETS)."
   "Have image files visited shown as their pictures, and bind O there."
   (define-key *image-view-keymap* "O" 'open-externally)
   (pushnew 'image-view-visit *file-views*)
+  (pushnew 'stop-decoding *keyboard-quit-functions*)
   (pushnew 'image-view-forget tuatara.buffer:*kill-buffer-functions*))

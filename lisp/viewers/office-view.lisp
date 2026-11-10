@@ -1,4 +1,5 @@
-;;;; lisp/viewers/office-view.lisp --- Word, Excel and PowerPoint documents opened safely: as their pages, or read as text.
+;;;; lisp/viewers/office-view.lisp --- Word, Excel and PowerPoint documents opened safely: as their pages, or read as
+;;;; text.
 ;;;; Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
 ;;;;
 ;;;; An Office document opened is shown as its pages: a Word document
@@ -33,20 +34,39 @@ others as any file, LibreOffice never run.")
   "LibreOffice's program, which makes the PDF of an Office document's pages.")
 
 (defparameter *office-formats*
-  '((:kind :docx :words "Word document" :names ("docx" "docm" "dotx" "dotm") :container :zip :kinds (:docx) :read docx-read-note)
-    (:kind :xlsx :words "Excel workbook" :names ("xlsx" "xlsm" "xltx" "xltm") :container :zip :kinds (:xlsx) :read xlsx-read-note)
-    (:kind :pptx :words "PowerPoint presentation" :names ("pptx" "pptm" "potx" "potm" "ppsx" "ppsm") :container :zip :kinds (:pptx)
+  '((:kind :docx
+     :words "Word document"
+     :names ("docx" "docm" "dotx" "dotm")
+     :container :zip
+     :kinds (:docx)
+     :read docx-read-note)
+    (:kind :xlsx
+     :words "Excel workbook"
+     :names ("xlsx" "xlsm" "xltx" "xltm")
+     :container :zip
+     :kinds (:xlsx)
+     :read xlsx-read-note)
+    (:kind :pptx
+     :words "PowerPoint presentation"
+     :names ("pptx" "pptm" "potx" "potm" "ppsx" "ppsm")
+     :container :zip
+     :kinds (:pptx)
      :read pptx-read-note)
     (:kind :doc :words "Word document of before 2007" :names ("doc" "dot") :container :ole :kinds (:ole))
     (:kind :xls :words "Excel workbook of before 2007" :names ("xls" "xlt") :container :ole :kinds (:ole))
     (:kind :ppt :words "PowerPoint presentation of before 2007" :names ("ppt" "pot" "pps") :container :ole :kinds (:ole))
     (:kind :odt :words "OpenDocument text" :names ("odt" "ott") :container :zip :kinds (:odt) :read odf-read-note)
     (:kind :ods :words "OpenDocument spreadsheet" :names ("ods" "ots") :container :zip :kinds (:ods) :read odf-read-note)
-    (:kind :odp :words "OpenDocument presentation" :names ("odp" "otp") :container :zip :kinds (:odp) :read odf-read-note))
-  "The kinds of Office document shown by their views, each a plist: :KIND, a
-keyword naming it; :WORDS, what it is called; :NAMES, the endings of its
-files' names; :CONTAINER, :ZIP or :OLE, what its first octets must be;
-:KINDS, what TUATARA.IO:OCTETS-KIND calls it by its contents; :READ, the
+    (:kind :odp
+     :words "OpenDocument presentation"
+     :names ("odp" "otp")
+     :container :zip
+     :kinds (:odp)
+     :read odf-read-note))
+  "The kinds of Office document shown by their views, each a plist. :KIND is a
+keyword naming it. :WORDS is what it is called. :NAMES is the endings of its
+files' names. :CONTAINER, :ZIP or :OLE, is what its first octets must be.
+:KINDS is what TUATARA.IO:OCTETS-KIND calls it by its contents. :READ is the
 function reading it as an Org note (of its PATH, and :OCTETS), or none for a
 kind shown only as its pages.")
 
@@ -65,7 +85,10 @@ archive or of a compound file as the kind's are; NIL for any other file."
          (office (and type (find-if (lambda (f) (member type (getf f :names) :test #'string-equal)) *office-formats*)))
          (head (and office (tuatara.io:file-head native))))
     (and head
-         (tuatara.io:octets-at-p head (if (eq (getf office :container) :ole) tuatara.io:*compound-file-signature* (list #x50 #x4B 3 4)))
+         (tuatara.io:octets-at-p head
+                                 (if (eq (getf office :container) :ole)
+                                     tuatara.io:*compound-file-signature*
+                                     (list #x50 #x4B 3 4)))
          office)))
 
 (defun office-preview-format (kind name)
@@ -93,10 +116,11 @@ words, never the file's."
 open at file descriptor (FD), given to it as a file ending in ENDING
 (OFFICE-ENDING), as a sealed file in memory; an error saying why when it makes
 none. CANCEL, a cons, stops it when its car turns true."
-  (sandbox-pdf "sh" (list "-c" (concatenate 'string "cat > \"/tmp/in.$2\" && \"$1\" --headless --norestore --nolockcheck"
-                                            " -env:UserInstallation=file:///tmp/profile --convert-to pdf --outdir /tmp"
-                                            " \"/tmp/in.$2\" >&2; exec cat /tmp/in.pdf")
-                          "sh" *office-page-program* ending)
+  (sandbox-pdf "sh"
+               (list "-c" (concatenate 'string "cat > \"/tmp/in.$2\" && \"$1\" --headless --norestore --nolockcheck"
+                                       " -env:UserInstallation=file:///tmp/profile --convert-to pdf --outdir /tmp"
+                                       " \"/tmp/in.$2\" >&2; exec cat /tmp/in.pdf")
+                     "sh" *office-page-program* ending)
                fd :label "LibreOffice" :cancel cancel))
 
 (defun office-no-pages-words ()
@@ -106,7 +130,9 @@ want of them (pages not wanted, or pictures not shown)."
   (when (and *office-view-pages* (tuatara.frontend:frontend-images-p (editor-frontend *editor*)))
     (let ((status (tuatara.io:sandbox-status-now)))
       (cond ((not (member status '(:ready :unknown))) (no-sandbox-words status))
-            ((null (find-pdf-decoder)) (format nil "no program for PDFs (install ~a)" (getf (first *pdf-decoders*) :name)))
+            ((null (find-pdf-decoder)) (format nil
+                                               "no program for PDFs (install ~a)"
+                                               (getf (first *pdf-decoders*) :name)))
             ((not (tuatara.io:sandbox-find-program *office-page-program*))
              (format nil "LibreOffice draws the pages, and is not installed (~a)" *office-page-program*))))))
 
@@ -167,7 +193,9 @@ thread working in the background."
 
 ;;; Read as text
 
-(defstruct (office-read-job (:include tuatara.runtime:job) (:constructor make-office-read-job (buffer path office)) (:copier nil))
+(defstruct (office-read-job (:include tuatara.runtime:job)
+                            (:constructor make-office-read-job (buffer path office))
+                            (:copier nil))
   "An Office document at PATH, of the kind OFFICE (*OFFICE-FORMATS*), being
 read as text for BUFFER, a job; TEXT, the Org note made of it."
   path office text)
@@ -198,7 +226,9 @@ any."
                       (when pages (setf (buffer-override-keymap buffer) *office-reading-keymap*))
                       (tuatara.runtime:start-job-thread
                        (make-office-read-job buffer native office)
-                       (lambda (job) (setf (office-read-job-text job) (funcall (getf (office-read-job-office job) :read) (office-read-job-path job))))
+                       (lambda (job)
+                         (setf (office-read-job-text job)
+                               (funcall (getf (office-read-job-office job) :read) (office-read-job-path job))))
                        :name "tuatara office reading")))))
 
 (define-command office-view-pages ()
@@ -211,13 +241,13 @@ any."
 ;;; Opening
 
 (defun office-view-visit (path show)
-  "Show the Office document at PATH (OFFICE-FILE-FORMAT), with SHOW, a
-function of the buffer: as its pages when they can be drawn
-\(OFFICE-PAGES-POSSIBLE-P); else one Tuatara reads (a Word document, an
-Excel workbook, a PowerPoint presentation, an OpenDocument file) read as text, saying why when that is for want of
-the sandbox, LibreOffice or a program for PDFs, and any other left to be
-opened as any file, saying why. Returns the buffer, or NIL for a file this
-view does not show."
+  "Show the Office document at PATH (OFFICE-FILE-FORMAT), with SHOW, a function
+of the buffer. It is shown as its pages when they can be drawn
+\(OFFICE-PAGES-POSSIBLE-P). Else one Tuatara reads (a Word document, an Excel
+workbook, a PowerPoint presentation, an OpenDocument file) is read as text,
+saying why when that is for want of the sandbox, LibreOffice or a program for
+PDFs. Any other is left to be opened as any file, saying why. Returns the
+buffer, or NIL for a file this view does not show."
   (let* ((native (file-view-path path))
          (office (and native (office-file-format native))))
     (when office
@@ -227,7 +257,9 @@ view does not show."
                                (let ((ending (office-ending office (tuatara.io:native-file-name native))))
                                  (pdf-view-make native :make (lambda (fd) (office-pdf-copy fd ending))
                                                        :reading (and (getf office :read) #'office-show-reading)
-                                                       :words (format nil "~a, its pages drawn by LibreOffice" (getf office :words)))))
+                                                       :words (format nil
+                                                                      "~a, its pages drawn by LibreOffice"
+                                                                      (getf office :words)))))
                              show))
             ((getf office :read)
              ;; read as text for want of what draws pages, not by choice: said

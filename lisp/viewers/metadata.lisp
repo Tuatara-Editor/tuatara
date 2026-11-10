@@ -1,4 +1,5 @@
-;;;; lisp/viewers/metadata.lisp --- What a file is and what it says of itself, read by Tuatara alone: M-x show-file-metadata.
+;;;; lisp/viewers/metadata.lisp --- What a file is and what it says of itself, read by Tuatara alone: M-x
+;;;; show-file-metadata.
 ;;;; Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
 ;;;;
 ;;;; M-x show-file-metadata shows, in a buffer of its own, an Org note of what the
@@ -78,19 +79,33 @@ true when they are cut so)."
 (defparameter *exif-tags*
   '((#x0100 . "ImageWidth") (#x0101 . "ImageLength") (#x010E . "ImageDescription") (#x010F . "Make") (#x0110 . "Model")
     (#x0112 . "Orientation") (#x011A . "XResolution") (#x011B . "YResolution") (#x0128 . "ResolutionUnit")
-    (#x0131 . "Software") (#x0132 . "DateTime") (#x013B . "Artist") (#x013C . "HostComputer") (#x0201 . "ThumbnailOffset")
+    (#x0131 . "Software")
+    (#x0132 . "DateTime")
+    (#x013B . "Artist")
+    (#x013C . "HostComputer")
+    (#x0201 . "ThumbnailOffset")
     (#x0202 . "ThumbnailLength") (#x0213 . "YCbCrPositioning") (#x8298 . "Copyright") (#x829A . "ExposureTime")
     (#x829D . "FNumber") (#x8822 . "ExposureProgram") (#x8827 . "ISOSpeedRatings") (#x8830 . "SensitivityType")
     (#x9000 . "ExifVersion") (#x9003 . "DateTimeOriginal") (#x9004 . "DateTimeDigitized") (#x9010 . "OffsetTime")
     (#x9011 . "OffsetTimeOriginal") (#x9012 . "OffsetTimeDigitized") (#x9101 . "ComponentsConfiguration")
-    (#x9201 . "ShutterSpeedValue") (#x9202 . "ApertureValue") (#x9203 . "BrightnessValue") (#x9204 . "ExposureBiasValue")
+    (#x9201 . "ShutterSpeedValue")
+    (#x9202 . "ApertureValue")
+    (#x9203 . "BrightnessValue")
+    (#x9204 . "ExposureBiasValue")
     (#x9205 . "MaxApertureValue") (#x9206 . "SubjectDistance") (#x9207 . "MeteringMode") (#x9208 . "LightSource")
     (#x9209 . "Flash") (#x920A . "FocalLength") (#x9214 . "SubjectArea") (#x927C . "MakerNote") (#x9286 . "UserComment")
     (#x9290 . "SubSecTime") (#x9291 . "SubSecTimeOriginal") (#x9292 . "SubSecTimeDigitized") (#x9C9B . "XPTitle")
-    (#x9C9C . "XPComment") (#x9C9D . "XPAuthor") (#x9C9E . "XPKeywords") (#x9C9F . "XPSubject") (#xA000 . "FlashpixVersion")
+    (#x9C9C . "XPComment")
+    (#x9C9D . "XPAuthor")
+    (#x9C9E . "XPKeywords")
+    (#x9C9F . "XPSubject")
+    (#xA000 . "FlashpixVersion")
     (#xA001 . "ColorSpace") (#xA002 . "PixelXDimension") (#xA003 . "PixelYDimension") (#xA217 . "SensingMethod")
     (#xA300 . "FileSource") (#xA301 . "SceneType") (#xA401 . "CustomRendered") (#xA402 . "ExposureMode")
-    (#xA403 . "WhiteBalance") (#xA404 . "DigitalZoomRatio") (#xA405 . "FocalLengthIn35mmFilm") (#xA406 . "SceneCaptureType")
+    (#xA403 . "WhiteBalance")
+    (#xA404 . "DigitalZoomRatio")
+    (#xA405 . "FocalLengthIn35mmFilm")
+    (#xA406 . "SceneCaptureType")
     (#xA420 . "ImageUniqueID") (#xA430 . "CameraOwnerName") (#xA431 . "BodySerialNumber") (#xA432 . "LensSpecification")
     (#xA433 . "LensMake") (#xA434 . "LensModel") (#xA435 . "LensSerialNumber") (#xC4A5 . "PrintImageMatching"))
   "The names of the EXIF tags of a picture's main and EXIF parts, by number.")
@@ -98,7 +113,12 @@ true when they are cut so)."
 (defparameter *exif-gps-tags*
   '((0 . "GPSVersionID") (1 . "GPSLatitudeRef") (2 . "GPSLatitude") (3 . "GPSLongitudeRef") (4 . "GPSLongitude")
     (5 . "GPSAltitudeRef") (6 . "GPSAltitude") (7 . "GPSTimeStamp") (8 . "GPSSatellites") (9 . "GPSStatus")
-    (10 . "GPSMeasureMode") (11 . "GPSDOP") (12 . "GPSSpeedRef") (13 . "GPSSpeed") (14 . "GPSTrackRef") (15 . "GPSTrack")
+    (10 . "GPSMeasureMode")
+    (11 . "GPSDOP")
+    (12 . "GPSSpeedRef")
+    (13 . "GPSSpeed")
+    (14 . "GPSTrackRef")
+    (15 . "GPSTrack")
     (16 . "GPSImgDirectionRef") (17 . "GPSImgDirection") (18 . "GPSMapDatum") (27 . "GPSProcessingMethod")
     (29 . "GPSDateStamp") (31 . "GPSHPositioningError"))
   "The names of the EXIF tags of a picture's GPS part, by number.")
@@ -114,7 +134,9 @@ true when they are cut so)."
 *METADATA-MOST-FIELDS* tags. Values are read as their type says: text,
 numbers, fractions as written (1/125), dates as written; text and octets
 to their first 4 KB."
-  (let* ((big (cond ((tuatara.io:octets-at-p octets "MM" start) t) ((tuatara.io:octets-at-p octets "II" start) nil) (t (return-from exif-read '()))))
+  (let* ((big (cond ((tuatara.io:octets-at-p octets "MM" start) t)
+                    ((tuatara.io:octets-at-p octets "II" start) nil)
+                    (t (return-from exif-read '()))))
          (fields '()) (seen '()) (count 0))
     (labels ((int (at n) (octets-integer octets (+ start at) n :big-endian big))
              (value (type number at)
@@ -123,7 +145,8 @@ to their first 4 KB."
                       (total (and size (* size number))))
                  (cond ((or (null size) (> (+ start at (or total 0)) (length octets)) (minusp at)) nil)
                        ;; text and octets kept to their first 4 KB: a field may claim the whole file, a thousand times
-                       ((= type 2) (string-right-trim '(#\Space) (octets-text octets (+ start at) (+ start at (min total 4096)))))
+                       ((= type 2) (string-right-trim '(#\Space)
+                                                      (octets-text octets (+ start at) (+ start at (min total 4096)))))
                        ((member type '(1 6 7)) (subseq octets (+ start at) (+ start at (min total 4096))))
                        (t (loop for i from 0 below (min number 64)
                                 for p = (+ at (* i size))
@@ -169,8 +192,12 @@ to their first 4 KB."
          (if (tuatara.io:octets-at-p value "UNICODE") (utf-16-text value :start 8) (octets-text value 8 (length value))))
         ((and (vectorp value) (member tag '(#x9000 #xA000 0)) (<= (length value) 8))
          (if (= tag 0) (format nil "~{~d~^.~}" (coerce value 'list)) (octets-text value 0 (length value))))
-        ((and (vectorp value) (= tag #x927C)) (format nil "~:d octets of the maker's own notes (not read)" (length value)))
-        ((vectorp value) (if (<= (length value) 32) (tuatara.text:octets-hex value :upper-case t) (format nil "~:d octets" (length value))))
+        ((and (vectorp value) (= tag #x927C)) (format nil
+                                                      "~:d octets of the maker's own notes (not read)"
+                                                      (length value)))
+        ((vectorp value) (if (<= (length value) 32)
+                             (tuatara.text:octets-hex value :upper-case t)
+                             (format nil "~:d octets" (length value))))
         ((listp value)
          (format nil "~{~a~^ ~}" (mapcar (lambda (v) (if (consp v) (exif-rational-words v) v)) value)))
         (t (princ-to-string value))))
@@ -178,7 +205,9 @@ to their first 4 KB."
 (defun exif-degrees (value reference)
   "The degrees, minutes and seconds VALUE (three fractions) of a GPS position,
 south or west by REFERENCE (S, W), as a signed decimal, or NIL."
-  (when (and (listp value) (= (length value) 3) (every (lambda (r) (and (consp r) (car r) (cdr r) (plusp (cdr r)))) value))
+  (when (and (listp value)
+             (= (length value) 3)
+             (every (lambda (r) (and (consp r) (car r) (cdr r) (plusp (cdr r)))) value))
     (let ((degrees (+ (/ (car (first value)) (cdr (first value)))
                       (/ (/ (car (second value)) (cdr (second value))) 60)
                       (/ (/ (car (third value)) (cdr (third value))) 3600))))
@@ -244,7 +273,8 @@ when it has none."
                      ((string= type "tIME")
                       (when (= length 7)
                         (destructuring-bind (year month day hour minute second)
-                            (cons (octets-integer octets data 2 :big-endian t) (coerce (subseq octets (+ data 2) (+ data 7)) 'list))
+                            (cons (octets-integer octets data 2 :big-endian t)
+                                  (coerce (subseq octets (+ data 2) (+ data 7)) 'list))
                           (push (cons "Last changed (tIME)"
                                       (if (and (valid-date-p year month day) (< hour 24) (< minute 60) (< second 61))
                                           (utc-time-words (+ (* 86400 (day-number year month day)) (* 3600 hour) (* 60 minute) second))
@@ -257,7 +287,8 @@ when it has none."
                             (push (cons key
                                         (cond ((string= type "tEXt") (tuatara.text:octets-latin-1 octets :start (1+ nul) :end end))
                                               ((string= type "zTXt")
-                                               (let ((text (zlib-octets octets (+ nul 2) end))) (and text (tuatara.text:octets-latin-1 text))))
+                                               (let ((text (zlib-octets octets (+ nul 2) end)))
+                                                 (and text (tuatara.text:octets-latin-1 text))))
                                               (t (let* ((compressed (and (< (1+ nul) end) (= 1 (aref octets (1+ nul)))))
                                                         (language-end (and (< (+ nul 3) end) (position 0 octets :start (+ nul 3) :end end)))
                                                         (translated-end (and language-end (position 0 octets :start (1+ language-end) :end end))))
@@ -269,7 +300,8 @@ when it has none."
                                   texts))))))
                (setf at (+ end 4))))
     (append (nreverse sections)
-            (list (metadata-section "PNG text" (remove-if (lambda (f) (search "xmpmeta" (or (cdr f) ""))) (nreverse texts)))))))
+            (list (metadata-section "PNG text"
+                                    (remove-if (lambda (f) (search "xmpmeta" (or (cdr f) ""))) (nreverse texts)))))))
 
 (defun webp-metadata (octets)
   "The sections of the note for the WebP picture in OCTETS: its EXIF."
@@ -288,13 +320,23 @@ when it has none."
 ;;; Boxes: MP4, QuickTime, HEIF
 
 (defparameter *mp4-items*
-  '(("©nam" . "Title") ("©ART" . "Artist") ("©alb" . "Album") ("©day" . "Date") ("©cmt" . "Comment") ("©too" . "Encoder")
-    ("©gen" . "Genre") ("©wrt" . "Composer") ("©xyz" . "Position") ("©mak" . "Make") ("©mod" . "Model") ("©swr" . "Software")
+  '(("©nam" . "Title") ("©ART" . "Artist")
+    ("©alb" . "Album")
+    ("©day" . "Date")
+    ("©cmt" . "Comment")
+    ("©too" . "Encoder")
+    ("©gen" . "Genre")
+    ("©wrt" . "Composer")
+    ("©xyz" . "Position")
+    ("©mak" . "Make")
+    ("©mod" . "Model")
+    ("©swr" . "Software")
     ("©des" . "Description") ("cprt" . "Copyright") ("desc" . "Description") ("aART" . "Album artist"))
   "The names of an MP4 or QuickTime file's own items, by type.")
 
 (defun mp4-data-text (octets start end)
-  "The value of a data box (from START below END of OCTETS) of an MP4 item: text as its type says, a number, or its size."
+  "The value of a data box (from START below END of OCTETS) of an MP4 item: text
+as its type says, a number, or its size."
   (let ((type (octets-integer octets start 4 :big-endian t)) (from (+ start 8)))
     (cond ((or (null type) (> from end)) nil)
           ((member type '(1 4)) (octets-text octets from end))
@@ -308,7 +350,8 @@ when it was made and changed (as its movie header says), its length, its
 brand, and its own items (title, maker, model, place, software)."
   (let* ((n (length octets))
          (fields '())
-         (brand (let ((ftyp (tuatara.io:box-find octets 0 n "ftyp"))) (and ftyp (octets-text octets (second ftyp) (+ 4 (second ftyp))))))
+         (brand (let ((ftyp (tuatara.io:box-find octets 0 n "ftyp")))
+                  (and ftyp (octets-text octets (second ftyp) (+ 4 (second ftyp))))))
          (mvhd (tuatara.io:box-find octets 0 n "moov" "mvhd")))
     (when brand (push (cons "Brand" brand) fields))
     (when (and mvhd (< (second mvhd) (third mvhd)))
@@ -328,7 +371,9 @@ brand, and its own items (title, maker, model, place, software)."
       (when udta
         (dolist (box (tuatara.io:box-children octets (second udta) (third udta)))
           (let ((name (cdr (assoc (first box) *mp4-items* :test #'string=))))
-            (when (and name (char= (char (first box) 0) #\©) (not (tuatara.io:box-find octets (second box) (third box) "data")))
+            (when (and name
+                       (char= (char (first box) 0) #\©)
+                       (not (tuatara.io:box-find octets (second box) (third box) "data")))
               (let ((length (octets-integer octets (second box) 2 :big-endian t)))
                 (when (and length (<= (+ (second box) 4 length) (third box)))
                   (push (cons name (octets-text octets (+ (second box) 4) (+ (second box) 4 length))) fields))))))))
@@ -337,12 +382,16 @@ brand, and its own items (title, maker, model, place, software)."
       (let ((meta (apply #'tuatara.io:box-find octets 0 n path)))
         (when meta
           (let* ((inner (if (tuatara.io:octets-at-p octets "hdlr" (+ (second meta) 4)) (second meta) (+ (second meta) 4)))
-                 (keys (let ((box (find "keys" (tuatara.io:box-children octets inner (third meta)) :key #'first :test #'string=)))
+                 (keys (let ((box (find "keys"
+                                        (tuatara.io:box-children octets inner (third meta))
+                                        :key #'first
+                                        :test #'string=)))
                          (when box
                            (let ((count (octets-integer octets (+ (second box) 4) 4 :big-endian t)) (at (+ (second box) 8)) (names '()))
                              (dotimes (i (min (or count 0) 1000) (coerce (nreverse names) 'vector))
                                (let ((size (octets-integer octets at 4 :big-endian t)))
-                                 (unless (and size (>= size 8) (<= (+ at size) (third box))) (return (coerce (nreverse names) 'vector)))
+                                 (unless (and size (>= size 8) (<= (+ at size) (third box)))
+                                   (return (coerce (nreverse names) 'vector)))
                                  (push (octets-text octets (+ at 8) (+ at size)) names)
                                  (incf at size)))))))
                  (ilst (find "ilst" (tuatara.io:box-children octets inner (third meta)) :key #'first :test #'string=)))
@@ -352,7 +401,10 @@ brand, and its own items (title, maker, model, place, software)."
                        (name (or (cdr (assoc (first item) *mp4-items* :test #'string=))
                                  (and keys index (<= 1 index (length keys)) (aref keys (1- index)))
                                  (first item)))
-                       (data (find "data" (tuatara.io:box-children octets (second item) (third item)) :key #'first :test #'string=)))
+                       (data (find "data"
+                                   (tuatara.io:box-children octets (second item) (third item))
+                                   :key #'first
+                                   :test #'string=)))
                   (when data (push (cons name (mp4-data-text octets (second data) (third data))) fields)))))))))
     (list (metadata-section "What the video or sound says of itself" (nreverse fields)))))
 
@@ -373,13 +425,16 @@ EXIF its item of that kind holds."
                                        (when (>= version 2)
                                          (let* ((wide (>= version 3))
                                                 (id (octets-integer octets (+ start 4) (if wide 4 2) :big-endian t))
-                                                (kind (octets-text octets (+ start (if wide 10 8)) (+ start (if wide 14 12)))))
+                                                (kind (octets-text octets
+                                                                   (+ start (if wide 10 8))
+                                                                   (+ start (if wide 14 12)))))
                                            (when (string= kind "Exif") (return id)))))))))
              (place (when (and iloc exif-id)
                       (let* ((at (second iloc)) (version (aref octets at))
                              (sizes (octets-integer octets (+ at 4) 2 :big-endian t))
                              (offset-size (ldb (byte 4 12) sizes)) (length-size (ldb (byte 4 8) sizes))
-                             (base-size (ldb (byte 4 4) sizes)) (index-size (if (>= version 1) (ldb (byte 4 0) sizes) 0))
+                             (base-size (ldb (byte 4 4) sizes))
+                             (index-size (if (>= version 1) (ldb (byte 4 0) sizes) 0))
                              (count (octets-integer octets (+ at 6) (if (< version 2) 2 4) :big-endian t))
                              (p (+ at (if (< version 2) 8 10))))
                         (dotimes (i (min (or count 0) 10000))
@@ -410,22 +465,30 @@ of structures (an edit history) one field per item."
   (let ((fields '()))
     (labels ((text (node)
                ;; an element's value: its list's items joined, a structure's fields joined, or its text
-               (let ((list (find-if (lambda (c) (member (xml-name c) '("rdf:Seq" "rdf:Bag" "rdf:Alt") :test #'equal)) (xml-children node))))
+               (let ((list (find-if (lambda (c) (member (xml-name c) '("rdf:Seq" "rdf:Bag" "rdf:Alt") :test #'equal))
+                                    (xml-children node))))
                  (if list
                      (format nil "~{~a~^; ~}" (mapcar #'text (xml-local-children list "li")))
-                     (let ((attributes (remove-if (lambda (a) (or (uiop:string-prefix-p "xmlns" (car a)) (member (car a) '("rdf:about" "rdf:parseType" "xml:lang") :test #'string=)))
+                     (let ((attributes (remove-if (lambda (a)
+                                                    (or (uiop:string-prefix-p "xmlns" (car a))
+                                                        (member (car a)
+                                                                '("rdf:about" "rdf:parseType" "xml:lang")
+                                                                :test #'string=)))
                                                   (second node)))
                            (elements (remove-if-not #'consp (xml-children node))))
                        (if (or attributes elements)
-                           (format nil "~{~a~^, ~}" (append (mapcar (lambda (a) (format nil "~a ~a" (car a) (cdr a))) attributes)
-                                                            (mapcar (lambda (e) (format nil "~a ~a" (xml-name e) (text e))) elements)))
+                           (format nil
+                                   "~{~a~^, ~}"
+                                   (append (mapcar (lambda (a) (format nil "~a ~a" (car a) (cdr a))) attributes)
+                                           (mapcar (lambda (e) (format nil "~a ~a" (xml-name e) (text e))) elements)))
                            (string-trim '(#\Space #\Newline #\Tab) (xml-all-text node 2000)))))))
              (walk (node)
                (when (consp node)
                  (if (equal (xml-name node) "rdf:Description")
                      (progn
                        (dolist (a (second node))
-                         (unless (or (uiop:string-prefix-p "xmlns" (car a)) (member (car a) '("rdf:about") :test #'string=))
+                         (unless (or (uiop:string-prefix-p "xmlns" (car a))
+                                     (member (car a) '("rdf:about") :test #'string=))
                            (push (cons (car a) (cdr a)) fields)))
                        (dolist (child (xml-children node))
                          (when (consp child) (push (cons (xml-name child) (text child)) fields))))
@@ -488,7 +551,8 @@ great many it does not have is read in a bounded time."
                                            ((stringp v) v)
                                            (t (princ-to-string v))))))
          (encrypted (tuatara.io:octets-search (tuatara.text:string-octets "/Encrypt") octets))
-         (acts (loop for (mark . words) in '(("/JavaScript" . "JavaScript") ("/JS" . "JavaScript") ("/OpenAction" . "an action on opening")
+         (acts (loop for (mark . words) in '(("/JavaScript" . "JavaScript") ("/JS" . "JavaScript")
+                                             ("/OpenAction" . "an action on opening")
                                               ("/AA" . "actions on events") ("/Launch" . "an action starting a program")
                                               ("/EmbeddedFile" . "files kept inside it") ("/RichMedia" . "media")
                                               ("/XFA" . "an XFA form") ("/SubmitForm" . "a form sent somewhere"))
@@ -505,20 +569,29 @@ great many it does not have is read in a bounded time."
                          (cons "Cross-reference" (and (gethash :too-many *pdf-objects-found*)
                                                       (format nil "lists more than ~:d objects: the rest were not read"
                                                               *pdf-most-entries*))))
-                   (list (cons "Holds" (and acts (format nil "~{~a~^, ~} (none run here)" (remove-duplicates acts :test #'string= :from-end t))))))))))
+                   (list (cons "Holds"
+                               (and acts
+                                    (format nil
+                                            "~{~a~^, ~} (none run here)"
+                                            (remove-duplicates acts :test #'string= :from-end t))))))))))
 
 ;;; Sound: MP3's ID3 tags, FLAC's comments
 
 (defparameter *id3-frames*
   '(("TIT2" . "Title") ("TPE1" . "Artist") ("TALB" . "Album") ("TYER" . "Year") ("TDRC" . "Recorded") ("TCON" . "Genre")
-    ("TRCK" . "Track") ("TENC" . "Encoded by") ("TSSE" . "Encoder settings") ("TCOP" . "Copyright") ("TPE2" . "Album artist")
+    ("TRCK" . "Track")
+    ("TENC" . "Encoded by")
+    ("TSSE" . "Encoder settings")
+    ("TCOP" . "Copyright")
+    ("TPE2" . "Album artist")
     ("TCOM" . "Composer") ("TDEN" . "Encoded") ("TDTG" . "Tagged") ("TLEN" . "Length (ms)") ("COMM" . "Comment")
     ("USLT" . "Lyrics") ("APIC" . "Picture") ("TT2" . "Title") ("TP1" . "Artist") ("TAL" . "Album") ("TYE" . "Year")
     ("COM" . "Comment") ("PIC" . "Picture") ("TEN" . "Encoded by") ("TSS" . "Encoder settings"))
   "The names of an MP3's ID3 frames, by their ids.")
 
 (defun id3-text (octets start end encoding)
-  "OCTETS from START below END as ID3 text of ENCODING (0 Latin-1, 1 UTF-16 with its mark, 2 UTF-16 big-endian, 3 UTF-8)."
+  "OCTETS from START below END as ID3 text of ENCODING (0 Latin-1, 1 UTF-16 with
+its mark, 2 UTF-16 big-endian, 3 UTF-8)."
   (case encoding
     ((1 2) (utf-16-text octets :start start :end end :big-endian (= encoding 2)))
     (3 (octets-text octets start end))
@@ -545,7 +618,8 @@ and where the next begins, past its null (NUL) (two octets wide in UTF-16)."
                       ;; unsynchronised: each FF 00 stands for FF
                       (let ((out (make-array 0 :element-type '(unsigned-byte 8) :adjustable t :fill-pointer 0)))
                         (loop for i from 10 below end
-                              do (unless (and (zerop (aref octets i)) (> i 10) (= #xFF (aref octets (1- i)))) (vector-push-extend (aref octets i) out)))
+                              do (unless (and (zerop (aref octets i)) (> i 10) (= #xFF (aref octets (1- i))))
+                                   (vector-push-extend (aref octets i) out)))
                         (coerce out '(simple-array (unsigned-byte 8) (*))))
                       (subseq octets 10 end)))
              (at (if (and (logtest flags #x40) (>= major 3)) (+ 4 (or (octets-integer tag 0 4 :big-endian t) 0)) 0))
@@ -553,10 +627,15 @@ and where the next begins, past its null (NUL) (two octets wide in UTF-16)."
         (loop while (and (<= (+ at header) (length tag)) (< (incf count) *metadata-most-fields*))
               do (let* ((id (octets-text tag at (+ at id-size)))
                         (length (cond ((= major 2) (octets-integer tag (+ at 3) 3 :big-endian t))
-                                      ((= major 4) (loop for i from 4 below 8 sum (ash (logand (aref tag (+ at i)) #x7F) (* 7 (- 7 i)))))
+                                      ((= major 4) (loop for i from 4 below 8
+                                                         sum (ash (logand (aref tag (+ at i)) #x7F) (* 7 (- 7 i)))))
                                       (t (octets-integer tag (+ at 4) 4 :big-endian t))))
                         (data (+ at header)) (data-end (and length (+ data length))))
-                   (when (or (zerop (length id)) (not (alphanumericp (char id 0))) (null length) (> data-end (length tag))) (return))
+                   (when (or (zerop (length id))
+                             (not (alphanumericp (char id 0)))
+                             (null length)
+                             (> data-end (length tag)))
+                     (return))
                    (let ((name (or (cdr (assoc id *id3-frames* :test #'string=)) id))
                          (encoding (if (< data data-end) (aref tag data) 0)))
                      (push (cons name
@@ -564,8 +643,12 @@ and where the next begins, past its null (NUL) (two octets wide in UTF-16)."
                                        ((member id '("TXXX" "WXXX" "TXX" "WXX") :test #'string=)
                                         (multiple-value-bind (stop next) (id3-split tag (1+ data) data-end encoding)
                                           (format nil "~a: ~a" (id3-text tag (1+ data) stop encoding)
-                                                  (if (char= (char id 0) #\W) (octets-text tag next data-end) (id3-text tag next data-end encoding)))))
-                                       ((char= (char id 0) #\T) (substitute #\/ (code-char 0) (id3-text tag (1+ data) data-end encoding)))
+                                                  (if (char= (char id 0) #\W)
+                                                      (octets-text tag next data-end)
+                                                      (id3-text tag next data-end encoding)))))
+                                       ((char= (char id 0) #\T) (substitute #\/
+                                                                            (code-char 0)
+                                                                            (id3-text tag (1+ data) data-end encoding)))
                                        ((char= (char id 0) #\W) (octets-text tag data data-end))
                                        ((member id '("COMM" "USLT" "COM" "ULT") :test #'string=)
                                         (multiple-value-bind (stop next) (id3-split tag (+ data 4) data-end encoding)
@@ -606,7 +689,9 @@ and where the next begins, past its null (NUL) (two octets wide in UTF-16)."
                           (let ((size (octets-integer octets p 4)))
                             (unless (and size (<= (+ p 4 size) end)) (return))
                             (let* ((text (octets-text octets (+ p 4) (+ p 4 size))) (equals (position #\= text)))
-                              (push (if equals (cons (subseq text 0 equals) (subseq text (1+ equals))) (cons "Comment" text)) fields))
+                              (push (if equals
+                                        (cons (subseq text 0 equals) (subseq text (1+ equals)))
+                                        (cons "Comment" text)) fields))
                             (incf p (+ 4 size)))))))
                  (6 (push (cons "Picture" (format nil "~:d octets of a picture kept inside it" length)) fields)))
                (when (logbitp 7 header) (return))
@@ -647,18 +732,32 @@ its STAMP, KIND and WORDS (by its contents) and its SHA-256 SUM."
        "The file"
        (list (cons "Path" (tuatara.io:native path))
              (cons "Link to" link)
-             (cons "Kind" (format nil "~a~:[~; (its name says otherwise: ~a)~]" (or words "text, or a kind not told by its contents")
-                                  (and kind (tuatara.io:kind-name-disagrees-p kind name)) name))
+             (cons "Kind"
+                   (format nil
+                           "~a~:[~; (its name says otherwise: ~a)~]"
+                           (or words "text, or a kind not told by its contents")
+                           (and kind (tuatara.io:kind-name-disagrees-p kind name)) name))
              (cons "MIME type" (and kind (file-mime-type kind name)))
-             (cons "Size" (format nil "~:d octets (~a)" (tuatara.io:stamp-size stamp) (octets-words (tuatara.io:stamp-size stamp))))
+             (cons "Size"
+                   (format nil
+                           "~:d octets (~a)"
+                           (tuatara.io:stamp-size stamp)
+                           (octets-words (tuatara.io:stamp-size stamp))))
              (cons "Permissions" (mode-words (tuatara.io:stamp-mode stamp)))
              (cons "Owner" (format nil "~a (~d), group ~a (~d)" (or owner "unknown") (tuatara.io:stamp-uid stamp)
                                    (or group "unknown") (tuatara.io:stamp-gid stamp)))
              (cons "Modified" (time-of :modified))
              (cons "Changed" (let ((w (time-of :changed))) (and w (format nil "~a (its contents, name, owner or permissions)" w))))
-             (cons "Accessed" (let ((w (time-of :accessed))) (and w (format nil "~a (as it was before this look, which leaves it alone)" w))))
+             (cons "Accessed"
+                   (let ((w (time-of :accessed)))
+                     (and w (format nil "~a (as it was before this look, which leaves it alone)" w))))
              (cons "Born" (or (time-of :born) "not kept by its file system"))
-             (cons "Inode" (format nil "~d on device ~d, ~d name~:p" (tuatara.io:stamp-ino stamp) (tuatara.io:stamp-dev stamp) (tuatara.io:stamp-nlink stamp)))
+             (cons "Inode"
+                   (format nil
+                           "~d on device ~d, ~d name~:p"
+                           (tuatara.io:stamp-ino stamp)
+                           (tuatara.io:stamp-dev stamp)
+                           (tuatara.io:stamp-nlink stamp)))
              (cons "SHA-256" (or sum "not summed")))))))
 
 (defun xattr-section (fd)
@@ -673,8 +772,12 @@ from, the SELinux label, ACLs)."
                                   ((and (every (lambda (o) (or (>= o 32) (member o '(0 9 10 13)))) value)
                                         (handler-case (sb-ext:octets-to-string value :external-format :utf-8)
                                           (sb-int:character-decoding-error () nil)))
-                                   (string-right-trim (string (code-char 0)) (sb-ext:octets-to-string value :external-format :utf-8)))
-                                  (t (format nil "~a (~:d octets)" (tuatara.text:octets-hex value :end (min 64 (length value)) :upper-case t) (length value))))))))
+                                   (string-right-trim (string (code-char 0))
+                                                      (sb-ext:octets-to-string value :external-format :utf-8)))
+                                  (t (format nil
+                                             "~a (~:d octets)"
+                                             (tuatara.text:octets-hex value :end (min 64 (length value)) :upper-case t)
+                                             (length value))))))))
 
 ;;; OpenPGP: who an encrypted file is for, read from its packets
 
@@ -690,7 +793,12 @@ encrypted file is for (*METADATA-LOOK-UP-KEY-OWNERS*).")
 
 (defparameter *openpgp-key-algorithms*
   '((1 . "RSA") (2 . "RSA") (3 . "RSA") (16 . "ElGamal") (17 . "DSA") (18 . "ECDH") (19 . "ECDSA") (22 . "EdDSA")
-    (25 . "X25519") (26 . "X448") (27 . "Ed25519") (28 . "Ed448") (35 . "ML-KEM-768 with X25519") (36 . "ML-KEM-1024 with X448"))
+    (25 . "X25519")
+    (26 . "X448")
+    (27 . "Ed25519")
+    (28 . "Ed448")
+    (35 . "ML-KEM-768 with X25519")
+    (36 . "ML-KEM-1024 with X448"))
   "The names of OpenPGP's public-key algorithms, by number.")
 
 (defparameter *openpgp-ciphers*
@@ -720,7 +828,8 @@ when OCTETS are not armoured."
            (at (1+ first-end)))
       ;; the headers run to the first empty line
       (loop for line-end = (or (position 10 octets :start (min at (length octets))) (length octets))
-            for line = (string-right-trim '(#\Return) (tuatara.text:octets-latin-1 octets :start (min at line-end) :end line-end))
+            for line = (string-right-trim '(#\Return)
+                                          (tuatara.text:octets-latin-1 octets :start (min at line-end) :end line-end))
             while (and (< at (length octets)) (plusp (length line)) (< (length headers) 50))
             do (let ((colon (search ": " line)))
                  (if colon
@@ -728,7 +837,9 @@ when OCTETS are not armoured."
                      (return)))
                (setf at (1+ line-end)))
       (setf at (min at (length octets)))
-      (let ((end (min (length octets) (+ at (* 256 1024)) (or (search (tuatara.text:string-octets "-----END") octets :start2 at) (length octets)))))
+      (let ((end (min (length octets)
+                      (+ at (* 256 1024))
+                      (or (search (tuatara.text:string-octets "-----END") octets :start2 at) (length octets)))))
         (values (tuatara.io:base64-octets octets :start (min at end) :end end) (nreverse headers))))))
 
 (defun openpgp-octets-hex (octets start end)
@@ -743,7 +854,8 @@ when OCTETS are not armoured."
     (3 (let ((id (openpgp-octets-hex octets (+ body 1) (+ body 9)))
              (algorithm (tuatara.io:octet-at octets (+ body 9))))
          (and id algorithm
-              (list :id (and (find-if (lambda (c) (char/= c #\0)) id) id) :algorithm (openpgp-name *openpgp-key-algorithms* algorithm)))))
+              (list :id (and (find-if (lambda (c) (char/= c #\0)) id) id)
+                    :algorithm (openpgp-name *openpgp-key-algorithms* algorithm)))))
     (6 (let ((n (tuatara.io:octet-at octets (+ body 1))))
          (cond ((null n) nil)
                ((zerop n) (let ((algorithm (tuatara.io:octet-at octets (+ body 2))))
@@ -752,7 +864,9 @@ when OCTETS are not armoured."
                         (fingerprint (openpgp-octets-hex octets (+ body 3) (+ body 2 n)))
                         (algorithm (tuatara.io:octet-at octets (+ body 2 n))))
                     (and version fingerprint algorithm (>= (length fingerprint) 16)
-                         (list :id (if (= version 4) (subseq fingerprint (- (length fingerprint) 16)) (subseq fingerprint 0 16))
+                         (list :id (if (= version 4)
+                                       (subseq fingerprint (- (length fingerprint) 16))
+                                       (subseq fingerprint 0 16))
                                :fingerprint fingerprint :algorithm (openpgp-name *openpgp-key-algorithms* algorithm))))))))))
 
 (defun openpgp-s2k-words (octets at)
@@ -765,7 +879,8 @@ when OCTETS are not armoured."
       (3 (let ((c (tuatara.io:octet-at octets (+ at 10))))
            (format nil "~a, salted and repeated~@[, ~:d octets hashed~]" hash
                    (and c (ash (+ 16 (logand c 15)) (+ (ash c -4) 6))))))
-      (4 (let ((passes (tuatara.io:octet-at octets (+ at 17))) (lanes (tuatara.io:octet-at octets (+ at 18))) (memory (tuatara.io:octet-at octets (+ at 19))))
+      (4 (let ((passes (tuatara.io:octet-at octets (+ at 17))) (lanes (tuatara.io:octet-at octets (+ at 18)))
+               (memory (tuatara.io:octet-at octets (+ at 19))))
            (if (and passes lanes memory (< memory 64))
                (format nil "Argon2, ~d pass~:*~[es~;~:;es~], ~d lane~:p, ~d ~a of memory" passes lanes
                        (ash 1 (mod memory 10)) (case (floor memory 10) (0 "KiB") (1 "MiB") (2 "GiB") (t "TiB")))
@@ -791,7 +906,10 @@ when OCTETS are not armoured."
   (flet ((aead-words ()
            ;; the cipher and the mode, after the version
            (let ((c (tuatara.io:octet-at octets (+ body 1))) (m (tuatara.io:octet-at octets (+ body 2))))
-             (format nil "~a, ~a" (if c (openpgp-name *openpgp-ciphers* c) "?") (if m (openpgp-name *openpgp-aead-modes* m) "?")))))
+             (format nil
+                     "~a, ~a"
+                     (if c (openpgp-name *openpgp-ciphers* c) "?")
+                     (if m (openpgp-name *openpgp-aead-modes* m) "?")))))
     (case tag
       (9 "none: an old form without a modification check; what it holds could have been changed unnoticed")
       (18 (case (tuatara.io:octet-at octets body)
@@ -858,11 +976,13 @@ packets, nothing decrypted."
                                              (case owners
                                                (:not-asked "owner not looked up (*metadata-look-up-key-owners*)")
                                                (:no-gpg "owner not looked up: gpg is not installed")
-                                               (t (or (cdr (assoc (getf r :id) owners :test #'string-equal)) "not in your keyring")))))))
+                                               (t (or (cdr (assoc (getf r :id) owners :test #'string-equal))
+                                                      "not in your keyring")))))))
             (loop for words in (getf packets :passphrases)
                   for k from 1
                   collect (cons (format nil "Passphrase ~d" k) words))
-            (list (cons "Modification check" (or (getf packets :protection) "not reached: the file is cut short or not read")))
+            (list (cons "Modification check"
+                        (or (getf packets :protection) "not reached: the file is cut short or not read")))
             (loop for (name . value) in (getf packets :headers)
                   collect (cons (format nil "Armour header ~a" name) value)))))))
 
@@ -907,7 +1027,8 @@ wherever it is kept."
   (declare (ignore fd size))
   (office-metadata path kind))
 
-(defun file-metadata-note (path &key (cancel (list nil)) (done (list 0)) (look-up-keys (eq *metadata-look-up-key-owners* t)))
+(defun file-metadata-note
+    (path &key (cancel (list nil)) (done (list 0)) (look-up-keys (eq *metadata-look-up-key-owners* t)))
   "The Org note of what the file at PATH is and says of itself, as
 \\[show-file-metadata] shows it; its SHA-256 summed with CANCEL and DONE as
 FILE-SHA256 takes them; with LOOK-UP-KEYS, the owners of the keys an
@@ -930,7 +1051,9 @@ cannot be read."
 
 ;;; The command
 
-(defstruct (metadata-job (:include tuatara.runtime:job) (:constructor make-metadata-job (buffer path size)) (:copier nil))
+(defstruct (metadata-job (:include tuatara.runtime:job)
+                         (:constructor make-metadata-job (buffer path size))
+                         (:copier nil))
   "The metadata of the file at PATH, of SIZE octets, being read for BUFFER, a
 job; DONE, the octets summed so far; TEXT, the note made."
   path size (done (list 0)) text)
@@ -966,22 +1089,24 @@ it says :ask, only of a file encrypted to keys it names."
 
 (define-command show-file-metadata ()
   "Show what the file shown is and what it says of itself, in a buffer of its
-own, which \\`q' closes: the file the buffer visits, the entry on the line in a list of a
-directory, the PDF or picture in its view; with \\[universal-argument], or
-where there is none, asked for. What the system knows of it (its kind by its
-contents, size, permissions, owner, when it was modified, changed, accessed
-and born, its SHA-256 sum, its extended attributes) and what it keeps of
-itself: a photograph's EXIF (camera, times, settings, GPS position, its
-thumbnail), XMP and its edit history, a PNG's text, a PDF's document
-information and saves, an MP3's tags, a video's times and place, an Office
-document's account of itself, an encrypted file's keys and passphrases (whose
-the keys are looked up in your keyring as *metadata-look-up-key-owners* says).
-Read by Tuatara alone in the background, nothing run and its access time left
-alone; gpg, when it looks up keys, is given your keyring alone, not the file."
+own, which \\`q' closes: the file the buffer visits, the entry on the line in
+a list of a directory, the PDF or picture in its view; with
+\\[universal-argument], or where there is none, asked for. It shows what the
+system knows of it (its kind by its contents, size, permissions, owner, when
+it was modified, changed, accessed and born, its SHA-256 sum, its extended
+attributes). It shows what it keeps of itself too: a photograph's EXIF
+(camera, times, settings, GPS position, its thumbnail), XMP and its edit
+history, a PNG's text, a PDF's document information and saves, an MP3's tags,
+a video's times and place, and an Office document's account of itself. It
+shows an encrypted file's keys and passphrases as well (whose the keys are
+looked up in your keyring as *metadata-look-up-key-owners* says). Read by
+Tuatara alone in the background, nothing run and its access time left alone.
+gpg, when it looks up keys, is given your keyring alone, not the file."
   (let* ((path (shown-file-argument "Metadata of file: "))
          (stamp (tuatara.io:path-stamp path)))
     (cond ((null stamp) (message "~a is not there" (abbreviated-path path)))
-          ((not (eq (tuatara.io:stamp-kind stamp) :regular)) (message "~a is not a regular file: no metadata read" (abbreviated-path path)))
+          ((not (eq (tuatara.io:stamp-kind stamp) :regular)) (message "~a is not a regular file: no metadata read"
+                                                                      (abbreviated-path path)))
           (t (let ((look-up-keys (look-up-key-owners-p path))
                    (buffer (buffer-in-mode (format nil "*Metadata: ~a*" (tuatara.io:native-file-name path)) 'org-mode)))
                (setf (buffer-read-only-p buffer) t
@@ -992,9 +1117,10 @@ alone; gpg, when it looks up keys, is given your keyring alone, not the file."
                (let ((job (make-metadata-job buffer path (tuatara.io:stamp-size stamp))))
                  (tuatara.runtime:start-job-thread
                   job (lambda (job) (setf (metadata-job-text job)
-                                          (file-metadata-note (metadata-job-path job) :cancel (tuatara.runtime:job-cancel job)
-                                                                                      :done (metadata-job-done job)
-                                                                                      :look-up-keys look-up-keys)))
+                                          (file-metadata-note (metadata-job-path job)
+                                                              :cancel (tuatara.runtime:job-cancel job)
+                                                              :done (metadata-job-done job)
+                                                              :look-up-keys look-up-keys)))
                   :name "tuatara metadata")))))))
 
 (defun install-metadata ()

@@ -149,20 +149,18 @@ to.")
 
 (defvar *mark-run-keymap* (make-keymap :name "mark run")
   "The keys of a mark run: \\<*mark-run-keymap*>\\[select-word]
-\\[select-symbol] \\[select-word-backward]
-\\[select-symbol-backward] \\[select-sentence]
-\\[select-sentence-backward] grow the selection as
-\\<normal>\\[select-word] and the rest do;
-\\<*mark-run-keymap*>\\[mark-run-left] \\[mark-run-down]
-\\[mark-run-up] \\[mark-run-right], \\[mark-run-line-start]
-\\[mark-run-line-end], \\[mark-run-buffer-start] \\`g e' and
-\\[mark-run-buffer-end] adjust or stretch it;
-\\[mark-run-line-forward] and \\[mark-run-line-backward] take
-whole lines; \\[mark-run-exchange] swaps its ends;
-\\[mark-run-step-back] and \\[mark-run-step-forward] step through
-the run; \\[repeat] repeats; \\`v' and \\[mark-run-refuse] are refused;
-\\[mark-run-cancel] ends it. \\<normal>\\[select-paragraph] and
-\\[select-paragraph-backward] still work, and grow the run by paragraphs.")
+\\[select-symbol] \\[select-word-backward] \\[select-symbol-backward]
+\\[select-sentence] \\[select-sentence-backward] grow the selection as
+\\<normal>\\[select-word] and the rest do.
+\\<*mark-run-keymap*>\\[mark-run-left] \\[mark-run-down] \\[mark-run-up]
+\\[mark-run-right], \\[mark-run-line-start] \\[mark-run-line-end],
+\\[mark-run-buffer-start] \\`g e' and \\[mark-run-buffer-end] adjust or stretch
+it. \\[mark-run-line-forward] and \\[mark-run-line-backward] take whole lines;
+\\[mark-run-exchange] swaps its ends; \\[mark-run-step-back] and
+\\[mark-run-step-forward] step through the run. \\[repeat] repeats; \\`v' and
+\\[mark-run-refuse] are refused; \\[mark-run-cancel] ends it.
+\\<normal>\\[select-paragraph] and \\[select-paragraph-backward] still work, and
+grow the run by paragraphs.")
 
 (defparameter *mark-run-bindings*
   '(("w" select-word) ("W" select-symbol) ("b" select-word-backward)

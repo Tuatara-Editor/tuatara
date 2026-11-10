@@ -57,7 +57,8 @@ NEXT is the link of the version after, or NIL while it is current."
 
 (setf (documentation 'link-p 'function) "True when OBJECT is a LINK."
       (documentation 'make-link 'function) "Return a link whose position map from the version before is MAP."
-      (documentation 'link-map 'function) "How a LINK's version maps positions of the one before: a batch, a function, or NIL."
+      (documentation 'link-map 'function) "How a LINK's version maps positions of the one before: a
+batch, a function, or NIL."
       (documentation 'link-next 'function) "The link of the version after, or NIL.")
 
 (defstruct (version (:constructor %make-version (rope number batch &aux (link (make-link (batch-link-map batch)))))
@@ -145,7 +146,9 @@ a bias). Complexity: O(1)."
 counts), the text of a new version linked as VERSION's NEXT; VERSION must be
 current. The new version's batch has no edits: every position stays where it
 is. Returns the new version and its batch. Complexity: O(1)."
-  (advance-version version rope (%make-batch #() (make-array 0 :element-type 'fixnum) (make-array 0 :element-type 'fixnum))
+  (advance-version version rope (%make-batch #()
+                                             (make-array 0 :element-type 'fixnum)
+                                             (make-array 0 :element-type 'fixnum))
                    "adopting a text"))
 
 (defun version-undo-edits (version)
@@ -526,7 +529,8 @@ the result. BIAS is :BEFORE (stays before text inserted at it) or :AFTER
 (setf (documentation 'anchor-p 'function) "True when OBJECT is an ANCHOR."
       (documentation 'anchor-link 'function) "The link of the version ANCHOR's cached position is valid in."
       (documentation 'anchor-bias 'function) "ANCHOR's bias, :BEFORE or :AFTER."
-      (documentation 'anchor-cached 'function) "ANCHOR's position in ANCHOR-VERSION, possibly stale; use ANCHOR-POSITION.")
+      (documentation 'anchor-cached 'function) "ANCHOR's position in ANCHOR-VERSION, possibly stale;
+use ANCHOR-POSITION.")
 
 (defun make-anchor (version position &key (bias :before))
   "Return an anchor at byte POSITION of VERSION with BIAS (:BEFORE by default)."

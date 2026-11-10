@@ -19,12 +19,12 @@
 
 (defstruct (place (:constructor %make-place (start end)) (:copier nil))
   "A stretch of text a split holds, between the anchors START (which stays
-before text put in at it) and END (which goes after it). In a split of
-cursors a place is where its cursor is and what the cursor selects: AT-END
-puts the cursor at the end rather than the start, ANCHORED says the cursor
-selects from the other end, LINE that it selects its whole line, OFFSET how
-far into that line it stands, and MEMORY holds what the selecting keys
-left there to grow on the next press."
+before text put in at it) and END (which goes after it). In a split of cursors a
+place is where its cursor is and what the cursor selects. AT-END puts the cursor
+at the end rather than the start. ANCHORED says the cursor selects from the
+other end. LINE says that it selects its whole line. OFFSET says how far into
+that line it stands. MEMORY holds what the selecting keys left there to grow on
+the next press."
   start end (at-end nil) (anchored nil) (line nil) (offset 0) (memory nil))
 
 (setf (documentation 'place-p 'function) "True when OBJECT is a PLACE of a split."
@@ -34,7 +34,8 @@ left there to grow on the next press."
       (documentation 'place-anchored 'function) "True when PLACE's cursor selects from the place's other end."
       (documentation 'place-line 'function) "True when PLACE's cursor selects its whole line."
       (documentation 'place-offset 'function) "How far into its line PLACE's cursor stands, when it selects the line."
-      (documentation 'place-memory 'function) "What the selecting keys left at PLACE's cursor, to grow on the next press.")
+      (documentation 'place-memory 'function)
+      "What the selecting keys left at PLACE's cursor, to grow on the next press.")
 
 (defun make-place (buffer start end)
   "A place of BUFFER from START to END."
@@ -63,22 +64,22 @@ left there to grow on the next press."
 ;;; The split
 
 (defstruct (split (:constructor make-split (buffer)) (:copier nil))
-  "The split in force: its BUFFER and PLACES (a vector, in buffer order); the
-PRIMARY place, point's, whose TEXT (as last seen) the others follow; the PHASE,
-:SELECT while a verb is awaited or :EDIT while typing at the places; what
-the verb DID, for the report; the SCOPE searched, named for the reminder;
-AGREE when every place held the same text; TICK, the buffer's content number
-when it was made; SINCE, the undo stack as the typing began; BOUNDS, the
-primary place's start and end as the last change left them; EDGES, the
-deletions a command made just past the primary place, and STRAYED when it
-changed text away from the places. For a split of cursors, CURSORS is true,
-COLUMN is where new cursors go, ORDER lists the cursors added after the first,
-newest first, LAST is the command the cursors last ran, RUNNING is true in a
-mark run, whose steps are HISTORY and REDO, and REPEAT is what
-\\<*cursor-keymap*>\\[cursors-repeat] runs again. VIRTUAL, for a
-split past its limit, holds what it needs to write at the places it does not
-hold, those out of sight (a VIRTUAL). A split holds no match that a fold hides
-any of; HIDDEN counts those it left alone, for what it says."
+  "The split in force: its BUFFER and PLACES (a vector, in buffer order).
+PRIMARY is the place that is point's, and TEXT is its text (as last seen), which
+the others follow. PHASE is :SELECT while a verb is awaited or :EDIT while
+typing at the places. DID is what the verb did, for the report. SCOPE is what
+was searched, named for the reminder. AGREE is true when every place held the
+same text. TICK is the buffer's content number when the split was made. SINCE is
+the undo stack as the typing began. BOUNDS is the primary place's start and end
+as the last change left them. EDGES is the deletions a command made just past
+the primary place. STRAYED is true when a command changed text away from the
+places. For a split of cursors, CURSORS is true, COLUMN is where new cursors go,
+ORDER lists the cursors added after the first, newest first, LAST is the command
+the cursors last ran, RUNNING is true in a mark run, whose steps are HISTORY and
+REDO, and REPEAT is what \\<*cursor-keymap*>\\[cursors-repeat] runs again.
+VIRTUAL, for a split past its limit, holds what it needs to write at the places
+it does not hold, those out of sight (a VIRTUAL). A split holds no match that a
+fold hides any of; HIDDEN counts those it left alone, for what it says."
   buffer (places #()) primary (text "") (phase :select) did (scope "this line") agree tick since
   bounds edges strayed cursors (column 0) order last running history redo repeat virtual (hidden 0))
 
@@ -97,7 +98,8 @@ nothing."
       (documentation 'split-tick 'function) "The content number of SPLIT's buffer as the split was made."
       (documentation 'split-since 'function) "The undo stack of SPLIT's buffer as its typing began."
       (documentation 'split-bounds 'function) "The primary place's start and end, as the last change left them."
-      (documentation 'split-edges 'function) "Deletions just past the primary place's edges, newest first, as (SIDE . TEXT)."
+      (documentation 'split-edges 'function)
+      "Deletions just past the primary place's edges, newest first, as (SIDE . TEXT)."
       (documentation 'split-strayed 'function) "True when a command changed text away from SPLIT's places."
       (documentation 'split-cursors 'function) "True when SPLIT is a split of cursors."
       (documentation 'split-column 'function) "The column on the screen new cursors of SPLIT go to."
@@ -152,11 +154,12 @@ stretches in sight (VIRTUAL-FILL)."
 (setf (documentation 'virtual-p 'function) "True when OBJECT is a VIRTUAL.")
 
 (defstruct (split-diff (:constructor %make-split-diff) (:copier nil))
-  "What turns a place holding one text into one holding another: whether the
-text CHANGED; the deletions just past its edges (EDGES true), BEFORE and AFTER
-it, and where their line breaks fall; the new text WHOLE and its MIDDLE, what
-differs, as octets; the octets the two share at the start and end
-(PREFIX-OCTETS, SUFFIX-OCTETS), and the old text's (OLD-OCTETS)."
+  "What turns a place holding one text into one holding another. First comes
+whether the text CHANGED. Then come the deletions just past its edges (EDGES
+true), BEFORE and AFTER it, and where their line breaks fall. The new text is
+WHOLE, and MIDDLE is what differs, as octets. The octets the two share at the
+start and end are PREFIX-OCTETS and SUFFIX-OCTETS, and OLD-OCTETS is the old
+text's."
   changed edges (before "") (after "") before-breaks after-breaks whole middle
   (prefix-octets 0) (suffix-octets 0) (old-octets 0))
 
@@ -421,7 +424,9 @@ nothing is."
            (let ((top (tuatara.buffer:buffer-line-start b (min (point) (tuatara.buffer:buffer-mark b))))
                  (bottom (tuatara.buffer:buffer-line-start b (max (point) (tuatara.buffer:buffer-mark b)))))
              (multiple-value-bind (left right) (rectangle-columns b)
-               (values (make-block-scope top (min (tuatara.buffer:buffer-size b) (1+ (tuatara.buffer:buffer-line-end b bottom)))
+               (values (make-block-scope top
+                                         (min (tuatara.buffer:buffer-size b)
+                                              (1+ (tuatara.buffer:buffer-line-end b bottom)))
                                          left right wide (buffer-crlf-p b) (tuatara.display:tab-width-of b))
                        (if wide "the block's rows" "the block")))))
           ((rectangle-live-p b)
@@ -439,7 +444,8 @@ nothing is."
                (values (tuatara.text:merge-ranges
                         (sort (append (mapcar (lambda (span)
                                                 (cons (car span)
-                                                      (if (member (buffer-char-before b (cdr span)) '(#\Newline #\Return))
+                                                      (if (member (buffer-char-before b (cdr span))
+                                                                  '(#\Newline #\Return))
                                                           (tuatara.buffer:buffer-forward-char b (cdr span) -1)
                                                           (cdr span))))
                                               banked)
@@ -452,11 +458,13 @@ nothing is."
 
 (defvar *split-limit* 100000
   "The most places \\<normal>\\[split-selection] holds, or NIL for as many as the
-memory has room for. What is typed is written as it is typed only at the
-places in sight, so a key costs the same however many there are; holding the
-places, and writing the others when the typing ends, take about a second a
-million. Past it, the split holds the places in sight, and the others are
-written in the background once the verb is done at those.")
+memory has room for, 100000 as standard. What is typed is written as it is
+typed only at the places in sight, so a key costs the same however many there
+are; holding the places, and writing the others when the typing ends, take
+about a second a million. Past it, the split holds the places in sight, and
+the others are written in the background once the verb is done at those.
+Raise it to hold more places at once, at the cost of 768 octets of heap for
+each (TUATARA_HEAP_MB sets the heap); lower it to keep the editor light.")
 
 (defvar *split-budget* nil
   "Octets of heap a split may plan to use, or NIL for a quarter of what is free
@@ -491,12 +499,12 @@ may be asked (*SPLIT-LIMIT-ASK*)."
 
 (defun past-limit-choice (n exact noun &optional (setting *split-limit*))
   "Whether to hold every one of N places, matches or cursors (NOUN, as
-\"cursors\"), or only those in sight, the others written in the background:
-:ALL when they are no more than there may be (PLACE-LIMIT); past SETTING,
-with *SPLIT-LIMIT-ASK* true, N counted EXACT and the memory having room, the
-question asked, the same for \\<normal>\\[split-selection],
-\\[add-cursor-below] and \\[tuatara-change] on a rectangle, and :ALL when
-it is answered yes; else :IN-SIGHT."
+\"cursors\"), or only those in sight, the others written in the background. The
+answer is :ALL when they are no more than there may be (PLACE-LIMIT). Past
+SETTING the question is asked, when *SPLIT-LIMIT-ASK* is true, N is counted
+EXACT and the memory has room. It is asked the same for
+\\<normal>\\[split-selection], \\[add-cursor-below] and \\[tuatara-change] on a
+rectangle. The answer is :ALL when it is answered yes, else :IN-SIGHT."
   (multiple-value-bind (limit why memory) (place-limit setting)
     (if (or (<= n limit)
             (and (eq why :setting) *split-limit-ask* exact (<= n memory)
@@ -635,7 +643,8 @@ to say."
       (setf (split-virtual split)
             (make-virtual :kind :matches :regexp regexp :matcher (split-matcher regexp (block-scope-p scope) buffer)
                           :scope scope
-                          :anchors (mapcar (lambda (position) (tuatara.text:make-anchor version (car position) :bias (cdr position)))
+                          :anchors (mapcar (lambda (position)
+                                             (tuatara.text:make-anchor version (car position) :bias (cdr position)))
                                            (scope-positions scope))
                           :count (or count limit) :exact (and count t) :limit limit :setting why)
             (split-scope split) words
@@ -665,12 +674,16 @@ not held."
     (cond ((null spans) (format nil "Nothing matched ~a~a" regexp (hidden-left-words hidden)))
           (touching touching)
           (t
-           (let ((banked (and (not whole) (not (split-here-p buffer)) (not (rectangle-live-p buffer)) (banked-spans buffer))))
+           (let ((banked (and (not whole)
+                              (not (split-here-p buffer))
+                              (not (rectangle-live-p buffer))
+                              (banked-spans buffer))))
              (when *split* (dissolve-split :quiet t))
              (setf (tuatara.buffer:buffer-mark-active-p buffer) nil)
              (fresh-selection buffer)
              (let ((split (make-split buffer)))
-               (setf (split-places split) (map 'simple-vector (lambda (span) (make-place buffer (car span) (cdr span))) spans)
+               (setf (split-places split)
+                     (map 'simple-vector (lambda (span) (make-place buffer (car span) (cdr span))) spans)
                      (split-primary split) (aref (split-places split) 0)
                      (split-scope split) scope
                      (split-hidden split) hidden
@@ -703,35 +716,33 @@ it as a regular expression (REGEX tells whether it was typed as one)."
 (define-command split-selection ()
   "Hold every match of a regexp in the selection, then wait for a verb:
 \\<*split-chooser-keymap*>\\[split-insert] types before every match and
-\\[split-append] after, \\[split-change] empties them first,
-\\[split-delete] deletes them, \\[split-wrap] or any delimiter
-wraps them (again, to take the pair off), and \\[split-quit] lets go.
-What is typed at one match appears at all of them, and the writing is one
-change for undo. The selection says what is searched: a rectangle's block
-(with \\[universal-argument] each row's whole line), banked lines with any
-selection made at the time, the selection, or else the line at point; the
-regexp with % in front, %foo, searches the whole buffer whatever is selected.
-As the regexp is typed, how many matches it has there shows before the prompt.
-Only what is shown is acted on, whatever is searched: a match that a fold
-hides any of is no place and is left alone, and the split says how many were
-(a folded headline's line selected is the line shown, not what its fold hides).
-Case is ignored when the regexp has
-no capital letter. Matches that touch are refused. Past *SPLIT-LIMIT* the
-matches in and near the window are held, more as you scroll to them, and what
-is done at them is written at the others in the background once the verb is
-done; with *SPLIT-LIMIT-ASK* true, you are asked first whether to hold them
-all, as \\[add-cursor-below] and \\[tuatara-change] on a rectangle ask (not
-for a search in the background). Moving about keeps the split
-waiting for its verb; any other key ends it, doing its own job. A large text is
-searched in the background, on all but two cores at once, the mode line saying
-how far it has got (\\[stop-job] stops it); the split stands when the search
-ends, point left where it is, unless the text has changed or another buffer is
-shown by then. From the cursors of \\<normal>\\[add-cursor-below], each
-cursor's selection or line is searched, and the matches take the cursors'
-place. A match of more than 4 KB (4,096 characters of ASCII) that runs across
-lines and needs text further on, as BEGIN[\\s\\S]*?END around a large block,
-can be missed; \\[split-selection-thorough] finds every match of up to a
-megabyte."
+\\[split-append] after, \\[split-change] empties them first, \\[split-delete]
+deletes them, \\[split-wrap] or any delimiter wraps them (again, to take the
+pair off), and \\[split-quit] lets go. What is typed at one match appears at all
+of them, and the writing is one change for undo. The selection says what is
+searched: a rectangle's block (with \\[universal-argument] each row's whole
+line), banked lines with any selection made at the time, the selection, or else
+the line at point; the regexp with % in front, %foo, searches the whole buffer
+whatever is selected. As the regexp is typed, how many matches it has there
+shows before the prompt. Only what is shown is acted on, whatever is searched: a
+match that a fold hides any of is no place and is left alone, and the split says
+how many were (a folded headline's line selected is the line shown, not what its
+fold hides). Case is ignored when the regexp has no capital letter. Matches that
+touch are refused. Past *SPLIT-LIMIT* the matches in and near the window are
+held, more as you scroll to them. What is done at them is written at the others
+in the background once the verb is done. With *SPLIT-LIMIT-ASK* true, you are
+asked first whether to hold them all, as \\[add-cursor-below] and
+\\[tuatara-change] on a rectangle ask (not for a search in the background).
+Moving about keeps the split waiting for its verb; any other key ends it, doing
+its own job. A large text is searched in the background, on all but two cores at
+once, the mode line saying how far it has got (\\[stop-job] stops it); the split
+stands when the search ends, point left where it is, unless the text has changed
+or another buffer is shown by then. From the cursors of
+\\<normal>\\[add-cursor-below], each cursor's selection or line is searched, and
+the matches take the cursors' place. A match of more than 4 KB (4,096 characters
+of ASCII) that runs across lines and needs text further on, as
+BEGIN[\\s\\S]*?END around a large block, can be missed;
+\\[split-selection-thorough] finds every match of up to a megabyte."
   (let* ((wide (prefix-argument))
          (b (current-buffer))
          (selected (split-ranges nil wide))
@@ -742,7 +753,8 @@ megabyte."
                (read-pattern "split on"
                              :count (lambda (text regex)
                                       (multiple-value-bind (whole regexp) (split-input text regex)
-                                        (let ((scope (if whole (list (multiple-value-call #'cons (tuatara.buffer:buffer-bounds b))) selected)))
+                                        (let ((scope (if whole (list (multiple-value-call #'cons
+                                                                       (tuatara.buffer:buffer-bounds b))) selected)))
                                           ;; a rectangle's block is searched row by row as the split comes to it
                                           (if (block-scope-p scope)
                                               (stretch-pattern-count counter b '() "" t)
@@ -825,25 +837,25 @@ stretch starts to what the last ends."
 
 (defun split-matcher (regexp block buffer)
   "How a split finds REGEXP in BUFFER, the MATCHER the search prompt's
-replacements use too (MAKE-PATTERN-MATCHER): case ignored when it has no
-capital letter, found as literal text when nothing in it is special, $ before
-the carriage return where BUFFER's lines end with one and a newline; compiled
-always for a block's rows (BLOCK), whose parts of lines are matched as text.
-Signals why when it does not compile."
+replacements use too (MAKE-PATTERN-MATCHER). Case is ignored when it has no
+capital letter. It is found as literal text when nothing in it is special. A $
+matches before the carriage return where BUFFER's lines end with one and a
+newline. It is always compiled for a block's rows (BLOCK), whose parts of lines
+are matched as text. Signals why when it does not compile."
   (multiple-value-bind (matcher problem)
       (make-pattern-matcher regexp :regex t :compiled block :crlf (buffer-crlf-p buffer))
     (or matcher (refuse "Regexp ~a: ~a" regexp problem))))
 
 (defun piece-matches (function rope matcher scope groups from to halt &key texts)
-  "Call FUNCTION as STRETCH-MATCHES does for each match of MATCHER in the
-piece of SCOPE from FROM below TO, in order: within the stretch of GROUPS it is
-part of (none in the text between stretches), a match running on past TO to
-the stretch's end, the empty match at the stretch's end included when the
-piece ends it; or within each of a block's rows the piece holds, its
-line before it the pattern's context (TUATARA.SYNTAX:MAP-SLICE-MATCHES), the
-empty match at its end included, from the whole row FROM is in (a caller that
-starts after a match passes over those before it). True when FUNCTION stopped
-it."
+  "Call FUNCTION as STRETCH-MATCHES does for each match of MATCHER in the piece
+of SCOPE from FROM below TO, in order. Matches are found within the stretch of
+GROUPS each is part of (none in the text between stretches). A match may run on
+past TO to the stretch's end, and the empty match at the stretch's end is
+included when the piece ends it. For a block, the matches are found within each
+of the rows the piece holds, with its line before it as the pattern's context
+\(TUATARA.SYNTAX:MAP-SLICE-MATCHES). The empty match at its end is included, and
+the search starts from the whole row FROM is in (a caller that starts after a
+match passes over those before it). True when FUNCTION stopped it."
   (if (block-scope-p scope)
       (let ((wide (block-scope-wide scope))
             (size (tuatara.text:rope-octet-length rope))
@@ -877,11 +889,12 @@ it."
 
 (defun split-piece-run (job piece matcher scope groups found index limit count too-many folds hidden)
   "Find the matches of MATCHER in PIECE of JOB, a split's search over SCOPE
-(PIECE-MATCHES), keeping their start and end offsets in pairs at the piece's
-place (INDEX) in FOUND, but those FOLDS hide any of (TUATARA.DISPLAY:FOLDS-HIDING)
-when FOLDS is not NIL, counted in the car of HIDDEN; once there are more than
-LIMIT in all, counted in the car of COUNT, set the car of TOO-MANY and stop the
-job. A match may run past the piece's end (MEND-SEAMS)."
+\(PIECE-MATCHES). Their start and end offsets are kept in pairs at the piece's
+place (INDEX) in FOUND. When FOLDS is not NIL, the matches that FOLDS hide any
+of (TUATARA.DISPLAY:FOLDS-HIDING) are left out and counted in the car of HIDDEN.
+Once there are more than LIMIT matches in all, counted in the car of COUNT, set
+the car of TOO-MANY and stop the job. A match may run past the piece's end
+\(MEND-SEAMS)."
   (start-piece job piece nil)
   (let ((cancel (rewrite-cancel job))
         (offsets (make-array 64 :element-type 'fixnum :adjustable t :fill-pointer 0))
@@ -916,11 +929,11 @@ had (CONTENT, its content number), in NORMAL state and with nothing asked."
 
 (defun split-search-take-in (buffer regexp scope words whole found content limit hidden)
   "Hold as a split what a search in the background FOUND in BUFFER, in order,
-the matches of REGEXP in SCOPE, named WORDS (the whole buffer with WHOLE): no
-more than LIMIT places, past which those in sight are held, to act on every
-match in the background; HIDDEN, the matches left alone because a fold hides
-them, as HOLD-SPLIT takes it. Only while the search can be taken up
-(SEARCH-ENDED-HERE-P). Returns what to say."
+the matches of REGEXP in SCOPE, named WORDS (the whole buffer with WHOLE). It
+holds no more than LIMIT places, past which those in sight are held, to act on
+every match in the background. HIDDEN is the matches left alone because a fold
+hides them, as HOLD-SPLIT takes it. Only while the search can be taken up
+\(SEARCH-ENDED-HERE-P). Returns what to say."
   (or (search-ended-here-p buffer content)
       (if (> (loop for offsets across found sum (floor (length offsets) 2)) limit)
           (armed-between-commands (hold-virtual-matches buffer regexp scope words whole (first-found found) :move nil))
@@ -990,9 +1003,11 @@ then waits its turn, SCOPE followed meanwhile."
                                :checkpoint *rewrite-checkpoint* :hook *rewrite-piece-hook*)))
       (launch-rewrite job "tuatara split" (format nil "~:d octets in ~d piece~:p, at most ~:d (~(~a~))"
                                                   (scope-extent scope) (length pieces) limit why))
-      ;; the selection searched let go meanwhile: a key typed before the split comes acts at the cursor, not on all of it
+      ;; the selection searched let go meanwhile: a key typed before the split comes acts at the cursor, not on all of
+      ;; it
       (setf (tuatara.buffer:buffer-mark-active-p buffer) nil)
-      (say-in-background (job-words :search :doing (format nil "~a for ~a" words regexp)) "the split comes when it is done")
+      (say-in-background (job-words :search :doing (format nil "~a for ~a" words regexp))
+                         "the split comes when it is done")
       job)))
 
 ;;; Past the limit: the places in sight held, the others written in the background
@@ -1088,17 +1103,22 @@ the places kept."
             (let ((tails '()))
               (when places
                 (let ((*split-copying* t)
-                      (column (if (virtual-tab-width virtual) #'tuatara.display:buffer-screen-column #'tuatara.buffer:buffer-column)))
+                      (column (if (virtual-tab-width virtual)
+                                  #'tuatara.display:buffer-screen-column
+                                  #'tuatara.buffer:buffer-column)))
                   (delete-spans b (held-spans-of b places) :folds-checked t :group (and typing t)
                                   :replacements
                                   (loop for place in places
                                         collect (multiple-value-bind (s e) (place-bounds b place)
-                                                  ;; a short row padded out; a tab across an edge, its columns outside it
-                                                  (let ((pad (if (or (virtual-pad virtual) (and (< s e) (virtual-tab-width virtual)))
+                                                  ;; a short row padded out; a tab across an edge, its columns outside
+                                                  ;; it
+                                                  (let ((pad (if (or (virtual-pad virtual)
+                                                                     (and (< s e) (virtual-tab-width virtual)))
                                                                  (max 0 (- (virtual-left virtual) (funcall column b s)))
                                                                  0))
                                                         (tail (if (and (< s e) (virtual-tab-width virtual))
-                                                                  (max 0 (- (funcall column b e) (virtual-right virtual)))
+                                                                  (max 0
+                                                                       (- (funcall column b e) (virtual-right virtual)))
                                                                   0)))
                                                     (push tail tails)
                                                     (and (plusp (+ pad tail)) (spaces (+ pad tail)))))))))
@@ -1194,17 +1214,17 @@ text deleted beside the place it was typed at is not there beside this one."
 (defstruct (matches-job (:constructor make-matches-job) (:copier nil))
   "What a background job at every match of a split's pattern changes
 \(START-EVERY-MATCH-JOB): in ROPE, the matches MATCHER finds in SCOPE, cut into
-GROUPS (SCOPE-GROUPS), up to HIGH, the scope's end. KIND says what changes:
-:TYPE writes what was typed at the places (TYPED-MATCH: TEXT as MODE says,
-the octets BACK before the match and FORWARD after it deleted too), :DELETE
-takes the match away, :WRAP puts OPEN before it and CLOSE after it, the
-match's text read for it (TEXTS), and :UNWRAP takes them off where they stand
-just outside it (WRAPPED-MATCH). The matches meeting a place of SKIP (a vector
-of (START . END) in order), done in sight, are left as they are. FOLDS are the
-folds of the text as the job began (FOLDS-NOW): a match one hides any of is
-left as it is, counted in the car of LEFT, and one whose change would take
-part of the text one hides, but not all of it, in the car of HIDDEN; REFUSED
-counts in its car the matches :TYPE could not change."
+GROUPS (SCOPE-GROUPS), up to HIGH, the scope's end. KIND says what changes.
+:TYPE writes what was typed at the places (TYPED-MATCH: TEXT as MODE says, the
+octets BACK before the match and FORWARD after it deleted too). :DELETE takes
+the match away. :WRAP puts OPEN before it and CLOSE after it, the match's text
+read for it (TEXTS). :UNWRAP takes them off where they stand just outside it
+\(WRAPPED-MATCH). The matches meeting a place of SKIP (a vector of (START . END)
+in order), done in sight, are left as they are. FOLDS are the folds of the text
+as the job began (FOLDS-NOW). A match one hides any of is left as it is, counted
+in the car of LEFT. One whose change would take part of the text one hides, but
+not all of it, is counted in the car of HIDDEN. REFUSED counts in its car the
+matches :TYPE could not change."
   rope matcher scope groups (high 0) kind texts mode text (back *no-octets*) (forward *no-octets*)
   open close skip folds (refused (list 0)) (hidden (list 0)) (left (list 0)))
 
@@ -1262,7 +1282,8 @@ places followed meanwhile."
                                :report (or report (job-report kind
                                                               (lambda (n) (format nil "~:d more match~:*~[es~;~:;es~] of ~a, out of sight," n regexp))
                                                               (format nil "the other matches of ~a" regexp)
-                                                              :refused (matches-job-refused spec) :hidden (matches-job-hidden spec)))
+                                                              :refused (matches-job-refused spec)
+                                                              :hidden (matches-job-hidden spec)))
                                :pieces (coerce (loop for group in groups append (cdr group)) 'simple-vector)
                                :checkpoint *rewrite-checkpoint* :hook *rewrite-piece-hook*
                                :directory (tuatara.io:buffer-scratch-directory buffer))))
@@ -1271,11 +1292,11 @@ places followed meanwhile."
       job)))
 
 (defun match-change (spec s e m)
-  "What SPEC, a MATCHES-JOB, writes at the match from S below E, M its text
-when SPEC reads it: the stretch from A below Z it writes over and the octets
-it puts there, three values; NIL when that match cannot be changed (what was
-typed beside the places not there beside it, counted in REFUSED; no pair
-around it to take off)."
+  "What SPEC, a MATCHES-JOB, writes at the match from S below E, M its text when
+SPEC reads it. It returns three values: the stretch from A below Z it writes
+over and the octets it puts there. It returns NIL when that match cannot be
+changed: what was typed beside the places is not there beside it (counted in
+REFUSED), or there is no pair around it to take off."
   (let ((rope (matches-job-rope spec)) (open (matches-job-open spec)) (close (matches-job-close spec)))
     (ecase (matches-job-kind spec)
       (:type (multiple-value-bind (a z octets)
@@ -1290,12 +1311,13 @@ around it to take off)."
                  (and a (values a z (tuatara.text:rope-octets rope :start s :end e))))))))
 
 (defun every-match-edits (spec function from to halt)
-  "The mapper of a job at every match (REWRITE), SPEC a MATCHES-JOB: call
+  "The mapper of a job at every match (REWRITE), SPEC a MATCHES-JOB. It calls
 FUNCTION with (A Z NIL OCTETS) for each change MATCH-CHANGE makes to a match
-starting from FROM below TO, in order (PIECE-MATCHES), a match left as it is
-told as passed over (PASS-OVER), and one whose change would overlap the one
-before or run past the scope left as it is too. What folds keep it from is
-counted as the pieces are written (HALT given), not as its result is mapped."
+starting from FROM below TO, in order (PIECE-MATCHES). A match that is left as
+it is gets told as passed over (PASS-OVER). A match whose change would overlap
+the one before, or run past the scope, is left as it is too. What folds keep it
+from is counted as the pieces are written (HALT given), not as its result is
+mapped."
   (let ((previous from) (skip (matches-job-skip spec)) (folds (matches-job-folds spec)))
     (piece-matches
      (lambda (s e m g)
@@ -1360,7 +1382,8 @@ when nothing comes between. Says so; returns the job, :QUEUED or NIL."
                                       :matcher (virtual-matcher virtual)))
               (:rows
                (cond ((member kind '(:wrap :unwrap))
-                      (message "~@(~a~) were left as they were: a wrap is made only at those in sight" (virtual-words split))
+                      (message "~@(~a~) were left as they were: a wrap is made only at those in sight"
+                               (virtual-words split))
                       (return-from start-virtual-job nil))
                      ((or (getf typed :back-breaks) (getf typed :forward-breaks))
                       (message "~@(~a~) were left as they were: a deletion across a line's end is made only at those in sight"
@@ -1650,7 +1673,8 @@ before (when given)."
                            (cond ((or (split-diff-edges diff) (/= (- e s) (split-diff-old-octets diff)))
                                   (tuatara.text:make-edit from to (octets (split-diff-whole diff))))
                                  ((split-diff-changed diff)
-                                  (tuatara.text:make-edit (+ s (split-diff-prefix-octets diff)) (- e (split-diff-suffix-octets diff))
+                                  (tuatara.text:make-edit (+ s (split-diff-prefix-octets diff))
+                                                          (- e (split-diff-suffix-octets diff))
                                                           (octets (split-diff-middle diff))))))
                          to)))))))
 

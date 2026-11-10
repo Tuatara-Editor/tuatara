@@ -9,14 +9,15 @@
 (in-package #:tuatara.modes)
 
 (defstruct (mode-info (:constructor make-mode-info (name)) (:copier nil))
-  "What the editor knows about major mode NAME: its PARENT mode, DOC, the
-LIGHTER shown in the mode line, its KEYMAP, the MODAL-CLASS it gives modal editing
-(:editing, :support, :excluded, or NIL to inherit), its HOOKS, and how its
-language writes comments: COMMENT, the marker a commented line starts with and
-what commenting a line puts there, and BLOCK-COMMENT, what begins and ends a
-comment that has an end, each a list of two strings or NIL to inherit; and
-LARGEST, the most octets a file opened in the mode may have (LARGEST-FILE);
-and KNOWN-MODAL-CLASS, the modal class it gives its buffers once worked out
+  "What the editor knows about major mode NAME. It holds its PARENT mode, DOC,
+the LIGHTER shown in the mode line, its KEYMAP, the MODAL-CLASS it gives modal
+editing (:editing, :support, :excluded, or NIL to inherit), and its HOOKS.
+It holds how its language writes comments. COMMENT is the marker a commented
+line starts with and what commenting a line puts there. BLOCK-COMMENT is what
+begins and ends a comment that has an end. Each is a list of two strings or
+NIL to inherit.
+LARGEST is the most octets a file opened in the mode may have (LARGEST-FILE).
+KNOWN-MODAL-CLASS is the modal class it gives its buffers once worked out
 along its inheritance, NIL until then."
   (name nil :read-only t)
   (parent nil)
@@ -37,11 +38,16 @@ along its inheritance, NIL until then."
       (documentation 'mode-info-lighter 'function) "The name shown in the mode line."
       (documentation 'mode-info-keymap 'function) "The mode's keymap; its parent is the parent mode's keymap."
       (documentation 'mode-info-modal-class 'function) "The modal class the mode sets, or NIL to inherit."
-      (documentation 'mode-info-known-modal-class 'function) "The modal class the mode gives its buffers once worked out, or NIL until then."
-      (documentation 'mode-info-largest 'function) "The most octets a file opened in the mode may have, a number or a variable holding one; NIL for no limit."
+      (documentation 'mode-info-known-modal-class 'function) "The modal class the mode gives its
+buffers once worked out, or NIL until then."
+      (documentation 'mode-info-largest 'function) "The most octets a file opened in the mode may
+have, a number or a variable holding one; NIL for no limit."
       (documentation 'mode-info-hooks 'function) "Functions called with the buffer when the mode is entered."
-      (documentation 'mode-info-comment 'function) "The marker of the mode's comments at the start of a line and what commenting a line puts there, as a list of two strings; NIL to inherit."
-      (documentation 'mode-info-block-comment 'function) "What begins and ends the mode's comments that have an end, as a list of two strings; NIL to inherit.")
+      (documentation 'mode-info-comment 'function) "The marker of the mode's comments at the start
+of a line and what commenting a line puts there, as a list of two strings; NIL
+to inherit."
+      (documentation 'mode-info-block-comment 'function) "What begins and ends the mode's comments
+that have an end, as a list of two strings; NIL to inherit.")
 
 (defvar *modes* (make-hash-table :test 'eq)
   "Every major mode's MODE-INFO, keyed by the mode's name.")
@@ -385,7 +391,8 @@ python3.12 finds python), else FUNDAMENTAL-MODE."
          (type (pathname-type path)))
     ;; an encrypted file has the mode of what it holds: notes.org.gpg, Org
     (when (and type (string-equal type "gpg") (> (length name) 4))
-      (return-from mode-for-file (mode-for-file (subseq (tuatara.io:native path) 0 (- (length (tuatara.io:native path)) 4)) first-line)))
+      (return-from mode-for-file
+        (mode-for-file (subseq (tuatara.io:native path) 0 (- (length (tuatara.io:native path)) 4)) first-line)))
     (or (gethash name *auto-mode-file-names*)
         (loop with native = (tuatara.io:native path)
               for (nil mode scanner) in *auto-mode-patterns*

@@ -9,10 +9,10 @@
 
 (define-command package-update ()
   "Fetch again each package load-package fetched (not the folders of your
-disk), in the background: the version it asks for looked up anew (the newest
-tag, the newest commit, or the tag, branch or commit named), and fetched and
-loaded when it is another commit than the one there, asked about first
-\(*PACKAGE-ASK-BEFORE-LOADING*); the others are said to be up to date. A
+disk), in the background. The version it asks for is looked up anew (the
+newest tag, the newest commit, or the tag, branch or commit named). It is
+fetched and loaded when it is another commit than the one there, asked about
+first (*PACKAGE-ASK-BEFORE-LOADING*); the others are said to be up to date. A
 version that needs a newer Tuatara is passed over for the newest that fits,
 or the one loaded now kept; one signed by another than the source's first
 version, or unsigned when that was signed, is refused (\[package-trust-again]
@@ -35,16 +35,21 @@ takes it); one that fails to load gives way to the version before it."
 (define-major-mode packages-mode marked-list-mode
   "The package manager (\\[package-manager]): a line each package the init file
 loads from a source, as the buffer list (\\[buffers]) has its buffers.
-\\<support>\\[next-line] and \\[previous-line] move, \\<packages-mode>\\[list-visit] or \\`RET' lists the folder of
-the package on the line in rimu, \\[list-visit-other] in another window, \\[quit-window] or
-\\`h' returns; \\[list-mark-entry] marks a package (>), \\[list-mark-for-deletion] marks it for deletion (D),
-\\[list-unmark-entry] unmarks it, \\[list-unmark-all] unmarks them all, \\[list-toggle-marks] swaps marked and
-unmarked; \\[package-update-marked] fetches the marked ones again (the one on the line when none is),
-\\[package-load] loads them, \\[package-unload] unloads them from the running editor, \\[package-remove] removes them
-from the packages loaded, \\[list-delete-marked] unloads, removes and deletes them after asking
-\(\\[package-delete]), \\[list-execute] those marked for deletion; \\[revert-buffer] lists them again, marks kept,
-as the list does by itself while it is shown. The README of the package on the line is shown beside the list,
-\\[list-toggle-preview] turning that off and on."
+\\<support>\\[next-line] and \\[previous-line] move.
+\\<packages-mode>\\[list-visit] or \\`RET' lists the folder of
+the package on the line in rimu, \\[list-visit-other] in another window.
+\\[quit-window] or \\`h' returns. \\[list-mark-entry] marks a package (>),
+\\[list-mark-for-deletion] marks it for deletion (D), \\[list-unmark-entry]
+unmarks it, \\[list-unmark-all] unmarks them all, \\[list-toggle-marks] swaps
+marked and unmarked. \\[package-update-marked] fetches the marked ones again
+\(the one on the line when none is). \\[package-load] loads them,
+\\[package-unload] unloads them from the running editor, \\[package-remove]
+removes them from the packages loaded, \\[list-delete-marked] unloads,
+removes and deletes them after asking (\\[package-delete]), \\[list-execute]
+those marked for deletion. \\[revert-buffer] lists them again, marks kept,
+as the list does by itself while it is shown. The README of the package on
+the line is shown beside the list, \\[list-toggle-preview] turning that off
+and on."
   :lighter "Packages" :interactive nil)
 
 (defvar *packages-keymap* (mode-keymap 'packages-mode)
@@ -70,11 +75,11 @@ entry remembered (KEY COMMIT TAG ACCEPTED) and where it is kept, as two values."
 
 (defun package-condition (name entry)
   "What is become of the package NAME this session, ENTRY what is remembered
-of it: loaded, fetching, loading (compiled and loaded in the background),
-removed (not loaded though the init file names it), refused (it uses names
-this Tuatara lacks), failed, waiting (for another, :after), later (to load on
-a command, a mode or once started), unloaded, declined (not let load), kept
-or not fetched."
+of it. It is one of: loaded, fetching, loading (compiled and loaded in the
+background), removed (not loaded though the init file names it), refused (it
+uses names this Tuatara lacks), failed, waiting (for another, :after), later
+\(to load on a command, a mode or once started), unloaded, declined (not let
+load), kept or not fetched."
   (cond ((package-loaded-p name) "loaded")
         ((member name *fetching-packages* :test #'string=) "fetching")
         ((let ((job (cdr (assoc name *packages-in-hand* :test #'string=))))
@@ -132,7 +137,9 @@ CONDITION, none for one loaded."
                (if (local-source-p where) (abbreviated-path where) where)))))
    :after (if *declared-packages*
               (list (string #\Newline)
-                    (format nil "   ~[No packages~;1 package~:;~:*~d packages~], ~d loaded~%" (length *declared-packages*)
+                    (format nil
+                            "   ~[No packages~;1 package~:;~:*~d packages~], ~d loaded~%"
+                            (length *declared-packages*)
                             (count-if (lambda (p) (package-loaded-p (first p))) *declared-packages*)))
               (list (format nil "~%   No packages: (load-package NAME) in the init file~%")))
    :point point
@@ -151,21 +158,26 @@ of date (KEEP-SHOWN-CURRENT)."
 (define-command package-manager ()
   "Manage the packages the init file loads from a source (load-package with
 :source) in a list, as the buffer list (\\[buffers]) manages buffers. Each
-line: its mark (> marked, D marked for deletion), name, the version kept (its
-tag), its commit, what is become of it (loaded; fetching; removed, not
-loaded though the init file names it; refused, using names this Tuatara
+line has its mark (> marked, D marked for deletion), name, the version kept
+\(its tag), its commit, and what is become of it (loaded; fetching; removed,
+not loaded though the init file names it; refused, using names this Tuatara
 lacks; failed; unloaded; declined, not let load; kept, not loaded; not
-fetched), who signs its source's versions (unsigned, and unencrypted for
-an address of http:// or git://) and where it comes from; the names of those not loaded set
-apart; why one was refused or failed is shown beside the list in place of
-its README. \\<packages-mode>\\[list-visit] or \\`RET' lists a package's
-folder in rimu, to read its source, \\[list-visit-other] in another window; \\[list-mark-entry] marks
-it, \\[list-mark-for-deletion] marks it for deletion, \\[list-unmark-entry] and \\[list-unmark-all] unmark, \\[list-toggle-marks] swaps marked and unmarked, a count marking as
-many; \\[package-update-marked] fetches the marked ones again, \\[package-load] loads them, \\[package-unload] unloads
-them, \\[package-remove] removes them from the packages loaded, \\[list-delete-marked] unloads, removes and
-deletes them after asking (\\[package-delete]), \\[list-execute] those marked for deletion. The README of
-the package on the line is shown beside the list, \\[list-toggle-preview] turning that
-off and on. \\[package-update] fetches them all again."
+fetched). It also has who signs its source's versions (unsigned, and
+unencrypted for an address of http:// or git://) and where it comes from. The
+names of those not loaded are set apart. Why one was refused or failed is
+shown beside the list in place of its README. \\<packages-mode>\\[list-visit]
+or \\`RET' lists a package's folder in rimu, to read its source,
+\\[list-visit-other] in another window. \\[list-mark-entry] marks it,
+\\[list-mark-for-deletion] marks it for deletion, \\[list-unmark-entry] and
+\\[list-unmark-all] unmark, \\[list-toggle-marks] swaps marked and unmarked, a
+count marking as many. \\[package-update-marked] fetches the marked ones again,
+\\[package-load] loads them, \\[package-unload] unloads them,
+\\[package-remove] removes them from the packages loaded,
+\\[list-delete-marked] unloads, removes and deletes them after asking
+\(\\[package-delete]), \\[list-execute] those marked for deletion. The README
+of the package on the line is shown beside the list,
+\\[list-toggle-preview] turning that off and on. \\[package-update]
+fetches them all again."
   (let ((list (buffer-in-mode "*Packages*" 'packages-mode)))
     (when (eq (tuatara.buffer:buffer-local list :list-preview :unset) :unset)
       (setf (list-preview-p list) t))
@@ -268,7 +280,8 @@ became is in *Messages* (\\[view-echo-area-messages])."
             do (log-message (format nil "package-scan: ~a, line ~d~:[~;, inside another form (a parenthesis left open before it?)~]: ~a"
                                     name line inside outcome)))
       (when stopped
-        (log-message (format nil "package-scan: ~a could not be read on from line ~d: ~a; packages after it are not seen"
+        (log-message (format nil
+                             "package-scan: ~a could not be read on from line ~d: ~a; packages after it are not seen"
                              (abbreviated-path file) (car stopped) (cdr stopped))))
       (package-manager)
       (message "~[No packages~;1 package~:;~:*~d packages~] in ~a~[~:;, ~:*~d inside another form~]~[~:;, ~:*~d failed~]~@[, read up to line ~d~]: \\[view-echo-area-messages] says each"
@@ -292,7 +305,11 @@ OTHER, opened safely, to read its source, each file previewed beside it;
           (declare (ignore more))
           (let ((folder (nth-value 1 (package-state name source version))))
             (if folder
-                (rimu-show-directory (tuatara.io:native folder) :other other :safe t :root (tuatara.io:native folder) :back list)
+                (rimu-show-directory (tuatara.io:native folder)
+                                     :other other
+                                     :safe t
+                                     :root (tuatara.io:native folder)
+                                     :back list)
                 (message "~a is not fetched yet" name)))))))
 
 (define-command package-trust-again ()

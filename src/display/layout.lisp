@@ -18,22 +18,22 @@
                                               (char-bytes (make-array room :element-type 'fixnum :adjustable t :fill-pointer 0))
                                               (bytes (make-array room :element-type 'fixnum :adjustable t :fill-pointer 0))))
                 (:copier nil))
-  "One screen row of a window. STRING is what to print; BYTES holds, for each of
+  "One screen row of a window. STRING is what to print. BYTES holds, for each of
 the COLUMNS columns, the byte offset of the character shown there (a wide
-character fills two columns with the same offset); START and END delimit the
-text the row covers; CONTINUATION-P is true for the second and later rows of a
-wrapped line; LAST-P is true for the row holding the end of the text. EXTEND
+character fills two columns with the same offset). START and END delimit the
+text the row covers. CONTINUATION-P is true for the second and later rows of a
+wrapped line. LAST-P is true for the row holding the end of the text. EXTEND
 is the face, or faces, carried on past the end of the row's line. SCALE is how
 many rows' height the row is drawn in, its letters as many times as wide
 \(a headline drawn large): 1, or a rational such as 5/4 or 2. SET-IN lists
 the characters of STRING shown where no text of the buffer is (an inlay
 hint, a replacement shown before it is made), each run as (FROM . TO),
-indices into STRING; highlights of the text around them leave them as they
+indices into STRING. Highlights of the text around them leave them as they
 are. MIXED is T for a row whose characters stand for offsets in no order (the
 hex view), :VISUAL for one whose characters are in the order they are read,
 right-to-left text among them, rather than stored. END-COLUMN, when not NIL,
-is the column where the end of the row's line is shown left of its text,
-and PAD-FROM below PAD-TO the indices of STRING of the blanks that set a line
+is the column where the end of the row's line is shown left of its text.
+PAD-FROM below PAD-TO are the indices of STRING of the blanks that set a line
 written from right to left against the right edge."
   (string (make-array 0 :element-type 'character :adjustable t :fill-pointer 0) :type string)
   (faces (make-array 0 :adjustable t :fill-pointer 0))
@@ -57,22 +57,35 @@ written from right to left against the right edge."
 (setf (documentation 'row-p 'function) "True when OBJECT is a ROW."
       (documentation 'row-string 'function) "The text to print for ROW."
       (documentation 'row-bytes 'function) "Byte offset behind each column of ROW, -1 for none."
-      (documentation 'row-faces 'function) "The face of each character of ROW's string: NIL, a face name, or a list of face names with the highest priority first."
-      (documentation 'row-char-bytes 'function) "The byte offset of the source character behind each character of ROW's string; never decreasing."
+      (documentation 'row-faces 'function) "The face of each character of ROW's string: NIL, a face
+name, or a list of face names with the highest priority first."
+      (documentation 'row-char-bytes 'function) "The byte offset of the source character behind each
+character of ROW's string; never decreasing."
       (documentation 'row-start 'function) "Byte offset where ROW's text starts."
       (documentation 'row-end 'function) "Byte offset just after ROW's text (after its newline, if any)."
-      (documentation 'row-shown-end 'function) "Byte offset after the last character ROW actually shows: its newline, a wrap point, or where truncation began."
+      (documentation 'row-shown-end 'function) "Byte offset after the last character ROW actually
+shows: its newline, a wrap point, or where truncation began."
       (documentation 'row-truncated-p 'function) "True when ROW's line was cut off at the right edge."
       (documentation 'row-columns 'function) "Number of columns ROW uses."
       (documentation 'row-continuation-p 'function) "True when ROW continues a wrapped line."
       (documentation 'row-last-p 'function) "True when ROW holds the end of the text."
-      (documentation 'row-mixed 'function) "True when ROW's characters stand for offsets not in order: T in the hex view, :VISUAL where they are in the order right-to-left text is read."
-      (documentation 'row-end-column 'function) "The column where the end of ROW's line is shown left of its text (a line written from right to left), or NIL: after it."
-      (documentation 'row-pad-from 'function) "The first index of ROW's string of the blanks that set it against the right edge."
-      (documentation 'row-pad-to 'function) "The index of ROW's string after the blanks that set it against the right edge."
-      (documentation 'row-extend 'function) "The face, or faces with the highest priority first, painted from the end of ROW's line to the window's edge: those of highlights covering its newline that extend; NIL for none."
-      (documentation 'row-set-in 'function) "The runs of ROW's characters shown where no text of the buffer is, each (FROM . TO) of indices into its string; highlights leave them alone."
-      (documentation 'row-scale 'function) "How many rows' height ROW is drawn in, its letters as many times as wide: 1, or more for a line drawn large (5/4, 3/2, 2).")
+      (documentation 'row-mixed 'function) "True when ROW's characters stand for offsets not in
+order: T in the hex view, :VISUAL where they are in the order right-to-left text
+is read."
+      (documentation 'row-end-column 'function) "The column where the end of ROW's line is shown
+left of its text (a line written from right to left), or NIL: after it."
+      (documentation 'row-pad-from 'function) "The first index of ROW's string of the blanks that
+set it against the right edge."
+      (documentation 'row-pad-to 'function) "The index of ROW's string after the blanks that set it
+against the right edge."
+      (documentation 'row-extend 'function) "The face, or faces with the highest priority first,
+painted from the end of ROW's line to the window's edge: those of highlights
+covering its newline that extend; NIL for none."
+      (documentation 'row-set-in 'function) "The runs of ROW's characters shown where no text of the
+buffer is, each (FROM . TO) of indices into its string; highlights leave them
+alone."
+      (documentation 'row-scale 'function) "How many rows' height ROW is drawn in, its letters as
+many times as wide: 1, or more for a line drawn large (5/4, 3/2, 2).")
 
 (defun make-row (start &optional (room 0) spares)
   "Return an empty row starting at byte START, with room for ROOM characters
@@ -239,12 +252,12 @@ where the next glyph stands when there is none before it in the row."
 
 (defun row-position-at (row column)
   "The position of ROW's text at COLUMN, as a click there or a move to that
-column takes it: the character shown there; beside a column standing for
-none (a gutter's, the blanks setting a line against the right edge), the
-nearest character to its left, else to its right; left of a line's text
-where its end is shown (ROW-END-COLUMN), and past the text, the line's end;
-past the text of a row the line goes on from (wrapped or cut off), its last
-character, the one written last."
+column takes it. It is the character shown there. Beside a column standing for
+none (a gutter's, the blanks setting a line against the right edge), it is the
+nearest character to its left, else to its right. Left of a line's text where
+its end is shown (ROW-END-COLUMN), and past the text, it is the line's end.
+Past the text of a row the line goes on from (wrapped or cut off), it is its
+last character, the one written last."
   (let ((bytes (row-bytes row)) (columns (row-columns row)) (end-column (row-end-column row)))
     (flet ((mapped (from to step)
              ;; the first column from FROM towards TO showing a character
@@ -307,8 +320,11 @@ octets at least +READER-CHUNK+ long (new ones when not given)."
 that are not UTF-8 come as raw bytes' characters, one each."
   (when (reader-fill reader)
     (let ((pos (reader-position reader)))
-      (if (and (< pos (reader-chunk-end reader)) (< (aref (reader-chunk reader) (- pos (reader-chunk-start reader))) #x80))
-          (progn (incf (reader-position reader)) (code-char (aref (reader-chunk reader) (- pos (reader-chunk-start reader)))))
+      (if (and (< pos (reader-chunk-end reader))
+               (< (aref (reader-chunk reader) (- pos (reader-chunk-start reader))) #x80))
+          (progn
+            (incf (reader-position reader))
+            (code-char (aref (reader-chunk reader) (- pos (reader-chunk-start reader)))))
           ;; at most four octets: read from the chunk, or from the rope where they may run past it
           (let ((end (min (reader-end reader) (+ pos 4)))
                 (start (reader-chunk-start reader)))
@@ -461,7 +477,9 @@ INVISIBLE, a character that draws nothing as its code shown), a
 character each past them (FAR-COLUMNS), as the rows of a window scrolled
 sideways count it. Complexity: O(*SCREEN-COLUMN-REACH* + log n)."
   (multiple-value-bind (position column line-end)
-      (scan-columns rope line-start (min byte (+ line-start *screen-column-reach*)) tab-width :crlf crlf :invisible invisible)
+      (scan-columns rope line-start (min byte
+                                         (+ line-start
+                                            *screen-column-reach*)) tab-width :crlf crlf :invisible invisible)
     (if (and (< position byte) (not line-end))
         (+ column (far-columns rope position byte))
         column)))
@@ -542,16 +560,16 @@ not."
 
 (defun reorder-row (cache row paragraph limit align)
   "Put ROW's characters in the order they are read, by the levels of
-PARAGRAPH, the one holding them (a BIDI-PARAGRAPH): runs written from right to
-left turned round and given the :right-to-left face, a mark kept after the
-letter it is on, a bracket among them mirrored (rules L1, L2 and L4), in
-CACHE's room, so that no garbage is made once it is large enough. With
-ALIGN, a row of a paragraph written from right to left is set against the
-right of LIMIT columns, the end of its line shown left of its text
-\(ROW-END-COLUMN). What is shown before the row's text (a prefix) stays
-first. ROW is left as it is when nothing moves; when PARAGRAPH is shown in
-the order stored, its right-to-left characters are given the :stored-order
-face. Complexity: O(the row's characters × levels)."
+PARAGRAPH, the one holding them (a BIDI-PARAGRAPH). Runs written from right to
+left are turned round and given the :right-to-left face. A mark is kept after
+the letter it is on, and a bracket among them is mirrored (rules L1, L2 and
+L4). This is done in CACHE's room, so that no garbage is made once it is large
+enough. With ALIGN, a row of a paragraph written from right to left is set
+against the right of LIMIT columns, the end of its line shown left of its text
+\(ROW-END-COLUMN). What is shown before the row's text (a prefix) stays first.
+ROW is left as it is when nothing moves. When PARAGRAPH is shown in the order
+stored, its right-to-left characters are given the :stored-order face.
+Complexity: O(the row's characters × levels)."
   (when (bidi-paragraph-stored paragraph)
     (mark-stored-order row)
     (return-from reorder-row row))
@@ -641,49 +659,53 @@ than ROPE's end; else ROPE's end."
                                              prefix scale until invisible spares text-end direction bidi)
   "Lay out ROPE from byte START into at most HEIGHT rows of WIDTH columns.
 WRAP true wraps long lines at the column, WRAP-COLUMN when given (no further
-than WIDTH), and with WORD-WRAP at a word's edge: a row ends after the last
-blank that fits, a blank that does not fit ends it unseen, and only a word too
-long for a row is cut; otherwise lines are truncated after skipping HSCROLL
-columns, the rest of a wide character or a tab that edge cuts shown blank.
+than WIDTH). With WORD-WRAP, lines wrap at a word's edge: a row ends after the
+last blank that fits, a blank that does not fit ends it unseen, and only a
+word too long for a row is cut. Otherwise lines are truncated after skipping
+HSCROLL columns, the rest of a wide character or a tab that edge cuts shown
+blank.
 A tab reaches the next multiple of TAB-WIDTH columns. A newline, and a
-carriage return no newline follows, end a line and are not shown; with
+carriage return no newline follows, end a line and are not shown. With
 carriage return and line feed (CRLF), a carriage return just before a newline
-is part of the line end and not shown. HIGHLIGHTS, if given, is passed to
-APPLY-HIGHLIGHTS once the rows exist. HIDDEN, ranges of octets in order, are
-not shown: a row reaching one, (START . END) (BUFFER-FOLDS), shows
-*FOLD-ELLIPSIS* in :fold-ellipsis, or, (START END TEXT FACE), TEXT in FACE,
-standing for its START, and goes on after it. PREFIX, when given, is a
-function of a line's start and whether the row continues it, returning text
-shown at the row's start and its face (an indentation that is no text):
-columns that stand for no character; for a row that continues it, cut to half
-of WIDTH. SCALE, when given, is a function of a
-line's start giving how many rows' height its rows are drawn in (ROW-SCALE), a
-rational of 1 or more: such a row holds as many times fewer columns, and
-HEIGHT is then the rows' heights added up, not their number. Where lines wrap,
-a row of a long line also begins every *WRAP-STRETCH* octets
-\(NEXT-WRAP-ANCHOR). UNTIL, an octet, ends the layout before a row that would
-begin past it. TEXT-END, an octet, is where the text shown ends, ROPE's end
-unless given: of a narrowed buffer, the end of the part shown, nothing of the
-text after it drawn there \(no HIDDEN text or fold, PREFIX or SCALE of its).
+is part of the line end and not shown.
+HIGHLIGHTS, if given, is passed to APPLY-HIGHLIGHTS once the rows exist.
+HIDDEN, ranges of octets in order, are not shown. A row reaching one,
+\(START . END) (BUFFER-FOLDS), shows *FOLD-ELLIPSIS* in :fold-ellipsis, or,
+\(START END TEXT FACE), TEXT in FACE, standing for its START, and goes on after
+it.
+PREFIX, when given, is a function of a line's start and whether the row
+continues it. It returns text shown at the row's start and its face (an
+indentation that is no text). These are columns that stand for no character.
+For a row that continues the line, the prefix is cut to half of WIDTH.
+SCALE, when given, is a function of a line's start giving how many rows'
+height its rows are drawn in (ROW-SCALE), a rational of 1 or more. Such a row
+holds as many times fewer columns, and HEIGHT is then the rows' heights added
+up, not their number.
+Where lines wrap, a row of a long line also begins every *WRAP-STRETCH* octets
+\(NEXT-WRAP-ANCHOR).
+UNTIL, an octet, ends the layout before a row that would begin past it.
+TEXT-END, an octet, is where the text shown ends, ROPE's end unless given. Of
+a narrowed buffer, it is the end of the part shown, nothing of the text after
+it drawn there (no HIDDEN text or fold, PREFIX or SCALE of its).
 With INVISIBLE, a character that draws nothing (`*invisible-characters*') is
 shown as its code, <FEFF>, in :invisible-character, taking those columns, as a
 raw byte is shown as \\xNN in :raw-byte. A grapheme cluster takes the columns
 of its first character (CLUSTER-COLUMNS), and a mark at a line's start is
-shown on *MARK-BASE*. Every row takes at least one character: one too wide for
+shown on *MARK-BASE*. Every row takes at least one character. One too wide for
 a whole wrapped row is shown as *CUT-GLYPH* (a tab as the spaces that fit).
 DIRECTION, unless NIL, shows the rows of a line holding right-to-left text
-\(RIGHT-TO-LEFT-CODE-P) in the order they are read (REORDER-ROW), each line a
-paragraph written from left to right (:LEFT-TO-RIGHT), right to left
-\(:RIGHT-TO-LEFT, every line so), or as its first letter says (:AUTO); a line
+\(RIGHT-TO-LEFT-CODE-P) in the order they are read (REORDER-ROW). Each line is
+a paragraph written from left to right (:LEFT-TO-RIGHT), right to left
+\(:RIGHT-TO-LEFT, every line so), or as its first letter says (:AUTO). A line
 written from right to left is set against the right edge unless scrolled
 sideways. A line with none of that text is laid out as with NIL. Under :AUTO
-a line's direction is its first letter's, looked for past the rows shown
-when they hold none. A line longer than twice *WRAP-STRETCH* is worked out
-a stretch at a time; a stretch after an embedding, override or isolate on
-its line, or beginning more than *SCREEN-COLUMN-REACH* octets into it, is
-shown in the order stored, its right-to-left letters in :stored-order. BIDI, a BIDI-CACHE, keeps what is
-worked out for right-to-left text from one layout to the next (a new one
-for this layout alone when not given).
+a line's direction is its first letter's, looked for past the rows shown when
+they hold none. A line longer than twice *WRAP-STRETCH* is worked out a
+stretch at a time. A stretch after an embedding, override or isolate on its
+line, or beginning more than *SCREEN-COLUMN-REACH* octets into it, is shown in
+the order stored, its right-to-left letters in :stored-order.
+BIDI, a BIDI-CACHE, keeps what is worked out for right-to-left text from one
+layout to the next (a new one for this layout alone when not given).
 The rows are made anew, or taken from SPARES, a vector with a fill pointer of
 rows no longer shown (MAKE-ROW). Returns a simple-vector of ROW. Complexity:
 O(WIDTH × HEIGHT), and for each row scrolled sideways O(*SCREEN-COLUMN-REACH*
@@ -720,7 +742,14 @@ O(WIDTH × HEIGHT), and for each row scrolled sideways O(*SCREEN-COLUMN-REACH*
                                        (right-to-left-between-p rope anchor start))))))
       (loop while (and (< used height) (<= position total) (or (null until) (<= position until)))
             do (unless (and continuation (plusp (length rows)))
-                 (setf line-scale (if (and scale (not (and cut (>= position total)))) (max 1 (or (funcall scale (tuatara.text:rope-line-start rope position)) 1)) 1)))
+                 (setf line-scale
+                       (if (and scale
+                                (not (and cut
+                                          (>= position
+                                              total)))) (max 1
+                                                             (or (funcall scale
+                                                                          (tuatara.text:rope-line-start rope position))
+                                                                 1)) 1)))
                ;; a large row fits, or nothing more is laid out (but a first row, made to fit)
                (let ((room (- height used)))
                  (when (> line-scale room)
@@ -813,7 +842,8 @@ O(WIDTH × HEIGHT), and for each row scrolled sideways O(*SCREEN-COLUMN-REACH*
                             (multiple-value-bind (string own shown)
                                 (char-display char (+ skipped (row-columns row)) tab-width invisible)
                               (multiple-value-bind (columns next)
-                                  (advance-column (char-code char) (+ skipped (row-columns row)) before tab-width invisible)
+                                  (advance-column (char-code char) (+ skipped
+                                                                      (row-columns row)) before tab-width invisible)
                                 (declare (type fixnum columns))
                                 (setf before next)
                                 (when (and (= columns 1) (zerop own))
@@ -844,7 +874,8 @@ O(WIDTH × HEIGHT), and for each row scrolled sideways O(*SCREEN-COLUMN-REACH*
                                                   wrapped t)
                                             (return))
                                            ((and wrap (= byte (row-start row)))
-                                            ;; too wide for the whole row: cut to it, so that every row takes a character
+                                            ;; too wide for the whole row: cut to it, so that every row takes a
+                                            ;; character
                                             (let ((room (max 1 (- limit (row-columns row)))))
                                               (row-add row (if (char= char #\Tab)
                                                                (make-string room :initial-element #\Space)
@@ -878,13 +909,16 @@ O(WIDTH × HEIGHT), and for each row scrolled sideways O(*SCREEN-COLUMN-REACH*
                                        (vector-push-extend char (row-string row))
                                        (vector-push-extend nil (row-faces row))
                                        (vector-push-extend byte (row-char-bytes row))
-                                       (vector-push-extend (if (plusp (length bytes)) (aref bytes (1- (length bytes))) byte) bytes)
+                                       (vector-push-extend (if (plusp (length bytes))
+                                                               (aref bytes (1- (length bytes)))
+                                                               byte) bytes)
                                        (incf (row-columns row))))
                                     ((zerop columns)
                                      ;; the rest of a cluster scrolled off the left is not shown
                                      (let ((bytes (row-char-bytes row)))
                                        (unless (and (plusp hscroll)
-                                                    (or (zerop (length bytes)) (minusp (aref bytes (1- (length bytes))))))
+                                                    (or (zerop (length bytes))
+                                                        (minusp (aref bytes (1- (length bytes))))))
                                          (row-add row string byte 0))))
                                     (t (row-add row string byte columns shown)
                                        (when (and word-wrap (or (char= char #\Space) (char= char #\Tab)))

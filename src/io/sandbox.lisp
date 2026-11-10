@@ -45,11 +45,15 @@ then not shut in, and each export says so.")
 
 (defvar *sandbox-seconds* 10
   "The seconds a program decoding a file may run before it is ended, and the
-processor time it may take.")
+processor time it may take, 10 as standard. Raise it for a file that takes
+long to decode, such as a large picture; lower it to end a program stuck on a
+damaged file sooner. A file whose program is ended is not shown.")
 
 (defvar *sandbox-memory* (* 1024 1024 1024)
   "The octets of memory a program decoding a file may take (1 GB); NIL for no
-limit.")
+limit. Raise it for a decoder that needs more; lower it on a small machine, so
+that a damaged file cannot take memory from the rest. A program that needs
+more than this fails, and the file is not decoded.")
 
 (defvar *sandbox-input-limit* (* 1024 1024 1024)
   "The largest file a program decoding files is given (1 GB): it gets a copy
@@ -86,7 +90,8 @@ them to it, the rest of the sandbox kept.")
 
 (sb-ext:defglobal **sandbox-state** nil
   "What was found when the sandbox was last tried (SANDBOX-STATUS), as a list
-(STATUS DETAIL PATH), or NIL before it is first needed.")
+(STATUS DETAIL PATH PROGRAM), PROGRAM the value of *SANDBOX-PROGRAM* tried,
+or NIL before it is first needed.")
 
 (sb-ext:defglobal **sandbox-scope** nil
   "systemd-run's path when it was found, when the sandbox was last tried, to
@@ -149,7 +154,9 @@ the system's own folders of programs (SANDBOX-FIND-PROGRAM)."
 (defparameter *program-output-limit* (* 64 1024 1024)
   "The most octets PROGRAM-OUTPUT takes of what a program writes (64 MB):
 one that writes more, a clipboard of a huge copy or a program gone wrong, is
-stopped and its output not taken, so that it cannot fill memory.")
+stopped and its output not taken, so that it cannot fill memory. Raise it to
+take more through such a program, at the cost of that memory; lower it on a
+small machine.")
 
 (defparameter *program-end-grace* 2
   "The seconds a program no longer wanted has to end once asked to (SIGTERM),
@@ -305,29 +312,32 @@ of its name, a later one in place of an earlier one."
                                      preserve-fds pty session with-editor close-fds
                                      (external-format '(:utf-8 :replacement #\?)))
   "Start COMMAND, a program's full name and its arguments (never through a
-shell and never looked for), left running; its process, for the caller to
-end (END-UNWANTED-PROGRAM, DONE-WITH-PROGRAM) or to close. INPUT, OUTPUT and
-ERROR say what it reads and writes, as SB-EXT:RUN-PROGRAM takes them: NIL
-for nothing, :STREAM for a pipe, T for the editor's own (INPUT T keeps the
-terminal, for a program that asks for a password on it), a stream on a
-descriptor, or a path (IF-ERROR-EXISTS saying what is done with a file
-ERROR names that is there already); :OUTPUT as ERROR joins its errors to what
-it writes. With PTY, it runs on a new pseudo-terminal, its process's
-SB-EXT:PROCESS-PTY. DIRECTORY is where it runs, ENVIRONMENT, when given, all
-it sees of one, NAME=VALUE strings (else PROGRAM-ENVIRONMENT);
-PRESERVE-FDS, descriptors it is given besides. SESSION NIL leaves it in a
-process group of its own; T starts it in a session of its own (setsid), so
-that it stays when the editor or its terminal goes, the process given back
-being setsid's, which may end at once; :TERMINAL as well makes its
-pseudo-terminal its controlling terminal and gives back a process that ends
-when it ends (setsid -w -c). WITH-EDITOR true has it killed when the
-editor ends, killed or not (SETPRIV-COMMAND), started from the one thread
-kept for that (IN-STARTER), since it would be killed when the thread
-starting it ends; refused when setpriv is not there. CLOSE-FDS, file
-descriptors (FDs) handed over with the start, such as the program's end of
-a socket: closed by the thread that starts it once it is started or its
-start failed, so that a start given up on while under way never finds them
-closed, or reused, under it. EXTERNAL-FORMAT is that of its pipes."
+shell and never looked for), left running. Returns its process, for the caller
+to end (END-UNWANTED-PROGRAM, DONE-WITH-PROGRAM) or to close.
+INPUT, OUTPUT and ERROR say what it reads and writes, as SB-EXT:RUN-PROGRAM
+takes them. NIL is for nothing, :STREAM for a pipe, T for the editor's own
+\(INPUT T keeps the terminal, for a program that asks for a password on it).
+They may also be a stream on a descriptor, or a path (IF-ERROR-EXISTS saying
+what is done with a file ERROR names that is there already). :OUTPUT as ERROR
+joins its errors to what it writes.
+With PTY, it runs on a new pseudo-terminal, its process's
+SB-EXT:PROCESS-PTY. DIRECTORY is where it runs. ENVIRONMENT, when given, is all
+it sees of one, NAME=VALUE strings (else PROGRAM-ENVIRONMENT). PRESERVE-FDS is
+descriptors it is given besides.
+SESSION NIL leaves it in a process group of its own. T starts it in a session
+of its own (setsid), so that it stays when the editor or its terminal goes,
+the process given back being setsid's, which may end at once. :TERMINAL as
+well makes its pseudo-terminal its controlling terminal and gives back a
+process that ends when it ends (setsid -w -c).
+WITH-EDITOR true has it killed when the editor ends, killed or not
+\(SETPRIV-COMMAND). It is started from the one thread kept for that
+\(IN-STARTER), since it would be killed when the thread starting it ends. It is
+refused when setpriv is not there.
+CLOSE-FDS is file descriptors (FDs) handed over with the start, such as the
+program's end of a socket. They are closed by the thread that starts it once
+it is started or its start failed, so that a start given up on while under way
+never finds them closed, or reused, under it. EXTERNAL-FORMAT is that of its
+pipes."
   (flet ((close-handed ()
            (dolist (fd close-fds)
              (tuatara.runtime:ignoring-errors-reported ("closing a descriptor handed to a program")
@@ -365,16 +375,18 @@ closed, or reused, under it. EXTERNAL-FORMAT is that of its pipes."
 (defun call-with-program (command function &key job input output error directory (environment nil environment-p)
                                                preserve-fds (external-format '(:utf-8 :replacement #\?)))
   "Start COMMAND, a program's full name and its arguments (never through a
-shell), and call FUNCTION with its process, returning what FUNCTION returns:
+shell), and call FUNCTION with its process, returning what FUNCTION returns.
 INPUT, OUTPUT and ERROR say what the program reads and writes, as
 SB-EXT:RUN-PROGRAM takes them (:STREAM for a pipe FUNCTION uses, NIL for
-none, :OUTPUT for its errors with what it writes); DIRECTORY is where it
-runs, ENVIRONMENT, when given, all it sees of one (else PROGRAM-ENVIRONMENT); PRESERVE-FDS, descriptors
-it is given besides (pipes of its own, named in its arguments). With JOB, it
-is the program the job runs (TUATARA.RUNTIME:JOB-PROGRAM-STARTED): stopping
-the job ends it. However FUNCTION ends, the program is ended when it still
-runs, with what it started (END-UNWANTED-PROGRAM), without waiting for it,
-so that none is left behind; one ended already is waited for and closed."
+none, :OUTPUT for its errors with what it writes). DIRECTORY is where it
+runs. ENVIRONMENT, when given, is all it sees of one (else
+PROGRAM-ENVIRONMENT). PRESERVE-FDS is descriptors it is given besides (pipes
+of its own, named in its arguments).
+With JOB, it is the program the job runs (TUATARA.RUNTIME:JOB-PROGRAM-STARTED):
+stopping the job ends it.
+However FUNCTION ends, the program is ended when it still runs, with what it
+started (END-UNWANTED-PROGRAM), without waiting for it, so that none is left
+behind. One ended already is waited for and closed."
   (let ((process (apply #'start-program command
                         :input input :output output :error error :external-format external-format
                         :directory directory :preserve-fds preserve-fds
@@ -572,7 +584,9 @@ number is still its own, to be signalled."
 (defun proc-numbers (path)
   "The numbers in the file at PATH under /proc, read whole as text; NIL when it cannot be read."
   (let ((text (proc-text path)))
-    (and text (mapcar #'parse-integer (remove "" (uiop:split-string text :separator '(#\Space #\Newline)) :test #'string=)))))
+    (and text
+         (mapcar #'parse-integer
+                 (remove "" (uiop:split-string text :separator '(#\Space #\Newline)) :test #'string=)))))
 
 (defun process-children (process)
   "The numbers of the processes PROCESS, a program started, has started and
@@ -633,7 +647,8 @@ line."
          (end (and at (or (position #\Newline status :start start) (length status)))))
     (and at
          (mapcar #'parse-integer
-                 (remove "" (uiop:split-string (subseq status start end) :separator '(#\Space #\Tab)) :test #'string=)))))
+                 (remove "" (uiop:split-string (subseq status start end) :separator '(#\Space
+                                                                                      #\Tab)) :test #'string=)))))
 
 (defparameter *ssh-server-names* '("sshd" "sshd-session")
   "The names under which the OpenSSH server runs, as PROCESS-NAME gives them.")
@@ -699,7 +714,8 @@ descriptors, sent by its number once TEST is true. True when it was sent."
                                                               sb-alien:unsigned-long sb-alien:unsigned-int))
                    424 fd signal 0 0))))                    ; pidfd_send_signal
     (let ((fd (sb-alien:alien-funcall
-               (sb-alien:extern-alien "syscall" (function sb-alien:long sb-alien:long sb-alien:int sb-alien:unsigned-int))
+               (sb-alien:extern-alien "syscall"
+                                      (function sb-alien:long sb-alien:long sb-alien:int sb-alien:unsigned-int))
                434 pid 0)))                                 ; pidfd_open
       (cond ((>= fd 0)
              (unwind-protect
@@ -726,15 +742,17 @@ of the session's processes was still there."
 (defun program-output (command &key input (capture t) (seconds 1) wait (environment nil environment-p) directory
                                     (most *program-output-limit*))
   "Run COMMAND, a program's full name and its arguments (never through a
-shell), giving it INPUT (a string, through a pipe: never written to a file)
-and, with CAPTURE, taking what it writes, as UTF-8 text (an octet that is
-not UTF-8 as its raw byte's character), MOST octets of it at most (a program writing more is stopped, its output not taken); SECONDS at
-most, then it is stopped. WAIT, when given, does the waiting instead of this
-thread blocking: a function of the thread doing the work and SECONDS (the
-editor's interruptible wait, say). ENVIRONMENT, when given, is all the
-program sees of one; DIRECTORY, where it runs. Two values: its output (with
-CAPTURE) and true when it ended well. A program that stays behind (wl-copy,
-serving the clipboard) is not waited for: only the one started."
+shell), giving it INPUT (a string, through a pipe: never written to a file).
+With CAPTURE, it takes what the program writes, as UTF-8 text (an octet that
+is not UTF-8 as its raw byte's character), MOST octets of it at most (a
+program writing more is stopped, its output not taken). SECONDS is the most it
+may take, then it is stopped. WAIT, when given, does the waiting instead of
+this thread blocking: a function of the thread doing the work and SECONDS (the
+editor's interruptible wait, say). ENVIRONMENT, when given, is all the program
+sees of one. DIRECTORY is where it runs.
+Two values: its output (with CAPTURE) and true when it ended well. A program
+that stays behind (wl-copy, serving the clipboard) is not waited for: only the
+one started."
   (let* ((started (list nil))
          ;; whom the program is for is known here, not on the thread running it
          (environment (if environment-p environment (program-environment)))
@@ -777,14 +795,15 @@ serving the clipboard) is not waited for: only the one started."
 
 (defun read-outputs (fds limits drains &key deadline too-much)
   "Read FDS, pipes open for reading, each to its end, on this thread alone,
-waiting on them all at once so that none waits on another: of each, the
-first octets up to its limit in LIMITS (NIL: all) are kept; past it, the
-rest is read and let go when its flag in DRAINS is true, else that pipe is
-no longer read and TOO-MUCH, a function of no arguments, is called. Reading
-stops at DEADLINE (TUATARA.RUNTIME:DEADLINE-IN) when one is given. Three
-values: a list of what each gave, as octets, NIL for one that gave more than
-its limit and was not drained; a list of true for each that gave more than
-its limit; and true when DEADLINE came before every pipe ended."
+waiting on them all at once so that none waits on another. Of each, the first
+octets up to its limit in LIMITS (NIL: all) are kept. Past it, the rest is
+read and let go when its flag in DRAINS is true, else that pipe is no longer
+read and TOO-MUCH, a function of no arguments, is called. Reading stops at
+DEADLINE (TUATARA.RUNTIME:DEADLINE-IN) when one is given.
+Three values. The first is a list of what each gave, as octets, NIL for one
+that gave more than its limit and was not drained. The second is a list of
+true for each that gave more than its limit. The third is true when DEADLINE
+came before every pipe ended."
   (let ((pieces (loop repeat (length fds) collect (make-octet-pieces)))
         (over (make-list (length fds)))
         (open (copy-list fds))
@@ -820,23 +839,26 @@ its limit; and true when DEADLINE came before every pipe ended."
   "Run COMMAND, a program's full name and its arguments (never through a
 shell), calling WRITE with the descriptor of its standard input to give it
 what it reads, a piece at a time (WRITE-OCTETS; a buffer's text from
-BUFFER-TEXT, say), its input closed once WRITE returns; what it prints and
+BUFFER-TEXT, say), its input closed once WRITE returns. What it prints and
 what it says on its error output are read meanwhile on a thread of their
 own, so that none waits on another. A program that ends before it has read
 all makes WRITE's next write fail (FILE-SYSTEM-ERROR), which WRITE may take
-as the end. With WRITE NIL, INPUT is what it reads instead, as
-SB-EXT:RUN-PROGRAM takes it: T, the editor's own standard input, so that a
-program asking for a password on the terminal (ssh, ssh-add) can; a file
-stream or path; NIL, nothing. With JOB, it is the program the job runs:
-stopping the job ends it. DIRECTORY is where it runs, ENVIRONMENT, when
-given, all it sees of one. With SECONDS, it is given that long, then ended
-with every program it started (END-UNWANTED-PROGRAM), waited for while it
-ends, *PROGRAM-END-GRACE* seconds and a little more at most. Four values:
-what it printed, as octets (NIL when it printed more than LIMIT octets, and
-it is ended then; with TRUNCATE, the first LIMIT octets, the rest read and
-let go while it runs on; a LIMIT of NIL takes all it prints); what it said,
-as text, its first *PROGRAM-SAID-LIMIT* octets; its exit code, NIL when it
-did not exit of itself or was ended for taking too long; and true when it
+as the end.
+With WRITE NIL, INPUT is what it reads instead, as SB-EXT:RUN-PROGRAM takes
+it. T is the editor's own standard input, so that a program asking for a
+password on the terminal (ssh, ssh-add) can. It may also be a file stream or
+path; NIL is nothing.
+With JOB, it is the program the job runs: stopping the job ends it. DIRECTORY
+is where it runs. ENVIRONMENT, when given, is all it sees of one. With
+SECONDS, it is given that long, then ended with every program it started
+\(END-UNWANTED-PROGRAM), waited for while it ends, *PROGRAM-END-GRACE* seconds
+and a little more at most.
+Four values. The first is what it printed, as octets. It is NIL when it
+printed more than LIMIT octets, and it is ended then. With TRUNCATE, it is
+the first LIMIT octets, the rest read and let go while it runs on. A LIMIT of
+NIL takes all it prints. The second is what it said, as text, its first
+*PROGRAM-SAID-LIMIT* octets. The third is its exit code, NIL when it did not
+exit of itself or was ended for taking too long. The fourth is true when it
 printed more than LIMIT."
   (apply #'call-with-program command
          (lambda (process)
@@ -879,15 +901,17 @@ printed more than LIMIT."
 
 (defun command-words (text &key (backslash :shell))
   "TEXT split into a program's arguments as a shell splits a command line,
-though no shell runs: at spaces, tabs and line ends, but within '...', which
-keeps all it holds as it is, or \"...\", either quote holding the other.
-BACKSLASH says what a backslash does: :SHELL, outside quotes it keeps the
-character after it as it is, within \"...\" the \" or \\ after it, and is
-itself before any other; :ESCAPES, outside quotes it is itself (a Windows
-path comes through whole), within \"...\" it begins one of \\t \\n \\r \\\\ and
-\\\", a tab, a line end, a carriage return, a backslash and a quote, and any
-other is refused. Two values, the words and T; or NIL, NIL and why as a third
-when a quote is left open or an escape is refused."
+though no shell runs. It is split at spaces, tabs and line ends, but within
+'...', which keeps all it holds as it is, or \"...\", either quote holding the
+other.
+BACKSLASH says what a backslash does. With :SHELL, outside quotes it keeps the
+character after it as it is. Within \"...\" it keeps the \" or \\ after it, and
+is itself before any other. With :ESCAPES, outside quotes it is itself (a
+Windows path comes through whole). Within \"...\" it begins one of \\t \\n \\r
+\\\\ and \\\", a tab, a line end, a carriage return, a backslash and a quote,
+and any other is refused.
+Two values, the words and T; or NIL, NIL and why as a third when a quote is
+left open or an escape is refused."
   (let ((words '()) (word (make-string-output-stream)) (in-word nil) (quote-char nil) (i 0) (n (length text)))
     (flet ((end-word () (when in-word (push (get-output-stream-string word) words) (setf in-word nil)))
            (next () (and (< (1+ i) n) (char text (1+ i)))))
@@ -899,7 +923,12 @@ when a quote is left open or an escape is refused."
                         (cond ((char= c #\") (setf quote-char nil))
                               ((char/= c #\\) (write-char c word))
                               ((eq backslash :escapes)
-                               (let ((escaped (case (next) (#\t #\Tab) (#\n #\Newline) (#\r #\Return) (#\\ #\\) (#\" #\"))))
+                               (let ((escaped (case (next)
+                                                (#\t #\Tab)
+                                                (#\n #\Newline)
+                                                (#\r #\Return)
+                                                (#\\ #\\)
+                                                (#\" #\"))))
                                  (unless escaped
                                    (return-from command-words
                                      (values nil nil (format nil "within double quotes a backslash begins an escape, and only \\t \\n \\r \\\\ \\\" are taken: ~a; single quotes take a backslash as it is"
@@ -909,7 +938,8 @@ when a quote is left open or an escape is refused."
                               (t (write-char c word))))
                        ((member c '(#\Space #\Tab #\Newline #\Return #\Page #.(code-char 11))) (end-word))
                        ((member c '(#\' #\")) (setf quote-char c in-word t))
-                       ((and (char= c #\\) (eq backslash :shell) (next)) (incf i) (write-char (char text i) word) (setf in-word t))
+                       ((and (char= c #\\) (eq backslash :shell) (next)) (incf i) (write-char (char text i) word)
+                        (setf in-word t))
                        (t (write-char c word) (setf in-word t))))
                (incf i))
       (if quote-char
@@ -1004,12 +1034,13 @@ looks into the arguments of.")
 
 (defun seccomp-program ()
   "The seccomp filter of the sandbox as the octets of a classic BPF program,
-as bwrap's --seccomp reads it, for the processor here; NIL on one it does not
-know. Another processor's calls (32-bit ones on x86-64) end the program; the
-calls of *SECCOMP-REFUSED* fail with EPERM, clone3 with ENOSYS (so that its
-flags, out of reach of the filter, are asked through clone), clone making a
-namespace, ioctl pushing input into a terminal (TIOCSTI, TIOCLINUX) and a
-socket that is not a local one (AF_UNIX) fail too; everything else is let be."
+as bwrap's --seccomp reads it, for the processor here. It is NIL on one it
+does not know. Another processor's calls (32-bit ones on x86-64) end the
+program. The calls of *SECCOMP-REFUSED* fail with EPERM. clone3 fails with
+ENOSYS (so that its flags, out of reach of the filter, are asked through
+clone). clone making a namespace fails too, and so do ioctl pushing input into
+a terminal (TIOCSTI, TIOCLINUX) and a socket that is not a local one
+\(AF_UNIX). Everything else is let be."
   (let* ((cpu (find-if (lambda (entry) (member (first entry) *features*)) *seccomp-refused*))
          (calls (and cpu (rest (assoc (first cpu) *seccomp-calls*))))
          (code '()))
@@ -1129,7 +1160,10 @@ no / at its end."
   (let ((path (string-right-trim "/" path)))
     (multiple-value-bind (top target) (root-link path)
       (if target
-          (concatenate 'string (if (char= (char target 0) #\/) "" "/") (string-right-trim "/" target) (subseq path (length top)))
+          (concatenate 'string
+                       (if (char= (char target 0) #\/) "" "/")
+                       (string-right-trim "/" target)
+                       (subseq path (length top)))
           path))))
 
 (defun real-place (path)
@@ -1192,17 +1226,17 @@ write in that is, or holds, a place nothing may be written in is refused
                                                               (directory "/tmp") (file-limit *sandbox-file-limit*)
                                                               (processes *sandbox-process-limit*) (scratch t)
                                                               (descriptors nil))
-  "Bwrap's arguments for running PROGRAM with ARGUMENTS shut in, limited to
-SECONDS of processor time (NIL: no limit) and MEMORY octets (NIL: no limit)
-each process, its scratch /tmp to MEMORY octets too, to PROCESSES processes
-and threads, and to files of FILE-LIMIT octets (NIL: no limit); SECCOMP the
-file descriptor (FD) of its seccomp filter, FILES the descriptors of files
-it is shown read only, each \(PATH . FD), ENVIRONMENT what it has in its
-environment besides, each (NAME VALUE), a later one for the same NAME in
-place of the earlier, DIRECTORIES, WRITABLE and OVERLAYS the directories it
-is shown as SANDBOX-RUN says, and DIRECTORY the one it starts in. Without
-SCRATCH it has no /tmp at all; DESCRIPTORS, when given, is the most files
-it may have open at once."
+  "Bwrap's arguments for running PROGRAM with ARGUMENTS shut in. Each process
+is limited to SECONDS of processor time (NIL: no limit) and MEMORY octets (NIL:
+no limit). Its scratch /tmp is limited to MEMORY octets too. It is limited to
+PROCESSES processes and threads, and to files of FILE-LIMIT octets (NIL: no
+limit). SECCOMP is the file descriptor (FD) of its seccomp filter. FILES is
+the descriptors of files it is shown read only, each (PATH . FD). ENVIRONMENT
+is what it has in its environment besides, each (NAME VALUE), a later one for
+the same NAME in place of the earlier. DIRECTORIES, WRITABLE and OVERLAYS are
+the directories it is shown as SANDBOX-RUN says. DIRECTORY is the one it
+starts in. Without SCRATCH it has no /tmp at all. DESCRIPTORS, when given, is
+the most files it may have open at once."
   (append (list "--unshare-all" "--unshare-user" "--disable-userns" "--die-with-parent" "--new-session"
                 "--cap-drop" "ALL" "--clearenv"
                 "--setenv" "PATH" *sandbox-path* "--setenv" "HOME" "/tmp" "--setenv" "LC_ALL" "C.UTF-8")
@@ -1492,7 +1526,8 @@ can stop this thread, to keep it where the caller ends it."
                          ;; systemd-run moves itself into the scope and becomes bwrap: still this one's child
                          (start-program (list* scope (append (scope-arguments total unit) (list bwrap) arguments))
                                         :input stdin :preserve-fds keep :output outputs :error outputs
-                                        :external-format :default :environment (cons (sandbox-mark) (scope-environment)))
+                                        :external-format :default :environment (cons (sandbox-mark)
+                                                                                     (scope-environment)))
                          (start-program (cons bwrap arguments)
                                         :input stdin :preserve-fds keep :output outputs :error outputs
                                         :external-format :default :environment (list (sandbox-mark))))))
@@ -1584,14 +1619,15 @@ counted. See SANDBOX-RUN."
         (when process (end-sandbox process)))
       (values (joined-octets output) outcome (said-text (joined-octets said))))))
 
-(defun try-sandbox ()
-  "Find bwrap and try it, as a list (STATUS DETAIL PATH): see SANDBOX-STATUS.
+(defun try-sandbox (program)
+  "Find PROGRAM, bwrap or a path to it, and try it, as a list (STATUS DETAIL
+PATH): see SANDBOX-STATUS. NIL for PROGRAM is the sandbox turned off.
 The sandboxes left behind by an editor ended before it could end them are
 ended first (END-SANDBOXES-LEFT), and the scopes left by one stopped in the
 background (END-SCOPES-LEFT)."
-  (let ((path (and *sandbox-program* (find-program *sandbox-program*))))
-    (cond ((null *sandbox-program*) (list :off "turned off (*sandbox-program* is nil)" nil))
-          ((null path) (list :missing (format nil "~a not found on the PATH" *sandbox-program*) nil))
+  (let ((path (and program (find-program program))))
+    (cond ((null program) (list :off "turned off (*sandbox-program* is nil)" nil))
+          ((null path) (list :missing (format nil "~a not found on the PATH" program) nil))
           (t (let ((left (end-sandboxes-left)))
                (when (plusp left)
                  (tuatara.runtime:debug-report :job "sandbox: ~d left behind by an editor gone, ended" left)))
@@ -1611,11 +1647,11 @@ background (END-SCOPES-LEFT)."
                     :name "sandbox scopes left"))
                  (if (eq outcome :done)
                      (list :ready (format nil "~a (~a)~@[, together held to ~a of memory (systemd-run)~]"
-                                          (if (plusp (length version)) version *sandbox-program*) path
+                                          (if (plusp (length version)) version program) path
                                           (and **sandbox-scope** *sandbox-total-memory*
                                                (format nil "~,1f GB" (/ *sandbox-total-memory* (expt 1024 3)))))
                            path)
-                     (list :broken (format nil "~a (~a) cannot run: ~a" (if (plusp (length version)) version *sandbox-program*)
+                     (list :broken (format nil "~a (~a) cannot run: ~a" (if (plusp (length version)) version program)
                                            path (if (plusp (length said)) said (string-downcase outcome)))
                            path))))))))
 
@@ -1640,14 +1676,22 @@ keyword, :READY, :MISSING (bwrap is not on the PATH), :BROKEN (it is there but
 cannot run, as where the system allows no user namespaces) or :OFF
 (*SANDBOX-PROGRAM* is NIL); a sentence saying which program, its version and
 where, or what is wrong; and bwrap's path. Tried the first time it is needed
-and kept; AGAIN tries it again. Takes a few milliseconds the first time: call
+and kept for the value of *SANDBOX-PROGRAM* tried, read once: tried again
+when that value has changed, or with AGAIN. Takes a few milliseconds the first time: call
 it from a thread doing work in the background."
-  (let ((state (sb-thread:with-mutex (**sandbox-lock**)
-                 (when (or again (null **sandbox-state**)
-                           (not (equal *sandbox-program* (fourth **sandbox-state**))))
-                   (setf **sandbox-state** (append (try-sandbox) (list *sandbox-program*))))
-                 **sandbox-state**)))
+  (let* ((program *sandbox-program*)
+         (state (sb-thread:with-mutex (**sandbox-lock**)
+                  (when (or again (null **sandbox-state**) (not (equal program (fourth **sandbox-state**))))
+                    (setf **sandbox-state** (append (try-sandbox program) (list program))))
+                  **sandbox-state**)))
     (values (first state) (second state) (third state))))
+
+(defun sandbox-input-refusal (size)
+  "Why a file of SIZE octets is not given to a program decoding it, in words,
+or NIL when it may be: it is larger than *SANDBOX-INPUT-LIMIT*."
+  (when (and *sandbox-input-limit* (> size *sandbox-input-limit*))
+    (format nil "it is ~:d octets, more than a decoder is given (*sandbox-input-limit*, ~:d)"
+            size *sandbox-input-limit*)))
 
 (defun sealed-copy (fd)
   "A copy in memory of the file open as file descriptor (FD), as a new
@@ -1655,10 +1699,10 @@ descriptor at its start, sealed so that nothing, not even a program given
 it, can change it: not written, not made shorter or longer. FD's own offset
 is left alone. A file larger than *SANDBOX-INPUT-LIMIT* is refused with a
 FILE-SYSTEM-ERROR."
-  (let ((size (stamp-size (fd-stamp fd "a file"))))
-    (when (and *sandbox-input-limit* (> size *sandbox-input-limit*))
-      (error 'file-system-error :operation "decode" :path "a file"
-                                :reason (format nil "it is ~:d octets, more than *sandbox-input-limit* (~:d)" size *sandbox-input-limit*)))
+  (let* ((size (stamp-size (fd-stamp fd "a file")))
+         (refusal (sandbox-input-refusal size)))
+    (when refusal
+      (error 'file-system-error :operation "decode" :path "a file" :reason refusal))
     (sealed-memory-file "tuatara-decode" (lambda (copy) (copy-fd-contents fd copy size)))))
 
 (defun sealed-p (fd)
@@ -1693,7 +1737,8 @@ trying then started in the background."
   "A new pipe, both its ends closed in programs started (pipe2 with
 O_CLOEXEC): its reading and its writing descriptor."
   (sb-alien:with-alien ((fds (array sb-alien:int 2)))
-    (unless (zerop (sb-alien:alien-funcall (sb-alien:extern-alien "pipe2" (function sb-alien:int (* (array sb-alien:int 2))
+    (unless (zerop (sb-alien:alien-funcall (sb-alien:extern-alien "pipe2"
+                                                                  (function sb-alien:int (* (array sb-alien:int 2))
                                                                                       sb-alien:int))
                                            (sb-alien:addr fds) #x80000))         ; O_CLOEXEC
       (fail "make" "a pipe"))
@@ -1732,41 +1777,43 @@ with a FILE-SYSTEM-ERROR, never left to block."
                                            (ended-well '(0)))
   "Run PROGRAM (a name looked for on the sandbox's PATH, /usr/bin:/bin, or a
 full path to one it is shown) with ARGUMENTS (strings, never through a shell)
-shut in: it sees the system's programs and libraries, read only, and nothing
-else (no home directory, no network, no other process), its time, memory and
-the files it writes in its own /tmp limited; reading INPUT, an open descriptor, on its
-standard input from its start (nothing when NIL), a sealed copy of it
-\(SEALED-COPY), never INPUT itself; an INPUT that is such a copy already is
-read as it is, through a descriptor of its own (one copy can serve many runs,
-at once too). With SECRET, a string, in place of INPUT, it reads that
-on its standard input instead, through a pipe, followed by a new line (none
-for an empty one), and nothing after it: asking again, it is answered at once
-that there is nothing more (SECRET-PIPE). SECRET is never in its arguments,
-which other programs can see, nor in the debug log.
+shut in. It sees the system's programs and libraries, read only, and nothing
+else (no home directory, no network, no other process). Its time, memory and
+the files it writes in its own /tmp are limited.
+It reads INPUT, an open descriptor, on its standard input from its start
+\(nothing when NIL). This is a sealed copy of it (SEALED-COPY), never INPUT
+itself. An INPUT that is such a copy already is read as it is, through a
+descriptor of its own (one copy can serve many runs, at once too). With
+SECRET, a string, in place of INPUT, it reads that on its standard input
+instead, through a pipe, followed by a new line (none for an empty one), and
+nothing after it. Asking again, it is answered at once that there is nothing
+more (SECRET-PIPE). SECRET is never in its arguments, which other programs
+can see, nor in the debug log.
 Waits for it: call it from a thread doing work in the background. It is ended
 after SECONDS, when it prints more than OUTPUT-LIMIT octets (NIL: what it
 prints is let go, never kept; with OUTPUT-KEPT NIL, counted against it but
-not kept), or when CANCEL, a cons, has a true car; it may
-take MEMORY octets (NIL: no limit), and write files of FILE-LIMIT octets at
-most (NIL: no limit). Returns three values: the octets it printed; how it
-went, :DONE (it ended well, with an exit code among ENDED-WELL, 0 alone
-unless given), :FAILED (it ended with an error, or ran out of memory),
-:TIMEOUT, :TOO-MUCH, :CANCELLED, or :UNAVAILABLE when there is no sandbox
-here (SANDBOX-STATUS); and what it said on its error output, or why there is
-no sandbox.
-FILES are files it is shown, read only, each (PATH . TEXT); ENVIRONMENT what
-it has in its environment besides PATH, HOME (/tmp) and LC_ALL, or in place
-of them, each (NAME VALUE). DIRECTORIES are directories of yours it is shown,
-read only, each (SOURCE . TARGET), TARGET where it sees SOURCE (under /tmp,
-its home, for LibreOffice's fonts), or a path alone, seen where it is (its
-real place, links in it followed, a link at the root as /home kept as it is
-here); WRITABLE the same, for directories it may write in; OVERLAYS
-directories it sees where they are and may seem to write in, each (SOURCE
-UPPER WORK): what it writes goes to UPPER, a directory of the editor's own,
-SOURCE never changed, WORK an empty directory beside UPPER that the system
-needs for it (where bwrap cannot do that, before 0.11, SOURCE is shown read
-only). Those that do not exist are left out; a directory in another one shown
-is seen in it. DIRECTORY is where it starts, /tmp unless given."
+not kept), or when CANCEL, a cons, has a true car. It may take MEMORY octets
+\(NIL: no limit), and write files of FILE-LIMIT octets at most (NIL: no limit).
+Returns three values. The first is the octets it printed. The second is how it
+went: :DONE (it ended well, with an exit code among ENDED-WELL, 0 alone unless
+given), :FAILED (it ended with an error, or ran out of memory), :TIMEOUT,
+:TOO-MUCH, :CANCELLED, or :UNAVAILABLE when there is no sandbox here
+\(SANDBOX-STATUS). The third is what it said on its error output, or why there
+is no sandbox.
+FILES are files it is shown, read only, each (PATH . TEXT). ENVIRONMENT is what
+it has in its environment besides PATH, HOME (/tmp) and LC_ALL, or in place of
+them, each (NAME VALUE).
+DIRECTORIES are directories of yours it is shown, read only, each
+\(SOURCE . TARGET). TARGET is where it sees SOURCE (under /tmp, its home, for
+LibreOffice's fonts), or a path alone, seen where it is (its real place, links
+in it followed, a link at the root as /home kept as it is here). WRITABLE is
+the same, for directories it may write in.
+OVERLAYS are directories it sees where they are and may seem to write in, each
+\(SOURCE UPPER WORK). What it writes goes to UPPER, a directory of the editor's
+own, SOURCE never changed. WORK is an empty directory beside UPPER that the
+system needs for it (where bwrap cannot do that, before 0.11, SOURCE is shown
+read only). Those that do not exist are left out. A directory in another one
+shown is seen in it. DIRECTORY is where it starts, /tmp unless given."
   (multiple-value-bind (status detail bwrap) (sandbox-status)
     (if (eq status :ready)
         (multiple-value-bind (copy writer)

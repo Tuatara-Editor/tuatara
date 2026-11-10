@@ -105,7 +105,8 @@ text (SET-HANGING)."
       (line "  Copyright (C) 2026 Michael A Jones.~%")
       (line "  Tuatara is free software under the ")
       (put "GNU General Public License" :button #'describe-copying)
-      (line ", version 3 or any later~%  version, which you may share and change on its terms (~a).~%" (keys 'describe-copying))
+      (line ", version 3 or any later~%  version, which you may share and change on its terms (~a).~%"
+            (keys 'describe-copying))
       (line "  It comes with ")
       (put "absolutely no warranty" :button #'describe-no-warranty)
       (line " (~a).~%" (keys 'describe-no-warranty))
@@ -151,7 +152,8 @@ it (build/ in the source tree), or in the source tree; NIL when there is none."
     (find-if #'probe-file
              (remove nil (list (and runtime (merge-pathnames "LICENSE" runtime))
                                (and runtime (merge-pathnames "../LICENSE" runtime))
-                               (and tuatara.runtime:*source-tree* (merge-pathnames "LICENSE" tuatara.runtime:*source-tree*)))))))
+                               (and tuatara.runtime:*source-tree*
+                                    (merge-pathnames "LICENSE" tuatara.runtime:*source-tree*)))))))
 
 (defun show-license (name start-marker end-marker)
   "Show in a read-only buffer called NAME the text of the license (LICENSE-FILE)
@@ -190,7 +192,8 @@ version)."
              "outlines (under the MPL 2.0), the keys that select by the syntax,"
              "the health report, and each language's servers and formatters")
     ("tree-sitter and the authors of its grammars" "parsing; each grammar's licence goes with every release")
-    ("tree-sitter-prolog, by Stefano Volpe and Shane Brewer" "parsing Prolog; under the GNU Affero GPL 3.0 or later, Shane"
+    ("tree-sitter-prolog, by Stefano Volpe and Shane Brewer"
+     "parsing Prolog; under the GNU Affero GPL 3.0 or later, Shane"
                                                             "Brewer's first part under the ISC licence: the only part of"
                                                             "the release under the Affero GPL")
     ("Org mode" "the Org format and how Org files behave: folding, links,"
@@ -212,11 +215,13 @@ version)."
     ("EasyPG" "the GnuPG commands, and .gpg files opened and saved")
     ("jinx, by Daniel Mendler" "checking the spelling of only the words shown, with enchant"
                                "called directly")
-    ("olivetti, by Paul W. Rankin, and visual-fill-column" "text centred in its window, and soft wrap at the fill column")
+    ("olivetti, by Paul W. Rankin, and visual-fill-column"
+     "text centred in its window, and soft wrap at the fill column")
     ("use-package" "the keywords of load-package in the init file")
     ("ibuffer" "the buffer list")
     ("dired" "how Rimu lists a folder and acts on the entries marked")
-    ("dired-du, by Tino Calancha; dired-git-info, by Clemens Radermacher; and dired-duplicates, by Harald Judt" "Rimu's sizes of folders, each entry's last commit, and the files"
+    ("dired-du, by Tino Calancha; dired-git-info, by Clemens Radermacher; and dired-duplicates, by Harald Judt"
+     "Rimu's sizes of folders, each entry's last commit, and the files"
                                                                                                                 "that are the same as another")
     ("git-timemachine, by Peter Stiernström" "going back through a file's history, a commit at a time")
     ("doc-view and pdf-tools, by Andreas Politz" "PDFs shown as pictures of their pages")

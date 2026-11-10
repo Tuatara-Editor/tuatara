@@ -16,12 +16,12 @@
 (defun git-show-table (doing top arguments name mode parse columns fields &key title (entry #'identity) empty)
   "Run git with ARGUMENTS for the repository at TOP as a job doing DOING and
 show what it printed as a table in the buffer NAME in MODE, a row a line
-\(RENDER-MADE-TABLE-LIST), a filter able to try a pattern on one column: on
-the job's thread PARSE, a function of the text, gives the rows, COLUMNS (as
+\(RENDER-MADE-TABLE-LIST), a filter able to try a pattern on one column. On the
+job's thread PARSE, a function of the text, gives the rows. COLUMNS (as
 TABLE-HEADING-PIECES takes them, or a function of the rows giving them) head
-them and FIELDS, a function of a row, gives its cells (TABLE-LIST-ROWS);
-ENTRY, a function of a row, what its line is about (LIST-ENTRY-AT). TITLE,
-when given, is a line above it all; EMPTY is said when there are no rows."
+them. FIELDS, a function of a row, gives its cells (TABLE-LIST-ROWS). ENTRY, a
+function of a row, gives what its line is about (LIST-ENTRY-AT). TITLE, when
+given, is a line above it all; EMPTY is said when there are no rows."
   (start-git-job doing
                  (lambda (job)
                    (let* ((rows (funcall parse (git-job-output job top arguments)))
@@ -45,7 +45,10 @@ when given, is a line above it all; EMPTY is said when there are no rows."
 takes them: the commit, wide enough for the graph before its hash, its date,
 author and subject."
   (let ((graph (reduce #'max commits :key (lambda (commit) (length (git-commit-graph commit))) :initial-value 0)))
-    (list (list "Commit" :width (+ 9 graph) :elide nil) (list "Date" :width 10) (list "Author" :width 16) (list "Subject"))))
+    (list (list "Commit" :width (+ 9 graph) :elide nil)
+          (list "Date" :width 10)
+          (list "Author" :width 16)
+          (list "Subject"))))
 
 (defun git-log-row-fields (commit)
   "The fields of the log's line for COMMIT (PARSE-GIT-COMMITS): the graph and
@@ -53,7 +56,9 @@ hash, the date, the author, and the subject after the names at the commit."
   (if (git-commit-hash commit)
       (list (concatenate 'string (git-commit-graph commit) (git-commit-short commit)) (git-commit-date commit)
             (escape-controls (git-commit-author commit))
-            (format nil "~@[(~a) ~]~a" (and (plusp (length (git-commit-names commit))) (escape-controls (git-commit-names commit)))
+            (format nil
+                    "~@[(~a) ~]~a"
+                    (and (plusp (length (git-commit-names commit))) (escape-controls (git-commit-names commit)))
                     (escape-controls (git-commit-subject commit))))
       (list (git-commit-graph commit) "" "" "")))
 
@@ -84,7 +89,9 @@ options shape it."
     (git-ask-branch "Log of: " top
                     (lambda (name current)
                       (declare (ignore current))
-                      (git-show-log top (format nil "Log of ~a" name) (append (git-log-menu-arguments switches) (list name "--"))))
+                      (git-show-log top
+                                    (format nil "Log of ~a" name)
+                                    (append (git-log-menu-arguments switches) (list name "--"))))
                     :remote t :default :current)))
 
 (define-command git-log-branches ()

@@ -156,10 +156,10 @@ gives words, nor do buffers whose names start with a space, nor hex views."
 
 (defun word-completion-candidates (buffer position)
   "The words that complete the start of a word ending at byte POSITION of
-BUFFER, as three values: where that start is, a list of CANDIDATE, nearest
-first (each with the name of the buffer it came from as its value, NIL for
-BUFFER itself), and the start as typed; NIL when no word ends at POSITION or
-none begins with it. At most *WORD-COMPLETION-MOST* are found, from about
+BUFFER, as three values. These are where that start is, a list of CANDIDATE,
+nearest first (each with the name of the buffer it came from as its value, NIL
+for BUFFER itself), and the start as typed. NIL when no word ends at POSITION
+or none begins with it. At most *WORD-COMPLETION-MOST* are found, from about
 *WORD-COMPLETION-REACH* octets of BUFFER around POSITION and some of the others
 \(*WORD-COMPLETION-OTHER-REACH*, *WORD-COMPLETION-OTHER-TOTAL*)."
   (let* ((rope (tuatara.buffer:buffer-text buffer))
@@ -196,20 +196,21 @@ none begins with it. At most *WORD-COMPLETION-MOST* are found, from about
 
 (defun word-completion-at-point (buffer position)
   "The words that complete the start of the word before POSITION of BUFFER, as
-MODE-COMPLETION-AT-POINT gives its offer: the start and end of the text to
-replace, the candidates, nearest first, the function giving the buffer each
-comes from, no documentation, what can be part of a word and true for the
-order to be kept; NIL when there are none."
+MODE-COMPLETION-AT-POINT gives its offer. These are the start and end of the
+text to replace, the candidates, nearest first, the function giving the buffer
+each comes from, no documentation, what can be part of a word and true for the
+order to be kept. NIL when there are none."
   (multiple-value-bind (start candidates) (word-completion-candidates buffer position)
     (when start
       (values start position candidates #'word-completion-annotation nil (word-part-function buffer) t))))
 
 (defvar *word-expansion* nil
-  "The words EXPAND-WORD is putting in one after another, while it is, as a list
-\(BUFFER VERSION START END WORDS INDEX PREFIX UNDO): the buffer and the version of
-its text after the last word went in, where the text replaced starts and ends,
-the words, the one in now (-1 for the text as typed), the text as typed and the
-buffer's undo history before the first word went in.")
+  "The words EXPAND-WORD is putting in one after another, while it is, as a
+list \(BUFFER VERSION START END WORDS INDEX PREFIX UNDO). BUFFER and VERSION
+are the buffer and the version of its text after the last word went in. START
+and END are where the text replaced starts and ends. WORDS are the words, INDEX
+the one in now (-1 for the text as typed), PREFIX the text as typed, and UNDO
+the buffer's undo history before the first word went in.")
 
 (defun word-expansion-continues-p (buffer)
   "True when the last command was EXPAND-WORD and nothing has changed since it

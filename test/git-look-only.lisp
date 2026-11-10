@@ -24,7 +24,10 @@ since their commit."
     (uiop:run-program (list "git" "-C" (namestring dir) "add" "b.dat") :ignore-error-status t)
     (uiop:run-program (list "git" "-C" (namestring dir) "commit" "-q" "-m" "Data") :ignore-error-status t)
     (with-open-file (out (merge-pathnames ".git/config" dir) :direction :output :if-exists :append)
-      (format out "[filter \"evil\"]~%	clean = ~a; cat~%	smudge = ~a; cat~%	required = true~%" (run "clean") (run "smudge"))
+      (format out
+        "[filter \"evil\"]~%	clean = ~a; cat~%	smudge = ~a; cat~%	required = true~%"
+        (run "clean")
+        (run "smudge"))
       (format out "[filter \"pro\"]~%	process = ~a~%" (run "process"))
       (format out "[diff \"evil\"]~%	textconv = ~a; cat~%	command = ~a~%" (run "textconv") (run "command"))
       (format out "[diff]~%	external = ~a~%" (run "external"))
@@ -89,7 +92,11 @@ since their commit."
                    ("tag" "v1") ("tag" "-d" "v1") ("remote" "add" "o" "x") ("remote" "show" "origin")
                    ("config" "a.b" "c") ("reset" "--hard") ("gc") ("submodule" "update") ("submodule" "status")
                    ("notes" "add" "-m" "x") ("reflog" "expire") ("worktree" "add" "x") ("hash-object" "-w" "a.txt")
-                   ("log" "--output=x") ("log" "--out=x") ("diff" "--ext-diff") ("log" "--textconv") ("cat-file" "--filters" "HEAD:a")
+                   ("log" "--output=x")
+                   ("log" "--out=x")
+                   ("diff" "--ext-diff")
+                   ("log" "--textconv")
+                   ("cat-file" "--filters" "HEAD:a")
                    ("show" "--show-signature") ("log" "--format=%G?") ("for-each-ref" "--format=%(signature)")
                    ("grep" "-Ocat" "x") ("ls-files" "--recurse-submodules")
                    ("-c" "a.b=c" "log") ("--git-dir=/tmp/x" "log") ("--exec-path=/tmp" "log") ("archive" "HEAD")
@@ -127,9 +134,13 @@ since their commit."
       (flet ((status () (tuatara.git::git-buffer-of top 'tuatara.git::git-status-mode)))
         (unwind-protect
              (let ((f (auto-save-session
-                       (list (format nil "C-x C-f C-a C-k ~a RET" (rimu-typed (namestring (merge-pathnames "a.txt" dir))))
+                       (list (format nil
+                                     "C-x C-f C-a C-k ~a RET"
+                                     (rimu-typed (namestring (merge-pathnames "a.txt" dir))))
                              "C-x g" (list :wait 0.1) "l"
-                             (list :until (lambda () (and (status) (tuatara.buffer:buffer-local (status) 'tuatara.git::git-state))))
+                             (list :until
+                                   (lambda ()
+                                     (and (status) (tuatara.buffer:buffer-local (status) 'tuatara.git::git-state))))
                              "M-< C-s m o d i f i e d RET s" (list :wait 0.1)
                              "c" (list :wait 0.1) "c" (list :wait 0.1) "C-g")
                        :width 160 :height 30)))
@@ -146,13 +157,16 @@ since their commit."
                  (let* ((row (position-if (lambda (r) (search "Amend" r)) screen))
                         (at (search "Amend" (aref screen row))))
                    (true (find-if (lambda (span) (and (<= (first span) at) (< at (second span))
-                                                      (member :key-hint-unavailable (alexandria:ensure-list (third span)))))
+                                                      (member :key-hint-unavailable
+                                                              (alexandria:ensure-list (third span)))))
                                   (aref spans row)))))
                ;; Look only in the mode line's own face
                (multiple-value-bind (screen spans) (tuatara.frontend.fake:fake-frame-with f " Look only ")
                  (let* ((row (position-if (lambda (r) (search " Look only " r)) screen))
                         (at (search " Look only " (aref screen row))))
-                   (true (find-if (lambda (span) (and (= (first span) at) (member :mode-line-look-only (alexandria:ensure-list (third span)))))
+                   (true (find-if (lambda (span)
+                                    (and (= (first span) at)
+                                         (member :mode-line-look-only (alexandria:ensure-list (third span)))))
                                   (aref spans row))))))
           (tuatara.defaults::state-list-drop tuatara.defaults::*look-only* (list real)))))))
 
@@ -167,14 +181,23 @@ since their commit."
       (unwind-protect
            (with-looked-at-only (dir)
              (let ((f (auto-save-session
-                       (list (format nil "C-x C-f C-a C-k ~a RET" (rimu-typed (namestring (merge-pathnames "a.txt" dir))))
+                       (list (format nil
+                                     "C-x C-f C-a C-k ~a RET"
+                                     (rimu-typed (namestring (merge-pathnames "a.txt" dir))))
                              "C-x g" (list :wait 0.2))
                        :width 160 :height 30)))
                (false (tuatara.frontend.fake:fake-frame-showing-across-rows f "(y, l or n)"))
                (true (tuatara.frontend.fake:fake-frame-showing f "Look only: it is not trusted.")))
              (let ((f (auto-save-session
-                       (list (format nil "C-x C-f C-a C-k ~a RET" (rimu-typed (namestring (merge-pathnames "a.txt" dir))))
-                             "M-x t r u s t - p r o j e c t RET" (list :wait 0.1) "y" (list :wait 0.1) "y e s RET" (list :wait 0.1))
+                       (list (format nil
+                                     "C-x C-f C-a C-k ~a RET"
+                                     (rimu-typed (namestring (merge-pathnames "a.txt" dir))))
+                             "M-x t r u s t - p r o j e c t RET"
+                             (list :wait 0.1)
+                             "y"
+                             (list :wait 0.1)
+                             "y e s RET"
+                             (list :wait 0.1))
                        :width 160 :height 30)))
                (true (tuatara.frontend.fake:fake-frame-showing-across-rows f "(y, l or n)"))
                (true (tuatara.defaults::project-trusted-p top))
@@ -186,7 +209,8 @@ since their commit."
   ;; whatever fields follow, is still read, so that the folder stays looked at only
   (is string= "look-only" (tuatara.defaults::state-list-name tuatara.defaults::*look-only*))
   (false (tuatara.defaults::state-list-trust tuatara.defaults::*look-only*))
-  (is string= "/cases/seized/" (tuatara.defaults::parse-absolute-path-line (format nil "/cases/seized/~cfield of later" #\Tab)))
+  (is string= "/cases/seized/"
+      (tuatara.defaults::parse-absolute-path-line (format nil "/cases/seized/~cfield of later" #\Tab)))
   (is string= "/cases/seized/" (funcall (tuatara.defaults::state-list-line-key tuatara.defaults::*look-only*)
                                         (format nil "/cases/seized/~cfield of later" #\Tab))))
 
@@ -220,10 +244,21 @@ since their commit."
                     :output :string :ignore-error-status t))
 
 (defparameter *hostile-commands*
-  '(("status" "--porcelain=v2" "--branch" "-z" "--untracked-files=normal" "--ignored=traditional") ("diff") ("diff" "--cached")
-    ("log" "-p" "-2") ("show") ("blame" "--porcelain" "--" "a.txt") ("hash-object" "a.txt") ("diff-files" "-p") ("grep" "one")
+  '(("status" "--porcelain=v2" "--branch" "-z" "--untracked-files=normal" "--ignored=traditional")
+    ("diff")
+    ("diff" "--cached")
+    ("log" "-p" "-2")
+    ("show")
+    ("blame" "--porcelain" "--" "a.txt")
+    ("hash-object" "a.txt")
+    ("diff-files" "-p")
+    ("grep" "one")
     ("ls-files" "-s") ("describe" "--always" "--dirty") ("cat-file" "-p" "HEAD:b.txt") ("for-each-ref") ("stash" "list")
-    ("range-diff" "HEAD~1..HEAD" "HEAD~1..HEAD") ("rev-parse" "HEAD") ("count-objects" "-v") ("tag" "-l") ("reflog" "show"))
+    ("range-diff" "HEAD~1..HEAD" "HEAD~1..HEAD")
+    ("rev-parse" "HEAD")
+    ("count-objects" "-v")
+    ("tag" "-l")
+    ("reflog" "show"))
   "What git is asked of each hostile repository: the reading the editor does, and more.")
 
 (define-test (git hostile-repositories-run-nothing)
@@ -235,12 +270,15 @@ since their commit."
     (let* ((repos (namestring (merge-pathnames "r/" dir)))
            (marks (namestring (ensure-directories-exist (merge-pathnames "m/" dir))))
            (tuatara-user:*lsp-trusted-projects* '()))
-      (uiop:run-program (list "sh" (namestring (asdf:system-relative-pathname :tuatara "test/git-look-only/hostile-repositories.sh"))
+      (uiop:run-program (list "sh"
+                              (namestring (asdf:system-relative-pathname :tuatara
+                                                                         "test/git-look-only/hostile-repositories.sh"))
                               repos marks)
                         :output nil :error-output nil)
       (flet ((repo (name) (concatenate 'string repos name "/"))
              (run (name arguments)
-               (handler-case (multiple-value-bind (octets ok) (tuatara.git:run-git (concatenate 'string repos name "/") arguments :seconds 20)
+               (handler-case (multiple-value-bind (octets ok)
+                                 (tuatara.git:run-git (concatenate 'string repos name "/") arguments :seconds 20)
                                (values (and octets (tuatara.text:lenient-string octets)) ok))
                  (tuatara.git::git-refused (e) (values (princ-to-string e) :refused)))))
         (dolist (name '("ascii" "bytes" "latin" "empty" "caseful" "incl" "tree" "fsmon" "hooks" "split" "gc" "lazy"
@@ -267,7 +305,12 @@ since their commit."
         (false (search "Forged" (run "mailmap" '("shortlog" "-se" "HEAD"))))
         (false (search "Forged" (run "mailmap" '("blame" "--porcelain" "--" "a.txt"))))
         (true (search "Test" (run "mailmap" '("blame" "--porcelain" "--" "a.txt"))))
-        (true (search "--contents" (format nil "~s" (tuatara.git::git-blame-raw-words '("blame" "--porcelain" "--" "a.txt") (repo "mailmap") (repo "mailmap")))))
+        (true (search "--contents"
+                (format nil
+                        "~s"
+                        (tuatara.git::git-blame-raw-words '("blame" "--porcelain" "--" "a.txt")
+                                                          (repo "mailmap")
+                                                          (repo "mailmap")))))
         ;; refused in one sentence, never read through the repository's own folder
         (dolist (name '("idxfifo" "idxlink" "unknown"))
           (is eq :refused (nth-value 1 (run name '("status" "--porcelain"))) "~a" name))
@@ -296,9 +339,11 @@ since their commit."
         (false (tuatara.defaults::project-trusted-p deeper))
         (true (tuatara.defaults::project-look-only-reason deeper))
         (let ((tuatara-user:*lsp-trusted-projects* '()))
-          (tuatara.defaults::state-list-put tuatara.defaults::*lsp-trusted* (list (tuatara.defaults::real-folder inner)))
+          (tuatara.defaults::state-list-put tuatara.defaults::*lsp-trusted*
+                                            (list (tuatara.defaults::real-folder inner)))
           (unwind-protect (false (tuatara.defaults::project-trusted-p inner))
-            (tuatara.defaults::state-list-drop tuatara.defaults::*lsp-trusted* (list (tuatara.defaults::real-folder inner)))))))))
+            (tuatara.defaults::state-list-drop tuatara.defaults::*lsp-trusted*
+                                               (list (tuatara.defaults::real-folder inner)))))))))
 
 (define-test (git reading-words-parsed)
   ;; options are read as git reads them: clusters, values in the next word, subcommands after options; anything not listed is refused
@@ -306,15 +351,39 @@ since their commit."
                    ("hash-object" "--stdin-paths" "-w") ("grep" "-iOtouch /tmp/x" "one") ("grep" "-O" "one")
                    ("for-each-ref" "--format" "%(signature)") ("tag" "-l" "--format" "%(signature)")
                    ("log" "--pretty" "format:%G?") ("log" "--format" "%aN") ("branch" "-l" "--set-upstream-to=x")
-                   ("branch" "--list" "-Dr" "x") ("tag" "-l" "-dfoo") ("tag" "-l" "x" "-d") ("config" "--get" "core.bare" "--add" "x.y")
-                   ("config" "-e") ("config" "--edi") ("config" "--get" "--file=/tmp/x" "a.b") ("config" "set" "a.b" "x")
-                   ("worktree" "lock" "x") ("reflog" "expire" "--all") ("reflog" "--expire=now") ("remote" "-v" "set-url" "o" "x")
-                   ("remote" "show" "origin") ("remote" "update") ("log" "--outp" "/tmp/x") ("diff" "--ext") ("cat-file" "--batch-command")
-                   ("grep" "--open-files") ("blame" "--contents" "/etc/shadow" "a.txt") ("log" "--use-mailmap") ("shortlog" "--format=%aN")
+                   ("branch" "--list" "-Dr" "x")
+                   ("tag" "-l" "-dfoo")
+                   ("tag" "-l" "x" "-d")
+                   ("config" "--get" "core.bare" "--add" "x.y")
+                   ("config" "-e")
+                   ("config" "--edi")
+                   ("config" "--get" "--file=/tmp/x" "a.b")
+                   ("config" "set" "a.b" "x")
+                   ("worktree" "lock" "x")
+                   ("reflog" "expire" "--all")
+                   ("reflog" "--expire=now")
+                   ("remote" "-v" "set-url" "o" "x")
+                   ("remote" "show" "origin")
+                   ("remote" "update")
+                   ("log" "--outp" "/tmp/x")
+                   ("diff" "--ext")
+                   ("cat-file" "--batch-command")
+                   ("grep" "--open-files")
+                   ("blame" "--contents" "/etc/shadow" "a.txt")
+                   ("log" "--use-mailmap")
+                   ("shortlog" "--format=%aN")
                    ("branch" "--edit-desc") ("notes" "add") ("reflog" "-n1" "expire") ("worktree" "list" "lock")))
     (true (tuatara.git::git-reading-refusal words) "~s" words))
-  (dolist (words '(("rev-parse" "--git-dir") ("rev-parse" "--absolute-git-dir") ("log" "--format" "%H %an") ("log" "-p" "-1")
-                   ("tag") ("notes" "list") ("remote" "-v") ("check-attr" "-a" "a.txt") ("shortlog" "-s") ("worktree" "list" "--porcelain")
+  (dolist (words '(("rev-parse" "--git-dir")
+                   ("rev-parse" "--absolute-git-dir")
+                   ("log" "--format" "%H %an")
+                   ("log" "-p" "-1")
+                   ("tag")
+                   ("notes" "list")
+                   ("remote" "-v")
+                   ("check-attr" "-a" "a.txt")
+                   ("shortlog" "-s")
+                   ("worktree" "list" "--porcelain")
                    ("log" "--" "--output=x") ("log" "--end-of-options" "--output=x")))
     (false (tuatara.git::git-reading-refusal words) "~s" words)))
 
@@ -330,7 +399,9 @@ since their commit."
                (sb-posix:setenv "GIT_CONFIG_PARAMETERS" (format nil "'core.fsmonitor'='touch ~a-fsmonitor'" marker) 1)
                (sb-posix:setenv "GIT_EXTERNAL_DIFF" (format nil "touch ~a-external" marker) 1)
                (sb-posix:setenv "GIT_DIR" "/nonexistent" 1)
-               (alexandria:write-string-into-file (format nil "one~%changed~%") (merge-pathnames "a.txt" dir) :if-exists :supersede)
+               (alexandria:write-string-into-file (format nil "one~%changed~%")
+                                                  (merge-pathnames "a.txt" dir)
+                                                  :if-exists :supersede)
                (true (nth-value 1 (tuatara.git:run-git (namestring dir) '("status" "--porcelain"))))
                (true (nth-value 1 (tuatara.git:run-git (namestring dir) '("diff")))))
           (dolist (name '("GIT_CONFIG_PARAMETERS" "GIT_EXTERNAL_DIFF" "GIT_DIR")) (sb-posix:unsetenv name)))
@@ -362,12 +433,15 @@ in the private cache, not those of other sessions sharing the cache."
     (let* ((repos (namestring (merge-pathnames "r/" dir)))
            (marks (namestring (ensure-directories-exist (merge-pathnames "m/" dir))))
            (tuatara-user:*lsp-trusted-projects* '()))
-      (uiop:run-program (list "sh" (namestring (asdf:system-relative-pathname :tuatara "test/git-look-only/hostile-repositories.sh"))
+      (uiop:run-program (list "sh"
+                              (namestring (asdf:system-relative-pathname :tuatara
+                                                                         "test/git-look-only/hostile-repositories.sh"))
                               repos marks)
                         :output nil :error-output nil)
       (flet ((repo (name) (concatenate 'string repos name "/"))
              (run (name arguments)
-               (handler-case (multiple-value-bind (octets ok) (tuatara.git:run-git (concatenate 'string repos name "/") arguments)
+               (handler-case (multiple-value-bind (octets ok)
+                                 (tuatara.git:run-git (concatenate 'string repos name "/") arguments)
                                (values (and octets (tuatara.text:lenient-string octets)) ok))
                  (tuatara.git::git-refused (e) (values (princ-to-string e) :refused)))))
         (let ((before (shadows-size)))
@@ -377,13 +451,16 @@ in the private cache, not those of other sessions sharing the cache."
                   (start (get-internal-real-time)))
               (dolist (arguments *hostile-commands*)
                 (run name arguments))
-              (true (< (- (get-internal-real-time) start) (* 30 internal-time-units-per-second)) "~a took too long" name)
+              (true (< (- (get-internal-real-time) start)
+                       (* 30 internal-time-units-per-second)) "~a took too long" name)
               (is string= snapshot (repository-snapshot (repo name)) "~a changed" name)))
           ;; holes are never copied out: the cache took no gigabytes
           (true (< (- (shadows-size) before) (* 64 1024)) "the shadows grew by ~d KiB" (- (shadows-size) before)))
         (true (search "has holes" (run "huge" '("status" "--porcelain"))))
         (true (search "has holes" (run "hugelog" '("reflog"))))
-        (is eq t (nth-value 1 (run "hugelog" '("status" "--porcelain"))) "a log is copied only for a command that reads it")
+        (is eq t
+            (nth-value 1 (run "hugelog" '("status" "--porcelain")))
+            "a log is copied only for a command that reads it")
         (dolist (name '("altfifo" "alts" "packfifo"))
           (is eq :refused (nth-value 1 (run name '("rev-parse" "HEAD"))) "~a" name))
         (false (search "SECRET" (or (run "reflinks" '("for-each-ref")) "")))
@@ -442,7 +519,8 @@ in the private cache, not those of other sessions sharing the cache."
 
 (define-test (git live-sessions-shadows-kept)
   ;; a folder of shadows whose owner.lock a running session holds is never taken for one left behind
-  (let* ((folder (tuatara.defaults::new-private-folder (tuatara.defaults::private-cache-directory "git-shadow/") :hold nil))
+  (let* ((folder (tuatara.defaults::new-private-folder (tuatara.defaults::private-cache-directory "git-shadow/")
+                                                       :hold nil))
          (fd (progn (tuatara.io:write-private-file (tuatara.io:path-join folder "owner.lock") (machine-instance))
                     (sb-posix:open (tuatara.io:path-join folder "owner.lock") sb-posix:o-rdwr))))
     (unwind-protect
@@ -461,7 +539,9 @@ in the private cache, not those of other sessions sharing the cache."
 (define-test (git status-says-names-escaped)
   ;; a folder name holding a newline, ESC and a right-to-left mark reaches the status's top escaped: one line each, no forged line
   (with-test-directory (dir)
-    (let* ((odd (concatenate 'string (namestring dir) (format nil "odd~%Look only: none~c31m~c/" (code-char 27) (code-char #x202E))))
+    (let* ((odd (concatenate 'string
+                             (namestring dir)
+                             (format nil "odd~%Look only: none~c31m~c/" (code-char 27) (code-char #x202E))))
            (repo (namestring (ensure-directories-exist (merge-pathnames "repo/" dir))))
            (tuatara-user:*lsp-trusted-projects* '()))
       (ensure-directories-exist odd)
@@ -498,7 +578,9 @@ in the private cache, not those of other sessions sharing the cache."
     (let ((top (namestring dir))
           (first (string-trim '(#\Newline) (git-output dir "rev-parse" "HEAD~1")))
           (tuatara-user:*lsp-trusted-projects* '()))
-      (flet ((main () (string-trim '(#\Newline) (tuatara.text:octets-string (tuatara.git:run-git top '("rev-parse" "refs/heads/main"))))))
+      (flet ((main ()
+               (string-trim '(#\Newline)
+                            (tuatara.text:octets-string (tuatara.git:run-git top '("rev-parse" "refs/heads/main"))))))
         (main)
         (with-open-file (out (merge-pathnames ".git/refs/heads/main" dir) :direction :output :if-exists :overwrite)
           (write-line first out))
@@ -540,7 +622,8 @@ in the private cache, not those of other sessions sharing the cache."
 (define-test (git other-machines-shadows-kept)
   ;; a folder of shadows another machine's session made is never deleted here; one of this machine's, ended, is
   (flet ((made (host)
-           (let ((folder (tuatara.defaults::new-private-folder (tuatara.defaults::private-cache-directory "git-shadow/") :hold nil)))
+           (let ((folder (tuatara.defaults::new-private-folder (tuatara.defaults::private-cache-directory "git-shadow/")
+                                                               :hold nil)))
              (tuatara.io:write-private-file (tuatara.io:path-join folder "owner.lock") host)
              folder)))
     (let ((elsewhere (made "another-machine.example"))

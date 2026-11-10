@@ -94,7 +94,9 @@ only where the text still holds what it stands for."
                           (bullet (string-trim " " (org-property node :bullet)))
                           (head (octets-at line (min 200 (- size line))))
                           (at (and head (position-if-not (lambda (c) (member c '(#\Space #\Tab))) head)))
-                          (sign (cdr (assoc bullet (setting-list '*org-list-bullets* *org-list-bullets* :pairs t) :test #'string=))))
+                          (sign (cdr (assoc bullet
+                                            (setting-list '*org-list-bullets* *org-list-bullets* :pairs t)
+                                            :test #'string=))))
                      (when (and at (< (+ line at) end) (uiop:string-prefix-p bullet (subseq head at)))
                        (when sign
                          (push (list (+ line at) (+ line at (length bullet)) sign :org-list-bullet) found))
@@ -121,11 +123,11 @@ only where the text still holds what it stands for."
 
 (defun org-display-replacements (buffer start end)
   "What BUFFER shows otherwise from START below END: with *ORG-BULLETS*, each
-headline's last star as its level's sign, in its level's face; list items' bullets and checkboxes
-as signs (*ORG-LIST-BULLETS*, *ORG-CHECKBOX-SIGNS*); while links are shown as
-their labels (\\[org-toggle-link-display]), what is around each label hidden,
-each entity shown as its character, and the braces around what redact and
-protect hide, but in the call point is in."
+headline's last star as its level's sign, in its level's face. List items'
+bullets and checkboxes as signs (*ORG-LIST-BULLETS*, *ORG-CHECKBOX-SIGNS*).
+While links are shown as their labels (\\[org-toggle-link-display]), what is
+around each label hidden, each entity shown as its character, and the braces
+around what redact and protect hide, but in the call point is in."
   (let ((found (merge 'list
                       (and *org-bullets* (org-headline-signs buffer start end))
                       (and (or *org-list-bullets* *org-checkbox-signs*) (org-item-signs buffer start end))

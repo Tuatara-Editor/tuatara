@@ -65,7 +65,8 @@
     (loop with start = 0
           for at = (search "  -" out :start2 start)
           while at
-          do (let* ((end (or (position-if (lambda (c) (member c '(#\Space #\, #\Newline))) out :start (+ at 2)) (length out)))
+          do (let* ((end (or (position-if (lambda (c) (member c '(#\Space #\, #\Newline))) out :start (+ at 2))
+                             (length out)))
                     (option (subseq out (+ at 2) end)))
                (true (or (tuatara.terminal::option-p (tuatara.terminal::bare-flag option))
                          (member option launcher :test #'string=))
@@ -89,7 +90,8 @@
     (unwind-protect
          (progn
            (ensure-directories-exist folder)
-           (dolist (name '("-c" "evidence.txt")) (with-open-file (out (merge-pathnames name folder) :direction :output) (write-string "x" out)))
+           (dolist (name '("-c" "evidence.txt"))
+             (with-open-file (out (merge-pathnames name folder) :direction :output) (write-string "x" out)))
            (let ((read (tuatara.terminal::read-options '("-c" "evidence.txt") :directory (namestring folder))))
              (true (search "-c is a file here too" (getf read :error)))
              (false (getf read :config)))

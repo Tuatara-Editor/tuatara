@@ -17,7 +17,8 @@ being (START 1 (+ #xDC00 OCTET))."
                       (length (cond ((<= b #x7F) 1)
                                     ((<= #xC2 b #xDF) (if (in 1 #x80 #xBF) 2 0))
                                     ((= b #xE0) (if (and (in 1 #xA0 #xBF) (in 2 #x80 #xBF)) 3 0))
-                                    ((or (<= #xE1 b #xEC) (<= #xEE b #xEF)) (if (and (in 1 #x80 #xBF) (in 2 #x80 #xBF)) 3 0))
+                                    ((or (<= #xE1 b #xEC) (<= #xEE b #xEF))
+                                     (if (and (in 1 #x80 #xBF) (in 2 #x80 #xBF)) 3 0))
                                     ((= b #xED) (if (and (in 1 #x80 #x9F) (in 2 #x80 #xBF)) 3 0))
                                     ((= b #xF0) (if (and (in 1 #x90 #xBF) (in 2 #x80 #xBF) (in 3 #x80 #xBF)) 4 0))
                                     ((<= #xF1 b #xF3) (if (and (in 1 #x80 #xBF) (in 2 #x80 #xBF) (in 3 #x80 #xBF)) 4 0))
@@ -33,7 +34,17 @@ being (START 1 (+ #xDC00 OCTET))."
 
 (defparameter *raw-pieces*
   (append (map 'list #'to-octets '("a" "b" "é" "€" "😀" "中" " "))
-          (list #(10) #(#x80) #(#xBF) #(#xC0) #(#xC1) #(#xF5) #(#xFF) #(#xE2) #(#xE2 #x82) #(#xF0 #x9F) #(#xF0 #x9F #x98)
+          (list #(10)
+                #(#x80)
+                #(#xBF)
+                #(#xC0)
+                #(#xC1)
+                #(#xF5)
+                #(#xFF)
+                #(#xE2)
+                #(#xE2 #x82)
+                #(#xF0 #x9F)
+                #(#xF0 #x9F #x98)
                 #(#x82) #(#xAC) #(#x9F) #(#x98) #(#x80 #x80 #x80 #x80) #(#xE0 #x80 #x80) #(#xED #xA0 #x80)
                 #(#xF4 #x90 #x80 #x80) #(#xC3) #(#xA9) #(#xF0) #(#x90) #(#xED) #(#xE0)))
   "Pieces random octet strings are made of: characters, newlines, lone leads and
@@ -77,7 +88,9 @@ every boundary, characters, conversions and the string both ways."
     (let ((octets (random-octets (if (< round 25) 200 8000))))
       (check-against-reference (tuatara.text:octets->rope octets) octets)))
   ;; the classic cases, one by one
-  (flet ((chars-of (&rest bytes) (map 'list #'char-code (tuatara.text:rope-string (tuatara.text:octets->rope (coerce bytes 'tuatara.text:octets))))))
+  (flet ((chars-of (&rest bytes)
+           (map 'list #'char-code
+                (tuatara.text:rope-string (tuatara.text:octets->rope (coerce bytes 'tuatara.text:octets))))))
     (is equal '(#x20AC) (chars-of #xE2 #x82 #xAC))
     (is equal '(#xDCE2 #xDC82 #x41) (chars-of #xE2 #x82 #x41))          ; cut short
     (is equal '(#xDCC0 #xDC80) (chars-of #xC0 #x80))                    ; overlong NUL
@@ -88,7 +101,8 @@ every boundary, characters, conversions and the string both ways."
     (is equal '(#xDCF7 #xDCBF #xDCBF #xDCBF) (chars-of #xF7 #xBF #xBF #xBF))
     (is equal '(#x41 #xDCC3) (chars-of #x41 #xC3)))                     ; a lead at the end
   ;; text in a charset named as mail and web pages name one; an unknown one, and UTF-8, as the editor reads files
-  (flet ((in (charset &rest bytes) (map 'list #'char-code (tuatara.text:charset-text (coerce bytes 'tuatara.text:octets) charset))))
+  (flet ((in (charset &rest bytes)
+           (map 'list #'char-code (tuatara.text:charset-text (coerce bytes 'tuatara.text:octets) charset))))
     (is equal '(#x20AC #xE9) (in "windows-1252" #x80 #xE9))
     (is equal '(#xE9) (in "\"ISO-8859-1\"" #xE9))
     (is equal '(#x41) (in "us-ascii" #x41))
@@ -117,7 +131,8 @@ every boundary, characters, conversions and the string both ways."
                              (when (tuatara.text:edit-insert e) (push (tuatara.text:edit-insert e) out))
                              (setf at (tuatara.text:edit-end e)))
                            (push (subseq octets at) out)
-                           (coerce (apply #'concatenate '(vector (unsigned-byte 8)) (nreverse out)) 'tuatara.text:octets))))
+                           (coerce (apply #'concatenate '(vector (unsigned-byte 8)) (nreverse out))
+                                   'tuatara.text:octets))))
           (multiple-value-bind (new positions) (tuatara.text:apply-edits rope (coerce edits 'simple-vector))
             (check-against-reference new expected)
             ;; undo brings the old octets back
@@ -128,9 +143,10 @@ every boundary, characters, conversions and the string both ways."
 (define-test (raw-bytes inserts-meeting-across-a-deletion)
   ;; two inserts with a deletion of all between them meet: their octets one character
   (let* ((rope (tuatara.text:octets->rope (coerce #(195 191) 'tuatara.text:octets)))
-         (new (tuatara.text:apply-edits rope (vector (tuatara.text:make-edit 0 0 (coerce #(10 226 130) 'tuatara.text:octets))
-                                                    (tuatara.text:make-edit 0 2)
-                                                    (tuatara.text:make-edit 2 2 (coerce #(130) 'tuatara.text:octets))))))
+         (new (tuatara.text:apply-edits rope
+                                        (vector (tuatara.text:make-edit 0 0 (coerce #(10 226 130) 'tuatara.text:octets))
+                                               (tuatara.text:make-edit 0 2)
+                                               (tuatara.text:make-edit 2 2 (coerce #(130) 'tuatara.text:octets))))))
     (true (tuatara.text:check-rope new))
     (is = 2 (tuatara.text:rope-chars new))
     (is equal (list 10 #x2082) (map 'list #'char-code (tuatara.text:rope-string new)))))
@@ -148,7 +164,9 @@ every boundary, characters, conversions and the string both ways."
          (rope (tuatara.text:octets->rope octets))
          (lead (length a))
          (new (tuatara.text:rope-delete rope (1+ lead) (+ lead 2 (length a)))))
-    (check-against-reference new (coerce (concatenate '(vector (unsigned-byte 8)) a #(#xE2 #x82 #xAC) a) 'tuatara.text:octets))
+    (check-against-reference new
+                             (coerce (concatenate '(vector (unsigned-byte 8)) a #(#xE2 #x82 #xAC) a)
+                                     'tuatara.text:octets))
     (is = #x20AC (char-code (tuatara.text:rope-char-at new lead))))
   ;; ropes spliced so that a lead meets its continuations
   (let* ((left (tuatara.text:octets->rope (coerce #(#x61 #xE2) 'tuatara.text:octets)))
@@ -168,15 +186,22 @@ every boundary, characters, conversions and the string both ways."
 
 (define-test (raw-bytes shown-and-edited)
   ;; the display shows each raw byte as \xNN, four columns, in its own face
-  (let* ((rope (tuatara.text:octets->rope (coerce (concatenate '(vector (unsigned-byte 8)) (to-octets "a") #(#xFF) (to-octets "b"))
+  (let* ((rope (tuatara.text:octets->rope (coerce (concatenate '(vector (unsigned-byte 8))
+                                                               (to-octets "a")
+                                                               #(#xFF)
+                                                               (to-octets "b"))
                                                   'tuatara.text:octets)))
          (rows (tuatara.display:layout rope 0 20 1)))
     (is string= "a\\xFFb" (coerce (tuatara.display::row-string (aref rows 0)) 'string))
     (is = 6 (tuatara.display::row-columns (aref rows 0)))
     (is eq :raw-byte (aref (tuatara.display::row-faces (aref rows 0)) 1)))
   ;; in a buffer, a raw byte is one character: moved over, deleted, copied and put back whole
-  (let ((b (tuatara.buffer:make-buffer "*raw-test*" :text (coerce (concatenate '(vector (unsigned-byte 8)) (to-octets "é") #(#x80) (to-octets "x"))
-                                                                  'tuatara.text:octets))))
+  (let ((b (tuatara.buffer:make-buffer "*raw-test*"
+                                       :text (coerce (concatenate '(vector (unsigned-byte 8))
+                                                                  (to-octets "é")
+                                                                  #(#x80)
+                                                                  (to-octets "x"))
+                                                     'tuatara.text:octets))))
     (unwind-protect
          (progn
            (is = 2 (tuatara.buffer:buffer-forward-char b 0))
@@ -203,8 +228,10 @@ every boundary, characters, conversions and the string both ways."
                   (key (tuatara.io::path-octets name)) (value (coerce #(1 2) 'tuatara.text:octets)))
               (is = 0 (sb-sys:with-pinned-objects (key value)
                         (sb-alien:alien-funcall
-                         (sb-alien:extern-alien "fsetxattr" (function sb-alien:int sb-alien:int sb-sys:system-area-pointer
-                                                                      sb-sys:system-area-pointer sb-alien:unsigned-long sb-alien:int))
+                         (sb-alien:extern-alien "fsetxattr"
+                                                (function sb-alien:int sb-alien:int sb-sys:system-area-pointer
+                                                          sb-sys:system-area-pointer
+                                                          sb-alien:unsigned-long sb-alien:int))
                          in-fd (sb-sys:vector-sap key) (sb-sys:vector-sap value) 2 0)))
               (true (member name (tuatara.io:fd-xattr-names in-fd) :test #'string=))
               (tuatara.io:copy-xattrs in-fd out-fd)
@@ -212,7 +239,9 @@ every boundary, characters, conversions and the string both ways."
   ;; typed into a terminal, a raw byte's character reaches the program as its octet
   (let ((emulator (tuatara.terminal-emulator::%make-emulator)))
     (tuatara.terminal-emulator::emulator-input emulator (format nil "a~cb" (code-char #xDCFF)))
-    (is equalp #(97 255 98) (sb-concurrency:receive-message (tuatara.terminal-emulator::emulator-outbox emulator) :timeout 1))))
+    (is equalp
+        #(97 255 98)
+        (sb-concurrency:receive-message (tuatara.terminal-emulator::emulator-outbox emulator) :timeout 1))))
 
 (define-test (raw-bytes written-to-json-as-replacements)
   ;; a raw byte in text sent as JSON (to a language server) is U+FFFD: what is sent is UTF-8

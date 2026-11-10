@@ -79,7 +79,9 @@ with. Only a line with nothing after the words but what closes a comment
         while at
         do (let* ((line (tuatara.text:string-line-start text at))
                   (after (string-trim '(#\Space #\Tab #\Return)
-                                      (subseq text (+ at (length "Local Variables:")) (tuatara.text:string-line-end text at)))))
+                                      (subseq text
+                                              (+ at (length "Local Variables:"))
+                                              (tuatara.text:string-line-end text at)))))
              (when (notany (lambda (c) (or (alphanumericp c) (member c '(#\Space #\Tab)))) after)
                (return (values line (subseq text line at) after))))))
 
@@ -177,7 +179,10 @@ SET-FILE-LOCAL-SETTING)."
 (defun note-file-declares (buffer name value)
   "Remember that BUFFER's file names the setting NAME as VALUE (FILE-DECLARES)."
   (setf (tuatara.buffer:buffer-local buffer :file-local-settings)
-        (acons name value (remove name (tuatara.buffer:buffer-local buffer :file-local-settings) :key #'car :test #'string=))))
+        (acons name value (remove name
+                                  (tuatara.buffer:buffer-local buffer :file-local-settings)
+                                  :key #'car
+                                  :test #'string=))))
 
 (defun take-file-local-settings (buffer)
   "As BUFFER's file is opened, its mode set by its name by then: give BUFFER

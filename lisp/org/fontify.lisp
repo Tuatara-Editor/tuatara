@@ -38,8 +38,12 @@ Complexity: O(the octets read)."
          (state :start) (matched 0) (value nil)
          (words '()))
     (flet ((take ()
-             (setf words (append words (remove "" (cl-ppcre:split "\\s+" (string-downcase (tuatara.text:octets-string (subseq value 0))))
-                                               :test #'string=)))))
+             (setf words
+                   (append words
+                           (remove ""
+                                   (cl-ppcre:split "\\s+"
+                                                   (string-downcase (tuatara.text:octets-string (subseq value 0))))
+                                   :test #'string=)))))
       (loop for from from 0 below limit by (length window)
             for to = (min limit (+ from (length window)))
             do (tuatara.text:rope-copy-into rope from to window)
@@ -130,11 +134,11 @@ and LAST_REPEAT with the time; NIL nothing.")
 ;;; The parse of a buffer, kept up
 
 (defun org-strip-returns (string)
-  "STRING with the carriage return before each newline left out, as a note
-whose lines end with carriage return and line feed (CR LF) is read, and each
-carriage return that ends a line alone read as a newline: two values, the text
-and the places in it of the newlines that lost one (a vector in order), or NIL
-when none did."
+  "STRING with the carriage return before each newline left out, as a note whose
+lines end with carriage return and line feed (CR LF) is read, and each carriage
+return that ends a line alone read as a newline. Two values: the text and the
+places in it of the newlines that lost one (a vector in order), or NIL when none
+did."
   (if (not (find #\Return string))
       (values string nil)
       (let ((out (make-string (length string)))
@@ -349,7 +353,8 @@ which never changes."
                  (setf (org-state-wanted state) (job)
                        (org-state-worker state)
                        (let ((editor *editor*))
-                         (tuatara.runtime:make-guarded-thread (lambda () (org-parse-worker state editor)) :name "tuatara org parse"))))))))))
+                         (tuatara.runtime:make-guarded-thread (lambda () (org-parse-worker state editor))
+                                                              :name "tuatara org parse"))))))))))
 
 (defun org-src-language-names (tree)
   "The languages the source blocks of TREE name, each once, as written."
@@ -617,9 +622,11 @@ Add your own: (push '(\"kitty\" . \"ini\") *org-src-languages*).")
     (:org-block-end-line . "comment") (:org-document-info-keyword . "comment") (:org-document-info . "string")
     (:org-todo . "keyword") (:org-done . "keyword") (:org-wait . "keyword") (:org-cancelled . "keyword")
     (:org-priority . "keyword") (:org-log-note . "comment")
-    (:org-special-keyword . "keyword") (:org-scheduled-keyword . "keyword") (:org-deadline-keyword . "keyword") (:org-drawer . "keyword") (:org-tag . "tag")
+    (:org-special-keyword . "keyword") (:org-scheduled-keyword . "keyword") (:org-deadline-keyword . "keyword")
+    (:org-drawer . "keyword") (:org-tag . "tag")
     (:org-bold . "markup.bold") (:org-italic . "markup.italic") (:org-underline . "markup.underline")
-    (:org-link . "markup.link") (:org-cite . "markup.link") (:org-footnote . "markup.link") (:org-target . "markup.link")
+    (:org-link . "markup.link") (:org-cite . "markup.link") (:org-footnote . "markup.link")
+    (:org-target . "markup.link")
     (:org-code . "markup.raw") (:org-verbatim . "markup.raw") (:org-block . "markup.raw")
     (:org-latex-and-related . "markup.raw") (:org-table . "markup.raw") (:org-quote . "markup.quote")
     (:org-verse . "markup.quote") (:org-checkbox . "markup.list") (:org-list-dt . "markup.list")
@@ -719,7 +726,8 @@ objects of its title."
          (title-begin (org-property node :title-begin))
          (title-end (org-property node :title-end)))
     (org-colour begin line-end (org-level-face level))
-    ;; an indented view, or bullets, hide all its stars but the last, as Org's org-hide-leading-stars, or show them faint
+    ;; an indented view, or bullets, hide all its stars but the last, as Org's org-hide-leading-stars, or show them
+    ;; faint
     (when (and (> level 1) (or (org-indented-p *org-buffer*) *org-bullets*))
       (org-colour begin (+ begin level -1) (if *org-hide-leading-stars* :org-hide :org-leading-stars)))
     (when (org-property node :archivedp)
@@ -901,7 +909,8 @@ log keeps it: - State \"DONE\" from \"TODO\" [2026-10-01 Thu 18:00]."
         (when at (org-colour at (+ at 3) :org-checkbox))))
     (let ((separator (search " ::" *org-text* :start2 after-bullet :end2 end)))
       (when (and separator (org-property node :tag))
-        (org-colour (or (and (org-property node :checkbox) (let ((c (search "]" *org-text* :start2 after-bullet :end2 end))) (and c (+ c 2))))
+        (org-colour (or (and (org-property node :checkbox)
+                             (let ((c (search "]" *org-text* :start2 after-bullet :end2 end))) (and c (+ c 2))))
                         after-bullet)
                     separator :org-list-dt)))))
 

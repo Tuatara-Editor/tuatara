@@ -39,15 +39,23 @@ starts from."
       (documentation 'face-bg 'function) "The background colour of FACE, or NIL."
       (documentation 'face-bold 'function) "True when FACE is bold."
       (documentation 'face-italic 'function) "True when FACE is italic."
-      (documentation 'face-underline 'function) "T when FACE is underlined with a straight line, :WAVE with a wavy one, :DOTTED with a dotted one, :BOX with a box round each character (where a window of its own draws it; a terminal draws a straight line), NIL when not."
+      (documentation 'face-underline 'function) "T when FACE is underlined with a straight line,
+:WAVE with a wavy one, :DOTTED with a dotted one, :BOX with a box round each
+character (where a window of its own draws it; a terminal draws a straight
+line), NIL when not."
       (documentation 'face-underline-colour 'function) "The colour of FACE's underline, or NIL for its text's."
       (documentation 'face-reverse 'function) "True when FACE swaps foreground and background."
       (documentation 'face-dim 'function) "True when FACE is dimmed."
-      (documentation 'face-extend 'function) "True when FACE goes on past the end of a line whose newline it covers, to the window's edge."
-      (documentation 'face-font 'function) "The font FACE's text is painted in by a window of its own, a name without a size; NIL for the window's."
-      (documentation 'face-height 'function) "How many rows tall a window of its own draws a line beginning in FACE, and its letters as many times as wide: more than 1, at most 3 (5/4, 3/2, 2); NIL for one."
+      (documentation 'face-extend 'function) "True when FACE goes on past the end of a line whose
+newline it covers, to the window's edge."
+      (documentation 'face-font 'function) "The font FACE's text is painted in by a window of its
+own, a name without a size; NIL for the window's."
+      (documentation 'face-height 'function) "How many rows tall a window of its own draws a line
+beginning in FACE, and its letters as many times as wide: more than 1, at most 3
+(5/4, 3/2, 2); NIL for one."
       (documentation 'face-inherit 'function) "The face FACE inherits unspecified attributes from, or NIL."
-      (documentation 'face-base 'function) "The attributes FACE's definition gave it, as a property list; themes start from these.")
+      (documentation 'face-base 'function) "The attributes FACE's definition gave it, as a property
+list; themes start from these.")
 
 (defvar *faces* (make-hash-table :test 'eq :synchronized t)
   "All faces, keyed by name; read by the window's thread as it paints while the editor's changes them.")
@@ -85,7 +93,10 @@ to that time's; a second value is true when it was emptied."
   (gethash name *faces*))
 
 (defun set-face-attributes (name &key (doc nil doc-p) (fg nil fg-p) (bg nil bg-p) (bold nil bold-p)
-                                      (italic nil italic-p) (underline nil underline-p) (underline-colour nil underline-colour-p) (reverse nil reverse-p)
+                                      (italic nil italic-p)
+                                   (underline nil underline-p)
+                                   (underline-colour nil underline-colour-p)
+                                   (reverse nil reverse-p)
                                       (dim nil dim-p) (extend nil extend-p) (font nil font-p) (height nil height-p)
                                       (inherit nil inherit-p))
   "Set the given attributes of face NAME, creating the face if needed; attributes
@@ -134,9 +145,11 @@ dim remain."
 (setf (documentation 'theme-p 'function) "True when OBJECT is a THEME."
       (documentation 'theme-name 'function) "The theme's name, a symbol."
       (documentation 'theme-doc 'function) "What the theme looks like and is for."
-      (documentation 'theme-settings 'function) "The theme's own face settings as written, as a list of (FACE . ATTRIBUTES), their colours perhaps roles."
+      (documentation 'theme-settings 'function) "The theme's own face settings as written, as a list
+of (FACE . ATTRIBUTES), their colours perhaps roles."
       (documentation 'theme-palette 'function) "The theme's roles and their colours, as a list of (ROLE COLOUR)."
-      (documentation 'theme-faces-from 'function) "The name of the theme whose face settings this one starts from, or NIL."
+      (documentation 'theme-faces-from 'function) "The name of the theme whose face settings this
+one starts from, or NIL."
       (documentation 'theme-colourless 'function) "True when the theme removes every colour.")
 
 (defun role-p (value)
@@ -191,7 +204,8 @@ given. Linear in the settings times the palette."
               (cons (car setting)
                     (loop for (key value) on (cdr setting) by #'cddr
                           collect key
-                          collect (if (and (member key '(:fg :bg :underline-colour)) (role-p value)) (theme-role-colour theme value) value))))
+                          collect (if (and (member key '(:fg :bg :underline-colour))
+                                           (role-p value)) (theme-role-colour theme value) value))))
             (settings theme 0))))
 
 (defun reset-face (face)
@@ -244,18 +258,18 @@ again the theme in force, or one it takes its faces from, applies it again."
 (defmacro define-theme (name doc &body body)
   "Define theme NAME, documented by DOC, as face settings (FACE ATTRIBUTE VALUE
 ...), for example (:comment :fg \"#6b7385\" :italic t). A face a theme does not
-mention keeps its base attributes; to turn off a base attribute, give it NIL
+mention keeps its base attributes. To turn off a base attribute, give it NIL
 (:region :reverse nil :bg \"#3b4252\").
 
 Options may come before the settings:
 - :PALETTE ((ROLE COLOUR) ...) names the theme's colours by role, so that a
-  setting can give a role in place of a colour, (:comment :fg comment); a
-  COLOUR may be another role, (comment grey);
+  setting can give a role in place of a colour, (:comment :fg comment). A
+  COLOUR may be another role, (comment grey).
 - :FACES-FROM THEME starts from the settings of THEME, their roles in this
   theme's palette, and takes from THEME's palette the roles this one leaves
-  out: a light variant of a dark theme is its palette alone, and a theme of
+  out. A light variant of a dark theme is its palette alone. A theme of
   your own can be another with a role or two changed,
-  (define-theme my-ao \"Ao on black.\" :faces-from ao-dark :palette ((ground \"#000000\")));
+  (define-theme my-ao \"Ao on black.\" :faces-from ao-dark :palette ((ground \"#000000\"))).
 - :COLOURLESS makes a theme for terminals without colours: every colour is
   removed."
   (check-type doc string "a docstring saying what the theme looks like")
@@ -340,14 +354,15 @@ in the chain specifies it. The name of the face that gives it is a second value.
 
 (defun resolve-face-spec (spec)
   "Resolve SPEC (NIL, a face name, or a list of face names with the highest
-priority first) to three values: the foreground colour, the background colour
-(each from the highest-priority face that sets one, or NIL) and the list of
-flags (:bold :italic :underline :reverse :dim) any of the faces turns on, with
-:wave, :dotted or :box too when the highest-priority face underlining underlines so
-\(RESOLVE-FACE-UNDERLINE-COLOUR gives its colour). The :default face always
-takes part with the lowest priority, so a theme's text colours and background
-reach everything."
-  (let ((names (append (if (listp spec) spec (list spec)) (list :default))) (fg nil) (bg nil) (flags '()) (underline nil))
+priority first) to three values. They are the foreground colour, the
+background colour (each from the highest-priority face that sets one, or NIL)
+and the list of flags (:bold :italic :underline :reverse :dim) any of the
+faces turns on. The list has :wave, :dotted or :box too when the
+highest-priority face underlining underlines so (RESOLVE-FACE-UNDERLINE-COLOUR
+gives its colour). The :default face always takes part with the lowest
+priority, so a theme's text colours and background reach everything."
+  (let ((names (append (if (listp spec) spec (list spec)) (list :default))) (fg nil) (bg nil) (flags '())
+        (underline nil))
     (dolist (name names)
       (unless fg (setf fg (face-attribute name :fg)))
       (unless bg (setf bg (face-attribute name :bg)))

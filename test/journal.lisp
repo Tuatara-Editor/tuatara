@@ -106,7 +106,8 @@ buffers of its files killed after."
           (tuatara-user:*journal-file-type* :markdown))
       (run-keys "SPC d j" :width 100 :height 24)
       (is equal '("diary/20260320T133958--week-12-friday__diary.md") (journal-files dir))
-      (true (search "title:      \"Week 12, Friday\"" (journal-file-text dir "diary/20260320T133958--week-12-friday__diary.md")))))
+      (true (search "title:      \"Week 12, Friday\""
+                    (journal-file-text dir "diary/20260320T133958--week-12-friday__diary.md")))))
   (with-journal (dir)
     ;; the Org header of your other files instead of Denote's
     (let ((tuatara-user:*journal-org-header* nil)
@@ -168,12 +169,15 @@ buffers of its files killed after."
     (forget-file-buffers)
     ;; the day with an entry marked in its own face; another, none
     (calendar-keys "")
-    (let ((marked (tuatara.buffer:buffer-local (tuatara.buffer:find-buffer "*Calendar*") 'tuatara.defaults::calendar-marked)))
+    (let ((marked (tuatara.buffer:buffer-local (tuatara.buffer:find-buffer "*Calendar*")
+                                               'tuatara.defaults::calendar-marked)))
       (true (and marked (member :calendar-journal (gethash (calendar-day 2026 10 1) marked))))
       (false (and marked (gethash (calendar-day 2026 10 2) marked))))
     ;; a day with agenda entries too keeps their colour: theirs laid last, whichever mark came first
-    (is equal '(:calendar-journal :calendar-marked) (tuatara.defaults::calendar-day-faces '(:calendar-journal :calendar-marked)))
-    (is equal '(:calendar-journal :calendar-marked) (tuatara.defaults::calendar-day-faces '(:calendar-marked :calendar-journal)))
+    (is equal '(:calendar-journal :calendar-marked)
+        (tuatara.defaults::calendar-day-faces '(:calendar-journal :calendar-marked)))
+    (is equal '(:calendar-journal :calendar-marked)
+        (tuatara.defaults::calendar-day-faces '(:calendar-marked :calendar-journal)))
     ;; n on a day: its entry made, the calendar gone
     (multiple-value-bind (f editor) (calendar-keys "C-b n")
       (declare (ignore f))

@@ -23,8 +23,12 @@ with its name (stash@{0}); said so when there is none."
              (lambda (stashes)
                (if (null stashes)
                    (message "No stash")
-                   (let* ((candidates (mapcar (lambda (s) (make-candidate (format nil "~a ~a" (first s) (escape-controls (second s)))
-                                                                          :value (first s)))
+                   (let* ((candidates (mapcar (lambda (s)
+                                                (make-candidate (format nil
+                                                                        "~a ~a"
+                                                                        (first s)
+                                                                        (escape-controls (second s)))
+                                                                :value (first s)))
                                               stashes))
                           (default (find (or at (first (first stashes))) candidates :key #'candidate-result :test #'equal))
                           (name (completing-read prompt candidates :require-match t :keep-order t
@@ -62,14 +66,16 @@ is staged in place in the files and staged."
 kept; git says when they meet changes of their own."
   (with-git-repository (top)
     (git-ask-stash "Apply stash: " top
-                   (lambda (name) (git-run "Applying a stash" top (list "stash" "apply" name) (format nil "Applied ~a" name))))))
+                   (lambda (name)
+                     (git-run "Applying a stash" top (list "stash" "apply" name) (format nil "Applied ~a" name))))))
 
 (define-command git-stash-pop ()
   "Bring the changes of a stash, asked for, back into the files and drop it;
 one whose changes meet others is kept, said so."
   (with-git-repository (top)
     (git-ask-stash "Pop stash: " top
-                   (lambda (name) (git-run "Popping a stash" top (list "stash" "pop" name) (format nil "Popped ~a" name))))))
+                   (lambda (name)
+                     (git-run "Popping a stash" top (list "stash" "pop" name) (format nil "Popped ~a" name))))))
 
 (define-command git-stash-drop ()
   "Drop a stash, asked for, after asking: its changes are gone."

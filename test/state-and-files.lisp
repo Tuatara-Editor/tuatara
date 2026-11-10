@@ -1,4 +1,5 @@
-;;;; test/state-and-files.lisp --- Files and state: the lists kept between sessions, a file's first octets, git, logs and paths.
+;;;; test/state-and-files.lisp --- Files and state: the lists kept between sessions, a file's first octets, git, logs
+;;;; and paths.
 ;;;; Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
 
 (in-package #:tuatara.tests)
@@ -60,7 +61,10 @@ nothing read yet."
            (result :waiting)
            (thread (progn (sb-posix:mkfifo fifo #o600)
                           (sb-thread:make-thread
-                           (lambda () (setf result (ignore-errors (tuatara.defaults::file-holds-p fifo (tuatara.text:string-octets "x")))))))))
+                           (lambda ()
+                             (setf result
+                                   (ignore-errors
+                                     (tuatara.defaults::file-holds-p fifo (tuatara.text:string-octets "x")))))))))
       (loop repeat 100 while (sb-thread:thread-alive-p thread) do (sleep 0.02))
       (let ((waiting (sb-thread:thread-alive-p thread)))
         (when waiting
@@ -122,7 +126,9 @@ nothing read yet."
       (tuatara.defaults::state-list-drop list '("/other/one/"))
       (is equal '("/mine/two.txt") (tuatara.defaults::state-list-entries list))
       (tuatara.defaults::finish-state-writes)
-      (is string= (format nil "# tuatara chosen-paths 1~%/mine/two.txt~%") (file-text (tuatara.defaults::state-list-path list))))
+      (is string=
+          (format nil "# tuatara chosen-paths 1~%/mine/two.txt~%")
+          (file-text (tuatara.defaults::state-list-path list))))
     ;; a PDF whose path has spaces keeps its place
     (tuatara.defaults::state-list-put tuatara.defaults::*pdf-places* (list (list "/a b/c d.pdf" 7 :width 1.5)))
     (tuatara.defaults::finish-state-writes)
@@ -155,9 +161,15 @@ nothing read yet."
       (tuatara.defaults::state-list-drop tuatara.defaults::*chosen-paths* '("/nowhere"))
       (tuatara.defaults::finish-state-writes)
       (flet ((versioned (name text) (format nil "# tuatara ~a 1~%~a" name text)))
-        (is string= (versioned "recent-files" recent) (file-text (tuatara.defaults::state-list-path tuatara.defaults::*recent-files*)))
-        (is string= (versioned "places" places) (file-text (tuatara.defaults::state-list-path tuatara.defaults::*saved-places*)))
-        (is string= (versioned "pdf-places" pdf) (file-text (tuatara.defaults::state-list-path tuatara.defaults::*pdf-places*)))
+        (is string=
+            (versioned "recent-files" recent)
+            (file-text (tuatara.defaults::state-list-path tuatara.defaults::*recent-files*)))
+        (is string=
+            (versioned "places" places)
+            (file-text (tuatara.defaults::state-list-path tuatara.defaults::*saved-places*)))
+        (is string=
+            (versioned "pdf-places" pdf)
+            (file-text (tuatara.defaults::state-list-path tuatara.defaults::*pdf-places*)))
         (is string= (versioned "chosen-paths" chosen) (file-text (tuatara.defaults::chosen-paths-file)))))))
 
 (defun binary-and-text (dir)
@@ -184,7 +196,9 @@ file of text; their native names, as two values."
                (setf reads '())
                (let ((tuatara-user:*open-binary-files-safely* t)
                      (tuatara-user:*hex-view-binary-files* t))
-                 (multiple-value-bind (f editor) (run-keys (format nil "C-x C-f C-a C-k ~a RET" (key-string path)) :width 120 :height 12)
+                 (multiple-value-bind (f editor) (run-keys (format nil "C-x C-f C-a C-k ~a RET" (key-string path))
+                                                           :width 120
+                                                           :height 12)
                    (declare (ignore f))
                    (let ((buffer (tuatara.display:window-buffer (tuatara.command:editor-window editor))))
                      (is eq (eq path binary) (and (tuatara.display:hex-view-p buffer) t))
@@ -204,8 +218,10 @@ file of text; their native names, as two values."
              (false (tuatara.io:binary-head-p nil))
              ;; previews
              (let ((made '()))
-               (true (tuatara.display:hex-view-p (tuatara.defaults::preview-file-buffer binary (lambda (b) (push b made)))))
-               (false (tuatara.display:hex-view-p (tuatara.defaults::preview-file-buffer text (lambda (b) (push b made)))))
+               (true (tuatara.display:hex-view-p (tuatara.defaults::preview-file-buffer binary
+                                                                                        (lambda (b) (push b made)))))
+               (false (tuatara.display:hex-view-p (tuatara.defaults::preview-file-buffer text
+                                                                                         (lambda (b) (push b made)))))
                (mapc #'tuatara.buffer:kill-buffer made))
              ;; searching
              (false (tuatara.defaults::read-text-file binary))
@@ -333,7 +349,9 @@ file of text; their native names, as two values."
                (tuatara.runtime:set-debug nil))
              (sb-posix:close (tuatara.io:session-log "a test"))
              (dolist (log (list debug-log stderr-log))
-               (is string= (format nil "a session before~%") (file-text (sb-ext:parse-native-namestring (format nil "~a.1" log))))
+               (is string=
+                   (format nil "a session before~%")
+                   (file-text (sb-ext:parse-native-namestring (format nil "~a.1" log))))
                (false (search "a session before" (file-text (sb-ext:parse-native-namestring log))) "~a" log)
                (is = #o600 (logand #o777 (sb-posix:stat-mode (sb-posix:stat log))) "~a" log))
              ;; another session writing the log of standard error: written after, not put aside
@@ -346,7 +364,9 @@ file of text; their native names, as two values."
              (let ((text (file-text (sb-ext:parse-native-namestring stderr-log))))
                (true (search "a test, process" text) "~a" text)
                (true (search "another test, process" text) "~a" text))
-             (is string= (format nil "a session before~%") (file-text (sb-ext:parse-native-namestring (format nil "~a.1" stderr-log)))))
+             (is string=
+                 (format nil "a session before~%")
+                 (file-text (sb-ext:parse-native-namestring (format nil "~a.1" stderr-log)))))
         (if cache (sb-posix:setenv "XDG_CACHE_HOME" cache 1) (sb-posix:unsetenv "XDG_CACHE_HOME"))
         (drain-debug-reports)))))
 
@@ -357,7 +377,8 @@ file of text; their native names, as two values."
   (is string= "/" (tuatara.io:parent-path "/x"))
   (is string= "/" (tuatara.io:parent-path "/"))
   (is string= "/a/b?/" (tuatara.io:parent-path (sb-ext:parse-native-namestring "/a/b?/c*.txt")))
-  (is string= "~/odd [1]*/x" (tuatara.command:abbreviated-path (concatenate 'string (tuatara.io:home-directory) "odd [1]*/x")))
+  (is string= "~/odd [1]*/x"
+      (tuatara.command:abbreviated-path (concatenate 'string (tuatara.io:home-directory) "odd [1]*/x")))
   (is string= "/elsewhere [2]" (tuatara.command:abbreviated-path "/elsewhere [2]"))
   ;; a path with a tab, a newline or a backslash in it stays one field of a line parted by tabs
   (let* ((odd (format nil "/a~cb/c~%d\\e~cf" #\Tab #\Return))
@@ -419,7 +440,8 @@ file of text; their native names, as two values."
   (is string= "/a/" (tuatara.defaults::paths-common-directory '("/a/b/c.txt" "/a/bc/d.txt" "/a/x")))
   (is string= "/a/b/" (tuatara.defaults::paths-common-directory '("/a/b/c.txt" "/a/b/sub/")))
   (is string= "/" (tuatara.defaults::paths-common-directory '("/a/x" "/b/y")))
-  (is string= "/x" (tuatara.defaults::uri-path (format nil "file://~a/x" (machine-instance)) :hosts (list (machine-instance))))
+  (is string= "/x"
+      (tuatara.defaults::uri-path (format nil "file://~a/x" (machine-instance)) :hosts (list (machine-instance))))
   (false (tuatara.defaults::uri-path (format nil "file://~a/x" (machine-instance))))
   (is string= "/x" (tuatara.defaults::uri-path "FILE:///x"))
   (false (tuatara.defaults::uri-path "file://elsewhere/x" :hosts (list (machine-instance))))

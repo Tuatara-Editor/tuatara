@@ -237,9 +237,10 @@ coloured; past it that text is left without its colours.")
 (defun note-parse-failure (grammar why helper)
   "Turn GRAMMAR off for the text being parsed (*PARSING-BUFFER*'s, else
 HELPER's), and for all once it has gone wrong on several
-\(GRAMMAR-WENT-WRONG), when a parse of text in it went wrong as WHY says: a
-failure inside the grammar's own code, or the program parsing ending as it
-parsed or taking too long, so that it is not tried again on each redraw."
+\(GRAMMAR-WENT-WRONG). This is done when a parse of text in it went wrong as
+WHY says: a failure inside the grammar's own code, or the program parsing
+ending as it parsed or taking too long. The grammar is then not tried again on
+each redraw."
   (let ((where (or *parsing-buffer* helper)))
     (case why
       (:failed (grammar-went-wrong grammar where (make-condition 'grammar-failure :grammar grammar)))
@@ -338,7 +339,8 @@ them."
   (colours nil :read-only t))
 
 (setf (documentation 'kept-layer-p 'function) "True when OBJECT is a KEPT-LAYER."
-      (documentation 'make-kept-layer 'function) "A KEPT-LAYER of NAME, QUERY, FACES, DEPTH, OFFSETS, COLUMNS, OCTETS and COLOURS."
+      (documentation 'make-kept-layer 'function) "A KEPT-LAYER of NAME, QUERY, FACES, DEPTH,
+OFFSETS, COLUMNS, OCTETS and COLOURS."
       (documentation 'kept-layer-depth 'function) "How deep in texts in other languages the text lies."
       (documentation 'kept-layer-columns 'function) "The column, in octets, each range starts at in its line."
       (documentation 'kept-layer-name 'function) "The language of the text, as the rules name it."
@@ -385,9 +387,9 @@ that none of its colours depend on where that begins or ends, and is short."
 (defun kept-layer (name query faces depth rope ranges start end)
   "The KEPT-LAYER of the text of ROPE in RANGES read as the language NAME with
 QUERY and FACES, DEPTH deep in texts in other languages, kept for the text
-from octet START below END: one worked out for the same octets in ranges the
-same distance apart, each starting at the same column of its line, wherever
-they stood; NIL when there is none."
+from octet START below END. It is one worked out for the same octets in
+ranges the same distance apart, each starting at the same column of its line,
+wherever they stood. It is NIL when there is none."
   (when (layer-keepable-p ranges start end)
     (let ((base (car (first ranges))))
       (find-if (lambda (kept)
@@ -473,7 +475,8 @@ second value, true when that holds for all of LAYERS."
         (parse-texts
          rope
          (loop for layer in wanted
-               collect (destructuring-bind (&key grammar ranges colours inner locals tree local-from &allow-other-keys) layer
+               collect (destructuring-bind (&key grammar ranges colours inner locals tree local-from
+                                                 &allow-other-keys) layer
                          (make-text-parse grammar ranges tree
                                           (remove nil (list (list colours start end)
                                                             (and locals (list locals local-from end))
@@ -492,20 +495,25 @@ second value, true when that holds for all of LAYERS."
                                            (unless (or tree given (grammar-off-p grammar where))
                                              (setf settled nil))
                                            (unless given
-                                             (if key (setf (gethash key *injected-trees*) tree) (when tree (push tree made)))))
+                                             (if key
+                                                 (setf (gethash key *injected-trees*) tree)
+                                                 (when tree (push tree made)))))
                                       collect tree))
                          ;; each one's own colours, and where text in yet other languages lies in it
                          (own (loop for layer in wanted
                                     for tree in trees
                                     collect (when tree
-                                              (destructuring-bind (&key colours faces locals face-of local-from &allow-other-keys) layer
+                                              (destructuring-bind (&key colours faces locals face-of local-from
+                                                                        &allow-other-keys) layer
                                                 (multiple-value-bind (local-ranges references)
                                                     (and locals (local-highlights locals tree rope local-from start end face-of))
                                                   (nconc (let ((*local-references* references))
                                                            (rich-highlights colours tree rope start end faces))
                                                          local-ranges))))))
                          (from (injection-cut rope (max 0 (- start *injection-reach*))))
-                         (to (tuatara.text:rope-char-start rope (min (tuatara.text:rope-octet-length rope) (+ end *injection-reach*))))
+                         (to (tuatara.text:rope-char-start rope
+                                                           (min (tuatara.text:rope-octet-length rope)
+                                                                (+ end *injection-reach*))))
                          (found (loop for layer in wanted
                                       for tree in trees
                                       collect (let ((inner (getf layer :inner)))
@@ -571,16 +579,17 @@ language has rules for local names. See SYNTAX-HIGHLIGHTS for INJECTIONS."
   (make-array 64 :element-type 'fixnum :adjustable t :fill-pointer 0))
 
 (defstruct (local-room (:constructor make-local-room ()) (:copier nil))
-  "The room LOCAL-HIGHLIGHTS works in, emptied and used again: SCOPES, three
+  "The room LOCAL-HIGHLIGHTS works in, emptied and used again. SCOPES is three
 numbers for each scope (start, end, 1 when it sees no definition made outside
-it); DEFINITIONS, three for each definition (start, end, the number of its
-capture); REFERENCES, two for each name used (start, end); EVENTS, the
-definitions and names used in the order of the text; OPENS, the scopes in
-the order they open; STACK, the scopes open, two numbers each (end, 1 when
-sealed); BINDINGS, four numbers for each definition seen in the scopes open
+it). DEFINITIONS is three for each definition (start, end, the number of its
+capture). REFERENCES is two for each name used (start, end). EVENTS is the
+definitions and names used in the order of the text. OPENS is the scopes in
+the order they open. STACK is the scopes open, two numbers each (end, 1 when
+sealed). BINDINGS is four numbers for each definition seen in the scopes open
 \(its name's hash, the definition, how many scopes were open, the binding of
-the same hash before it, or -1); LATEST, the latest binding of each hash;
-LEFT, the names left alone; RESOLVED, the names that name a local definition."
+the same hash before it, or -1). LATEST is the latest binding of each hash.
+LEFT is the names left alone. RESOLVED is the names that name a local
+definition."
   (scopes (fixnums) :read-only t)
   (definitions (fixnums) :read-only t)
   (references (fixnums) :read-only t)
@@ -631,15 +640,15 @@ definition (such as \"variable.parameter\"), or NIL."
   "The colours QUERY, a language's rules for local names, gives the names in
 TREE (the tree of ROPE) from octet START below END that are defined earlier
 in a scope around them, read from FROM on (where the definitions of names in
-that part may begin): each such name takes the colour of the kind of its
+that part may begin). Each such name takes the colour of the kind of its
 definition, the definition nearest in the innermost scope winning. FACE-OF is
 a function of a kind (such as variable.parameter) returning its face, or NIL
 to leave it. Names the rules also capture as _ are left alone. A scope whose
 rules set local.scope-inherits to false (a Ruby method) sees no definition
-made outside it. A list of (START END FACE) ranges, as RICH-HIGHLIGHTS gives,
-and as a second value the names that name a local definition, as
-*LOCAL-REFERENCES* holds them. Names are told apart by their octets: no
-text is made of them."
+made outside it.
+Returns a list of (START END FACE) ranges, as RICH-HIGHLIGHTS gives, and as a
+second value the names that name a local definition, as *LOCAL-REFERENCES*
+holds them. Names are told apart by their octets: no text is made of them."
   (let* ((room (or *local-room* (make-local-room)))
          (roles (capture-roles query))
          (properties (query-properties query))
@@ -757,8 +766,8 @@ those languages' rules was not yet at hand among them.")
 (defparameter *syntax-slice-reach* (* 8 1024)
   "How much of a text before and after the lines being coloured is parsed with
 them, in octets, while the parse of the whole text is not ready (a large file
-just opened, or changed all through) or the text is too large to parse whole:
-the lines shown are coloured at once from it, and as the whole text is parsed
+just opened, or changed all through) or the text is too large to parse whole.
+The lines shown are coloured at once from it, and as the whole text is parsed
 once that parse is done.")
 
 (defparameter *colours-kept* 8
@@ -824,8 +833,8 @@ from a parse of that text alone and *SYNTAX-SLICE-REACH* octets on either side
 of it, as SYNTAX-HIGHLIGHTS gives them (no local names); NIL when it cannot be
 parsed. Where the text is too large to parse whole, a parse of its lines that
 takes too long or too much memory leaves it uncoloured from then on
-\(SYNTAX-BROKEN), so that scrolling never waits on it again. Kept, as SYNTAX-HIGHLIGHTS keeps its answers, while the text and lines
-are the same."
+\(SYNTAX-BROKEN), so that scrolling never waits on it again. Kept, as
+SYNTAX-HIGHLIGHTS keeps its answers, while the text and lines are the same."
   (let* ((rope (tuatara.buffer:buffer-text (syntax-buffer syntax)))
          (key (list :slice rope start end query faces (and injections (first injections))
                     (and injections (car *rules-generation*))))
@@ -854,36 +863,41 @@ are the same."
                          tree)))
                (ranges (when tree
                          (unwind-protect
-                              (loop for (s e face) in (append (rich-highlights query tree slice (- start from) (- end from) faces)
-                                                              (and injections
-                                                                   (let ((*injected-trees* nil))
-                                                                     (injected-highlights injections tree slice
-                                                                                          (- start from) (- end from)))))
+                              (loop for (s e
+                                           face) in (append (rich-highlights query tree slice (- start
+                                                                                                 from) (- end
+                                                                                                          from) faces)
+                                                            (and injections
+                                                                 (let ((*injected-trees* nil))
+                                                                   (injected-highlights injections tree slice
+                                                                                        (- start
+                                                                                           from) (- end from)))))
                                     collect (list (+ s from) (+ e from) face))
                            (delete-tree tree)))))
           ranges))))))
 
 (defun syntax-highlights (syntax query faces parts &optional injections locals)
   "The syntax colours of SYNTAX's buffer text in PARTS, each (START . END) in
-octets, in order, under QUERY, as one list of (START END FACE) ranges to
-paint in order; NIL while there is no tree. The tree is made ready once
-for all the parts, so that their colours are of the same tree. FACES holds the face of each capture of QUERY by number (see
-RICH-HIGHLIGHTS). INJECTIONS, when given, is (RULES RESOLVE): the language's
-injection rules, and a function of a language's name as they name it that
-returns, for a language this editor colours, its grammar, colouring query,
-faces, injection rules, rules for local names and the function giving the
-face of each kind of definition (as LOCALS below) as six values, NIL for one
-it does not; the text in another language is then coloured as that language,
-over the colours of the text around it. LOCALS, when given, is (RULES FACE-OF): the language's
-rules for local names and the face of each kind of definition (see
-LOCAL-HIGHLIGHTS); a name defined earlier in a scope around it is then
-coloured as its definition is. Waits a moment for a parse under way (see
-*SYNTAX-WAIT*); while there is no tree yet, or the text is too large to parse
-whole, the colours of a parse of these lines alone (SLICE-HIGHLIGHTS). The
-answers for the last few parts asked for are kept (KEPT-COLOURS) and given
-again while nothing they depend on has changed; the list is lent until the
-text changes or is parsed again, its room then taken by the next colours
-worked out."
+octets, in order, under QUERY, as one list of (START END FACE) ranges to paint
+in order. It is NIL while there is no tree. The tree is made ready once for
+all the parts, so that their colours are of the same tree. FACES holds the
+face of each capture of QUERY by number (see RICH-HIGHLIGHTS).
+INJECTIONS, when given, is (RULES RESOLVE). RULES is the language's injection
+rules. RESOLVE is a function of a language's name as they name it. For a
+language this editor colours, it returns six values: its grammar, colouring
+query, faces, injection rules, rules for local names and the function giving
+the face of each kind of definition (as LOCALS below). It returns NIL for one
+it does not colour. The text in another language is then coloured as that
+language, over the colours of the text around it.
+LOCALS, when given, is (RULES FACE-OF): the language's rules for local names
+and the face of each kind of definition (see LOCAL-HIGHLIGHTS). A name defined
+earlier in a scope around it is then coloured as its definition is.
+Waits a moment for a parse under way (see *SYNTAX-WAIT*). While there is no
+tree yet, or the text is too large to parse whole, the colours are those of a
+parse of these lines alone (SLICE-HIGHLIGHTS). The answers for the last few
+parts asked for are kept (KEPT-COLOURS) and given again while nothing they
+depend on has changed. The list is lent until the text changes or is parsed
+again, its room then taken by the next colours worked out."
   (let* ((tree (syntax-ready-tree syntax))
          (lists (loop for (start . end) in parts
                       collect (cond (tree (part-highlights syntax tree query faces start end injections locals))

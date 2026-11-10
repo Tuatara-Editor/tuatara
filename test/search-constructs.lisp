@@ -1,4 +1,5 @@
-;;;; test/search-constructs.lisp --- Every construct of the search patterns, each with an example run as C-s and r r run it.
+;;;; test/search-constructs.lisp --- Every construct of the search patterns, each with an example run as C-s and r r run
+;;;; it.
 ;;;; Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
 ;;;;
 ;;;; The examples are those of the regex handbook's reference, which is
@@ -253,7 +254,8 @@
       ("(?(<name>)…)" "a condition on a named group: write its number" "(?<x>a)?(?(<x>)b)" "" (:refused "invalid: a condition is a lookaround or a group's number"))
       ("(?U)" "every quantifier lazy" "(?U)a+" "" (:refused "invalid: (?U is no kind of group"))
       ("(*VERB)" "PCRE's verbs, (*UTF) and the rest" "(*UTF)a" "" (:refused "invalid: nothing for * to repeat"))
-      ("[:alpha:]" "a named set outside a set" "[:alpha:]" "" (:refused "invalid: [:alpha:] goes inside a set: [[:alpha:]]"))
+      ("[:alpha:]" "a named set outside a set" "[:alpha:]" "" (:refused
+                                                               "invalid: [:alpha:] goes inside a set: [[:alpha:]]"))
       ("[[:nope:]]" "a name no set has" "[[:nope:]]" "" (:refused "invalid: no POSIX class [:nope:]"))
       ("[[:ipv4:]x]" "a named pattern with others in its brackets" "[[:ipv4:]x]" "" (:refused "invalid: [:ipv4:] stands alone in its brackets: [[:ipv4:]]"))
       ("[[:ipv4:]" "a named pattern not closed yet, as it is typed" "[[:ipv4:]" "" (:refused "incomplete"))
@@ -263,7 +265,8 @@
      "What follows the =/= of =r r= or =r q= is the text written for each match, not a pattern. Without =\\u=, =\\U=, =\\l= or =\\L= in it, a pattern of no capitals writes it in the case of what it replaces."
      ((:replace "&" "the whole match" "%\\d+" "[&]" "rooms 12 and 7" "rooms [12] and [7]")
       (:replace "\\0" "the same" "%kea" "\\0s" "a kea" "a keas")
-      (:replace "\\1 … \\9" "what group 1 to 9 matched; a named group by its number" "%(\\w+), (\\w+)" "\\2 \\1" "Smith, John" "John Smith")
+      (:replace "\\1 … \\9" "what group 1 to 9 matched; a named group by its number" "%(\\w+), (\\w+)" "\\2 \\1"
+                "Smith, John" "John Smith")
       (:replace "\\u" "the next letter a capital" "%\\bk" "\\u&" "kia kaha" "Kia Kaha")
       (:replace "\\U … \\E" "capitals up to =\\E= or the end" "%(\\w+)@" "\\U\\1\\E@" "joe@example" "JOE@example")
       (:replace "\\l" "the next letter small" "%\\bK" "\\l&" "Kia Kaha" "kia kaha")
@@ -345,7 +348,9 @@ question as PATTERN/REPLACEMENT."
     ;; a block wrapped over lines of one length is one match, its last line shorter
     (let ((block (format nil "S2lhIG9yYSBrb3V0b3Uga2F0b2Es~%IHRoZSBrZWEgaXMgYSBwYXJyb3Q=~%")))
       (is equal (list (string-right-trim '(#\Newline) block)) (both "[[:base64:]]" block)))
-    (is equal (list (format nil "NNUWCIDPOJQSA23P~%OV2G65I=")) (both "[[:base32:]]" (format nil "NNUWCIDPOJQSA23P~%OV2G65I=")))
+    (is equal
+        (list (format nil "NNUWCIDPOJQSA23P~%OV2G65I="))
+        (both "[[:base32:]]" (format nil "NNUWCIDPOJQSA23P~%OV2G65I=")))
     ;; the last line longer than the first: the first alone, the rest too long to be a block's last line
     (is equal '("NNUWCIDPOJQSA23P") (both "[[:base32:]]" (format nil "NNUWCIDPOJQSA23P~%OV2G65IKIAKEATUI2345=")))
     ;; a line that only begins like the block's next one: the block ends before it
@@ -373,7 +378,9 @@ question as PATTERN/REPLACEMENT."
                         (tuatara.defaults::line-matches rope matcher t 0 (tuatara.text:rope-octet-length rope)))
                 "a block of 19 KB, windows of 4 KB at most, at ~a" sizes)
             (is equal (list start (+ start (1- (length block))) (subseq block 0 (1- (length block))))
-                (subseq (multiple-value-list (tuatara.syntax:regex-search-forward rope "[[:base64:]]" :start 0 :threads 3)) 0 3)
+                (subseq (multiple-value-list (tuatara.syntax:regex-search-forward rope "[[:base64:]]"
+                                                                                  :start 0
+                                                                                  :threads 3)) 0 3)
                 "a block of 19 KB, windows of 4 KB at most, searched for at ~a" sizes))))
       ;; a line that goes on the block before it begins none: searched for from it, the block after
       (let ((second-line (+ start (length line) 1)))
@@ -433,9 +440,12 @@ question as PATTERN/REPLACEMENT."
     ;; no digit on either side, a T that promises a time it does not keep, a day not in the calendar
     (is equal '() (both "[[:date:]]" "12026-01-01 2026-01-011 2026-06-30T25:00 2026-06-31 2026-6-30"))
     ;; a space and no time: the date alone; small t and z as RFC 3339 allows; a leap second
-    (is equal '("2026-06-30" "2026-06-30t10:00:00z" "2016-12-31T23:59:60Z") (both "[[:date:]]" "2026-06-30 at 2026-06-30t10:00:00z 2016-12-31T23:59:60Z"))
+    (is equal
+        '("2026-06-30" "2026-06-30t10:00:00z" "2016-12-31T23:59:60Z")
+        (both "[[:date:]]" "2026-06-30 at 2026-06-30t10:00:00z 2016-12-31T23:59:60Z"))
     ;; offsets as logs write them, a space before or none, and UTC or GMT
-    (is equal '("2026-06-30 09:00:00 +0200" "2026-06-30T09:00+02" "2026-06-30 10:00 UTC" "2026-06-30 10:00:00.123456789 GMT")
+    (is equal
+        '("2026-06-30 09:00:00 +0200" "2026-06-30T09:00+02" "2026-06-30 10:00 UTC" "2026-06-30 10:00:00.123456789 GMT")
         (both "[[:date:]]" "2026-06-30 09:00:00 +0200, 2026-06-30T09:00+02, 2026-06-30 10:00 UTC, 2026-06-30 10:00:00.123456789 GMT"))
     ;; as written: the offset is not taken off; in UTC it is
     (is equal '("2026-06-30T23:30:00-05:00") (both "[[:date<2026-07-01:]]" "2026-06-30T23:30:00-05:00"))
@@ -443,18 +453,30 @@ question as PATTERN/REPLACEMENT."
     (is equal '("2026-06-30T23:30:00-05:00") (both "[[:dateutc>2026-07-01T04:29Z:]]" "2026-06-30T23:30:00-05:00"))
     (is equal '() (both "[[:dateutc>2026-07-01T04:30Z:]]" "2026-06-30T23:30:00-05:00"))
     ;; a bound's last figure says how much of it counts: a minute, a second, a tenth
-    (is equal '("2026-06-30T14:05:00.9") (both "[[:date<=2026-06-30T14:05:00:]]" "2026-06-30T14:05:00.9 2026-06-30T14:05:01"))
-    (is equal '("2026-06-30T14:05:00.1") (both "[[:date<=2026-06-30T14:05:00.1:]]" "2026-06-30T14:05:00.1 2026-06-30T14:05:00.2"))
+    (is equal
+        '("2026-06-30T14:05:00.9")
+        (both "[[:date<=2026-06-30T14:05:00:]]" "2026-06-30T14:05:00.9 2026-06-30T14:05:01"))
+    (is equal
+        '("2026-06-30T14:05:00.1")
+        (both "[[:date<=2026-06-30T14:05:00.1:]]" "2026-06-30T14:05:00.1 2026-06-30T14:05:00.2"))
     ;; the day and month apart by the same mark both times; a time apart by . in day, month, year
-    (is equal '("1-7-2026" "30.06.2026 14.05.30,5") (both "[[:datedmy:]]" "30.06/2026, 1-7-2026, 30.06.2026 14.05.30,5"))
+    (is equal
+        '("1-7-2026" "30.06.2026 14.05.30,5")
+        (both "[[:datedmy:]]" "30.06/2026, 1-7-2026, 30.06.2026 14.05.30,5"))
     ;; 12 AM is midnight, 12 PM noon; an hour past 12 with AM or PM is no time
-    (is equal '("06/30/2026 12:30 AM") (both "[[:datemdy<06/30/2026 01:00:]]" "06/30/2026 12:30 AM, 06/30/2026 12:30 PM"))
-    (is equal '("06/30/2026, 11:00PM") (both "[[:datemdy>06/30/2026 22:59:]]" "06/30/2026, 11:00PM, 06/30/2026 9:00 pm"))
+    (is equal
+        '("06/30/2026 12:30 AM")
+        (both "[[:datemdy<06/30/2026 01:00:]]" "06/30/2026 12:30 AM, 06/30/2026 12:30 PM"))
+    (is equal
+        '("06/30/2026, 11:00PM")
+        (both "[[:datemdy>06/30/2026 22:59:]]" "06/30/2026, 11:00PM, 06/30/2026 9:00 pm"))
     (is equal '() (both "[[:datemdy:]]" "06/30/2026 13:00 PM"))
     ;; repeated and inside one of your own named patterns
     (unwind-protect
          (progn
-           (tuatara-user:define-named-pattern "early" "a line of the first half of 2026" "^[[:date:2026-01-01..2026-06-30:]] ")
+           (tuatara-user:define-named-pattern "early"
+               "a line of the first half of 2026"
+             "^[[:date:2026-01-01..2026-06-30:]] ")
            (is equal '("2026-03-01 ") (both "[[:early:]]" (format nil "2026-03-01 a~%2026-08-01 b"))))
       (remhash "early" tuatara.syntax::**own-named-patterns**))
     ;; a date-time cut by the search's windows is found whole
@@ -484,7 +506,9 @@ question as PATTERN/REPLACEMENT."
            (is equal '("kea1kea2") (both "[[:kea9:]]+" "a kea1kea2 keax"))
            ;; Tuatara's named patterns inside, the card numbers' Luhn check too
            (tuatara-user:define-named-pattern "paid" "a card paid with" "paid [[:creditcard:]]")
-           (is equal '("paid 4111 1111 1111 1111") (both "[[:paid:]]" "paid 4111 1111 1111 1111, paid 4111 1111 1111 1112"))
+           (is equal
+               '("paid 4111 1111 1111 1111")
+               (both "[[:paid:]]" "paid 4111 1111 1111 1111, paid 4111 1111 1111 1112"))
            ;; it counts no group: \1 is the first written
            (is equal '("x kea3 x") (both "(x) [[:kea9:]] \\1" "x kea3 x"))
            ;; defined again: the new one
@@ -510,7 +534,8 @@ question as PATTERN/REPLACEMENT."
 " text :start2 start)))
                                            (cl-ppcre:regex-replace-all "(?m)^ *;; ?" (subseq text start (1+ end)) ""))))
                (let ((*package* (find-package :tuatara-user))) (eval (read-from-string form)))))
-           (is equal '("021 123 4567" "+64 21 123 4567" "0064 9 123 4567" "+64 (0)21 123 4567" "(09) 123 4567" "0800 123 456")
+           (is equal
+               '("021 123 4567" "+64 21 123 4567" "0064 9 123 4567" "+64 (0)21 123 4567" "(09) 123 4567" "0800 123 456")
                (both "[[:nzphone:]]" "021 123 4567, +64 21 123 4567, 0064 9 123 4567, +64 (0)21 123 4567, (09) 123 4567, 0800 123 456, not +61 2 1234 5678 or 2026-10-12")))
       (dolist (name '("kea9" "paid" "loopa" "loopb" "nzlocal" "nzphone"))
         (remhash name tuatara.syntax::**own-named-patterns**)))))

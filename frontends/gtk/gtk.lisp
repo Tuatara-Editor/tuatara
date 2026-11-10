@@ -32,11 +32,12 @@ NIL for the desktop's monospace font. Set it in the init file.")
 
 (defvar *gui-padding* 8
   "The room, in pixels, between the edges of Tuatara's window and its text, in
-the ground's colour: one number for all four sides, or a list, of two, the
-top and bottom, then the right and left ((4 12) is 4 above and below, 12 at
-the sides); of three, the top, the right and left, the bottom; of four, the
-top, right, bottom and left, clockwise. Set it in the init file, or try values
-with \\[eval-expression] (setf *gui-padding* 12), which the window follows at once.")
+the ground's colour. It is one number for all four sides, or a list. A list of
+two gives the top and bottom, then the right and left ((4 12) is 4 above and
+below, 12 at the sides). A list of three gives the top, the right and left,
+the bottom. A list of four gives the top, right, bottom and left, clockwise.
+Set it in the init file, or try values with \\[eval-expression] (setf
+*gui-padding* 12), which the window follows at once.")
 
 (defvar *window-colours-from-desktop* nil
   "True to paint text and ground the theme leaves without a colour (the
@@ -93,8 +94,10 @@ OFFSET), as TUATARA.FRONTEND:FRONTEND-PUT-IMAGE takes them."
       (documentation 'frame-cursor-row 'function) "The row FRAME's cursor is on."
       (documentation 'frame-cursor-column 'function) "The column FRAME's cursor is at."
       (documentation 'frame-cursor-shape 'function) "The shape of FRAME's cursor, :block, :bar or :underline."
-      (documentation 'frame-cursor-colour 'function) "The colour of FRAME's cursor, as faces take colours, or NIL for the text's."
-      (documentation 'frame-images 'function) "The pictures over FRAME's rows, each (IMAGE ROW COLUMN COLUMNS ROWS OFFSET).")
+      (documentation 'frame-cursor-colour 'function) "The colour of FRAME's cursor, as faces take
+colours, or NIL for the text's."
+      (documentation 'frame-images 'function) "The pictures over FRAME's rows, each (IMAGE ROW
+COLUMN COLUMNS ROWS OFFSET).")
 
 ;;; The frontend
 
@@ -105,7 +108,8 @@ OFFSET), as TUATARA.FRONTEND:FRONTEND-PUT-IMAGE takes them."
    (fonts :initform nil :accessor gtk-fonts :documentation "The font descriptions: upright, bold, italic, bold italic.")
    (cell-width :initform 8 :accessor cell-width :documentation "The width of a cell in pixels.")
    (cell-height :initform 16 :accessor cell-height :documentation "The height of a cell in pixels.")
-   (baseline :initform 12 :accessor cell-baseline :documentation "How far below a cell's top its text's baseline is, in pixels.")
+   (baseline :initform 12 :accessor cell-baseline :documentation "How far below a cell's top its
+text's baseline is, in pixels.")
    (columns :initform 80 :accessor gtk-columns :documentation "The width of the window in cells.")
    (rows :initform 24 :accessor gtk-rows :documentation "The height of the window in cells.")
    (lock :initform (sb-thread:make-mutex :name "window") :reader gtk-lock :documentation "Guards what both threads read.")
@@ -113,55 +117,101 @@ OFFSET), as TUATARA.FRONTEND:FRONTEND-PUT-IMAGE takes them."
    (sized :initform nil :accessor gtk-sized :documentation "True once the window knows its size.")
    (queue :initarg :queue :initform (make-event-queue) :reader gtk-queue
           :documentation "Events for the editor, the queue every window of one editor shares.")
-   (owner :initform nil :accessor gtk-owner :documentation "The editor's frame the window shows, named in the events it hands on.")
-   (handle :initform nil :accessor gtk-handle :documentation "The number GTK's callbacks find the window by (WINDOW-DATA), or NIL.")
-   (signals :initform '() :accessor gtk-signals :documentation "The handlers the window connected to what outlives it, the clipboard and GTK's settings, each (INSTANCE . NUMBER).")
+   (owner :initform nil :accessor gtk-owner :documentation "The editor's frame the window shows,
+named in the events it hands on.")
+   (handle :initform nil :accessor gtk-handle :documentation "The number GTK's callbacks find the
+window by (WINDOW-DATA), or NIL.")
+   (signals :initform '() :accessor gtk-signals :documentation "The handlers the window connected to
+what outlives it, the clipboard and GTK's settings, each (INSTANCE . NUMBER).")
    (frame :initform nil :accessor gtk-frame :documentation "The frame the editor is painting.")
    (shown :initform nil :accessor gtk-shown :documentation "The frame the window shows.")
-   (draw-pending :initform nil :accessor gtk-draw-pending :documentation "True while a redraw is asked for and not yet made.")
+   (draw-pending :initform nil :accessor gtk-draw-pending :documentation "True while a redraw is
+asked for and not yet made.")
    (done :initform nil :accessor gtk-done :documentation "True once the editor has ended.")
    (focused :initform t :accessor gtk-focused :documentation "True while the window has the keyboard focus.")
    (clipboard-out :initform nil :accessor gtk-clipboard-out :documentation "Text on its way to the clipboard.")
    (primary-out :initform nil :accessor gtk-primary-out :documentation "Text on its way to the primary selection.")
-   (clipboard-in :initform nil :accessor gtk-clipboard-in :documentation "The clipboard's text as last read, or :waiting.")
+   (clipboard-in :initform nil :accessor gtk-clipboard-in :documentation "The clipboard's text as
+last read, or :waiting.")
    (clipboard-kept :initform nil :accessor gtk-clipboard-kept
-                   :documentation "The clipboard's text, read in the background each time it changes; NIL until it is watched.")
+                   :documentation "The clipboard's text, read in the background each time it
+changes; NIL until it is watched.")
    (clipboard-reads :initform nil :accessor gtk-clipboard-reads
-                    :documentation "How many reads of the changed clipboard are under way, or NIL while it is not watched.")
+                    :documentation "How many reads of the changed clipboard are under way, or NIL
+while it is not watched.")
    (scroll :initform 0d0 :accessor gtk-scroll :documentation "Wheel movement not yet turned into whole turns.")
-   (pointer :initform nil :accessor gtk-pointer :documentation "Where the pointer last was over the window, (X . Y) in pixels, or NIL.")
-   (drag :initform nil :accessor gtk-drag :documentation "Where the first mouse button went down, (X . Y) in pixels, while it is held.")
-   (drag-cell :initform nil :accessor gtk-drag-cell :documentation "The cell the editor was last told a drag reached, (COLUMN . ROW).")
-   (drag-repeating :initform nil :accessor gtk-drag-repeating :documentation "True while a drag held past the text is told again and again, to scroll.")
+   (pointer :initform nil :accessor gtk-pointer :documentation "Where the pointer last was over the
+window, (X . Y) in pixels, or NIL.")
+   (drag :initform nil :accessor gtk-drag :documentation "Where the first mouse button went down, (X
+. Y) in pixels, while it is held.")
+   (drag-cell :initform nil :accessor gtk-drag-cell :documentation "The cell the editor was last
+told a drag reached, (COLUMN . ROW).")
+   (drag-repeating :initform nil :accessor gtk-drag-repeating :documentation "True while a drag held
+past the text is told again and again, to scroll.")
    (title :initform nil :accessor gtk-title :documentation "The title the editor last gave the window.")
-   (preedit :initform nil :accessor gtk-preedit :documentation "What the input method is composing, shown at the cursor until it is typed, or NIL.")
-   (font-steps :initform 0 :accessor gtk-font-steps :documentation "The steps the font is scaled by from its size, each 1.2 times the last.")
+   (preedit :initform nil :accessor gtk-preedit :documentation "What the input method is composing,
+shown at the cursor until it is typed, or NIL.")
+   (font-steps :initform 0 :accessor gtk-font-steps :documentation "The steps the font is scaled by
+from its size, each 1.2 times the last.")
    (pointer-shape :initform "text" :accessor gtk-pointer-shape :documentation "The name of the pointer's shape over the window now.")
-   (toggles :initform '() :accessor gtk-toggles :documentation "The window states the editor asked to turn to or from, not yet done, oldest first.")
-   (face-fonts :initform (make-hash-table :test 'equal) :reader gtk-face-fonts :documentation "The font descriptions of faces that name a font of their own (FACE-FONT), by name, at the window's size.")
-   (layouts :initform nil :accessor gtk-layouts :documentation "The layouts painting keeps from one frame to the next (MAKE-LAYOUTS), or NIL; let go of when the fonts change.")
-   (room-height :initform nil :accessor gtk-room-height :documentation "The height in pixels the grid of cells has inside the padding, as last fitted, or NIL before then.")
-   (padding :initform '(0 0 0 0) :accessor gtk-padding :documentation "The room in pixels round the grid of cells, as the grid was last fitted: top, right, bottom and left.")
-   (font-in-use :initform nil :accessor gtk-font-in-use :documentation "The name of the font the window's fonts were last made from.")
-   (renderer-checked :initform nil :accessor gtk-renderer-checked :documentation "True once *GUI-RENDERER* has been looked at as the editor started (FOLLOW-RENDERER-SETTING).")
-   (renderer-said :initform nil :accessor gtk-renderer-said :documentation "The way of drawing last said to be taken from the next start.")
-   (measured :initform nil :accessor gtk-measured :documentation "While the drawing is measured (MEASURE-DRAWING): when each key went in, each frame was finished and each was painted, three vectors of microseconds (MEASURE-CLOCK).")
-   (drawn-by :initform nil :accessor gtk-drawn-by :documentation "The renderer drawing the window, as GTK names its type (GskGLRenderer), once it is realised.")
-   (settings-pending :initform nil :accessor gtk-settings-pending :documentation "True while the window is yet to take in changed settings.")
-   (desktop-style :initform nil :accessor gtk-desktop-style :documentation "The desktop's style as GTK last told it, :dark or :light, or NIL.")
-   (display-scale :initform 1 :accessor gtk-display-scale :documentation "How many of the display's own pixels each of the window's pixels takes across, as the window last painted: 2 on a screen scaled to 200 per cent.")
-   (kept-rows :initform nil :accessor gtk-kept-rows :documentation "The rows as last painted, kept from one frame to the next (KEEP-ROWS), or NIL.")
-   (grid :initform nil :accessor gtk-grid :documentation "The widget over the drawing area that holds the pictures of the rows' parts, drawn by the graphics card (PLACE-PIECES).")
-   (pictures-layer :initform nil :accessor gtk-pictures-layer :documentation "The widget over the grid, under the cursor, that holds the frame's pictures (PLACE-IMAGES).")
-   (shown-images :initform (make-hash-table :test 'eq) :reader gtk-shown-images :documentation "For each image shown on the pictures layer, by the IMAGE: (TEXTURE COUNT (PICTURE PLACE)...), one picture for each place it is shown, PLACE how that picture was last placed, COUNT how many are in use.")
-   (above :initform nil :accessor gtk-above :documentation "The widget over the grid that holds the cursor's own drawing area.")
-   (cursor-area :initform nil :accessor gtk-cursor-area :documentation "The drawing area the cursor and what the input method composes are painted in, as large as they are.")
-   (cursor-at :initform '(0 . 0) :accessor gtk-cursor-at :documentation "Where the cursor's drawing area stands on the grid, (X . Y) in pixels.")
-   (ground :initform nil :accessor gtk-ground :documentation "The picture of the window's ground colour, stretched across it, under the rows.")
-   (ground-colour :initform nil :accessor gtk-ground-colour :documentation "The colour GTK-GROUND shows, three numbers from 0 to 1, or NIL before it shows one.")
+   (toggles :initform '() :accessor gtk-toggles :documentation "The window states the editor asked
+to turn to or from, not yet done, oldest first.")
+   (face-fonts :initform (make-hash-table :test 'equal) :reader gtk-face-fonts :documentation "The
+font descriptions of faces that name a font of their own (FACE-FONT), by name,
+at the window's size.")
+   (layouts :initform nil :accessor gtk-layouts :documentation "The layouts painting keeps from one
+frame to the next (MAKE-LAYOUTS), or NIL; let go of when the fonts change.")
+   (room-height :initform nil :accessor gtk-room-height :documentation "The height in pixels the
+grid of cells has inside the padding, as last fitted, or NIL before then.")
+   (padding :initform '(0 0 0 0) :accessor gtk-padding :documentation "The room in pixels round the
+grid of cells, as the grid was last fitted: top, right, bottom and left.")
+   (font-in-use :initform nil :accessor gtk-font-in-use :documentation "The name of the font the
+window's fonts were last made from.")
+   (renderer-checked :initform nil :accessor gtk-renderer-checked :documentation "True once
+*GUI-RENDERER* has been looked at as the editor started
+(FOLLOW-RENDERER-SETTING).")
+   (renderer-said :initform nil :accessor gtk-renderer-said :documentation "The way of drawing last
+said to be taken from the next start.")
+   (measured :initform nil :accessor gtk-measured :documentation "While the drawing is measured
+(MEASURE-DRAWING): when each key went in, each frame was finished and each was
+painted, three vectors of microseconds (MEASURE-CLOCK).")
+   (drawn-by :initform nil :accessor gtk-drawn-by :documentation "The renderer drawing the window,
+as GTK names its type (GskGLRenderer), once it is realised.")
+   (settings-pending :initform nil :accessor gtk-settings-pending :documentation "True while the
+window is yet to take in changed settings.")
+   (desktop-style :initform nil :accessor gtk-desktop-style :documentation "The desktop's style as
+GTK last told it, :dark or :light, or NIL.")
+   (display-scale :initform 1 :accessor gtk-display-scale :documentation "How many of the display's
+own pixels each of the window's pixels takes across, as the window last painted:
+2 on a screen scaled to 200 per cent.")
+   (kept-rows :initform nil :accessor gtk-kept-rows :documentation "The rows as last painted, kept
+from one frame to the next (KEEP-ROWS), or NIL.")
+   (grid :initform nil :accessor gtk-grid :documentation "The widget over the drawing area that
+holds the pictures of the rows' parts, drawn by the graphics card
+(PLACE-PIECES).")
+   (pictures-layer :initform nil :accessor gtk-pictures-layer :documentation "The widget over the
+grid, under the cursor, that holds the frame's pictures (PLACE-IMAGES).")
+   (shown-images :initform (make-hash-table :test 'eq) :reader gtk-shown-images :documentation "For
+each image shown on the pictures layer, by the IMAGE: (TEXTURE COUNT (PICTURE
+PLACE)...), one picture for each place it is shown, PLACE how that picture was
+last placed, COUNT how many are in use.")
+   (above :initform nil :accessor gtk-above :documentation "The widget over the grid that holds the
+cursor's own drawing area.")
+   (cursor-area :initform nil :accessor gtk-cursor-area :documentation "The drawing area the cursor
+and what the input method composes are painted in, as large as they are.")
+   (cursor-at :initform '(0 . 0) :accessor gtk-cursor-at :documentation "Where the cursor's drawing
+area stands on the grid, (X . Y) in pixels.")
+   (ground :initform nil :accessor gtk-ground :documentation "The picture of the window's ground
+colour, stretched across it, under the rows.")
+   (ground-colour :initform nil :accessor gtk-ground-colour :documentation "The colour GTK-GROUND
+shows, three numbers from 0 to 1, or NIL before it shows one.")
    (pictures :initform (make-array 0 :adjustable t :fill-pointer 0) :reader gtk-pictures :documentation "The pictures on the grid, each (PICTURE X Y TEXTURE WIDTH HEIGHT) as it was last placed (PLACE-PICTURE).")
-   (on-card :initform nil :accessor gtk-on-card :documentation "True while the rows are shown as pictures the graphics card draws, NIL while the drawing area paints the whole frame.")
-   (surfaces :initform (make-hash-table :test 'eq) :reader gtk-surfaces :documentation "The cairo surfaces of the pictures the window shows, by their IMAGE; used and let go of on the window's own thread."))
+   (on-card :initform nil :accessor gtk-on-card :documentation "True while the rows are shown as
+pictures the graphics card draws, NIL while the drawing area paints the whole
+frame.")
+   (surfaces :initform (make-hash-table :test 'eq) :reader gtk-surfaces :documentation "The cairo
+surfaces of the pictures the window shows, by their IMAGE; used and let go of on
+the window's own thread."))
   (:documentation "Tuatara's window: a GTK4 window with one drawing area."))
 
 (defun make-gtk-frontend (&key queue)
@@ -337,7 +387,8 @@ taking the editor down with GTK's thread, never unwinding through GTK."
   (with-gtk-float-traps
     (sb-alien:with-alien ((families sb-sys:system-area-pointer (null-pointer)) (found sb-alien:int 0))
       (pango-font-map-list-families (pango-cairo-font-map-get-default)
-                                    (sb-alien:alien-sap (sb-alien:addr families)) (sb-alien:alien-sap (sb-alien:addr found)))
+                                    (sb-alien:alien-sap (sb-alien:addr families))
+                                    (sb-alien:alien-sap (sb-alien:addr found)))
       (unwind-protect
            (dotimes (i found)
              (funcall function (sb-sys:sap-ref-sap families (* sb-vm:n-word-bytes i))))
@@ -373,7 +424,9 @@ the desktop's monospace font's; 11 points when neither names one."
   "The variants of the Pango font FAMILY drawn as themselves, as (NAME FONT)
 with FONT the full name that chooses each at SIZE (Pango units), sorted by name."
   (sb-alien:with-alien ((faces sb-sys:system-area-pointer (null-pointer)) (found sb-alien:int 0))
-    (pango-font-family-list-faces family (sb-alien:alien-sap (sb-alien:addr faces)) (sb-alien:alien-sap (sb-alien:addr found)))
+    (pango-font-family-list-faces family
+                                  (sb-alien:alien-sap (sb-alien:addr faces))
+                                  (sb-alien:alien-sap (sb-alien:addr found)))
     (let ((array faces))
       (unwind-protect
            (sort (loop for i below found
@@ -520,12 +573,14 @@ most; NIL when there is none."
       (and (stringp text) text))))
 
 (defmethod tuatara.frontend:frontend-begin-frame ((f gtk-frontend))
-  (setf (gtk-frame f) (make-frame (make-array (sb-thread:with-mutex ((gtk-lock f)) (gtk-rows f)) :initial-element nil))))
+  (setf (gtk-frame f)
+        (make-frame (make-array (sb-thread:with-mutex ((gtk-lock f)) (gtk-rows f)) :initial-element nil))))
 
 (defmethod tuatara.frontend:frontend-put-row ((f gtk-frontend) row string &key face spans scales over parts)
   (let ((rows (frame-rows (gtk-frame f))))
     (when (< -1 row (length rows))
-      (setf (aref rows row) (list (copy-seq string) face (copy-list spans) (copy-list scales) (copy-tree over) (copy-list parts))))))
+      (setf (aref rows row)
+            (list (copy-seq string) face (copy-list spans) (copy-list scales) (copy-tree over) (copy-list parts))))))
 
 (defmethod tuatara.frontend:frontend-focused-p ((f gtk-frontend))
   "True while the window has the keyboard."

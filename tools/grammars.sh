@@ -179,7 +179,8 @@ while IFS=$'"'"'\t'"'"' read -r name url commit license subpath; do
       # with syntax/patches/tree-sitter.patch applied, as a grammar is
       pristine "$name"
       checked "$name" ""
-      [ -f "$root/syntax/patches/tree-sitter.patch" ] && grammar_git -C "$dir" apply "$root/syntax/patches/tree-sitter.patch"
+      [ -f "$root/syntax/patches/tree-sitter.patch" ] &&
+        grammar_git -C "$dir" apply "$root/syntax/patches/tree-sitter.patch"
       # without its assertions, as the grammars are: one that fails would end
       # the program, and the patch makes the parser check what a grammar gives
       # it instead (a parse that meets a wrong value fails); what names a

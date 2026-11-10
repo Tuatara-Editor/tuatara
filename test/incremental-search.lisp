@@ -20,7 +20,8 @@
     (declare (ignore f))
     (is = 2 (session-point editor)))
   ;; no match at all: the count says so, 0/0, in place of Failing
-  (multiple-value-bind (f editor) (run-keys (list "C-s x y z" #'wait-for-search-count :tick "C-g") :text "hello" :width 80)
+  (multiple-value-bind (f editor)
+      (run-keys (list "C-s x y z" #'wait-for-search-count :tick "C-g") :text "hello" :width 80)
     (declare (ignore editor))
     (true (tuatara.frontend.fake:fake-frame-showing f "0/0    Regex search forward: xyz"))
     (false (tuatara.frontend.fake:fake-frame-showing f "Failing")))
@@ -30,7 +31,8 @@
     (true (tuatara.frontend.fake:fake-frame-showing f "No match for he after point: C-s in the search goes on from the start")))
   ;; a pattern that cannot be searched for says why, and RET waits for it to be mended
   (multiple-value-bind (f editor) (run-keys "C-s ( RET DEL l RET" :text "hello" :width 160)
-    (true (tuatara.frontend.fake:fake-frame-showing f "Regex search forward [incomplete; finish it, or C-g gives up]: ("))
+    (true (tuatara.frontend.fake:fake-frame-showing f
+                                                    "Regex search forward [incomplete; finish it, or C-g gives up]: ("))
     (is = 3 (session-point editor)))
   ;; C-g restores point; DEL backs up
   (multiple-value-bind (f editor) (run-keys "l l C-s o C-g" :text "foo boo")
@@ -59,6 +61,33 @@
                        thereis (and (find-if (lambda (row) (search "Regex search forward: o" row)) frame)
                                     frame))))
       (true spans))))
+
+(define-test (incremental-search toggled-kind-searched-afresh)
+  ;; (2) as a regular expression matches the 2 alone; as literal text, the whole
+  ;; (2), which begins before that match: count and point agree with it
+  (multiple-value-bind (f editor)
+      (run-keys (list (format nil "C-s ~a M-r" (key-string "(2)")) #'wait-for-search-count :tick "RET")
+                :text "f(2) x" :width 80)
+    (true (tuatara.frontend.fake:fake-frame-showing f "1/1    Literal search forward: (2)"))
+    (is = 4 (session-point editor)))
+  ;; and back: the 2 alone again
+  (multiple-value-bind (f editor)
+      (run-keys (list (format nil "C-s ~a M-r M-r" (key-string "(2)")) #'wait-for-search-count :tick "RET")
+                :text "f(2) x" :width 80)
+    (true (tuatara.frontend.fake:fake-frame-showing f "1/1    Regex search forward: (2)"))
+    (is = 3 (session-point editor))))
+
+(define-test (incremental-search toggled-kind-keeps-its-place)
+  ;; switched at the second match, the search stays on it, and it counts as the second
+  (multiple-value-bind (f editor)
+      (run-keys (list "C-s a C-s M-r" #'wait-for-search-count :tick "RET") :text "a1 a2 a3" :width 80)
+    (true (tuatara.frontend.fake:fake-frame-showing f "2/3    Literal search forward: a"))
+    (is = 4 (session-point editor)))
+  ;; going backward from the end, the same
+  (multiple-value-bind (f editor)
+      (run-keys (list "M-> C-r a C-r M-r" #'wait-for-search-count :tick "RET") :text "a1 a2 a3" :width 80)
+    (true (tuatara.frontend.fake:fake-frame-showing f "2/3    Literal search backward: a"))
+    (is = 3 (session-point editor))))
 
 (define-test (incremental-search going-on-after-ret)
   (flet ((point-after (keys)
@@ -98,7 +127,8 @@
     (is equal '(("b" :search-other) ("b" :search-other) ("b" :search-other)) (faces "C-s b RET l C-g C-x T s"))
     (is equal '() (faces "C-s b RET l C-x T s")))
   (let ((tuatara.defaults::*search-lit* nil))
-    (true (tuatara.frontend.fake:fake-frame-showing (run-keys "C-x T s" :text "xb") "No search to light the matches of")))
+    (true (tuatara.frontend.fake:fake-frame-showing (run-keys "C-x T s" :text "xb")
+                                                    "No search to light the matches of")))
   ;; lit in a window of another buffer, the matches are found in that buffer's text, however short the current one
   (let ((f (run-keys "C-s z z RET C-x 2 C-x b o t h e r RET" :text "aaaa zz bbbb zz" :height 16)))
     (true (loop for row below 14 thereis (org-faces-include f row "zz" :search-other))))
@@ -125,7 +155,9 @@
     (tuatara.buffer:make-buffer "*scratch*" :text "foo boo")
     (setf tuatara.defaults::*command-history* '())
     (tuatara.frontend.fake:fake-queue-keys f "C-s o o")
-    (tuatara.command:run-editor f :setup #'tuatara.defaults:install-defaults :buffer (tuatara.buffer:find-buffer "*scratch*"))
+    (tuatara.command:run-editor f
+                                :setup #'tuatara.defaults:install-defaults
+                                :buffer (tuatara.buffer:find-buffer "*scratch*"))
     ;; the frame painted while "oo" was the search string: match 1-3 current, 5-7 lazy
     (let ((frame (find-if (lambda (fr) (find-if (lambda (row) (search "Regex search forward: oo" row)) fr))
                           (tuatara.frontend.fake:fake-history f))))
@@ -229,7 +261,8 @@ of matches made in the background."
   (dolist (case '(("r r o" "1      Regex replace on this line: o")
                   ("r r % o" "6      Regex replace in the buffer: %o")
                   ("% r r o" "2      Regex replace in the selection: o")))
-    (multiple-value-bind (f editor) (run-keys (list (first case) #'wait-for-search-count :tick "C-g") :text (format nil "foo foo~%foo") :width 80)
+    (multiple-value-bind (f editor)
+        (run-keys (list (first case) #'wait-for-search-count :tick "C-g") :text (format nil "foo foo~%foo") :width 80)
       (declare (ignore editor))
       (true (tuatara.frontend.fake:fake-frame-showing f (second case)) "~a" (first case))))
   ;; groups and case in the replacement
@@ -407,10 +440,12 @@ of matches made in the background."
   (is string= "bar" (tuatara.defaults::follow-case "bar" "fOO"))
   (is string= "TEST-NEW" (tuatara.defaults::follow-case "test-new" "TEST"))
   ;; a replacement that says its case (\u \U \l \L) is written so, not in the case of what it replaces
-  (is string= "Kia Ora Koutou" (session-text (nth-value 1 (run-keys (format nil "r r ~a RET" (key-string "%\\b(\\w)(\\w*)/\\u\\1\\L\\2"))
-                                                                      :text "kia ORA koutou" :width 100))))
+  (is string= "Kia Ora Koutou"
+      (session-text (nth-value 1 (run-keys (format nil "r r ~a RET" (key-string "%\\b(\\w)(\\w*)/\\u\\1\\L\\2"))
+                                             :text "kia ORA koutou" :width 100))))
   ;; with no escape the case is followed as before
-  (is string= "BAR" (session-text (nth-value 1 (run-keys (format nil "r r ~a RET" (key-string "%foo/bar")) :text "FOO" :width 100))))
+  (is string= "BAR"
+      (session-text (nth-value 1 (run-keys (format nil "r r ~a RET" (key-string "%foo/bar")) :text "FOO" :width 100))))
   (true (tuatara.defaults::replacement-sets-case-p "\\U&"))
   (false (tuatara.defaults::replacement-sets-case-p "\\\\U&")))
 
@@ -454,8 +489,12 @@ of matches made in the background."
       (is string= (format nil "~aZ~%~aZ~%" filler filler)
           (session-text (nth-value 1 (after (format nil "M-x ~a RET % ~a / Z RET" (key-string "replace-regexp-thorough") pattern)))))))
   ;; a pattern kept within a line is found the same either way
-  (is = 3 (session-point (nth-value 1 (run-keys (format nil "M-x ~a RET f o o RET" (key-string "regex-search-forward-thorough"))
-                                                :text "foo bar"))))
+  (is = 3
+      (session-point (nth-value 1
+                                (run-keys (format nil
+                                                  "M-x ~a RET f o o RET"
+                                                  (key-string "regex-search-forward-thorough"))
+                                          :text "foo bar"))))
   (false tuatara.syntax:*regex-thorough*))
 
 (define-test (incremental-search symbol-at-point)
@@ -489,13 +528,15 @@ of matches made in the background."
     (declare (ignore f))
     (is = 6 (session-point editor)))
   ;; C-r in a forward search goes to the match before, the search staying forward
-  (multiple-value-bind (f editor) (run-keys (list "C-s o C-s C-s C-r" #'wait-for-search-count :tick "C-g") :text "foo boo" :width 80)
+  (multiple-value-bind (f editor)
+      (run-keys (list "C-s o C-s C-s C-r" #'wait-for-search-count :tick "C-g") :text "foo boo" :width 80)
     (declare (ignore editor))
     (false (tuatara.frontend.fake:fake-frame-showing f "Regex search backward"))
     (true (tuatara.frontend.fake:fake-frame-showing f "2/4    Regex search forward: o")))
   ;; the place counted again in the background when the match is far from the one counted for
   (let ((tuatara.defaults::*search-count-near* 0))
-    (multiple-value-bind (f editor) (run-keys (list "C-s o C-s C-s C-r" #'wait-for-search-count :tick "C-g") :text "foo boo" :width 80)
+    (multiple-value-bind (f editor)
+        (run-keys (list "C-s o C-s C-s C-r" #'wait-for-search-count :tick "C-g") :text "foo boo" :width 80)
       (declare (ignore editor))
       (true (tuatara.frontend.fake:fake-frame-showing f "2/4    Regex search forward: o"))))
   ;; a text too large to count at each key: counted once typing pauses, its place kept empty till then
@@ -507,7 +548,8 @@ of matches made in the background."
       (false (tuatara.frontend.fake:fake-frame-showing f "/4    Regex search forward: o"))))
   (let ((tuatara.defaults::*count-at-once-seconds* 0) (tuatara.defaults::*count-at-once-least* 0)
         (tuatara.defaults::*typing-pause* 1/100))
-    (multiple-value-bind (f editor) (run-keys (list "C-s o" #'wait-for-search-count :tick "C-g") :text "foo boo" :width 80)
+    (multiple-value-bind (f editor)
+        (run-keys (list "C-s o" #'wait-for-search-count :tick "C-g") :text "foo boo" :width 80)
       (declare (ignore editor))
       (true (tuatara.frontend.fake:fake-frame-showing f "1/4    Regex search forward: o"))))
   ;; M-n goes forward again, past the newest to what was typed
@@ -675,7 +717,8 @@ of matches made in the background."
     (is string= "f0o b00 z00" (session-text editor))
     (true (tuatara.frontend.fake:fake-frame-showing f "Replaced 5 occurrences")))
   ;; asked at each, its count in thousands as every replacement says it
-  (multiple-value-bind (f editor) (run-keys "M-% a RET b RET !" :text (make-string 1500 :initial-element #\a) :width 100)
+  (multiple-value-bind (f editor)
+      (run-keys "M-% a RET b RET !" :text (make-string 1500 :initial-element #\a) :width 100)
     (declare (ignore editor))
     (true (tuatara.frontend.fake:fake-frame-showing f "Replaced 1,500 occurrences")))
   ;; q stops
@@ -757,7 +800,8 @@ of matches made in the background."
     (true (face-at-column-p (aref spans 0) 1 :search-current))
     (true (face-at-column-p (aref spans 0) 2 :cursor-inactive)))
   ;; query-replace asking at a match: the cursor after the question, the match lit as the current one, point after it
-  (multiple-value-bind (cursor screen spans) (cursor-at-question '("M-% o RET 0 RET" :look "q") :text "foo boo" :width 60)
+  (multiple-value-bind (cursor screen spans)
+      (cursor-at-question '("M-% o RET 0 RET" :look "q") :text "foo boo" :width 60)
     (let ((question (string-right-trim " " (aref screen 7))))
       (true (search "Query replacing o with 0" question))
       (is equal (cons 7 (length question)) cursor))
@@ -822,8 +866,10 @@ of matches made in the background."
     (is equal '(0 4) (subseq (match "a\\h+b" (format nil "a ~cb" (code-char #xA0))) 0 2))
     (is equal '(1 3) (subseq (match "\\R" (format nil "a~c~cb" #\Return #\Newline)) 0 2))
     ;; a named group is numbered as any other in a replacement
-    (is string= "2020/01" (session-text (nth-value 1 (run-keys (format nil "r r ~a RET" (key-string "%(?<y>\\d{4})-(?<m>\\d\\d)/\\1\\/\\2"))
-                                                               :text "2020-01")))))
+    (is string= "2020/01"
+        (session-text (nth-value 1
+                                 (run-keys (format nil "r r ~a RET" (key-string "%(?<y>\\d{4})-(?<m>\\d\\d)/\\1\\/\\2"))
+                                           :text "2020-01")))))
   ;; a slash inside \Q...\E is part of the pattern, as it is inside a set; the prompt reads the set as the engine does
   (is equal '("\\Qa/b\\E" "x") (tuatara.defaults::split-search-line "\\Qa/b\\E/x" t))
   (is equal '("[[:a]" "b:]") (tuatara.defaults::split-search-line "[[:a]/b:]" t))
@@ -843,13 +889,18 @@ of matches made in the background."
     (is equal '("Meeting") (found "\\p{Lu}eeting"))
     (is equal '() (found "\\p{Lu}EETING"))
     ;; other classes leave smart case as it was
-    (is equal '("MEETING") (cl-ppcre:all-matches-as-strings (tuatara.syntax:compile-regex "[[:alpha:]]eeting") "MEETING")))
+    (is equal '("MEETING")
+        (cl-ppcre:all-matches-as-strings (tuatara.syntax:compile-regex "[[:alpha:]]eeting") "MEETING")))
   (dolist (pattern '("[[:upper:]]" "[x[:lower:]]" "\\p{Ll}" "\\P{lt}" "\\p{Uppercase_Letter}"))
     (false (tuatara.syntax:regex-case-fold-p pattern) "~a" pattern))
   (dolist (pattern '("[[:alpha:]]" "\\p{LC}" "\\pL" "\\[:upper:\\]x"))
     (true (tuatara.syntax:regex-case-fold-p pattern) "~a" pattern))
   ;; the search goes to the first capital
-  (is = 7 (session-point (nth-value 1 (run-keys (format nil "C-s ~a RET" (key-string "[[:upper:]]")) :text "notes Meeting" :width 80)))))
+  (is = 7
+      (session-point (nth-value 1
+                                (run-keys (format nil "C-s ~a RET" (key-string "[[:upper:]]"))
+                                          :text "notes Meeting"
+                                          :width 80)))))
 
 (define-test (incremental-search possessive-quantifiers)
   ;; a++ a*+ a?+ a{n,m}+ take as much as they can and never give it back: (?>a+)
@@ -868,7 +919,8 @@ of matches made in the background."
     (true (match "[^\"]*+\"" "kiwi\""))
     (false (match "(?:ab)++ab" "ababab")))
   (is equal nil (nth-value 1 (tuatara.defaults::make-pattern-matcher "l++" :regex t)))
-  (is string= "invalid: nothing for * to repeat" (nth-value 1 (tuatara.defaults::make-pattern-matcher "a+**" :regex t))))
+  (is string= "invalid: nothing for * to repeat"
+      (nth-value 1 (tuatara.defaults::make-pattern-matcher "a+**" :regex t))))
 
 (define-test (incremental-search unusable-pattern-waits)
   ;; RET on a search, filter or replacement whose pattern cannot be used keeps the question open, saying why
@@ -937,9 +989,11 @@ than holding the run."
                               "M-x s t o p - j o b RET y RET"
                               (lambda ()
                                 (let ((start (get-internal-real-time)))
-                                  (loop repeat 100 while (find-if #'tuatara.runtime:job-running-p tuatara.runtime:*jobs*)
+                                  (loop repeat 100 while (find-if #'tuatara.runtime:job-running-p
+                                                                  tuatara.runtime:*jobs*)
                                         do (sleep 0.01))
-                                  (setf stopped-in (/ (- (get-internal-real-time) start) internal-time-units-per-second))))
+                                  (setf stopped-in
+                                        (/ (- (get-internal-real-time) start) internal-time-units-per-second))))
                               :tick)
                         :text text :width 120)
             (declare (ignore editor))
@@ -978,7 +1032,10 @@ than holding the run."
   ;; a literal search takes the symbol as it is, nothing escaped in it
   (is string= "%make/x" (tuatara.defaults::search-quote "%make/x" nil :whole t :parsed nil))
   (multiple-value-bind (f editor)
-      (run-keys (format nil "M-x ~a RET M-x ~a RET M-. C-s RET" (key-string "lisp-mode") (key-string "literal-search-forward"))
+      (run-keys (format nil
+                        "M-x ~a RET M-x ~a RET M-. C-s RET"
+                        (key-string "lisp-mode")
+                        (key-string "literal-search-forward"))
                 :text "%make/x (%make/x)")
     (declare (ignore f))
     (is = 16 (session-point editor))))
@@ -1018,7 +1075,8 @@ than holding the run."
   ;; every question taking a pattern names its kind one way, a thorough regex too, and
   ;; refuses one that cannot be used, saying why
   (let ((tuatara.syntax:*regex-thorough* t))
-    (true (tuatara.frontend.fake:fake-frame-showing (filtered-session (list "C-x / s a" :tick)) "Thorough regex filter: a")))
+    (true (tuatara.frontend.fake:fake-frame-showing (filtered-session (list "C-x / s a" :tick))
+                                                    "Thorough regex filter: a")))
   (true (tuatara.frontend.fake:fake-frame-showing (filtered-session (list "C-x / s M-r a" :tick)) "Literal filter: a"))
   (is string= "Regex keep lines [incomplete]: " (tuatara.defaults::pattern-prompt t "keep lines" "incomplete"))
   (is string= "Literal search files: " (tuatara.defaults::pattern-prompt nil "search files"))

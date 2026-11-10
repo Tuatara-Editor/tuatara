@@ -352,14 +352,14 @@ a full stop, with the blanks after it; NIL when LINE begins no item."
 
 (defun docstring-paragraphs (doc)
   "DOC, a docstring, cut into its parts in order, for its text to be filled
-and the rest kept as written, as (:BLANK) for a blank line; (:AS-IS LINE) for a
-line set in (a table, an example; under an item of a list, set in further
-than its words); (:FILLED HEAD INDENT WORDS LINES) for lines whose words are
-filled: HEAD what begins them (an item's - or * or number and full stop with
-the blanks after it, else \"\"), INDENT the columns the lines after the first
-are set in by, WORDS their words, a list, and LINES the lines they were
-written in. An item's lines go on until a blank line or the next item; any
-other lines run on into one paragraph."
+and the rest kept as written. The parts are (:BLANK) for a blank line,
+\(:AS-IS LINE) for a line set in (a table, an example; under an item of a list,
+set in further than its words), and (:FILLED HEAD INDENT WORDS LINES) for
+lines whose words are filled. HEAD is what begins them (an item's - or * or
+number and full stop with the blanks after it, else \"\"). INDENT is the
+columns the lines after the first are set in by. WORDS is their words, a list,
+and LINES the lines they were written in. An item's lines go on until a blank
+line or the next item. Any other lines run on into one paragraph."
   (let ((parts '()) (head nil) (indent 0) (words '()) (lines '()))
     (flet ((flush ()
              (when head
@@ -440,17 +440,18 @@ by this."
         (t (cluster-columns code before (code-columns code invisible) invisible))))
 
 (defun char-display (char column tab-width &optional invisible)
-  "How CHAR, at COLUMN, is shown, as three values: the text shown (CHAR
-itself when it is shown as itself, else a string), the columns it takes, and
-:RAW-BYTE or :INVISIBLE-CHARACTER when that text stands for a character that
-cannot be shown as itself, else NIL; text it gives is shared and must not be
-changed. A tab is shown as spaces
-up to the next of every TAB-WIDTH columns, a control character as ^X or \\xNN
-\(CONTROL-CHAR-DISPLAY), a raw byte as \\xNN, and with INVISIBLE a character
-that draws nothing as its code (INVISIBLE-CODE-DISPLAY); without it, one of
-the characters that set the direction text is drawn in is shown as itself,
-taking one column, its stand-in drawn as DISPLAYABLE makes it, and
-:INVISIBLE-CHARACTER as the third value, so that it is set apart."
+  "How CHAR, at COLUMN, is shown, as three values. They are the text shown
+\(CHAR itself when it is shown as itself, else a string), the columns it takes,
+and :RAW-BYTE or :INVISIBLE-CHARACTER when that text stands for a character
+that cannot be shown as itself, else NIL. Text it gives is shared and must not
+be changed.
+A tab is shown as spaces up to the next of every TAB-WIDTH columns. A control
+character is shown as ^X or \\xNN (CONTROL-CHAR-DISPLAY), a raw byte as \\xNN.
+With INVISIBLE a character that draws nothing is shown as its code
+\(INVISIBLE-CODE-DISPLAY). Without it, one of the characters that set the
+direction text is drawn in is shown as itself, taking one column, its stand-in
+drawn as DISPLAYABLE makes it, and :INVISIBLE-CHARACTER as the third value, so
+that it is set apart."
   (let ((code (char-code char)))
     (cond ((char= char #\Tab)
            (let ((n (- (next-tab-stop column tab-width) column)))
@@ -468,13 +469,14 @@ taking one column, its stand-in drawn as DISPLAYABLE makes it, and
           (t (values char (char-columns char) nil)))))
 
 (defun displayable (string &key (controls t))
-  "STRING as it can be drawn or sent on, keeping its length: a lone surrogate
-\(a raw byte's character, which has no UTF-8) as U+FFFD; with CONTROLS, a tab
-as a space, any other control character (codes 0 to 31, 127 to 159) and any
-character that changes the direction text is drawn in (`*direction-controls*')
-as ?, and the character of a picture's cell (U+10EEEE) as U+FFFD, so that none
-moves a terminal's cursor, draws as nothing, reorders the text around it or
-draws a piece of a picture. STRING itself when nothing needs it."
+  "STRING as it can be drawn or sent on, keeping its length. A lone surrogate
+\(a raw byte's character, which has no UTF-8) becomes U+FFFD. With CONTROLS, a
+tab becomes a space. Any other control character (codes 0 to 31, 127 to 159)
+and any character that changes the direction text is drawn in
+\(`*direction-controls*') becomes ?. The character of a picture's cell
+\(U+10EEEE) becomes U+FFFD. So none moves a terminal's cursor, draws as
+nothing, reorders the text around it or draws a piece of a picture. Returns
+STRING itself when nothing needs it."
   (flet ((unsafe (c)
            (let ((code (char-code c)))
              (or (<= #xD800 code #xDFFF)

@@ -13,8 +13,10 @@ character of its code, as ASCII and ISO 8859-1 read it."
 unless BIG-ENDIAN or a byte-order mark says otherwise; the mark, a null (NUL)
 at its end and what follows left out."
   (let* ((end (- end (mod (- end start) 2)))
-         (big (cond ((and (< (1+ start) end) (= (aref octets start) #xFE) (= (aref octets (1+ start)) #xFF)) (incf start 2) t)
-                    ((and (< (1+ start) end) (= (aref octets start) #xFF) (= (aref octets (1+ start)) #xFE)) (incf start 2) nil)
+         (big (cond ((and (< (1+ start) end) (= (aref octets start) #xFE) (= (aref octets (1+ start)) #xFF))
+                     (incf start 2) t)
+                    ((and (< (1+ start) end) (= (aref octets start) #xFF) (= (aref octets (1+ start)) #xFE))
+                     (incf start 2) nil)
                     (t big-endian)))
          (text (or (tuatara.runtime:ignoring-errors-reported ("reading ~d octets as UTF-16" (- end start))
                      (sb-ext:octets-to-string (coerce octets '(simple-array (unsigned-byte 8) (*)))
@@ -225,7 +227,9 @@ over *NUMBER-WIDTH-MOST*."
                                        (> (parse-integer control :start j :end width-end) *number-width-most*)))
                               (error "Format string: a width of more than ~:d is not taken" *number-width-most*))
                              ((and (< width-end n) (find (char control width-end) "ds"))
-                              (push (list (if (> width-end j) (parse-integer control :start j :end width-end) 0) left zeros)
+                              (push (list (if (> width-end j)
+                                              (parse-integer control :start j :end width-end)
+                                              0) left zeros)
                                     parts)
                               (setf i (1+ width-end)))
                              (t (error "Format string: ~a is not understood; %d stands for the number"
@@ -243,7 +247,8 @@ over *NUMBER-WIDTH-MOST*."
                         (zeros (when (minusp number) (write-char #\- out) (setf digits (subseq digits 1)))
                                (write-string (make-string pad :initial-element #\0) out)
                                (write-string digits out))
-                        (t (write-string (make-string pad :initial-element #\Space) out) (write-string digits out)))))))))))
+                        (t (write-string (make-string pad :initial-element #\Space) out)
+                           (write-string digits out)))))))))))
 
 (defun natural-string-lessp (a b)
   "True when the string A comes before B in the order people sort names in:

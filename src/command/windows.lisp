@@ -95,7 +95,8 @@ window; signals an error when there is not enough room."
            (version (tuatara.buffer:buffer-version buffer)))
       (tuatara.display:split-area area side new size)
       (setf (tuatara.display:window-point-anchor new)
-            (tuatara.text:make-anchor version (if like (tuatara.display:window-point like) (tuatara.buffer:buffer-point buffer))
+            (tuatara.text:make-anchor version
+                                      (if like (tuatara.display:window-point like) (tuatara.buffer:buffer-point buffer))
                                       :bias :after))
       (when like
         (setf (tuatara.display:window-start new) (tuatara.display:window-start like)
@@ -180,9 +181,10 @@ cell is before the text."
 
 (defun window-cell-position (window column row)
   "The position of WINDOW's buffer shown at screen cell COLUMN, ROW, as its last
-layout had it: the character there (in the hex view, the octet), the end of
-the line when the cell is past its text, the last character of a row a long
-line goes on from, the end of what the window shows when the cell is below it."
+layout had it. It is the character there (in the hex view, the octet), the end
+of the line when the cell is past its text, the last character of a row a long
+line goes on from, or the end of what the window shows when the cell is below
+it."
   (let* ((rows (tuatara.display:window-rows window))
          (r (max 0 (nth-value 1 (window-text-cell window column row))))
          (c (max 0 (nth-value 0 (window-text-cell window column row))))
@@ -239,7 +241,7 @@ to split it into two side by side.")
 
 (defun place-buffers (which place &key size keep select)
   "Show the buffers WHICH names in PLACE when a command shows one of them in
-another window, as help and *Messages* are shown. One call is one rule; a rule
+another window, as help and *Messages* are shown. One call is one rule. A rule
 for the same WHICH replaces the one before, and of the rules that fit a
 buffer, the one made last counts.
 
@@ -247,21 +249,20 @@ WHICH is a buffer's name (\"*Messages*\"), a kind of buffer (:help for help,
 :messages for *Messages*), a major mode ('help-mode, the modes made from it
 too), or a list of those.
 
-PLACE is :here (the selected window), :other (a window already showing the
-buffer, else a new one split off a big window: beside it when it has
-*SPLIT-WIDTH-THRESHOLD* columns, below it when it has *SPLIT-HEIGHT-THRESHOLD*
-rows, below a lone window; else the window used least lately), :below or
-:beside (a new window below or right of the selected one), :bottom, :top,
-:left or :right (a new window across the whole bottom or top, or down the
-whole left or right side),
-:right-or-alone (down the whole right side when the screen has
-*SPLIT-WIDTH-THRESHOLD* columns, else the only window on it, the others
-closed; their buffers stay), or :nowhere (not shown at all).
+PLACE is one of these. :here is the selected window. :other is a window
+already showing the buffer, else a new one split off a big window: beside it
+when it has *SPLIT-WIDTH-THRESHOLD* columns, below it when it has
+*SPLIT-HEIGHT-THRESHOLD* rows, below a lone window; else the window used least
+lately. :below or :beside is a new window below or right of the selected one.
+:bottom, :top, :left or :right is a new window across the whole bottom or top,
+or down the whole left or right side. :right-or-alone is down the whole right
+side when the screen has *SPLIT-WIDTH-THRESHOLD* columns, else the only window
+on it, the others closed; their buffers stay. :nowhere is not shown at all.
 
 SIZE is how big a new window is: a fraction of the screen's height, or width
-for :beside, :left and :right (0.3), a number of rows of text or of columns (12), or
-:fit, as many rows as the buffer has lines, up to half the screen. Half of
-what is split when not given.
+for :beside, :left and :right (0.3), a number of rows of text or of columns
+\(12), or :fit, as many rows as the buffer has lines, up to half the screen.
+Half of what is split when not given.
 
 KEEP true keeps the window for these buffers: the next of them is shown there,
 no other buffer is, and quitting it (q) closes it. SELECT true moves the focus
@@ -405,8 +406,10 @@ has *SPLIT-WIDTH-THRESHOLD* columns, below a lone window when it has room.
 NIL when no window may be split."
   (let* ((windows (remove-if #'tuatara.display:window-kept (editor-windows)))
          (largest (and windows (reduce (lambda (a b) (if (> (window-area-size b) (window-area-size a)) b a)) windows)))
-         (least (and windows (reduce (lambda (a b) (if (< (tuatara.display:window-use-time b) (tuatara.display:window-use-time a)) b a))
-                                     windows))))
+         (least (and windows
+                     (reduce (lambda (a b)
+                               (if (< (tuatara.display:window-use-time b) (tuatara.display:window-use-time a)) b a))
+                             windows))))
     (dolist (window (remove-duplicates (remove nil (list largest least))))
       (let ((height (tuatara.display:area-height window))
             (width (tuatara.display:area-width window))
@@ -492,10 +495,12 @@ been killed is not shown: that is an error."
                          (when (and rule (buffer-place-keep rule))
                            (setf (tuatara.display:window-kept new) rule))
                          new))
-                     (let ((spare (remove-if (lambda (w) (or (eq w selected) (tuatara.display:window-kept w))) windows)))
+                     (let ((spare (remove-if (lambda (w)
+                                               (or (eq w selected) (tuatara.display:window-kept w))) windows)))
                        (and spare
                             (show-in-window (reduce (lambda (a b)
-                                                      (if (< (tuatara.display:window-use-time b) (tuatara.display:window-use-time a)) b a))
+                                                      (if (< (tuatara.display:window-use-time b)
+                                                             (tuatara.display:window-use-time a)) b a))
                                                     spare)
                                             buffer rule)))
                      (progn (setf (tuatara.display:window-kept selected) nil)
@@ -511,12 +516,12 @@ been killed is not shown: that is an error."
       window)))
 
 (defun display-buffer-at (buffer place &key size)
-  "Show BUFFER in PLACE whatever the rules of PLACE-BUFFERS say: :here, the
-selected window; :bottom, :top, :left or :right, a new window across the
+  "Show BUFFER in PLACE whatever the rules of PLACE-BUFFERS say. :here is the
+selected window. :bottom, :top, :left or :right is a new window across the
 whole bottom or top, or down the whole left or right side, SIZE big as those
-rules take it (half of what is split when not given), which quitting closes;
-shown already in a window, that one. Returns the window, or NIL when there
-is no room for a new one."
+rules take it (half of what is split when not given), which quitting closes.
+A buffer shown already in a window stays in that one. Returns the window, or
+NIL when there is no room for a new one."
   (unless (live-buffer-p buffer)
     (refuse "~a has been killed" (tuatara.buffer:buffer-name buffer)))
   (unless (member place '(:here :bottom :top :left :right))

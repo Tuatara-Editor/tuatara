@@ -1,0 +1,533 @@
+#+title: Large files and work in the background
+#+language: en
+
+* Large files and work in the background
+
+Opening a file of many gigabytes, and working on while Tuatara is busy.
+
+Most files are small. A letter is a few thousand characters, and even a long
+book is a few megabytes. Now and then you meet a file of another kind: a year
+of a shop's sales with a line for every till receipt, or the log a web server
+has written for months. Such a file can hold a hundred million lines and take
+more room than your computer has memory. Many editors refuse it, or make you
+wait a minute before the first line shows.
+
+Tuatara opens a file of any size at once and lets you work in it straight
+away. This chapter explains how it does that and what you see on the screen
+meanwhile. It then describes jobs, which is the name for work that takes a
+while and is done in the background, such as replacing a word in six million
+lines. You will learn how to see which jobs are running, how to stop one, and
+what the letter P at the front of the mode line means. The last parts are about
+saving a large file, about memory, and about a large file that lives on
+another machine.
+
+One rule holds through all of it. Tuatara never makes you wait. Whatever it is
+doing, the next key you press is answered at once.
+
+Every key in this chapter is pressed in NORMAL state unless it starts with
+~C-x~ or ~M-~, which work in both states. ~i~ starts INSERT state, and ~C-g~
+or ~ESC~ returns to NORMAL state.
+
+** Opening a very large file
+
+You open a large file as you open any other, with ~C-x C-f~ and its name. The
+first lines are on the screen at once, whether the file is 100 megabytes or
+100 gigabytes.
+
+The reason is that Tuatara does not read the file before showing it. A file
+of up to 64 megabytes is read whole into memory, which takes no time you
+would notice. A larger file stays on the disk, and Tuatara reads only the
+part your window shows, with a little before and after it so that paging
+down does not wait for the disk. The start and the end of the file are kept
+ready too, so ~g g~ and ~g e~ (non-modal: ~M-<~, ~M->~) are instant. Figure 11.1
+shows the idea.
+
+#+caption: Figure 11.1. Only what you look at is read; the rest stays on disk.
+#+name: fig-large-file
+#+begin_example
+   sales.csv on the disk, 12 GB
+  ┌────────┬───────────────────────┬────────┬─────────────────┬────────┐
+  │ start  │      not read yet     │ window │   not read yet  │  end   │
+  │ ready  │                       │ shown  │                 │ ready  │
+  └────────┴───────────────────────┴────────┴─────────────────┴────────┘
+   ───────────────────►
+   the lines are counted from the start, in the background
+#+end_example
+
+You can type, move, search and save from the first moment. Nothing waits
+until the whole file has been looked at.
+
+*** The line number while the lines are counted
+
+To say which line the cursor is on, Tuatara has to know how many line ends
+come before it. In a small file that is known as the file opens. In a large
+file it would mean reading everything first, so Tuatara counts the lines in
+the background while you work.
+
+The mode line tells you about it. Where the line number normally stands, after
+the buffer's name, you may see =L…= with three dots instead of a number. To the
+right, after the mode's name, it says =Counting lines= and a percentage:
+
+#+begin_example
+ TUATARA[N] P [-] sales.csv  L… C0  CSV  Counting lines 40%
+#+end_example
+
+=L…= means "the count has not reached this line yet". It shows only for lines
+the count has not passed. Near the start of the file you see the real number
+straight away. If you jump to the end with ~g e~ (non-modal: ~M->~) just after
+opening, you see =L…= until the count gets there, and then the number takes its
+place, such as =L100,000,001=. When the count is done, =Counting lines= goes
+away.
+
+The column can show =C…= in the same way. That happens on a single line so
+long that measuring it would take time, such as a file of a gigabyte with no
+line ends in it at all.
+
+The count keeps up with you. If you type or delete lines while it runs, the
+number it ends with is right for the text as you left it.
+
+*** Going to a line
+
+~:~ and ~M-g g~ ask for a line number and take you there, as chapter 2
+explained. While the lines of a large file are still counted, a line the count
+has passed is found at once. For a line further in, the echo area shows how
+far the count has got until it reaches your line, and then you are there.
+~C-g~ gives up the wait and leaves the count running.
+
+*** Line numbers in the gutter
+
+If you show line numbers beside the text (chapter 1), they follow the same
+rule. The gutter shows a number for each line the count has reached.
+
+#+begin_try Try it, with a shop's sales
+A shop in Motueka keeps every sale as a line of a CSV file: the receipt's
+number, what was sold and how many. This makes a pretend file of six million
+sales, about 100 MB.
+1. In a terminal, type this on one line and press ~RET~:
+   =seq 1 6000000 | awk '{ print $1 ",kereru," $1 % 50 }' > ~/sales.csv=
+2. In Tuatara press ~C-x C-f~, type =~/sales.csv= and press ~RET~. The first
+   lines are there at once. The mode line says =Counting lines= and a
+   percentage. A fast computer may finish the count before you can look.
+3. Press ~g e~ (non-modal: ~M->~) straight away. The last line,
+   =6000000,kereru,0=, shows at once. If the count is still running, the mode
+   line says =L…=.
+4. Without waiting, press ~g g~ (non-modal: ~M-<~), then ~i~, type =note,= and
+   press ~C-g~. The word is typed at the start of the first line at once. Press
+   ~u~ to take it away.
+5. Watch the mode line for a few seconds. =Counting lines= goes. Press
+   ~g e~ again and the mode line shows the line number in full.
+#+end_try
+
+** Jobs: work in the background
+
+Some commands have a lot to do. Replacing a word in every line of
+=sales.csv= means changing six million lines. Sorting them means comparing
+each with many others. If Tuatara did such work while you watched, the screen
+would freeze until it was done.
+
+Instead, work of that size becomes a job. A job runs in the background. You
+give the command, and at once you can move, read, search and type again. When
+the job is done, its result is taken into the buffer and the echo area tells
+you, for example =Replaced 6,000,000 occurrences on 6,000,000 lines=.
+
+You do not choose whether a command runs as a job. Tuatara decides by how much
+there is to do. In a short letter a replacement is done before you lift your
+finger. In a large file the same keys start a job, and the echo area says so:
+
+#+begin_example
+Replacing in the buffer in the background; carry on (C-x J stops it)
+#+end_example
+
+*** What runs as a job
+
+These are the kinds of work that go to the background when they would take
+time:
+
+- counting the lines of a large file, described above
+- a replacement over a large text, and counting the matches of a search
+- sorting lines, and keeping or deleting the lines that match a pattern
+- a change at every row of a tall rectangle or at a great many cursors
+- a save that takes more than a moment
+- a count of words (~M-=~) and a checksum of a file (~M-x sha256-sum~)
+- copying, moving and deleting files from a folder listing (chapter 10)
+- reading a file from another machine
+
+Other chapters describe these commands. What they share is told here: each
+shows the sign P, each is listed with ~C-x j~, and each can be stopped.
+
+*** The sign P
+
+The mode line starts with a few signs that keep their place, described in
+chapter 1. The first one is P, for processing. It belongs to the buffer shown
+in that window. While a job runs in the buffer, or waits its turn there, P
+is bright. The rest of the time it is faint, so faint that you hardly see it.
+A glance at the front of the mode line tells you whether this buffer is still
+being worked on.
+
+P is lit too when another program is working for the buffer, such as a
+language server reading a project (chapter 13).
+
+The setting =*processing-indicator*= holds what is shown. You can put another
+character there, or =nil= to have no sign at all:
+
+#+begin_src lisp
+(setf *processing-indicator* "*")
+#+end_src
+
+*** What a job will change is painted
+
+While a job works through the buffer, the text it has still to change is
+shown in a colour of its own, the face =:job-queued=. As the job moves on, the
+painted part shrinks. If a second job waits behind the first, the text it will
+change is painted in another colour, =:job-waiting=. You can see at a glance
+which part of the file is finished and which is not.
+
+For a replacement, the lines in your window are changed first, the moment you
+press ~RET~. The rest of the file follows in the background. What you look at
+is never out of date.
+
+*** Jobs take turns
+
+A buffer runs one job at a time. If you give a second command while the first
+is still at work, the second waits, and the echo area says where it stands:
+
+#+begin_example
+Queued, first in line: Sorting the buffer (C-x j lists the jobs)
+#+end_example
+
+It starts by itself when the one before it ends. A job that works line by line
+also waits while the lines of a newly opened large file are counted. You do
+not have to do anything, and you can keep typing while jobs wait.
+
+Jobs in different buffers do not wait for each other. A sort in one file and
+a save of another run side by side.
+
+*** Typing while a job runs
+
+You may edit the buffer while a job works on it. What you type stays as you
+typed it. A replacement that reaches a line you changed meanwhile leaves your
+change alone and says so when it ends.
+
+A sort and a filter are different, because they move whole lines about and
+an edit in the middle would spoil the result. If you try to change text they
+are working on, Tuatara asks whether to stop the job. Answer =y= to stop it
+and make your change, or =n= to let it finish.
+
+*** Undo and jobs
+
+Each job is one step to undo, however much it changed. One ~u~ takes back a
+replacement of six million lines.
+
+The step stands at the place in the history where you gave the command, even
+if the job finished much later. Suppose you start a replacement, then start a
+second one that has to wait, then type a word. The first ~u~ takes back the
+word, the next the second replacement, the next the first. ~U~ brings them
+back in the same order. When a job's change comes back, the cursor stays
+where it is. You are not thrown to the last line the job touched.
+
+** The list of jobs
+
+~C-x j~ shows every job in a buffer called =*Jobs*=. Use it when P is lit and
+you wonder what is going on, when a job takes longer than you expected, or
+when you gave a command by mistake and want to drop it before its turn comes.
+
+#+caption: Figure 11.2. The list of jobs: one runs, one waits.
+#+name: fig-jobs
+#+begin_example
+  Buffer        State                    Job
+  ------        -----                    ---
+  sales.csv     Replacing 12%            Replacing kereru with kea in the buffer
+  sales.csv     waiting, first in line   Sorting the buffer
+  access.log    Saving 60%               Saving access.log
+#+end_example
+
+Each line is a job. The first column names the buffer it works in. The second
+says what it is doing and how far it has got, or that it waits and where it
+stands in the line. The third says in words what the job is. Jobs are listed
+buffer by buffer, the running one first and those waiting below it in the
+order they will run. The list keeps itself up to date while it is on the
+screen.
+
+The list works like the buffer list of chapter 7. ~d~ marks the job on the
+cursor's line with a =D=, and ~x~ carries it out after asking: a job that
+waits is dropped, and one that runs is stopped. ~m~ marks a job and ~u~ takes
+the mark off. ~D~ drops or stops the marked jobs, or the one on the line if
+none is marked. ~q~ closes the list.
+
+#+table: commands list-jobs list-mark-for-deletion list-execute list-mark-entry list-unmark-entry list-delete-marked
+
+*** Stopping a job
+
+~C-x J~, with a capital J, stops the job running in the buffer you are in.
+It asks first, so a slip of the finger costs nothing. The buffer is left as
+it is, and a file that was being saved is left as it was before the save. If
+other jobs wait behind the one you stopped, they start one after another. To
+get rid of those as well, drop them in the list.
+
+If nothing is running, ~C-x J~ says =Nothing is running in this buffer=.
+
+One kind of save is always finished before it stops: a file being written in
+place, described below. Stopping it half-way would leave the file spoiled.
+
+#+table: commands stop-job
+
+#+begin_try Try it, with the shop's sales again
+The shop finds that what it sold as kereru soft toys were kea all along.
+1. Open =~/sales.csv= from the first Try it and wait until =Counting lines=
+   has gone.
+2. Press ~r r~, type =%kereru/kea= and press ~RET~. The lines on the screen
+   say =kea= at once. The echo area says the rest goes on in the background,
+   and P lights up at the front of the mode line. A fast computer may end the
+   job within a second. Then make the file ten times longer, with 60000000 in
+   place of 6000000 in the command, and start again.
+3. Press ~C-x j~ straight away. The list shows the replacement and how far it
+   has got. Press ~q~.
+4. Press ~g e~ (non-modal: ~M->~), then ~g g~ (non-modal: ~M-<~). You move
+   freely while the job works.
+5. When the echo area says how many it replaced, press ~u~. All six million
+   lines say =kereru= again.
+6. Press ~r r~, type =%kereru/kea= and ~RET~ once more, and this time press
+   ~C-x J~ and answer =y=. The job stops.
+7. Press ~C-x k~ and answer that the changes may go. Nothing was saved, so
+   the file on disk is as you made it.
+#+end_try
+
+#+table: settings *processing-indicator*
+
+#+table: faces :mode-line-sign :mode-line-sign-idle :job-queued :job-waiting
+
+** Searching a large file
+
+~C-s~ searches a large file the way it searches a small one (chapter 6). You
+type, and the first match after the cursor is shown as you type. Matches in
+the window are found at once, because that text is already read.
+
+Two things differ, and both keep your typing quick.
+
+The first is the count of matches beside the prompt. Counting every match in a
+file of gigabytes takes a while, and doing it again for each letter you type
+would be wasted work. So in a large text the count starts only when you stop
+typing for a moment, half a second as standard, and it runs in the
+background. The setting =*typing-pause*= holds how long that moment is. Until
+the count is done you can already press ~RET~ or go on to the next match.
+
+The second is a match that lies far away, in a part of the file that has not
+been read. The search then reads the file through, a piece at a time, in the
+background. You can keep typing the pattern or give the search up with
+~C-g~ while it looks.
+
+Commands that work on the lines a pattern finds run as jobs in a large file.
+~M-x keep-lines~ keeps only the lines that match and ~M-x flush-lines~ deletes
+them, both within the selection, so select the whole buffer first with
+~C-x h~.
+
+#+begin_try Try it, with a huge log file
+A web server in Timaru writes a line to its log for each page it serves. Most
+lines are fine. You want only the ones that say =error=.
+1. In a terminal, make a pretend log of six million lines. Type this on one
+   line and press ~RET~:
+   =seq 1 6000000 | awk '{print $1, ($1 % 50000 ? "ok" : "error")}' > ~/access.log=
+2. Open =~/access.log= with ~C-x C-f~. Press ~C-s~ and type =error=. The first
+   match is far down the file. The search looks for it in the background and
+   shows it when found. Stop typing, and the count of matches appears beside
+   the prompt a moment later. Press ~RET~.
+3. Press ~C-x h~ to select everything, then ~M-x~, type =keep-lines= and
+   ~RET~. A log has columns, so the prompt asks =Filter by the column:=.
+   Press ~RET~ to take the whole record, type =error= and ~RET~. P lights up
+   while the job works.
+4. When it is done, the buffer holds 120 lines, each ending in =error=.
+5. Press ~u~. All six million lines are back.
+6. Press ~C-x k~ and let the changes go.
+#+end_try
+
+** Saving a large file
+
+~C-x C-s~ saves a large file as it saves any other. Tuatara waits half a
+second for the save, so a quick one says =Wrote= at once. A save that takes
+longer goes on in the background. The mode line shows =Saving= and a
+percentage, P is lit, and you carry on working. A key you press during that
+first half second is answered at once too, and the save carries on behind it.
+If you leave Tuatara while a save is running, it waits for the save to end.
+
+How long a save takes depends on the kind of drive, because of how Tuatara
+keeps your file safe. A save does not write over the old file. It writes a new
+file beside it and, when that is complete, puts it in the old one's place. If
+the power fails in the middle, you have either the old file or the new one,
+whole. You never have a mix of both.
+
+On some file systems, btrfs and XFS among them, the new file can share with
+the old one every part that did not change. A save then takes only as long as
+your change, even in a file of 10 GB. Tuatara does not go by the kind of file
+system alone: the first time it writes on such a drive, it tries sharing with
+two new empty files, which leaves nothing behind, and keeps the answer until
+you quit. An older XFS made without reflink shares nothing, so there it saves
+as on ext4.
+
+On the others, ext4 among them, a new file means writing every part of it
+again. Changing one line of a 10 GB file then costs about a minute of writing.
+It happens in the background and you can go on working, but the disk is busy
+all that time.
+
+*** Saving in place
+
+If you often save very large files on such a drive, the setting
+=*save-in-place*= shortens the wait. Put this in your init file:
+
+#+begin_src lisp
+(setf *save-in-place* t)
+#+end_src
+
+Tuatara then writes only what changed, into the file itself, when that comes
+to less than about two thirds of the file. That is the case for a change that
+keeps the text the same length, and for any change in roughly the last third
+of the file. One changed line near the end of a 10 GB file is saved in a
+fraction of a second. A change near the start that makes the file longer or
+shorter moves everything after it, so it is still saved as a new file, which
+is the quicker way for it.
+
+There is a price, and it is the reason the setting is off as standard. Before
+it writes into the file, Tuatara notes the old contents of the parts it will
+overwrite in a small file beside yours, named =.NAME.tuatara-journal=, and
+removes it when the save is complete. If the computer loses power in the middle
+of the writing, your file is half saved until Tuatara opens it again. The next
+time you open, save or revert it, Tuatara puts the old contents back from the
+journal and tells you that a save was cut short. Another program that reads
+the file before then, a backup for one, may see it half saved.
+
+Leave the setting off if other programs read your large files, or if you do
+not mind the minute.
+
+#+table: settings *save-in-place*
+
+** Memory, and pauses you might notice
+
+You do not have to manage memory in Tuatara. This part tells you what to
+expect, so that nothing surprises you.
+
+*** A file larger than your memory
+
+A file of 11 GB opens on a laptop with 16 GB of memory, and so does one of
+100 GB. Because a large file is used where it lies on the disk, opening it
+takes almost no memory.
+
+Work that reads the whole file, such as counting its lines, a search, a
+replacement or a checksum, takes the file into memory a piece at a time and
+lets each piece go once it is well past it. Your other programs are not pushed
+aside while it runs. With a large file open and nothing to do, Tuatara uses no
+processor time at all.
+
+*** Auto-save and large buffers
+
+Tuatara keeps a copy of your unsaved changes so that a crash does not cost you
+your work (chapter 7). Each such copy is the whole buffer, so copying a huge
+one every few seconds would keep the disk busy for nothing. A buffer larger
+than =*auto-save-size-limit*=, 256 MB as standard, is not copied. In a file
+that size, save with ~C-x C-s~ when you have made changes you want to keep.
+
+*** Undo
+
+The undo history remembers every change so that ~u~ can take it back. A
+change to all of a large file is remembered in a compact way, but a long day
+of such changes adds up. As standard there is no limit. If memory runs
+short, =*undo-limit*= sets the most memory, in octets, that one buffer's
+history may hold.
+
+*** Collecting garbage
+
+As it works, Tuatara makes short-lived data: the text of a message, the result
+of a search. When that data is no longer needed it is garbage, and from time
+to time Tuatara stops for a moment to clear it away. The moment is short,
+usually too short to see.
+
+Tuatara chooses that moment with care. When you have pressed no key for a
+short while, 0.3 seconds as standard, it clears the garbage then, if enough
+has gathered. The pause falls while you are thinking and does not come between
+two keys. The setting =*idle-collection-seconds*= holds how long you must be
+still. There is rarely a reason to change it.
+
+#+table: settings *auto-save-size-limit* *undo-limit* *idle-collection-seconds* *typing-pause*
+
+** A large file on another machine
+
+Chapter 9 showed how to open a file on a server by writing =/ssh:= and the
+machine's name before its path. A small file comes across whole and then
+opens. A large one would keep you waiting for minutes on a slow line, so
+Tuatara treats it differently.
+
+A file on another machine that is larger than 64 MB opens as soon as its
+first part has come. The rest goes on arriving in the background, and you can
+read what is here while it does.
+
+#+begin_example
+C-x C-f /ssh:akaroa:/var/log/access.log RET
+#+end_example
+
+*** What you see while it arrives
+
+A part of the file that has not come yet is shown as a single row in square
+brackets, saying how much is on its way. When the part arrives, the row is
+replaced by the text.
+
+The transfer brings what your window looks at first. After that it brings the
+start and the end of the file, and then works forward from the start. If you
+jump to a place far ahead, that place comes next. You steer the transfer just
+by looking.
+
+While any of the file is missing:
+
+- P is lit, and ~C-x j~ lists the transfer with how far it has got.
+- The buffer is read-only. Trying to change it says that the file has not all
+  arrived.
+- The lines are not counted yet, so the mode line shows =L…=.
+- A search, a copy or a checksum that reaches a missing part stops and says
+  that part of the file has not arrived. Tuatara never puts made-up text in
+  the place of what is missing.
+
+When the last part has come, the echo area says =All of access.log has
+arrived=. From then on the file behaves like any other large file: its lines
+are counted, you can change it, and ~C-x C-s~ writes it back to the server.
+
+*** Stopping the transfer, or losing the connection
+
+~C-x J~ stops the transfer, after asking. What came stays on the screen and
+can be read. The mode line then says =incomplete=, and the missing parts are
+shown as not arrived. The same happens if the connection is lost. An
+incomplete buffer is never written back to the server, so a half file cannot
+replace a whole one. ~M-x revert-buffer~ fetches the file again from the
+start.
+
+Killing the buffer ends the transfer and deletes the copy on your computer.
+
+Each request to the server has =*remote-seconds*= to be answered, 30 as
+standard. A server that stays silent longer than that ends the transfer, and
+the echo area says why.
+
+#+begin_try Try it, with a log on a server
+You need a machine you can reach with ssh that holds a file larger than
+64 MB. Here it is called =akaroa= and the file is =/var/log/access.log=. Use
+your own names.
+1. Press ~C-x C-f~, type =/ssh:akaroa:/var/log/access.log= and press ~RET~.
+   The first lines show as soon as they have come. P is lit.
+2. Press ~g e~ (non-modal: ~M->~). The end of the file is there, since it was
+   fetched early.
+3. Press ~C-x j~. The list shows the transfer and its percentage. Press ~q~.
+4. Press ~i~ and type a letter. Tuatara refuses, because the file has not all
+   arrived. Press ~C-g~.
+5. Wait for the message that all of it has arrived, or press ~C-x J~ and
+   answer =y= to stop. After stopping, the mode line says =incomplete=.
+6. Press ~C-x k~. The copy on your computer is deleted with the buffer.
+#+end_try
+
+#+table: settings *remote-seconds*
+
+** In short
+
+| You want to                           | Do this                           |
+|---------------------------------------+-----------------------------------|
+| Open a file of any size               | ~C-x C-f~, as for any file        |
+| Know whether the buffer is busy       | Look for a bright P               |
+| See what is running, and how far      | ~C-x j~                           |
+| Stop the job in this buffer           | ~C-x J~                           |
+| Drop a job that waits                 | ~C-x j~, then ~d~ and ~x~         |
+| Take back a whole job                 | ~u~ (non-modal: ~C-/~)            |
+| Save one line of a huge file quickly  | =*save-in-place*=, on ext4        |

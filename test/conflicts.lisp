@@ -35,7 +35,9 @@ first conflict.")
                         for row-spans across spans
                         for at = (search text row)
                           thereis (and at (loop for (start end f) in row-spans
-                                                  thereis (and (<= start at) (< at end) (member face (if (listp f) f (list f)))))))))
+                                                  thereis (and (<= start at)
+                                                               (< at end)
+                                                               (member face (if (listp f) f (list f)))))))))
 
 (defun conflict-session (dir text steps &key (name "a.txt"))
   "Run STEPS (as AUTO-SAVE-SESSION takes them) once a file NAME holding TEXT
@@ -71,7 +73,8 @@ the frontend and the editor."
       (is equal (list (list (at again "<<<<<<< c") nil (at again "=======") (at again ">>>>>>>"))) (found again)))
     (let* ((pad (make-string (- 65536 3) :initial-element #\x))
            (astride (format nil "~a~%<<<<<<< a~%x~%=======~%y~%>>>>>>> b~%" pad)))
-      (is equal (list (list (at astride "<<<<<<<") nil (at astride "=======") (at astride ">>>>>>>"))) (found astride)))))
+      (is equal (list (list (at astride "<<<<<<<") nil (at astride "=======") (at astride ">>>>>>>")))
+        (found astride)))))
 
 (define-test (conflicts looked-through-without-garbage)
   ;; looking through a text makes no garbage for each line: one block on the stack, whatever its
@@ -154,7 +157,11 @@ the frontend and the editor."
   (with-test-directory (dir)
     (flet ((shown () (tuatara.buffer:find-buffer "*Conflict: a.txt*")))
       (conflict-session dir *two-conflicts* (list "M-< C-c ^ n C-c ^ ="
-                                                  (list :until (lambda () (and (shown) (search "---" (tuatara.buffer:buffer-string (shown))))))))
+                                                  (list :until
+                                                        (lambda ()
+                                                          (and (shown)
+                                                               (search "---"
+                                                                       (tuatara.buffer:buffer-string (shown))))))))
       (let ((text (tuatara.buffer:buffer-string (shown))))
         (tuatara.buffer:kill-buffer (shown))
         (true (search (format nil "--- HEAD~%+++ feature~%") text))
@@ -184,7 +191,8 @@ the frontend and the editor."
                                                                (setf at-conflict t))))
                                   "C-c ^ l" "C-x C-s" "C-x g" (list :until #'git-state-here)
                                   "M-< C-s b o t h SPC c h RET s"
-                                  (list :until (lambda () (null (tuatara.git::git-state-unmerged (git-state-here)))))))))
+                                  (list :until
+                                        (lambda () (null (tuatara.git::git-state-unmerged (git-state-here)))))))))
         (true (tuatara.frontend.fake:fake-frame-showing f "Unmerged files (1)"))
         (true (tuatara.frontend.fake:fake-frame-showing f "both changed" "a.txt"))
         (true at-conflict)
@@ -329,14 +337,19 @@ the frontend and the editor."
       (tuatara.command:define-key own "C-c z" 'tuatara.defaults::end-of-buffer)
       (conflict-session dir *two-conflicts*
                         (list (list :until (lambda () (conflicts-of "a.txt")))
-                              (lambda () (setf (tuatara.buffer:buffer-local (tuatara.buffer:find-buffer "a.txt") :override-keymap) own))
+                              (lambda ()
+                                (setf (tuatara.buffer:buffer-local (tuatara.buffer:find-buffer "a.txt")
+                                                                   :override-keymap) own))
                               "M-<" "C-c z"
-                              (list :until (lambda () (setf ends (= (tuatara.buffer:buffer-point (tuatara.buffer:find-buffer "a.txt"))
-                                                                    (tuatara.buffer:buffer-size (tuatara.buffer:find-buffer "a.txt"))))))
+                              (list :until
+                                    (lambda ()
+                                      (setf ends (= (tuatara.buffer:buffer-point (tuatara.buffer:find-buffer "a.txt"))
+                                                    (tuatara.buffer:buffer-size (tuatara.buffer:find-buffer "a.txt"))))))
                               "M-< C-c ^ n C-c ^ u" "C-c ^ u"
                               (list :until (lambda () (not (conflicts-of "a.txt"))))))
       (true ends)
-      (is string= (format nil "top~%ours one~%middle~%ours two~%end~%") (tuatara.buffer:buffer-string (tuatara.buffer:find-buffer "a.txt")))
+      (is string= (format nil "top~%ours one~%middle~%ours two~%end~%")
+          (tuatara.buffer:buffer-string (tuatara.buffer:find-buffer "a.txt")))
       (is eq own (tuatara.buffer:buffer-local (tuatara.buffer:find-buffer "a.txt") :override-keymap)))))
 
 (define-test (conflicts at-the-end-of-the-text)
@@ -357,7 +370,11 @@ the frontend and the editor."
   (with-test-directory (dir)
     (flet ((shown () (tuatara.buffer:find-buffer "*Conflict: a.txt*")))
       (conflict-session dir *two-conflicts* (list "M-< C-c ^ n C-c ^ ="
-                                                  (list :until (lambda () (and (shown) (search "---" (tuatara.buffer:buffer-string (shown))))))))
+                                                  (list :until
+                                                        (lambda ()
+                                                          (and (shown)
+                                                               (search "---"
+                                                                       (tuatara.buffer:buffer-string (shown))))))))
       (let ((shown (shown)))
         (unwind-protect
              (progn

@@ -256,12 +256,15 @@ Wednesday, 18:00, until Mon 21 Dec 2026."
                        (format nil "~a~@[, only on ~a~]" (every-of "day" "days")
                                (cond ((null days) nil)
                                      ((equal days '(1 2 3 4 5)) "weekdays")
-                                     (t (format nil "~{~a~#[~; and ~:;, ~]~}" (mapcar (lambda (d) (aref *weekday-names* d)) days)))))))
+                                     (t (format nil
+                                                "~{~a~#[~; and ~:;, ~]~}"
+                                                (mapcar (lambda (d) (aref *weekday-names* d)) days)))))))
                     ((string= kind "weekdays") "Every weekday, Monday to Friday")
                     ((string= kind "weekly")
                      (let ((names (mapcar (lambda (d) (aref *weekday-names* d)) (repeat-weekdays arguments start))))
                        (format nil "~a on ~{~a~#[~; and ~:;, ~]~}" (every-of "week" "weeks") names)))
-                    ((string= kind "monthly-day") (format nil "~a on day ~d" (every-of "month" "months") (nth-value 2 (day-date start))))
+                    ((string= kind "monthly-day")
+                     (format nil "~a on day ~d" (every-of "month" "months") (nth-value 2 (day-date start))))
                     ((string= kind "monthly-nth")
                      (format nil "~a on the ~a ~a" (every-of "month" "months")
                              (nth (1- (repeat-nth start)) *ordinal-words*) weekday))
@@ -299,7 +302,8 @@ or a daily repeat, every how many for one that comes daily, weekly, monthly or y
   (let* ((argument (menu-entry-argument entry))
          (arguments (menu-arguments))
          (kind (repeat-kind arguments)))
-    (cond ((member argument *repeat-weekday-arguments* :test #'string=) (member kind '("weekly" "daily") :test #'string=))
+    (cond ((member argument *repeat-weekday-arguments* :test #'string=)
+           (member kind '("weekly" "daily") :test #'string=))
           ((equal argument "every=") (not (member kind '("none" "weekdays") :test #'string=)))
           (t t))))
 

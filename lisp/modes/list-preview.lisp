@@ -14,27 +14,27 @@
 
 (defstruct (side-preview (:constructor make-side-preview (list-window &optional (list-width 40))) (:copier nil))
   "What a list shows of the entry on its current line in a window beside it
-(rimu's preview, the package manager's README): LIST-WINDOW, the window
-showing the list; LIST-WIDTH, the columns the list needs to show whole;
-WINDOW, the one beside it, showing BUFFER; OWN, true when BUFFER was made for
-the preview and goes with it; SHOWN, what is shown or being made ready."
+(rimu's preview, the package manager's README). LIST-WINDOW is the window
+showing the list. LIST-WIDTH is the columns the list needs to show whole.
+WINDOW is the one beside it, showing BUFFER. OWN is true when BUFFER was made
+for the preview and goes with it. SHOWN is what is shown or being made ready."
   list-window (list-width 40) window buffer own shown)
 
 (setf (documentation 'side-preview-p 'function) "True when OBJECT is a SIDE-PREVIEW.")
 
 (defun side-preview-follow (editor place &key list-p make close held follow inside)
   "After each command, have the preview held in the variable PLACE (a
-SIDE-PREVIEW, or NIL for none) follow the list in EDITOR's selected window:
-LIST-P, a function of a buffer, is true of a list with a preview; MAKE, a
-function of the window showing it, makes its preview, kept in PLACE; FOLLOW,
-a function of the preview and the list, has it follow the list's current
-line; CLOSE, a function of no arguments, takes the preview away, PLACE NIL
-after. The preview is taken away when its list's window is gone, made again
-for a list in another window, left alone while the cursor is in it (INSIDE,
-a function of the preview, called then when given) and taken away when the
-cursor is anywhere else. HELD, when given, a function of the preview called
-first, may take it away or end what keeps it, and is true while the preview
-is to stay as it is this time."
+SIDE-PREVIEW, or NIL for none) follow the list in EDITOR's selected window.
+LIST-P, a function of a buffer, is true of a list with a preview. MAKE, a
+function of the window showing it, makes its preview, kept in PLACE. FOLLOW, a
+function of the preview and the list, has it follow the list's current line.
+CLOSE, a function of no arguments, takes the preview away, PLACE NIL after.
+The preview is taken away when its list's window is gone, and made again for a
+list in another window. It is left alone while the cursor is in it (INSIDE, a
+function of the preview, called then when given), and taken away when the
+cursor is anywhere else. HELD, when given, is a function of the preview called
+first. It may take the preview away or end what keeps it, and is true while
+the preview is to stay as it is this time."
   (let ((state (symbol-value place)))
     (when (and state (not (member (side-preview-list-window state) (editor-windows editor))))
       (funcall close)

@@ -88,7 +88,9 @@ begin (*LAYOUT-PROBE*), never put in place of the window's own."
                      (to (min end (org-view-to view))))
                  (if (org-view-current view)
                      (multiple-value-bind (pieces view-calls)
-                         (org-hidden-chars (org-view-tree view) (org-view-char buffer view from) (org-view-char buffer view to))
+                         (org-hidden-chars (org-view-tree view)
+                                           (org-view-char buffer view from)
+                                           (org-view-char buffer view to))
                        (flet ((octet-of (char) (org-view-byte buffer view char)))
                          (setf ranges (nconc ranges (loop for (s . e) in pieces
                                                           collect (if (consp e)
@@ -212,8 +214,9 @@ table of contents leads to (TOC-ORG-INSERT-TOC). True when found."
                 thereis (ecase kind
                           (:title (org-headline-titled tree value))
                           (:custom-id (org-headline-with-property tree "CUSTOM_ID" value))
-                          (:target (org-find-in-tree tree (lambda (n) (and (member (org-node-type n) '(target radio-target))
-                                                                                (equal (org-property n :value) value)))))
+                          (:target (org-find-in-tree tree
+                                                     (lambda (n) (and (member (org-node-type n) '(target radio-target))
+                                                                      (equal (org-property n :value) value)))))
                           (:name (org-find-in-tree tree (lambda (n) (equal (org-property n :name) value)))))))
          ;; a link of the table of contents (#a-github-anchor, or a title as it lists it)
          (listed (and (null node) (toc-target-position (org-parse-text parse) target))))
@@ -226,12 +229,12 @@ as (GATHERING WHAT FOUND), or NIL.")
 
 (defun org-search-notes (what wanted found)
   "Look through your notes, the files in *FORMATTED-FILE-DIRECTORY* and under
-it, for the first whose path WANTED is true of (a function called away from
-the editor's thread), and call FOUND with that path on the editor's thread
-once it is found; WHAT names what is looked for, in the words said meanwhile
-and when none has it (No match for WHAT). The files are those kept read when
-the directory is one of *INDEXED-DIRECTORIES*, else found in the background;
-a search under way before stops."
+it, for the first whose path WANTED is true of (a function called away from the
+editor's thread), and call FOUND with that path on the editor's thread once it
+is found. WHAT names what is looked for, in the words said meanwhile and when
+none has it (No match for WHAT). The files are those kept read when the
+directory is one of *INDEXED-DIRECTORIES*, else found in the background; a
+search under way before stops."
   (let ((root (directory-name *formatted-file-directory*)))
     (multiple-value-bind (files indexed) (indexed-files root)
       (when *org-notes-search* (stop-gathering (first *org-notes-search*)))
@@ -287,7 +290,9 @@ or looked for."
   (let ((here (org-headline-with-property (org-parse-tree parse) "ID" id)))
     (if here
         (progn (org-goto-char parse (org-node-begin here)) t)
-        (let ((scanner (cl-ppcre:create-scanner (format nil "(?im)^[ \\t]*:ID:[ \\t]+~a[ \\t]*$" (cl-ppcre:quote-meta-chars id))))
+        (let ((scanner (cl-ppcre:create-scanner (format nil
+                                                        "(?im)^[ \\t]*:ID:[ \\t]+~a[ \\t]*$"
+                                                        (cl-ppcre:quote-meta-chars id))))
               ;; the Org files open now, as their buffers have them
               (open (org-agenda-open-snapshot)))
           (org-search-notes (format nil "id:~a" id)
@@ -336,16 +341,16 @@ REGEX is no regular expression."
     (and scanner (remove-if-not (lambda (file) (cl-ppcre:scan scanner (car file))) files))))
 
 (defun read-formatted-files-query (words matching)
-  "Ask for a regular expression the names of your files with formatted names
-are to match, for what WORDS says is done with it, the prompt naming its kind
-first as a search's does (Regex match file names: ), the files MATCHING (a
-function of a regular expression and the files) gives listed as it is
-typed, the files found in the background meanwhile
-\(CALL-WITH-FORMATTED-FILES); \\<pattern>\\[search-toggle-regex] switches to literal
-text and back. \\<pattern-answer>\\[pattern-finish] takes what is typed, whichever file is
-selected, be it a regular expression or literal text with its
-special characters escaped; a regular expression that cannot be used says
-why in the prompt, waiting for it to be mended."
+  "Ask for a regular expression the names of your files with formatted names are
+to match, for what WORDS says is done with it, The prompt names its kind first
+as a search's does (Regex match file names: ). The files MATCHING (a function of
+a regular expression and the files) gives are listed as it is typed, the files
+found in the background meanwhile \(CALL-WITH-FORMATTED-FILES);
+\\<pattern>\\[search-toggle-regex] switches to literal text and back.
+\\<pattern-answer>\\[pattern-finish] takes what is typed, whichever file is
+selected, be it a regular expression or literal text with its special characters
+escaped; a regular expression that cannot be used says why in the prompt,
+waiting for it to be mended."
   (let ((typed "") (regex t) (refused nil))
     (call-with-formatted-files
      (lambda (listed source)
@@ -360,7 +365,8 @@ why in the prompt, waiting for it to be mended."
                           (lambda (input)
                             (setf typed input)
                             (mapcar #'third (funcall matching (pattern-regex input regex) (funcall listed))))
-                          :filter nil :select (lambda (candidates input) (declare (ignore candidates input)) :input) :reselect t
+                          :filter nil
+                          :select (lambda (candidates input) (declare (ignore candidates input)) :input) :reselect t
                           :source source :keymap *pattern-answer-keymap*
                           :none (format nil "none in ~a" (abbreviated-path (directory-name *formatted-file-directory*)))))))
     (keep-typed-pattern typed)
@@ -562,10 +568,11 @@ go to the row below, aligned; else a new line, as \\`RET' does in text."
   (pushnew 'markdown-follow-link-for-return *enter-dwim-functions*))
 
 (defun install-org-links (editor)
-  "Bind Org's keys for links: \\`C-c C-o' follows the one at point, \\`RET' too (when typing,
-else a new line); \\`RET' in NORMAL state follows one; keep EDITOR's point out of what a
-link shown as its label hides (but the braces of a call of redact or protect point is in, shown); and act on what the search of your notes for a
-link finds (ORG-NOTES-SEARCH-TICK)."
+  "Bind Org's keys for links: \\`C-c C-o' follows the one at point, \\`RET' too
+\(when typing, else a new line); \\`RET' in NORMAL state follows one. Keep
+EDITOR's point out of what a link shown as its label hides (but the braces of a
+call of redact or protect point is in, shown). And act on what the search of
+your notes for a link finds (ORG-NOTES-SEARCH-TICK)."
   (let ((keymap (mode-keymap 'org-mode)))
     (define-key keymap "C-c C-o" 'org-open-at-point)
     (define-key keymap "C-c C-x L" 'org-toggle-link-display)

@@ -80,14 +80,14 @@ asks (COMPILE-PACKAGE-CHILD), then exit with its code."
     (sb-ext:exit :code code :abort t)))
 
 (defun compiler-core ()
-  "Run from Tuatara's sources, the Steel Bank Common Lisp (SBCL) core a
-process compiling a package apart starts from, so that it starts at once:
-SBCL with Quicklisp and these sources loaded, saved once into the folder of
-compiled packages, which is this Tuatara's alone (PACKAGE-CACHE: another
-source tree, or the same one changed, has another), and made again only
-when it is not there. Made in a process of its own (save-lisp-and-die
-cannot run where threads do), under a name of its own and renamed into
-place whole. Its path, or NIL when it could not be made, why in *Messages*."
+  "Run from Tuatara's sources, the Steel Bank Common Lisp (SBCL) core a process
+compiling a package apart starts from, so that it starts at once. It is SBCL
+with Quicklisp and these sources loaded, saved once into the folder of compiled
+packages. That folder is this Tuatara's alone (PACKAGE-CACHE: another source
+tree, or the same one changed, has another). The core is made again only when it
+is not there. It is made in a process of its own (save-lisp-and-die cannot run
+where threads do), under a name of its own and renamed into place whole. Returns
+its path, or NIL when it could not be made, why in *Messages*."
   (let ((core (format nil "~acompiler-~36r.core" (package-cache)
                       (sxhash (uiop:native-namestring (asdf:system-source-directory :tuatara))))))
     (sb-thread:with-mutex (*compiler-core-lock*)
@@ -95,7 +95,10 @@ place whole. Its path, or NIL when it could not be made, why in *Messages*."
           (let ((temporary (format nil "~a.~d.~a.new" core (sb-posix:getpid) (tuatara.io:random-name))))
             (multiple-value-bind (said ok)
                 (tuatara.io:program-output
-                 (list (uiop:native-namestring sb-ext:*runtime-pathname*) "--non-interactive" "--no-sysinit" "--no-userinit"
+                 (list (uiop:native-namestring sb-ext:*runtime-pathname*)
+                       "--non-interactive"
+                       "--no-sysinit"
+                       "--no-userinit"
                        "--load" (uiop:native-namestring (asdf:system-relative-pathname :tuatara "tools/quicklisp.lisp"))
                        "--eval" (format nil "(progn (push ~s asdf:*central-registry*) (funcall (find-symbol \"QUICKLOAD\" \"QL\") :tuatara/defaults :silent t))"
                                         (uiop:native-namestring (asdf:system-source-directory :tuatara)))
@@ -155,7 +158,8 @@ is refused for names this Tuatara lacks only as it loads in the editor
          (let ((code (tuatara.io:call-with-program
                       command
                       (lambda (process)
-                        (loop for line = (tuatara.io:read-line-bounded (sb-ext:process-output process) *package-child-line-limit*)
+                        (loop for line = (tuatara.io:read-line-bounded (sb-ext:process-output process)
+                                                                       *package-child-line-limit*)
                               while line
                               do (incf read (length line))
                                  (cond ((> read *package-child-said-limit*))
@@ -173,7 +177,9 @@ is refused for names this Tuatara lacks only as it loads in the editor
            (tuatara.runtime:job-check-stop)
            (cond ((eql code 0) t)
                  (t (let ((words (format nil "The package ~a could not be compiled apart from the editor, and is compiled as it loads~@[: ~{~a~^ ~}~]"
-                                         name (reverse (mapcar (lambda (l) (string-trim " ;" l)) (remove "" said :test #'string=))))))
+                                         name
+                                         (reverse (mapcar (lambda (l) (string-trim " ;" l))
+                                                          (remove "" said :test #'string=))))))
                       ;; *Messages* is the editor's
                       (defer-action (lambda () (log-message words))))
                     nil)))
@@ -248,7 +254,8 @@ waits for it (WAIT-FOR-SWEEP)."
       (setf *package-failures* (acons name refusal (remove name *package-failures* :key #'car :test #'string=)))
       (message "~a" refusal)
       (return-from start-package-fetch nil)))
-  (when (wait-for-sweep (package-kept-folder where name) (lambda () (start-package-fetch name where version file key :quiet quiet)))
+  (when (wait-for-sweep (package-kept-folder where name)
+                        (lambda () (start-package-fetch name where version file key :quiet quiet)))
     (return-from start-package-fetch nil))
   (let ((plain (and (plain-transport-p where) t))
         (floor (let ((had (fetched-package key))) (and had (fourth had) (git-hash-p (second had) :short t) (second had)))))
@@ -297,11 +304,11 @@ it could not be told."
 
 (defun kept-version-check-needed-p (where entry)
   "True when the version of the source WHERE that ENTRY of *FETCHED-PACKAGES*
-remembers is to be checked again before it loads at a start: who signed it,
-as git checked it when it was taken, is not known, or the trust in force
-now would not take it (PACKAGE-TRUST-VERDICT: the source trusted anew, its
-signer changed since, the init file's :signers naming others). Never while
-*PACKAGE-CHECK-SIGNATURES* is NIL."
+remembers is to be checked again before it loads at a start. That is so when who
+signed it, as git checked it when it was taken, is not known. It is also so when
+the trust in force now would not take it (PACKAGE-TRUST-VERDICT: the source
+trusted anew, its signer changed since, the init file's :signers naming others).
+It is never so while *PACKAGE-CHECK-SIGNATURES* is NIL."
   (let ((signer (seventh entry)))
     (and *package-check-signatures*
          (or (null signer)
@@ -361,7 +368,8 @@ before is kept to fall back on (LOAD-VERSION), older ones deleted
              (progn
                ;; a version taken before and refused now is asked about again, never loaded at a start unchecked
                (when (and had (fourth had) (string= (second had) commit))
-                 (state-list-put *fetched-packages* (list (list key commit tag nil (fifth had) (sixth had) (seventh had)))))
+                 (state-list-put *fetched-packages*
+                                 (list (list key commit tag nil (fifth had) (sixth had) (seventh had)))))
                (refuse-package-version name where words remember))
              (let* ((folder (package-folder-in (package-fetch-folder job) name))
                     (same (and had (string= (second had) commit)))
@@ -372,7 +380,8 @@ before is kept to fall back on (LOAD-VERSION), older ones deleted
                              (when remember
                                (state-list-put *package-trust* (list remember)))))
                     (load (lambda ()
-                            (state-list-put *fetched-packages* (list (list key commit tag t previous previous-tag signer)))
+                            (state-list-put *fetched-packages*
+                                            (list (list key commit tag t previous previous-tag signer)))
                             (load-version name where folder (package-fetch-file job)
                                           (cond ((and had (fourth had) (not same)) had)
                                                 (previous (list key previous previous-tag t)))
@@ -382,7 +391,10 @@ before is kept to fall back on (LOAD-VERSION), older ones deleted
                                               (funcall trust)
                                               (when (package-loaded-p name)
                                                 (message "The package ~a~@[ ~a~] is loaded~@[ (~a needs Tuatara ~a or later)~]"
-                                                         name (or tag (and passed (subseq commit 0 7))) (first passed) (second passed))))
+                                                         name
+                                                         (or tag (and passed (subseq commit 0 7)))
+                                                         (first passed)
+                                                         (second passed))))
                                             (prune-package-versions name where))))))
                (cond ((and had (fourth had) same (package-loaded-p name))
                       (funcall trust)

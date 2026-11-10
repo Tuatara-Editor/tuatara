@@ -16,7 +16,10 @@
                     (spliced (tuatara.text:splice-rope a i j b b)))
                (true (tuatara.text:check-rope spliced))
                (is equalp (concatenate '(vector (unsigned-byte 8))
-                                       (subseq (to-octets sa) 0 i) (to-octets sb) (to-octets sb) (subseq (to-octets sa) j))
+                                       (subseq (to-octets sa) 0 i)
+                                       (to-octets sb)
+                                       (to-octets sb)
+                                       (subseq (to-octets sa) j))
                    (tuatara.text:rope-octets spliced))))
     (is string= "" (tuatara.text:rope-string (tuatara.text:splice-rope a 0 (tuatara.text:rope-octet-length a))))))
 
@@ -118,14 +121,16 @@ checkpoints, so that a small text exercises all of the job's machinery."
   ;; what four times the matches cost more than the first, for each match added
   (flet ((replaced (lines)
            (let* ((text (with-output-to-string (o)
-                          (loop for i below lines do (format o "2026-10-01T12:34:56Z,1402606439,The quick brown fox ~d~%" i))))
+                          (loop for i below lines
+                                do (format o "2026-10-01T12:34:56Z,1402606439,The quick brown fox ~d~%" i))))
                   (consed nil))
              (let ((tuatara.defaults::*rewrite-threshold* 0))
                (multiple-value-bind (f editor)
                    (run-keys (list (lambda () (setf consed (sb-ext:get-bytes-consed)))
                                    (format nil "r r ~a RET" (key-string "%\\d/m"))
-                                   (lambda () (loop while (tuatara.runtime:jobs-of (tuatara.command:current-buffer) :running t)
-                                                    do (sleep 0.02)))
+                                   (lambda ()
+                                     (loop while (tuatara.runtime:jobs-of (tuatara.command:current-buffer) :running t)
+                                           do (sleep 0.02)))
                                    (lambda () (setf consed (- (sb-ext:get-bytes-consed) consed))))
                              :text text :width 120)
                  (declare (ignore f))
@@ -149,8 +154,9 @@ checkpoints, so that a small text exercises all of the job's machinery."
                (multiple-value-bind (f editor)
                    (run-keys (list (lambda () (setf consed (sb-ext:get-bytes-consed)))
                                    (format nil "r r ~a RET" (key-string "%x/h"))
-                                   (lambda () (loop while (tuatara.runtime:jobs-of (tuatara.command:current-buffer) :running t)
-                                                    do (sleep 0.02)))
+                                   (lambda ()
+                                     (loop while (tuatara.runtime:jobs-of (tuatara.command:current-buffer) :running t)
+                                           do (sleep 0.02)))
                                    (lambda () (setf consed (- (sb-ext:get-bytes-consed) consed))))
                              :text text :width 120)
                  (declare (ignore f))
@@ -222,7 +228,10 @@ FACE)) in a job's face, as (ROW START END FACE)."
     (unwind-protect
          (let* ((pieces (vector (tuatara.defaults::make-rewrite-piece 0 5) (tuatara.defaults::make-rewrite-piece 5 15)))
                 (job (tuatara.defaults::%make-rewrite :buffer b :base (tuatara.buffer:buffer-version b)
-                                                      :rope (tuatara.buffer:buffer-text b) :low 0 :high 15 :pieces pieces)))
+                                                      :rope (tuatara.buffer:buffer-text b)
+                                                      :low 0
+                                                      :high 15
+                                                      :pieces pieces)))
            (setf (tuatara.defaults::rewrite-piece-done (aref pieces 0)) 3
                  (tuatara.defaults::rewrite-piece-done (aref pieces 1)) 5)
            ;; all of it till the result is taken in, where the workers have been too: the text
@@ -308,7 +317,8 @@ FACE)) in a job's face, as (ROW START END FACE)."
   ;; redo of a job's change, what it changed in sight at once and the whole text swapped,
   ;; leaves point where it is, as the text moves it, not at the last place changed in sight;
   ;; redo of typing still puts point after what it types
-  (let ((b (tuatara.buffer:make-buffer "*redo-test*" :text (format nil "~{line ~d~%~}" (loop for i below 200 collect i)))))
+  (let ((b (tuatara.buffer:make-buffer "*redo-test*"
+                                       :text (format nil "~{line ~d~%~}" (loop for i below 200 collect i)))))
     (unwind-protect
          (let ((since (tuatara.buffer:buffer-undo-stack b)))
            (tuatara.buffer:buffer-insert b 900 "X")
@@ -413,7 +423,9 @@ FACE)) in a job's face, as (ROW START END FACE)."
                    :file path :width 100 :height 20)
       (kill-records b path))
     (true running "the job still runs")
-    (true (< spent internal-time-units-per-second) "the filter and its frames took ~,2f s" (/ spent internal-time-units-per-second))))
+    (true (< spent internal-time-units-per-second)
+          "the filter and its frames took ~,2f s"
+          (/ spent internal-time-units-per-second))))
 
 (define-test (rewrite while-editing)
   ;; keys typed while the job runs act at once; the job's result keeps them
@@ -428,13 +440,17 @@ FACE)) in a job's face, as (ROW START END FACE)."
         (true (tuatara.frontend.fake:fake-frame-showing f "1 kept as you edited them"))
         (is string= "fo b00" (session-text editor)))
       ;; stopping, after asking: nothing changes
-      (multiple-value-bind (f editor) (run-keys "r r % o / 0 RET M-x s t o p - j o b RET y RET" :text "foo boo" :width 100)
+      (multiple-value-bind (f editor) (run-keys "r r % o / 0 RET M-x s t o p - j o b RET y RET"
+                                                :text "foo boo"
+                                                :width 100)
         (true (tuatara.frontend.fake:fake-frame-showing f "Stop replacing at"))
         (true (tuatara.frontend.fake:fake-frame-showing f "Stopped: nothing replaced"))
         (is string= "foo boo" (session-text editor)))
       ;; killing the buffer asks first
       (multiple-value-bind (f editor) (run-keys "r r % o / 0 RET C-x k n RET" :text "foo boo" :width 120)
-        (true (tuatara.frontend.fake:fake-frame-showing f "In the background: *scratch*: Replacing" "stop it, then kill the buffer?"))
+        (true (tuatara.frontend.fake:fake-frame-showing f
+                                                        "In the background: *scratch*: Replacing"
+                                                        "stop it, then kill the buffer?"))
         (is string= "f00 b00" (session-text editor)))
       ;; so does leaving the editor; answering no, the job goes on and completes
       (multiple-value-bind (f editor) (run-keys "r r % o / 0 RET C-x C-c n RET" :text "foo boo" :width 120)
@@ -456,7 +472,10 @@ FACE)) in a job's face, as (ROW START END FACE)."
     ;; stopped: what was replaced in sight stays, and the message says so
     (let ((tuatara.defaults::*rewrite-piece-hook* (lambda () (sleep 0.2))))
       (with-background ()
-        (multiple-value-bind (f editor) (run-keys "r r % o / 0 RET M-x s t o p - j o b RET y RET" :text text :width 120 :height 10)
+        (multiple-value-bind (f editor) (run-keys "r r % o / 0 RET M-x s t o p - j o b RET y RET"
+                                                  :text text
+                                                  :width 120
+                                                  :height 10)
           (true (tuatara.frontend.fake:fake-frame-showing f "Stopped: " "replaced in sight, the rest left as it was"))
           (is string= "f00 0" (subseq (session-text editor) 0 5)))))
     ;; the first match on each line only: the lines in sight are left to the job no second time
@@ -478,7 +497,9 @@ FACE)) in a job's face, as (ROW START END FACE)."
         (tuatara.buffer:buffer-redo b)
         (is string= "f0000 b0000" (tuatara.buffer:buffer-string b))))
     ;; a search's count of matches, made in the background
-    (multiple-value-bind (f editor) (run-keys (list "C-s o" #'wait-for-search-count :tick "C-g") :text (format nil "foo~%boo~%x") :width 100)
+    (multiple-value-bind (f editor) (run-keys (list "C-s o" #'wait-for-search-count :tick "C-g")
+                                              :text (format nil "foo~%boo~%x")
+                                              :width 100)
       (declare (ignore editor))
       (true (tuatara.frontend.fake:fake-frame-showing f "1/4    Regex search forward: o")))))
 
@@ -511,7 +532,9 @@ FACE)) in a job's face, as (ROW START END FACE)."
 
 (define-test (rewrite split-typing-across-a-job)
   ;; typing at a split's places goes on when a job before it is taken in
-  (let ((tuatara.defaults::*rewrite-piece* 8) (tuatara.defaults::*rewrite-checkpoint* 2) (tuatara.defaults::*rewrite-threshold* 0)
+  (let ((tuatara.defaults::*rewrite-piece* 8)
+        (tuatara.defaults::*rewrite-checkpoint* 2)
+        (tuatara.defaults::*rewrite-threshold* 0)
         (tuatara.defaults::*rewrite-piece-hook* (lambda () (sleep 0.3))))
     (multiple-value-bind (f editor) (run-keys-in-turns '("r r % a / b b b RET l m v j j c Q" "W E C-g")
                                                        :text (format nil "aa x~%aa x~%aa x~%") :width 100)

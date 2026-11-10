@@ -68,7 +68,10 @@ Returns the frontend and the editor."
       ;; a safe visit: its octets
       (image-forget)
       (multiple-value-bind (f editor)
-          (run-keys (format nil "C-u C-x C-f C-a C-k ~a RET" (rimu-typed (namestring file))) :width 120 :height 20 :cell-pixels '(10 20))
+          (run-keys (format nil "C-u C-x C-f C-a C-k ~a RET" (rimu-typed (namestring file)))
+                    :width 120
+                    :height 20
+                    :cell-pixels '(10 20))
         (declare (ignore f))
         (let ((buffer (tuatara.display:window-buffer (tuatara.command:editor-window editor))))
           (false (tuatara.defaults::image-view-of buffer))
@@ -156,7 +159,9 @@ Returns the frontend and the editor."
       ;; a picture that cannot be drawn says so and shows its octets
       (let ((fake (merge-pathnames "fake.png" dir)))
         (alexandria:write-byte-vector-into-file
-         (concatenate '(vector (unsigned-byte 8)) #(#x89 80 78 71 13 10 26 10) (map 'vector #'char-code "garbage garbage garbage"))
+         (concatenate '(vector (unsigned-byte 8))
+                      #(#x89 80 78 71 13 10 26 10)
+                      (map 'vector #'char-code "garbage garbage garbage"))
          fake)
         (image-forget)
         (multiple-value-bind (f editor) (image-session fake nil :cell-pixels '(10 20))
@@ -233,7 +238,9 @@ TILE-WIDTH by TILE-HEIGHT, and nothing after them."
 LONG writes its size in the long form (size 1, then eight octets)."
   (if long
       (let ((size (+ 16 (length octets))))
-        (kind-octets (list 0 0 0 1) type (loop for i from 7 downto 0 collect (ldb (byte 8 (* 8 i)) size)) (coerce octets 'list)))
+        (kind-octets (list 0 0 0 1) type (loop for i from 7 downto 0 collect (ldb (byte 8
+                                                                                        (* 8 i)) size))
+                     (coerce octets 'list)))
       (let ((size (+ 8 (length octets))))
         (kind-octets (loop for i from 3 downto 0 collect (ldb (byte 8 (* 8 i)) size)) type (coerce octets 'list)))))
 
@@ -270,8 +277,10 @@ jxlp boxes, their sizes in the long form with LONG."
                                   for start = (* i step)
                                   collect (picture-box "jxlp" (concatenate '(vector (unsigned-byte 8))
                                                                            (vector (if (= i (1- parts)) #x80 0) 0 0 i)
-                                                                           (subseq codestream (min start (length codestream))
-                                                                                   (min (+ start step) (length codestream))))
+                                                                           (subseq codestream
+                                                                                   (min start (length codestream))
+                                                                                   (min (+ start step)
+                                                                                        (length codestream))))
                                                        :long long))))
                    (picture-box "jxlc" codestream))))
 
@@ -363,11 +372,14 @@ and a JP2 file with alpha at half."
         (dolist (case (list (list (concatenate '(vector (unsigned-byte 8)) (j2k-octets 100000 100000) garbage) :j2k)
                             (list (jp2-octets (concatenate '(vector (unsigned-byte 8)) (j2k-octets 100000 100000) garbage)) :jp2)
                             ;; its codestream past the first 64 KB, after a long box of XML
-                            (list (jp2-octets (concatenate '(vector (unsigned-byte 8)) (j2k-octets 100000 100000) garbage)
-                                              :before (picture-box "xml " (make-array 70000 :element-type '(unsigned-byte 8)
-                                                                                            :initial-element 32)))
+                            (list (jp2-octets (concatenate '(vector
+                                                             (unsigned-byte 8)) (j2k-octets 100000 100000) garbage)
+                                              :before (picture-box "xml "
+                                                                   (make-array 70000 :element-type '(unsigned-byte 8)
+                                                                                     :initial-element 32)))
                                   :jp2)
-                            (list (concatenate '(vector (unsigned-byte 8)) (jxl-octets 1000000000 1000000000) garbage) :jxl)
+                            (list (concatenate '(vector
+                                                 (unsigned-byte 8)) (jxl-octets 1000000000 1000000000) garbage) :jxl)
                             (list (jxl-boxed (concatenate '(vector (unsigned-byte 8)) (jxl-octets 200000 200000) garbage)) :jxl)))
           (true (cl-ppcre:scan "not shown: [0-9,.]+ megapixels would take .* more than \\*picture-memory\\* allows"
                                (refusal (first case) (second case)))
@@ -401,10 +413,13 @@ and a JP2 file with alpha at half."
           '((:name "stand-in"
              :program ("sh" "-c" "echo \"magick: no decode delegate for this image format \\`JP2' @ error/constitute.c/ReadImage/746.\" >&2; exit 1")))))
     (multiple-value-bind (image notes)
-        (tuatara:decode-picture (jp2-octets (concatenate '(vector (unsigned-byte 8)) (j2k-octets 64 48) (make-array 64 :element-type '(unsigned-byte 8))))
+        (tuatara:decode-picture (jp2-octets (concatenate '(vector (unsigned-byte 8))
+                                                         (j2k-octets 64 48)
+                                                         (make-array 64 :element-type '(unsigned-byte 8))))
                                 :jp2 64 48)
       (false image)
-      (is equal ", not shown: sh here cannot read JP2 pictures: it was built or installed without OpenJPEG" (car (first notes))))))
+      (is equal ", not shown: sh here cannot read JP2 pictures: it was built or installed without OpenJPEG"
+          (car (first notes))))))
 
 (define-test (image-view coded-picture-given-time)
   ;; a large JPEG 2000 or JPEG XL picture is given time for its size, as far as *picture-memory* lets
@@ -413,7 +428,9 @@ and a JP2 file with alpha at half."
           '((:name "stand-in"
              :program ("sh" "-c" "sleep 2; printf 'P7\\nWIDTH 1\\nHEIGHT 1\\nDEPTH 3\\nMAXVAL 255\\nTUPLTYPE RGB\\nENDHDR\\n\\001\\002\\003'"))))
         (tuatara-user:*sandbox-seconds* 1)
-        (octets (concatenate '(vector (unsigned-byte 8)) (j2k-octets 5472 3648) (make-array 64 :element-type '(unsigned-byte 8)))))
+        (octets (concatenate '(vector (unsigned-byte 8))
+                             (j2k-octets 5472 3648)
+                             (make-array 64 :element-type '(unsigned-byte 8)))))
     (is = 31 (tuatara.defaults::picture-seconds (* 5472 3648)))
     (multiple-value-bind (image notes) (tuatara:decode-picture octets :j2k 64 48)
       (true image "~s" notes)
@@ -427,9 +444,15 @@ and a JP2 file with alpha at half."
 (define-test (image-view imagemagick-6-driven)
   ;; where ImageMagick 6 is all there is (convert-im6.q16, as Ubuntu 24.04 has it): driven as magick
   ;; is, with the same arguments and the same policy of its own
-  (let ((seven (find "magick" tuatara.defaults::*image-decoders* :key (lambda (d) (first (getf d :program))) :test #'string=)))
+  (let ((seven (find "magick"
+                     tuatara.defaults::*image-decoders*
+                     :key (lambda (d) (first (getf d :program)))
+                     :test #'string=)))
     (dolist (name '("convert-im6.q16" "convert-im6.q16hdri"))
-      (let ((six (find name tuatara.defaults::*image-decoders* :key (lambda (d) (first (getf d :program))) :test #'string=)))
+      (let ((six (find name
+                       tuatara.defaults::*image-decoders*
+                       :key (lambda (d) (first (getf d :program)))
+                       :test #'string=)))
         (true six "~a" name)
         (when six
           (is equal (rest (getf seven :program)) (rest (getf six :program)))
@@ -437,14 +460,21 @@ and a JP2 file with alpha at half."
           (is eq 'tuatara.defaults::magick-sandbox (getf six :sandbox))
           ;; after magick, before GraphicsMagick
           (true (< (position seven tuatara.defaults::*image-decoders*) (position six tuatara.defaults::*image-decoders*)
-                   (position "gm" tuatara.defaults::*image-decoders* :key (lambda (d) (first (getf d :program))) :test #'string=))))))))
+                   (position "gm"
+                             tuatara.defaults::*image-decoders*
+                             :key (lambda (d) (first (getf d :program)))
+                             :test #'string=))))))))
 
 (define-test (image-view readers-missing-said)
   ;; M-x check-health names the kinds of picture the program here has no reader for, and the library
   (let ((tuatara.defaults::*image-decoders*
           (list (list :name "stand-in"
-                      :program (list "sh" "-c" (format nil "for f in ~{~a~^ ~}; do echo \"   $f* $f rw-  a format\"; done"
-                                                       (remove "JXL" (mapcar #'cdr tuatara.defaults::*image-formats*) :test #'string=)))))))
+                      :program (list "sh"
+                                     "-c"
+                                     (format nil "for f in ~{~a~^ ~}; do echo \"   $f* $f rw-  a format\"; done"
+                                             (remove "JXL"
+                                                     (mapcar #'cdr tuatara.defaults::*image-formats*)
+                                                     :test #'string=)))))))
     (is equal "pictures by sh (stand-in), without readers for JXL (libjxl)" (tuatara.defaults::image-decoder-words)))
   ;; the program here, when it reads every kind, has nothing said
   (let ((words (tuatara.defaults::image-decoder-words)))
@@ -471,7 +501,9 @@ and a JP2 file with alpha at half."
   ;; ImageMagick reads every policy file on its path: each one the program here lists besides
   ;; Tuatara's is given Tuatara's policy in its place, shut in; one that cannot be is refused
   (clrhash tuatara.defaults::*magick-checked*)
-  (let ((octets (concatenate '(vector (unsigned-byte 8)) (j2k-octets 64 48) (make-array 64 :element-type '(unsigned-byte 8))))
+  (let ((octets (concatenate '(vector (unsigned-byte 8))
+                             (j2k-octets 64 48)
+                             (make-array 64 :element-type '(unsigned-byte 8))))
         (pixel "printf 'P7\\nWIDTH 1\\nHEIGHT 1\\nDEPTH 3\\nMAXVAL 255\\nTUPLTYPE RGB\\nENDHDR\\n\\001\\002\\003'"))
     ;; a stand-in listing the policy files it finds, with "pattern: PAM" for Tuatara's; drawing only
     ;; when the other one, /etc/ld.so.cache here, holds Tuatara's policy
@@ -487,7 +519,8 @@ else grep -q 'pattern=\"PAM\"' /etc/ld.so.cache && ~a; fi" pixel)
       (multiple-value-bind (image notes) (tuatara:decode-picture octets :j2k 64 48)
         (true image "~s" notes)
         (when image (is equalp #(1 2 3) (tuatara:image-pixels image))))
-      (is equal '("/etc/ld.so.cache") (tuatara.defaults::magick-policy-overlays (first tuatara.defaults::*image-decoders*))))
+      (is equal '("/etc/ld.so.cache")
+          (tuatara.defaults::magick-policy-overlays (first tuatara.defaults::*image-decoders*))))
     ;; a policy file that still holds another policy, Tuatara's given in its place: not run
     (let ((tuatara.defaults::*image-decoders*
             (list (list :name "stand-in" :sandbox 'tuatara.defaults::magick-sandbox
@@ -498,7 +531,8 @@ else ~a; fi" pixel)
                                        "sh" :input)))))
       (multiple-value-bind (image notes) (tuatara:decode-picture octets :j2k 64 48)
         (false image)
-        (is equal ", not shown: sh: it reads a policy that cannot be replaced (/etc/ld.so.cache)" (car (first notes))))))
+        (is equal ", not shown: sh: it reads a policy that cannot be replaced (/etc/ld.so.cache)"
+            (car (first notes))))))
   ;; the policy holds ImageMagick to the memory the sandbox gives it
   (let ((policy (tuatara.defaults::magick-policy (* 1536 1024 1024))))
     (true (search "name=\"memory\" value=\"1536MiB\"" policy))
@@ -533,9 +567,13 @@ else ~a; fi" pixel)
 (define-test (image-view decoder-said-escaped)
   ;; what a decoding program says is shown with its control and direction characters written out:
   ;; a damaged file cannot have it clear the screen or turn text around
-  (let ((octets (concatenate '(vector (unsigned-byte 8)) (j2k-octets 64 48) (make-array 64 :element-type '(unsigned-byte 8)))))
+  (let ((octets (concatenate '(vector (unsigned-byte 8))
+                             (j2k-octets 64 48)
+                             (make-array 64 :element-type '(unsigned-byte 8)))))
     (flet ((said (script)
-             (let ((tuatara.defaults::*image-decoders* (list (list :name "stand-in" :program (list "sh" "-c" script "sh" :input)))))
+             (let ((tuatara.defaults::*image-decoders* (list (list :name
+                                                                   "stand-in"
+                                                                   :program (list "sh" "-c" script "sh" :input)))))
                (format nil "~{~a~}" (mapcar #'car (nth-value 1 (tuatara:decode-picture octets :j2k 64 48)))))))
       (let ((failed (said "printf 'bad \\033[2J\\342\\200\\256evil\\n' >&2; exit 1")))
         (false (find (code-char 27) failed) "~s" failed)

@@ -269,9 +269,11 @@ it, what the client sends is not read until the editor has taken some.")
   (:documentation "A frontend painting on the screen of a client at the other end of a local socket, and
 reading the client's events from it (MAKE-REMOTE-FRONTEND)."))
 
-(setf (documentation 'remote-exit-code 'function) "The code the client of the remote frontend F exits with when F stops."
+(setf (documentation 'remote-exit-code 'function) "The code the client of the remote frontend F
+exits with when F stops."
       (documentation 'remote-exit-words 'function) "What the client of the remote frontend F says as it exits, or NIL."
-      (documentation 'remote-request 'function) "What the client of the remote frontend F asked for as it attached (REQUEST)."
+      (documentation 'remote-request 'function) "What the client of the remote frontend F asked for
+as it attached (REQUEST)."
       (documentation 'remote-pid 'function) "The process the client of the remote frontend F connected from, or NIL.")
 
 (defmethod initialize-instance :after ((f remote-frontend) &key)
@@ -286,16 +288,16 @@ unset."
   "A frontend whose screen is the client's at the other end of the local
 socket FD, once both have said hello, the client been told how its screen is
 to be shown (*DISPLAY-SETTINGS*), and it has said what its screen is and
-what it asks for (REMOTE-REQUEST); its events go into QUEUE, the queue of
+what it asks for (REMOTE-REQUEST). Its events go into QUEUE, the queue of
 the editor's other frames, or a queue of its own. ADMIT, a function of the
-request, may give words why this client is not taken: it is told them as it
+request, may give words why this client is not taken. It is told them as it
 ends, before anything it sends is read. Signals REMOTE-REFUSED when the
-client is refused so, is of another build or says nothing it should; FD is
-then the caller's to close. A client may take up to *HELLO-SECONDS* to say
-hello, so this is called on the thread taking connections, never the editor's,
-and that thread bounds how many are being greeted at once. The one descriptor
-a client may pass, its standard input with its attach, is the frontend's
-request's to close once taken."
+client is refused so, is of another build or says nothing it should. FD is
+then the caller's to close.
+A client may take up to *HELLO-SECONDS* to say hello, so this is called on the
+thread taking connections, never the editor's. That thread bounds how many are
+being greeted at once. The one descriptor a client may pass, its standard
+input with its attach, is the frontend's request's to close once taken."
   (let ((remote (make-instance 'remote-frontend :fd fd :queue (or queue (make-event-queue))))
         (inbox (make-inbox fd :editor :deadline (tuatara.runtime:deadline-in *hello-seconds*)))
         (box (make-outbox))
@@ -329,7 +331,9 @@ request's to close once taken."
                               (send-outbox fd box 1))
                             (error 'remote-refused :words why)))))
              (malformed-message (condition)
-               (error 'remote-refused :words (format nil "The client's attach: ~a" (malformed-message-reason condition)))))
+               (error 'remote-refused :words (format nil
+                                                     "The client's attach: ~a"
+                                                     (malformed-message-reason condition)))))
            (setf greeted t))
       (setf (inbox-most-descriptors inbox) nil)
       (close-descriptors (shiftf (inbox-descriptors inbox) '()))
@@ -384,7 +388,8 @@ all, or its connection ends; a client that takes nothing for
                 (setf reason (format nil "the client took in nothing for ~d minutes" (round *stall-seconds* 60)))
                 (queue-push (remote-queue remote)
                             (make-event :said :frame (remote-frame remote)
-                                              :text (format nil "A client that took in nothing for ~d minutes was let go"
+                                              :text (format nil
+                                                            "A client that took in nothing for ~d minutes was let go"
                                                             (round *stall-seconds* 60))))
                 (return)))))
       (when reason (end-connection remote reason)))))
@@ -878,13 +883,13 @@ painted as before written out in full."
 
 (defstruct (far-picture (:constructor make-far-picture (source width height channels image shown-at))
                         (:copier nil))
-  "A picture of an editor's for its client on another machine: a copy of the
-picture numbered SOURCE, the size it is shown at or its own (WIDTH by HEIGHT
-pixels of CHANNELS octets, sent as number ID, given when the copy is made),
-IMAGE, the picture it is made of, until it is sent; STATE, :WANTED, :SENDING,
-:READY once the client has it all, :REFUSED when it cannot be sent, or
-:CANCELLED; SHOWN-AT, the frame that last asked for it; TAKEN, the octets of
-TOTAL the client has said it has."
+  "A picture of an editor's for its client on another machine. It is a copy of
+the picture numbered SOURCE, the size it is shown at or its own (WIDTH by
+HEIGHT pixels of CHANNELS octets, sent as number ID, given when the copy is
+made). IMAGE is the picture it is made of, until it is sent. STATE is :WANTED,
+:SENDING, :READY once the client has it all, :REFUSED when it cannot be sent,
+or :CANCELLED. SHOWN-AT is the frame that last asked for it. TAKEN is the
+octets of TOTAL the client has said it has."
   (source 0 :type fixnum :read-only t)
   (id 0 :type (unsigned-byte 32))
   (width 0 :type fixnum :read-only t)
@@ -1082,10 +1087,10 @@ they began are forgotten here."
 
 (defun send-far-pictures (remote)
   "Send the pictures REMOTE's client on another machine is waiting for, one
-at a time as they are wanted, until the connection ends: each made the size
-it shows at and packed here, off the editor's thread, then sent a little at a
-time among the frames, no more than +FAR-PICTURES-IN-FLIGHT+ octets ahead of
-what the client has said it took, so that no key waits long behind one. One
+at a time as they are wanted, until the connection ends. Each is made the size
+it shows at and packed here, off the editor's thread. It is then sent a little
+at a time among the frames, no more than +FAR-PICTURES-IN-FLIGHT+ octets ahead
+of what the client has said it took, so that no key waits long behind one. One
 that could not be sent is :REFUSED, not tried again while it stays shown."
   (unwind-protect
        (loop for far = (next-far-picture remote)
@@ -1158,26 +1163,27 @@ what came of it, and FAR forgotten here."
 
 (defstruct (remote-client (:constructor %make-remote-client (fd frontend inbox)) (:copier nil))
   "A client of an editor at the other end of the socket FD, painting what the
-editor sends on FRONTEND and sending it FRONTEND's events: INBOX, what the
-editor sends; OUT, the messages being sent; ARRIVED, what was read and is
-not yet painted, newest first, under LOCK; NAMES, the face names by their
-numbers; KEPT, each row as last painted; PICTURES, the pictures kept,
-newest first; ARRIVING, the picture coming in pieces from an editor on
-another machine (ARRIVING-PICTURE), or NIL; UNPACKING, those whole and being
-unpacked; PAINTING, what is being painted, until it has been; CLOSING, true
-once the connection is being closed here; ENDED, true once the editor is gone, and EXIT-CODE, the code
-it gave, EXIT-WORDS, what it said with it; FACTS, the facts last sent as
-octets; READER, the thread reading; MOVED, signalled when something has
-arrived or the editor is gone; SETTINGS, the settings the editor last said
-\(TAKE-SETTINGS); ANOTHER, a function of the client and a word, which opens
-another window attached with that word when the editor asks for one, or
-says it does not (DECLINE-WINDOW), or NIL; PAINTED, true once the editor
-has painted a frame on it; FAR, true when the editor is on another machine;
-then nothing of this machine's clipboard is given it or taken from it, no
-terminal lent and no dropped file named to it, but what ALLOW lets through,
-a plist of :CLIPBOARD, true for the clipboard shared, as text with no
-control characters taken (FAR-TEXT), and :DROP, a function sending the
-files dropped to that machine (see MAKE-REMOTE-CLIENT)."
+editor sends on FRONTEND and sending it FRONTEND's events.
+INBOX is what the editor sends. OUT is the messages being sent. ARRIVED is
+what was read and is not yet painted, newest first, under LOCK. NAMES is the
+face names by their numbers. KEPT is each row as last painted. PICTURES is the
+pictures kept, newest first. ARRIVING is the picture coming in pieces from an
+editor on another machine (ARRIVING-PICTURE), or NIL. UNPACKING is those whole
+and being unpacked. PAINTING is what is being painted, until it has been.
+CLOSING is true once the connection is being closed here. ENDED is true once
+the editor is gone, EXIT-CODE the code it gave, and EXIT-WORDS what it said
+with it. FACTS is the facts last sent as octets. READER is the thread reading.
+MOVED is signalled when something has arrived or the editor is gone. SETTINGS
+is the settings the editor last said (TAKE-SETTINGS). ANOTHER is a function of
+the client and a word, which opens another window attached with that word when
+the editor asks for one, or says it does not (DECLINE-WINDOW), or NIL. PAINTED
+is true once the editor has painted a frame on it.
+FAR is true when the editor is on another machine. Then nothing of this
+machine's clipboard is given it or taken from it, no terminal is lent and no
+dropped file is named to it, but what ALLOW lets through. ALLOW is a plist of
+:CLIPBOARD, true for the clipboard shared, as text with no control characters
+taken (FAR-TEXT), and :DROP, a function sending the files dropped to that
+machine (see MAKE-REMOTE-CLIENT)."
   (fd -1 :type fixnum :read-only t)
   (frontend nil :read-only t)
   (inbox nil :read-only t)
@@ -1209,7 +1215,8 @@ files dropped to that machine (see MAKE-REMOTE-CLIENT)."
       (documentation 'remote-client-frontend 'function) "The frontend CLIENT paints on and reads events from."
       (documentation 'remote-client-inbox 'function) "What the editor sends CLIENT, as it is read."
       (documentation 'remote-client-out 'function) "Where CLIENT's messages are written to be sent."
-      (documentation 'remote-client-lock 'function) "Held while what CLIENT has read and not painted, or its end, change."
+      (documentation 'remote-client-lock 'function) "Held while what CLIENT has read and not
+painted, or its end, change."
       (documentation 'remote-client-arrived 'function) "What CLIENT has read and not yet painted, newest first."
       (documentation 'remote-client-names 'function) "The face names the editor gave CLIENT, by their numbers."
       (documentation 'remote-client-kept 'function) "Each row as CLIENT last painted it, by row."
@@ -1222,7 +1229,8 @@ files dropped to that machine (see MAKE-REMOTE-CLIENT)."
       (documentation 'remote-client-exit-code 'function) "The code the editor told CLIENT to exit with, or NIL."
       (documentation 'remote-client-facts 'function) "The facts CLIENT last sent of its screen, as octets."
       (documentation 'remote-client-reader 'function) "The thread reading what the editor sends CLIENT."
-      (documentation 'remote-client-moved 'function) "Signalled when something has arrived for CLIENT or its editor is gone."
+      (documentation 'remote-client-moved 'function) "Signalled when something has arrived for
+CLIENT or its editor is gone."
       (documentation 'remote-client-exit-words 'function) "What the editor said as it told CLIENT to exit, or NIL."
       (documentation 'remote-client-settings 'function) "The settings CLIENT's editor last said, each (NAME . VALUE)."
       (documentation 'remote-client-another 'function)

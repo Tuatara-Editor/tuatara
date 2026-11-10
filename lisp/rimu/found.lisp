@@ -148,7 +148,8 @@ is one JOB looks for by name or by text."
                 (walk root (lambda (path relative)
                              (let ((stamp (tuatara.io:path-stamp path :follow nil :failure nil)))
                                (when (and stamp (eq (tuatara.io:stamp-kind stamp) :regular))
-                                 (push (concatenate 'string prefix relative) (gethash (tuatara.io:stamp-size stamp) by-size))))))))
+                                 (push (concatenate 'string prefix relative)
+                                       (gethash (tuatara.io:stamp-size stamp) by-size))))))))
             (let ((alike (loop for size being the hash-keys of by-size using (hash-value names)
                                when (rest names) collect (cons size (sort names #'string<))))
                   (buffer (make-array (* 1024 1024) :element-type '(unsigned-byte 8)))
@@ -186,7 +187,11 @@ is one JOB looks for by name or by text."
                                   (when entry (push entry found)))))
                   :directories (if (eq (getf spec :kind) :name) :also nil))
             (make-rimu-listing directory (coerce (nreverse found) 'simple-vector) nil nil
-                               (format nil "~:d found: ~a~@[ (stopped)~]" (length found) (rimu-search-what spec) (car cancel)))))))))
+                               (format nil
+                                       "~:d found: ~a~@[ (stopped)~]"
+                                       (length found)
+                                       (rimu-search-what spec)
+                                       (car cancel)))))))))
 
 (defun rimu-start-search (buffer)
   "Find again the files the rimu list BUFFER lists (RIMU-FOUND-P), as a job
@@ -197,7 +202,8 @@ of it, the list saying meanwhile that they are being found."
     (when old (setf (car (tuatara.runtime:job-cancel old)) t))
     (setf (tuatara.buffer:buffer-local buffer 'rimu-search) job
           (tuatara.buffer:buffer-local buffer 'rimu-listing) nil)
-    (rimu-show-layout buffer (rimu-reading-layout (getf spec :directory) (format nil "Finding ~a..." (rimu-search-what spec)))
+    (rimu-show-layout buffer
+                      (rimu-reading-layout (getf spec :directory) (format nil "Finding ~a..." (rimu-search-what spec)))
                       nil :fresh t)
     (tuatara.runtime:start-job-thread
      job (lambda (job)

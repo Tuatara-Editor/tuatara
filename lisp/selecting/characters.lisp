@@ -79,7 +79,9 @@ that many."
                                                       0))))
                (code (if (integerp chosen) chosen (character-code-from chosen))))
           (if code
-              (goto (tuatara.buffer:buffer-insert b (point) (make-string (max 1 (prefix)) :initial-element (code-char code))))
+              (goto (tuatara.buffer:buffer-insert b
+                                                  (point)
+                                                  (make-string (max 1 (prefix)) :initial-element (code-char code))))
               (message "No character is called ~a" chosen)))))))
 
 (defun install-characters (editor)

@@ -5,8 +5,8 @@
 
 (define-test remote
   :description "A remote frontend sends every call of the painter interface over a local socket to a client,
-which paints it on its own frontend as it would be painted directly, and sends back the events read there; a
-client that does not read never holds the editor up; whatever the other end sends that breaks the messages'
+which paints it on its own frontend as it would be painted directly, and sends back the events read there. A
+client that does not read never holds the editor up. Whatever the other end sends that breaks the messages'
 format ends that connection and nothing more.")
 
 ;;; A client's screen: a fake frontend whose events wait in a queue
@@ -230,7 +230,8 @@ its number, size, channels, pixels and place: lists EQUAL compares."
                           f (format nil "C-x C-f C-a C-k ~a RET" (rimu-typed (namestring file))))
                          (labels ((check ()
                                     (if (and (some #'tuatara.defaults::image-draw-job-p tuatara.runtime:*jobs*)
-                                             (< (- (get-internal-real-time) start) (* 20 internal-time-units-per-second)))
+                                             (< (- (get-internal-real-time) start)
+                                                (* 20 internal-time-units-per-second)))
                                         (progn (sleep 0.02) (tuatara.frontend.fake:fake-queue-action f #'check))
                                         (tuatara.frontend.fake:fake-queue-keys f "j k"))))
                            (tuatara.frontend.fake:fake-queue-action f #'check)))
@@ -548,7 +549,8 @@ anywhere: every copy of it passed was closed. IN is closed after."
              (text (make-string (+ tuatara.frontend::+most-text+ extra) :initial-element #\k))
              (sender (sb-thread:make-thread
                       (lambda ()
-                        (let ((box (tuatara.frontend::make-outbox)) (paste (tuatara.frontend:make-event :paste :text "")))
+                        (let ((box (tuatara.frontend::make-outbox))
+                              (paste (tuatara.frontend:make-event :paste :text "")))
                           (loop for (piece . more) on (tuatara.frontend::text-pieces text)
                                 do (tuatara.frontend::put-event box paste :text piece :more more))
                           (tuatara.frontend::send-outbox theirs box 30)))))
@@ -838,7 +840,8 @@ read and let go of."
            (octets 0) (counting nil))
       (let ((scratch (tuatara.buffer:find-buffer "*scratch*")))
         (when scratch (tuatara.buffer:kill-buffer scratch)))
-      (tuatara.buffer:make-buffer "*scratch*" :text (format nil "~{~a~%~}" (loop repeat 30 collect "kiwi tūī ruru kea")))
+      (tuatara.buffer:make-buffer "*scratch*"
+                                  :text (format nil "~{~a~%~}" (loop repeat 30 collect "kiwi tūī ruru kea")))
       (dolist (spec (append (tuatara.frontend:parse-key-sequence "i")
                             (loop repeat count append (tuatara.frontend:parse-key-sequence "a DEL"))))
         (tuatara.frontend:queue-push (tuatara.frontend::remote-queue remote)
@@ -937,7 +940,8 @@ read and let go of."
   ;; ends the connection of one that does
   (let ((box (tuatara.frontend::make-outbox)))
     (tuatara.frontend::put-event box (tuatara.frontend:make-event :drop :column 1 :row 1
-                                                                        :files (list "/tmp/kiwi" (format nil "a~cb" #\Nul)
+                                                                        :files (list "/tmp/kiwi"
+                                                                                     (format nil "a~cb" #\Nul)
                                                                                      "" (format nil "x~%y"))))
     (let* ((octets (subseq (tuatara.frontend::outbox-octets box) 0 (tuatara.frontend::outbox-fill box)))
            (inbox (tuatara.frontend::make-inbox nil :editor :octets octets :end (length octets))))

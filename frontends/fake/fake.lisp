@@ -5,8 +5,10 @@
   (:use #:cl)
   (:documentation "A frontend that takes its events from a queue and paints into a vector of strings.")
   (:export #:fake-frontend #:make-fake-frontend #:fake-queue-keys #:fake-queue-event #:fake-screen #:fake-screen-line
-           #:fake-cursor #:fake-cursor-shape #:fake-cursor-colour #:fake-frames #:fake-history #:fake-frame-showing #:fake-frame-showing-across-rows #:fake-spans
-           #:fake-row-faces #:fake-row-scales #:fake-face-history #:fake-frame-with #:fake-pending #:fake-clipboard #:fake-primary #:fake-titles
+           #:fake-cursor #:fake-cursor-shape #:fake-cursor-colour #:fake-frames #:fake-history #:fake-frame-showing
+           #:fake-frame-showing-across-rows #:fake-spans
+           #:fake-row-faces #:fake-row-scales #:fake-face-history #:fake-frame-with #:fake-pending #:fake-clipboard
+           #:fake-primary #:fake-titles
            #:fake-font-steps #:fake-fonts #:fake-font #:fake-toggles #:fake-font-faces #:fake-desktop-style
            #:fake-queue-action #:fake-images #:fake-image-history #:fake-raised))
 
@@ -33,7 +35,8 @@ during it; or a function of the frontend asked each time.")
    (row-faces :initform nil :accessor fake-row-faces
               :documentation "The whole-row face of each row of the last frame, or NIL.")
    (row-scales :initform nil :accessor fake-row-scales
-               :documentation "The parts of each row of the last frame drawn large or moved down, lists of (START END SCALE SHIFT HEIGHT).")
+               :documentation "The parts of each row of the last frame drawn large or moved down,
+lists of (START END SCALE SHIFT HEIGHT).")
    (cursor :initform nil :accessor fake-cursor
            :documentation "The cursor position of the last frame as (ROW . COLUMN).")
    (cursor-shape :initform :block :accessor fake-cursor-shape
@@ -45,15 +48,19 @@ during it; or a function of the frontend asked each time.")
    (history :initform '() :accessor fake-history
             :documentation "Every frame painted, newest first, each a vector of strings.")
    (face-history :initform '() :accessor fake-face-history
-                 :documentation "The faces of every frame painted, newest first, each a cons (SPANS . ROW-FACES) of vectors.")
+                 :documentation "The faces of every frame painted, newest first, each a cons (SPANS
+. ROW-FACES) of vectors.")
    (primary :initform nil :accessor fake-primary
-            :documentation "The text of the fake primary selection, or NIL: what the editor made it, or what a test selected as another program would.")
+            :documentation "The text of the fake primary selection, or NIL: what the editor made it,
+or what a test selected as another program would.")
    (clipboard :initform nil :accessor fake-clipboard
-              :documentation "The text on the fake system clipboard, or NIL: what the editor put there, or what a test did as another program would.")
+              :documentation "The text on the fake system clipboard, or NIL: what the editor put
+there, or what a test did as another program would.")
    (titles :initform '() :accessor fake-titles
            :documentation "Every title the editor gave the fake window, newest first.")
    (font-steps :initarg :font-steps :initform nil :accessor fake-font-steps
-               :documentation "The steps the fake window's font is scaled by, or NIL for a fake terminal, whose font is not its own.")
+               :documentation "The steps the fake window's font is scaled by, or NIL for a fake
+terminal, whose font is not its own.")
    (fonts :initarg :fonts :initform '() :accessor fake-fonts
           :documentation "The font families the fake window offers; none for a fake terminal.")
    (font-faces :initarg :font-faces :initform '() :accessor fake-font-faces
@@ -63,49 +70,60 @@ during it; or a function of the frontend asked each time.")
    (font :initform nil :accessor fake-font
          :documentation "The font the editor last chose for the fake window, or NIL.")
    (cell-pixels :initarg :cell-pixels :initform nil :accessor fake-cell-pixels
-                :documentation "The width and height in pixels of a cell of the fake screen, as a list, when it shows pictures; NIL when it shows none.")
+                :documentation "The width and height in pixels of a cell of the fake screen, as a
+list, when it shows pictures; NIL when it shows none.")
    (images :initform '() :accessor fake-images
-           :documentation "The pictures put in the last frame, each (IMAGE ROW COLUMN COLUMNS ROWS OFFSET), in the order put.")
+           :documentation "The pictures put in the last frame, each (IMAGE ROW COLUMN COLUMNS ROWS
+OFFSET), in the order put.")
    (image-history :initform '() :accessor fake-image-history
                   :documentation "The pictures of every frame painted, newest first, as FAKE-IMAGES has them.")
    (raised :initform 0 :accessor fake-raised
            :documentation "How many times the editor brought the fake window before the others.")
    (toggles :initform '() :accessor fake-toggles
-            :documentation "The window states the editor turned the fake window to or from, newest first; only for a fake window (FONT-STEPS set)."))
+            :documentation "The window states the editor turned the fake window to or from, newest
+first; only for a fake window (FONT-STEPS set)."))
   (:documentation "A fake frontend for driving the editor from tests."))
 
 (setf (documentation 'fake-screen 'function) "The last frame painted by the fake frontend, a vector of strings."
       (documentation 'fake-cursor 'function) "Cursor of the last frame as (ROW . COLUMN)."
       (documentation 'fake-spans 'function) "Face spans per row of the last frame."
       (documentation 'fake-row-faces 'function) "Whole-row faces of the last frame, one per row."
-      (documentation 'fake-row-scales 'function) "The parts of each row of the last frame drawn large or moved down, (START END SCALE SHIFT HEIGHT) in columns and rows."
+      (documentation 'fake-row-scales 'function) "The parts of each row of the last frame drawn
+large or moved down, (START END SCALE SHIFT HEIGHT) in columns and rows."
       (documentation 'fake-cursor-shape 'function) "Cursor shape of the last frame, :block, :bar or :underline."
-      (documentation 'fake-cursor-colour 'function) "Cursor colour of the last frame, as faces take colours, or NIL for the text's."
+      (documentation 'fake-cursor-colour 'function) "Cursor colour of the last frame, as faces take
+colours, or NIL for the text's."
       (documentation 'fake-frames 'function) "Number of frames the fake frontend has painted."
       (documentation 'fake-history 'function) "All frames painted, newest first."
-      (documentation 'fake-face-history 'function) "The faces of all frames painted, newest first, as (SPANS . ROW-FACES)."
+      (documentation 'fake-face-history 'function) "The faces of all frames painted, newest first,
+as (SPANS . ROW-FACES)."
       (documentation 'fake-pending 'function) "True when the fake frontend claims input is waiting."
       (documentation 'fake-clipboard 'function) "The text on the fake frontend's system clipboard, or NIL."
       (documentation 'fake-primary 'function) "The text of the fake frontend's primary selection, or NIL."
       (documentation 'fake-titles 'function) "The titles the fake frontend's window was given, newest first."
-      (documentation 'fake-font-steps 'function) "The steps the fake frontend's font is scaled by, or NIL when it has no font of its own."
+      (documentation 'fake-font-steps 'function) "The steps the fake frontend's font is scaled by,
+or NIL when it has no font of its own."
       (documentation 'fake-fonts 'function) "The font families the fake frontend offers."
       (documentation 'fake-font 'function) "The font the editor last chose for the fake frontend, or NIL."
       (documentation 'fake-raised 'function) "How many times the fake frontend's window was brought before the others."
       (documentation 'fake-toggles 'function) "The window states the fake frontend was turned to or from, newest first."
-      (documentation 'fake-font-faces 'function) "The font families and variants the fake frontend offers, as FRONTEND-FONT-FACES gives them."
-      (documentation 'fake-desktop-style 'function) "The desktop's style the fake frontend reports: :dark, :light or NIL."
-      (documentation 'fake-images 'function) "The pictures put in the fake frontend's last frame, each (IMAGE ROW COLUMN COLUMNS ROWS OFFSET)."
-      (documentation 'fake-image-history 'function) "The pictures of every frame the fake frontend painted, newest first.")
+      (documentation 'fake-font-faces 'function) "The font families and variants the fake frontend
+offers, as FRONTEND-FONT-FACES gives them."
+      (documentation 'fake-desktop-style 'function) "The desktop's style the fake frontend reports:
+:dark, :light or NIL."
+      (documentation 'fake-images 'function) "The pictures put in the fake frontend's last frame,
+each (IMAGE ROW COLUMN COLUMNS ROWS OFFSET)."
+      (documentation 'fake-image-history 'function) "The pictures of every frame the fake frontend
+painted, newest first.")
 
 (defun make-fake-frontend (&key (width 40) (height 8) (colours 256) font-steps fonts font-faces desktop-style
                                 cell-pixels joining)
-  "Return a fake frontend with a WIDTH by HEIGHT screen showing COLOURS colours;
-FONT-STEPS, a number, makes it a window whose font can be scaled, FONTS the
+  "Return a fake frontend with a WIDTH by HEIGHT screen showing COLOURS colours.
+FONT-STEPS, a number, makes it a window whose font can be scaled. FONTS is the
 font families it offers, FONT-FACES what it lists of them with their variants,
-DESKTOP-STYLE the desktop's style it reports; CELL-PIXELS, a list of a cell's
-width and height in pixels, makes it show pictures. JOINING, another fake
-frontend, makes it paint another frame of that one's editor: the two read
+and DESKTOP-STYLE the desktop's style it reports. CELL-PIXELS, a list of a
+cell's width and height in pixels, makes it show pictures. JOINING, another
+fake frontend, makes it paint another frame of that one's editor: the two read
 their events from one queue."
   (make-instance 'fake-frontend :width width :height height :colours colours :font-steps font-steps
                                 :fonts fonts :font-faces font-faces :desktop-style desktop-style
@@ -255,7 +273,8 @@ as the desktop's style."
       (destructuring-bind (left text spans) part
         (declare (ignore spans))
         (let ((padded (if (< (length string) (+ left (length text)))
-                          (concatenate 'string string (make-string (- (+ left (length text)) (length string)) :initial-element #\Space))
+                          (concatenate 'string string (make-string (- (+ left (length text))
+                                                                      (length string)) :initial-element #\Space))
                           (copy-seq string))))
           (setf string (replace padded text :start1 left)))))
     (setf (aref (fake-screen f) row) (copy-seq string)

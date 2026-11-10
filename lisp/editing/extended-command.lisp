@@ -105,7 +105,8 @@ WORDS says is done with it, PROBLEM why what is typed cannot be used
   (pattern-prompt regex words
                   (and problem
                        (if refused
-                           (refused-pattern-words problem (substitute-command-keys "\\<minibuffer>\\[minibuffer-cancel]"))
+                           (refused-pattern-words problem
+                                                  (substitute-command-keys "\\<minibuffer>\\[minibuffer-cancel]"))
                            problem))))
 
 (defun pattern-regex (text regex)
@@ -115,16 +116,18 @@ REGEX is true, else literal text with every special character escaped."
 
 (defun read-pattern (words &key (initial "") count)
   "Ask for a pattern for what WORDS says is done with it (\"keep lines\"), the
-prompt naming its kind first as a search's does (Regex keep lines: );
-\\<pattern>\\[search-toggle-regex] switches between a regular expression and literal text,
-\\<minibuffer>\\[minibuffer-previous-history] and \\[minibuffer-next-history] bring back the patterns typed before
-\(*PATTERN-HISTORY*), and a regular expression that cannot be used says why
-in the prompt, \\<pattern-answer>\\[pattern-finish] waiting for it to be mended. INITIAL is offered to
-begin with. COUNT, a function of what is typed and whether it is a regular
-expression, keeps a count up to date as it is typed and returns two values,
-as PATTERN-COUNT-UPDATE does: true while it counts, and what to show before
-the prompt. Returns what was typed, kept among the patterns typed before,
-and as a second value whether it is a regular expression."
+prompt naming its kind first as a search's does (Regex keep lines: ).
+\\<pattern>\\[search-toggle-regex] switches between a regular expression and
+literal text. \\<minibuffer>\\[minibuffer-previous-history] and
+\\[minibuffer-next-history] bring back the patterns typed before
+\(*PATTERN-HISTORY*). A regular expression that cannot be used says why in the
+prompt, \\<pattern-answer>\\[pattern-finish] waiting for it to be mended.
+INITIAL is offered to begin with. COUNT, a function of what is typed and
+whether it is a regular expression, keeps a count up to date as it is typed
+and returns two values, as PATTERN-COUNT-UPDATE does: true while it counts,
+and what to show before the prompt. Returns what was typed, kept among the
+patterns typed before, and as a second value whether it is a regular
+expression."
   (let* ((editor *editor*) (regex t) (refused nil)
          ;; the last text and kind looked at, and why it cannot be used: worked out once
          (checked (list nil)))
@@ -199,7 +202,9 @@ others are not hindered."
 
 (apply #'commands-for-buffers 'minibuffer-active-p "the minibuffer, while it asks something"
        (mapcar (lambda (name) (find-symbol name '#:tuatara.command))
-               '("MINIBUFFER-NEXT-CANDIDATE" "MINIBUFFER-PREVIOUS-CANDIDATE" "MINIBUFFER-COMPLETE" "MINIBUFFER-SUBMIT-INPUT"
+               '("MINIBUFFER-NEXT-CANDIDATE" "MINIBUFFER-PREVIOUS-CANDIDATE"
+                 "MINIBUFFER-COMPLETE"
+                 "MINIBUFFER-SUBMIT-INPUT"
                  "MINIBUFFER-FINISH" "MINIBUFFER-CANCEL" "MINIBUFFER-BACKWARD-DELETE-CHAR" "MINIBUFFER-BACKWARD-CHAR"
                  "MINIBUFFER-FORWARD-CHAR" "MINIBUFFER-BEGINNING" "MINIBUFFER-END" "MINIBUFFER-KILL-LINE"
                  "MINIBUFFER-CLEAR" "MINIBUFFER-BACKWARD-KILL-WORD")))
@@ -276,24 +281,26 @@ its docstring at the right."
                                     :value symbol)))))
 
 (defgeneric mode-completion-at-point (mode buffer position)
-  (:documentation "What completing at POSITION of BUFFER in MODE offers, as six values: the
-start and end of the word there, the candidates for it (a list of CANDIDATE),
-and the functions giving what is said beside a candidate, its documentation,
-whether a character can be part of a word (see COMPLETE-IN-TEXT), and true for the
-candidates to be kept in the order given; NIL when MODE completes nothing.")
+  (:documentation "What completing at POSITION of BUFFER in MODE offers, as
+six values. They are the start and end of the word there, the candidates for
+it (a list of CANDIDATE), and the functions giving what is said beside a
+candidate, its documentation, and whether a character can be part of a word
+(see COMPLETE-IN-TEXT). The last is true for the candidates to be kept in the
+order given. NIL when MODE completes nothing.")
   (:method (mode buffer position) (declare (ignore mode buffer position)) nil))
 
 (define-command completion-at-point ()
-  "Complete the word at point from a list beside it: in Lisp, the operators
-after an open bracket, the variables, operators and classes elsewhere, the
-keywords after a colon and a package's names after its name and a colon; in a
-buffer open in a language server, what the server offers; with what each is
-beside it and the chosen one's parameters and documentation beside the list.
-Typing narrows the list, words in any order;
-\\<popup>\\[popup-next] and \\[popup-previous] choose, \\[popup-insert] or
-\\`TAB' put the chosen one in, \\[popup-quit] closes it. When one name alone
-fits, it goes in at once. Where the mode offers nothing, the words of the
-buffers that start with the text before point, as \\[complete-word] lists them."
+  "Complete the word at point from a list beside it. In Lisp, the list holds
+the operators after an open bracket, the variables, operators and classes
+elsewhere, the keywords after a colon and a package's names after its name and
+a colon. In a buffer open in a language server, it holds what the server
+offers. What each is stands beside it, and the chosen one's parameters and
+documentation stand beside the list. Typing narrows the list, words in any
+order; \\<popup>\\[popup-next] and \\[popup-previous] choose, \\[popup-insert]
+or \\`TAB' put the chosen one in, \\[popup-quit] closes it. When one name
+alone fits, it goes in at once. Where the mode offers nothing, the words of
+the buffers that start with the text before point, as \\[complete-word] lists
+them."
   (let ((b (current-buffer)))
     (cond ((hex-view-here-p) (message "Nothing to complete in the hex view"))
           ((buffer-read-only-p b) (message "Buffer is read-only: ~a" (tuatara.buffer:buffer-name b)))

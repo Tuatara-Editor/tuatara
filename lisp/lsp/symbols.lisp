@@ -31,12 +31,16 @@ as DEFINITIONs: with DIRECTION :INCOMING the places that call it, with
   (multiple-value-bind (doc server) (lsp-doc-at buffer position "callHierarchyProvider" "goto-reference")
     (if (null server)
         :none
-        (let ((item (find-if #'hash-table-p (tuatara.text:json-items (lsp-request-now server "textDocument/prepareCallHierarchy"
-                                                                          (doc-params doc server position)))))
+        (let ((item (find-if #'hash-table-p
+                             (tuatara.text:json-items (lsp-request-now server "textDocument/prepareCallHierarchy"
+                                                           (doc-params doc server position)))))
               (*location-files* (make-hash-table :test 'equal))
               (*location-octets-left* *lsp-location-files-total*))
           (when item
-            (let ((calls (lsp-request-now server (if (eq direction :incoming) "callHierarchy/incomingCalls" "callHierarchy/outgoingCalls")
+            (let ((calls (lsp-request-now server
+                                          (if (eq direction :incoming)
+                                              "callHierarchy/incomingCalls"
+                                              "callHierarchy/outgoingCalls")
                                           (tuatara.text:json-object "item" item))))
               (values
                (remove nil
@@ -127,7 +131,8 @@ as they are (*LSP-OUTLINE*); else the mode's headings."
 its language server finds them by what you type (the name at point offered):
 each is listed with what it is and where, and the one chosen is gone to."
   (let* ((buffer (current-buffer))
-         (server (find-if (lambda (s) (server-offers-p s "workspaceSymbolProvider" "workspace-symbols")) (buffer-servers buffer))))
+         (server (find-if (lambda (s) (server-offers-p s "workspaceSymbolProvider" "workspace-symbols"))
+                          (buffer-servers buffer))))
     (if (null server)
         (message "No language server here finds a project's names")
         (let* ((query (read-string "Project symbol: " :initial (or (lsp-word-at buffer (point)) "") :select-initial t))
@@ -136,7 +141,10 @@ each is listed with what it is and where, and the one chosen is gone to."
                                                'list))))
           (if (null symbols)
               (message "~a finds no name like ~a" (lsp-server-name server) query)
-              (let ((chosen (completing-read-value "Go to: " (mapcar #'symbol-candidate symbols) :require-match t :keep-order t)))
+              (let ((chosen (completing-read-value "Go to: "
+                                                   (mapcar #'symbol-candidate symbols)
+                                                   :require-match t
+                                                   :keep-order t)))
                 (when (hash-table-p chosen)
                   (let ((definition (lsp-location-definition
                                      server (tuatara.text:json-object
@@ -147,7 +155,9 @@ each is listed with what it is and where, and the one chosen is gone to."
                                                                                    "end" (tuatara.text:json-object "line" 0 "character" 0)))))))
                     (if definition
                         (progn (push-xref-marker) (go-to-definition definition))
-                        (message "~a gives no place for ~a" (lsp-server-name server) (tuatara.text:json-text chosen "name")))))))))))
+                        (message "~a gives no place for ~a"
+                                 (lsp-server-name server)
+                                 (tuatara.text:json-text chosen "name")))))))))))
 
 (defun symbol-candidate (symbol)
   "SYMBOL, a name of a project a server found, as a candidate to choose: its

@@ -25,7 +25,8 @@ tab width, whether tabs indent, fill column, and what the echo area said."
   (with-test-directory (dir)
     (let ((tuatara.defaults::*modal-editing* nil))
       ;; the first line names the mode, its width and fill
-      (destructuring-bind (mode tab tabs fill f) (opened-settings dir "notes.txt" (format nil "# -*- mode: org; tab-width: 8; fill-column: 72 -*-~%* A~%"))
+      (destructuring-bind (mode tab tabs fill f)
+          (opened-settings dir "notes.txt" (format nil "# -*- mode: org; tab-width: 8; fill-column: 72 -*-~%* A~%"))
         (declare (ignore tabs f))
         (is string= "org-mode" mode)
         (is = 8 tab)
@@ -50,7 +51,8 @@ tab width, whether tabs indent, fill column, and what the echo area said."
       (is string/= "buffers-mode" (first (opened-settings dir "d.txt" (format nil "-*- mode: buffers -*-~%"))))
       ;; nor a mode that runs what is typed: the Lisp prompt, *scratch*'s Lisp
       (is string= "text-mode" (first (opened-settings dir "g.txt" (format nil ";; -*- mode: ielm -*-~%X> (+ 1 2)~%"))))
-      (is string= "text-mode" (first (opened-settings dir "h.txt" (format nil ";; -*- mode: lisp-interaction -*-~%(+ 1 2)~%"))))
+      (is string= "text-mode"
+          (first (opened-settings dir "h.txt" (format nil ";; -*- mode: lisp-interaction -*-~%(+ 1 2)~%"))))
       ;; a mode some files are opened in is taken, fundamental-mode too
       (is string= "lisp-mode" (first (opened-settings dir "i.txt" (format nil ";; -*- mode: lisp -*-~%"))))
       (is string= "fundamental-mode" (first (opened-settings dir "j.txt" (format nil "-*- mode: fundamental -*-~%"))))
@@ -66,7 +68,9 @@ tab width, whether tabs indent, fill column, and what the echo area said."
           (path (merge-pathnames "two.txt" dir)))
       ;; the file says its sentences are two spaces apart: taken, and known as said by the file
       (alexandria:write-string-into-file (format nil "One.  Two.~%~%# Local Variables:~%# sentence-end-double-space: t~%# End:~%") path)
-      (let* ((editor (nth-value 1 (run-keys (format nil "C-x C-f C-a C-k ~a RET" (rimu-typed (namestring path))) :width 160)))
+      (let* ((editor (nth-value 1
+                                (run-keys (format nil "C-x C-f C-a C-k ~a RET" (rimu-typed (namestring path)))
+                                          :width 160)))
              (buffer (tuatara.display:window-buffer (tuatara.command:editor-window editor))))
         (true (tuatara.defaults::sentence-end-double-space-p buffer))
         (is equal '(t t) (multiple-value-list (tuatara.defaults::file-declares buffer "sentence-end-double-space")))
@@ -74,7 +78,9 @@ tab width, whether tabs indent, fill column, and what the echo area said."
         (forget-file-buffers))
       ;; a value that is no yes or no is left alone
       (alexandria:write-string-into-file (format nil "x~%# Local Variables:~%# sentence-end-double-space: 3~%# End:~%") path :if-exists :supersede)
-      (let* ((editor (nth-value 1 (run-keys (format nil "C-x C-f C-a C-k ~a RET" (rimu-typed (namestring path))) :width 160)))
+      (let* ((editor (nth-value 1
+                                (run-keys (format nil "C-x C-f C-a C-k ~a RET" (rimu-typed (namestring path)))
+                                          :width 160)))
              (buffer (tuatara.display:window-buffer (tuatara.command:editor-window editor))))
         (false (tuatara.defaults::sentence-end-double-space-p buffer))
         (false (nth-value 1 (tuatara.defaults::file-declares buffer "sentence-end-double-space")))
@@ -134,14 +140,20 @@ tab width, whether tabs indent, fill column, and what the echo area said."
     ;; the words in prose are no block: one is added after it, the prose left alone
     (is string= (format nil "See Local Variables: in the manual~%~%# Local Variables:~%# tab-width: 3~%# End:~%")
         (written (format nil "See Local Variables: in the manual~%") "tab-width" 3)))
-  (is equal '() (tuatara.defaults::end-block-settings (format nil "See Local Variables: in the manual~%tab-width: 4~%")))
-  (is equal '(("tab-width" . 4)) (tuatara.defaults::end-block-settings (format nil "<!-- Local Variables: -->~%<!-- tab-width: 4 -->~%")))
+  (is equal '()
+      (tuatara.defaults::end-block-settings (format nil "See Local Variables: in the manual~%tab-width: 4~%")))
+  (is equal '(("tab-width" . 4))
+      (tuatara.defaults::end-block-settings (format nil "<!-- Local Variables: -->~%<!-- tab-width: 4 -->~%")))
   ;; a number too long for any setting is kept as text
-  (is equal '(("tab-width" . "1234567890")) (tuatara.defaults::end-block-settings (format nil "Local Variables:~%tab-width: 1234567890~%End:~%"))))
+  (is equal '(("tab-width" . "1234567890"))
+      (tuatara.defaults::end-block-settings (format nil "Local Variables:~%tab-width: 1234567890~%End:~%"))))
 
 (define-test (file-local first-line-of-wide-text)
   ;; a file whose first kilobyte ends, or whose end read begins, inside a character is read all the same
-  (let ((b (tuatara.buffer:make-buffer "*wide-head*" :text (format nil "-*- fill-column: 60 -*-~%~a" (make-string 9001 :initial-element #\€)))))
+  (let ((b (tuatara.buffer:make-buffer "*wide-head*"
+                                       :text (format nil
+                                                     "-*- fill-column: 60 -*-~%~a"
+                                                     (make-string 9001 :initial-element #\€)))))
     (unwind-protect
          (is equal '(("fill-column" . 60)) (tuatara.defaults::file-local-settings b))
       (tuatara.buffer:kill-buffer b))))

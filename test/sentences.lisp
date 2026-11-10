@@ -56,7 +56,9 @@ its text ends."
       (let ((buffer (sentence-buffer text :double-space double-space)))
         (unwind-protect
              (is = (sentence-steps buffer)
-                 (nth-value 1 (tuatara.defaults::count-text (tuatara.buffer:buffer-text buffer) 0 (tuatara.buffer:buffer-size buffer)
-                                                            :double-space double-space))
+                 (nth-value 1
+                            (tuatara.defaults::count-text (tuatara.buffer:buffer-text buffer) 0
+                                                          (tuatara.buffer:buffer-size buffer)
+                                                          :double-space double-space))
                  "~s~:[~;, two spaces apart~]" text double-space)
           (tuatara.buffer:kill-buffer buffer))))))

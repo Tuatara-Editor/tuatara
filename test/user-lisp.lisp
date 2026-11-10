@@ -251,7 +251,9 @@ at its start, killed afterwards."
     (is string= "f" (operator "(f (g) |a (b| "))
     (flet ((consed (count)
              (let ((b (tuatara.buffer:make-buffer "*operator*"
-                                                  :text (format nil "(defparameter *data*~%  (vector ~{~d~^ ~}" (loop for i below count collect i)))))
+                                                  :text (format nil
+                                                                "(defparameter *data*~%  (vector ~{~d~^ ~}"
+                                                                (loop for i below count collect i)))))
                (unwind-protect
                     (progn (tuatara.defaults::operator-at b (tuatara.buffer:buffer-size b))
                            (loop repeat 3 minimize (nth-value 2 (tuatara.bench::measuring
@@ -282,4 +284,6 @@ at its start, killed afterwards."
           (tuatara.defaults::lisp-name-part-p char) "~s" char)))
   (true (tuatara.defaults::lisp-name-part-p (code-char #x101)))
   ;; reading expressions cuts an atom where the octets say
-  (is equal '((0 3 0) (4 7 0)) (tuatara.defaults::lisp-elements (tuatara.text:string-octets (format nil "abc~cdef" #\Page)))))
+  (is equal
+      '((0 3 0) (4 7 0))
+      (tuatara.defaults::lisp-elements (tuatara.text:string-octets (format nil "abc~cdef" #\Page)))))

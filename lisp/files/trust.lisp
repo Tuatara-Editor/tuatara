@@ -68,12 +68,13 @@ again each time."
           when real collect real)))
 
 (defun project-trusted-p (root)
-  "True when the project at ROOT may run its own programs: it, where it really
-is, was trusted when asked (kept by where it really was then), or is in one
-of *LSP-TRUSTED-PROJECTS* (where they really are); never one that is, is in
-or holds an evidence folder (FOLDER-HOLDS-EVIDENCE-P), whose programs could
-write there, nor one within a folder answered look only
-\(PROJECT-LOOK-ONLY-P); the answer that runs less wins."
+  "True when the project at ROOT may run its own programs. That holds when it,
+where it really is, was trusted when asked (kept by where it really was then),
+or is in one of *LSP-TRUSTED-PROJECTS* (where they really are). It never
+holds for one that is, is in or holds an evidence folder
+\(FOLDER-HOLDS-EVIDENCE-P), whose programs could write there, nor for one
+within a folder answered look only (PROJECT-LOOK-ONLY-P). The answer that runs
+less wins."
   (let ((real (real-folder root)))
     (and real
          (or (member real (state-list-entries *lsp-trusted*) :test #'equal)
@@ -167,16 +168,16 @@ again."
 (defun ask-project-trust (root &key again)
   "Whether the project at ROOT may run its own programs: :TRUSTED,
 :LOOK-ONLY, or NIL when not, and as a second value why it can never be
-trusted when it is evidence (PROJECT-EVIDENCE-WORDS). Trusted already, or
-answered look only already, or asked now (with AGAIN, asked whatever was
-answered before): y, then yes typed (trusting cannot be taken back once its
-programs ran), trusts it, unless a folder holding it is looked at only; l
-keeps it to looking only, each remembered; n leaves it to be asked again,
-and with AGAIN forgets what was answered. The question (TRUST-QUESTION) says
-all a yes allows, whatever asks it, and only a key pressed once it is shown
-answers it. A project that is, is in or holds an evidence folder, or is
-within a folder answered look only, is looked at only, never asked of
-\(asked again with AGAIN, it stays so)."
+trusted when it is evidence (PROJECT-EVIDENCE-WORDS). It is either trusted
+already, answered look only already, or asked now (with AGAIN, asked whatever
+was answered before). The keys are these: y, then yes typed (trusting cannot
+be taken back once its programs ran), trusts it, unless a folder holding it is
+looked at only. l keeps it to looking only, each remembered. n leaves it to be
+asked again, and with AGAIN forgets what was answered. The question
+\(TRUST-QUESTION) says all a yes allows, whatever asks it, and only a key
+pressed once it is shown answers it. A project that is, is in or holds an
+evidence folder, or is within a folder answered look only, is looked at only,
+never asked of (asked again with AGAIN, it stays so)."
   (let ((real (real-folder root))
         (evidence (project-evidence-words root)))
     (cond (evidence (values :look-only evidence))
@@ -208,12 +209,12 @@ evidence."
 (define-command trust-project ()
   "Ask again whether you trust the project of the current buffer (the git
 repository its file or folder is in, else its project, or the repository a
-git buffer shows), whatever was answered
-before: y trusts it to run its own programs (its language servers, the
-programs git runs for it, its build commands); l keeps it to looking only,
-git reading it and running nothing of it; n forgets the answer, to be asked
-again. A project in or holding an evidence folder cannot be trusted, and a
-folder of *LSP-TRUSTED-PROJECTS* stays trusted whatever is answered."
+git buffer shows), whatever was answered before. The key y trusts it to run
+its own programs (its language servers, the programs git runs for it, its
+build commands). The key l keeps it to looking only, git reading it and
+running nothing of it. The key n forgets the answer, to be asked again. A
+project in or holding an evidence folder cannot be trusted, and a folder of
+*LSP-TRUSTED-PROJECTS* stays trusted whatever is answered."
   (let* ((buffer (current-buffer))
          (root (or (tuatara.buffer:buffer-local buffer :git-top)
                    (let ((directory (buffer-directory buffer)))

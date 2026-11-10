@@ -62,7 +62,8 @@ left as they are; \\`!' replaces those still folded with their folds kept.
 Returns the number replaced."
   (let ((pos (point)) (replaced 0) (*asked-match* nil))
     ;; painted after every other highlight, over the search's other matches
-    (setf *highlight-functions* (append (remove 'asked-match-highlights *highlight-functions*) (list 'asked-match-highlights)))
+    (setf *highlight-functions*
+          (append (remove 'asked-match-highlights *highlight-functions*) (list 'asked-match-highlights)))
     (unwind-protect
         (flet ((past (m at)
                  ;; after an empty match (^, $) the next is looked for a character on, so that it is never met again
@@ -92,7 +93,8 @@ Returns the number replaced."
                      (if rest
                          (funcall rest (first m))
                          (loop for match = (funcall next-match pos)
-                                 then (and (< (second match) (tuatara.buffer:buffer-size buffer)) (funcall next-match (past match (second match))))
+                                 then (and (< (second match) (tuatara.buffer:buffer-size buffer))
+                                           (funcall next-match (past match (second match))))
                                while match collect match))
                    (when status
                      ;; :background, the rest gone to a job of their own, which says how it ends

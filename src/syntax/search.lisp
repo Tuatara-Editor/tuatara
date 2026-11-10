@@ -67,13 +67,13 @@ stretch without it is gone through many octets at a time.")
   "Index of the first occurrence of NEEDLE in the first FILLED octets of CHUNK
 starting at or after FROM and before BELOW (the start index limit), or NIL.
 Both are octet vectors. The places its first octet stands are found one
-octet at a time nearby (+NEAR-OCTETS+), else by POSITION, which looks at
-many octets at a time, and the rest of it is compared there: ignoring case, a letter's other case is looked for no
-further than the first case's next place, so the first found is the first
-there is, and no octet is looked at twice. OTHER-CASE, a cons kept by a
-caller that searches the same CHUNK again from where it left off, holds
-where the other case stands next and how far it was looked for, so that it
-is looked for once for the whole chunk."
+octet at a time nearby (+NEAR-OCTETS+), else by POSITION, which looks at many
+octets at a time. The rest of it is compared there. Ignoring case, a letter's
+other case is looked for no further than the first case's next place, so the
+first found is the first there is, and no octet is looked at twice.
+OTHER-CASE, a cons kept by a caller that searches the same CHUNK again from
+where it left off, holds where the other case stands next and how far it was
+looked for, so that it is looked for once for the whole chunk."
   (declare (type tuatara.text:octets chunk needle) (type fixnum from below filled) (optimize speed (safety 0)))
   (let ((n (length needle)))
     (declare (type fixnum n))
@@ -210,10 +210,10 @@ looked for begins with nearly every octet.")
 (defun scan-chunks-forward (rope start end chunk n look &optional halt)
   "The first place starting in [START, END) of ROPE that LOOK finds, reading
 ROPE into CHUNK +SEARCH-CHUNK+ octets at a time and N - 1 more, for what is
-looked for to be seen whole across the edge: LOOK, a function of the octets
-filled and the index below which a place must start, gives the index in
-CHUNK of the first, or NIL. NIL when none; NIL and :STOPPED when HALT, a
-function asked every +HALT-CHUNKS+ chunks, answers true."
+looked for to be seen whole across the edge. LOOK is a function of the octets
+filled and the index below which a place must start. It gives the index in
+CHUNK of the first, or NIL. Returns NIL when none, and NIL and :STOPPED when
+HALT, a function asked every +HALT-CHUNKS+ chunks, answers true."
   (declare (type fixnum start end n) (type tuatara.text:octets chunk) (type function look))
   (let ((total (tuatara.text:rope-octet-length rope)))
     (loop for pos of-type fixnum from start below end by +search-chunk+
@@ -295,7 +295,9 @@ Complexity: O(distance scanned)."
                                         (lambda (k halt)
                                           (let ((a (+ serial-end (* k piece))))
                                             (tuatara.text:with-octet-block (chunk (+ +search-chunk+ n))
-                                              (scan-range-forward rope needle case-fold a (min end (+ a piece)) chunk halt))))
+                                              (scan-range-forward rope needle case-fold a (min end
+                                                                                               (+ a
+                                                                                                  piece)) chunk halt))))
                                         stop threads)
                        (cond (stopped (values nil :stopped))
                              (found (values found (+ found n)))
@@ -392,7 +394,8 @@ Complexity: O((END - START) / THREADS)."
                                          (other-case (cons nil nil)))
                                     (declare (type fixnum i below filled))
                                     (loop
-                                      (let ((hit (and (< count limit) (scan-chunk chunk needle case-fold i below filled other-case))))
+                                      (let ((hit (and (< count limit)
+                                                      (scan-chunk chunk needle case-fold i below filled other-case))))
                                         (unless hit (return))
                                         (when (= count (length found))
                                           (let ((bigger (make-array (* 2 (length found)) :element-type 'fixnum)))
@@ -463,11 +466,11 @@ matches."
   (not (find-if (lambda (c) (or (find c "\\^$.|?*+()[]{}") (tuatara.text:raw-byte-code-p (char-code c)))) pattern)))
 
 (defun regex-case-fold-p (pattern)
-  "True when a search for PATTERN ignores case (smart case), when it has no
-upper-case letter outside an escape such as \\W or \\S, a character's code
-\(\\x4A, \\x{1F600}), the name of a group ((?<Year>...), \\k<Year>) and the
-name of a character property (\\pL, \\p{Greek}), and names no case either: no
-[:upper:] or [:lower:] (or [:^upper:], [:^lower:]) in a set, no \\p{Lu},
+  "True when a search for PATTERN ignores case (smart case). That is when it
+has no upper-case letter outside an escape such as \\W or \\S, a character's
+code (\\x4A, \\x{1F600}), the name of a group ((?<Year>...), \\k<Year>) and the
+name of a character property (\\pL, \\p{Greek}). It must name no case either:
+no [:upper:] or [:lower:] (or [:^upper:], [:^lower:]) in a set, no \\p{Lu},
 \\p{Ll} or \\p{Lt} (written in any case, or by its long name,
 Uppercase_Letter), which ask for case as a capital letter does."
   (let ((i 0) (n (length pattern)))
@@ -577,7 +580,11 @@ included; else NIL. A name is small letters, then digits too."
     (when (and (< (1+ i) n) (char= (char string i) #\[) (char= (char string (1+ i)) #\:))
       (let* ((from (if (and (< (+ i 2) n) (char= (char string (+ i 2)) #\^)) (+ i 3) (+ i 2)))
              (to (or (position-if-not (lambda (c) (or (char<= #\a c #\z) (char<= #\0 c #\9))) string :start from) n)))
-        (when (and (> to from) (char<= #\a (char string from) #\z) (< (1+ to) n) (char= (char string to) #\:) (char= (char string (1+ to)) #\]))
+        (when (and (> to from)
+                   (char<= #\a (char string from) #\z)
+                   (< (1+ to) n)
+                   (char= (char string to) #\:)
+                   (char= (char string (1+ to)) #\]))
           (values (+ to 2) (subseq string (+ i 2) to)))))))
 
 (defun bracket-end (string i)
@@ -701,20 +708,21 @@ when \\Q...\\E quotes nothing."
       (if (alphanumericp (char regex (1- to))) 1 2))))
 
 (defun engine-pattern (regex)
-  "REGEX as cl-ppcre is given it: a named pattern alone in its brackets
-\([[:ipv4:]], *NAMED-PATTERNS*) as the group it stands for, a date with its
-bounds ([[:date<2026-07-01:]], DATE-PATTERN-AT) likewise, POSIX classes in a
-set ([[:alpha:]]) as the ASCII characters PCRE gives them, \\Q...\\E as that text quoted, \\h and \\H,
-\\v and \\V as sets of horizontal and vertical space, \\R as a line break of
-any kind, \\pL as \\p{L}, a stray \\E as nothing, each \\xNN whose NN is 80
-to FF as the octet NN standing on its own, not inside a character (the raw
-byte the display shows as \\xNN), each \\x{H...} as the character of that
-code, and a possessive quantifier (a++, a*+, a?+, a{2,5}+) as the atomic group
-it stands for ((?>a+)); the rest as it is. Signals PATTERN-REFUSED for an
-escape PCRE gives a meaning cl-ppcre does not know (\\K, \\G, \\X), for one
-that cannot go in a set (\\R there), for a POSIX class it has no name for,
-for [:alpha:] outside a set, and for a named pattern in a set with other
-members or turned round."
+  "REGEX as cl-ppcre is given it. A named pattern alone in its brackets
+\([[:ipv4:]], *NAMED-PATTERNS*) becomes the group it stands for, and a date
+with its bounds ([[:date<2026-07-01:]], DATE-PATTERN-AT) likewise. POSIX
+classes in a set ([[:alpha:]]) become the ASCII characters PCRE gives them.
+\\Q...\\E becomes that text quoted. \\h and \\H, \\v and \\V become sets of
+horizontal and vertical space. \\R becomes a line break of any kind. \\pL
+becomes \\p{L}. A stray \\E becomes nothing. Each \\xNN whose NN is 80 to FF
+becomes the octet NN standing on its own, not inside a character (the raw byte
+the display shows as \\xNN). Each \\x{H...} becomes the character of that code.
+A possessive quantifier (a++, a*+, a?+, a{2,5}+) becomes the atomic group it
+stands for ((?>a+)). The rest is as it is.
+Signals PATTERN-REFUSED for an escape PCRE gives a meaning cl-ppcre does not
+know (\\K, \\G, \\X), for one that cannot go in a set (\\R there), for a POSIX
+class it has no name for, for [:alpha:] outside a set, and for a named
+pattern in a set with other members or turned round."
   (let ((n (length regex)) (i 0) (set-end -1) (set-closed nil)
         (out-text (make-array 0 :element-type 'character :adjustable t :fill-pointer 0))
         ;; where the output of what a quantifier would repeat begins, and of each group open
@@ -744,7 +752,8 @@ members or turned round."
                                                  (and (named-pattern-p name)
                                                       (if set-closed
                                                           (refuse-pattern "invalid: [:~a:] stands alone in its brackets: [[:~a:]]" name name)
-                                                          ;; [[:ipv4:] still being typed: a set not closed yet, as cl-ppcre says
+                                                          ;; [[:ipv4:] still being typed: a set not closed yet, as
+                                                          ;; cl-ppcre says
                                                           "x"))
                                                  (refuse-pattern "invalid: no POSIX class [:~a:]" name)))))
                             (write-string members out)
@@ -850,9 +859,9 @@ or title-case letters (Lu, Ll, Lt)."
 
 (defun character-property (name)
   "A function true of the characters having the property NAME, as \\p{NAME}
-reads it: a general category of Unicode by its letter or two (L, Lu, Nd, P,
-Zs, LC for any cased letter) or long name (Letter, Uppercase_Letter), a
-script (Greek, Latin, Han), Alphabetic, White_Space, Any or ASCII; case,
+reads it. NAME is a general category of Unicode by its letter or two (L, Lu,
+Nd, P, Zs, LC for any cased letter) or long name (Letter, Uppercase_Letter), a
+script (Greek, Latin, Han), Alphabetic, White_Space, Any or ASCII. Case,
 spaces, - and _ do not matter, and Is before a name is allowed. Signals
 PATTERN-REFUSED for a name it does not know."
   (let ((key (property-key name)))
@@ -1003,10 +1012,10 @@ prefix of three octets or more, or as long as the longest text, is preferred."
 
 (defun char-octet-sets (char case-fold)
   "The sets of octets (OCTET-SET) CHAR is written in, one for each of its
-octets, an ASCII letter's other case in its set when CASE-FOLD; NIL when CHAR
-cannot be told by its octets: a newline, which a carriage return and line feed
-(CR LF) text writes otherwise, a raw octet's character, or a letter beyond
-ASCII whose case is folded."
+octets, an ASCII letter's other case in its set when CASE-FOLD. NIL when CHAR
+cannot be told by its octets. That is a newline, which a carriage return and
+line feed (CR LF) text writes otherwise, a raw octet's character, or a letter
+beyond ASCII whose case is folded."
   (let ((code (char-code char)))
     (cond ((or (char= char #\Newline) (tuatara.text:raw-byte-code-p code)) nil)
           ((< code 128)
@@ -1042,12 +1051,12 @@ the shortest, every octet any of them allows there."
 
 (defun shape-runs (tree case-fold)
   "Three values for a cl-ppcre parse TREE, as LITERAL-RUNS gives them for
-text, each shape a list of octet sets, a set for each octet (CHAR-OCTET-SETS):
-the shape of every match when every match is of one length and shape, else
-:NONE; a list of shapes each of which every match holds; and the shape every
-match starts with, perhaps empty. A positive lookahead at the start gives the
-shape the text there starts with. Forms not understood contribute nothing,
-which is always safe."
+text, each shape a list of octet sets, a set for each octet (CHAR-OCTET-SETS).
+The first is the shape of every match when every match is of one length and
+shape, else :NONE. The second is a list of shapes each of which every match
+holds. The third is the shape every match starts with, perhaps empty. A
+positive lookahead at the start gives the shape the text there starts with.
+Forms not understood contribute nothing, which is always safe."
   (flet ((zero-width-p (x)
            (or (member x '(:start-anchor :end-anchor :modeless-start-anchor :modeless-end-anchor
                            :modeless-end-anchor-no-newline :word-boundary :non-word-boundary :void))
@@ -1182,29 +1191,42 @@ crossing."
   (labels ((walk (x) (or (and (symbolp x) (member x keywords)) (and (consp x) (or (walk (car x)) (walk (cdr x)))))))
     (and (walk tree) t)))
 
-(defstruct (regex-traits (:constructor make-regex-traits (&key needle shape fold prefix line-bound end-anchored reach plain))
+(defstruct (regex-traits (:constructor make-regex-traits
+                                       (&key needle shape fold prefix line-bound end-anchored reach plain))
                          (:copier nil))
-  "What COMPILE-REGEX learnt about a pattern for scanning a rope: NEEDLE, the
-octets of text every match holds (ASCII case folded when FOLD), or NIL; SHAPE,
-when it tells more than NEEDLE, a vector of octet sets (REQUIRED-SHAPE) every
-match holds in its place, or NIL; PREFIX true when every match starts with
-the one or the other; LINE-BOUND true when every match lies
-within a line; END-ANCHORED true when the pattern uses \\z or \\Z, which only
-match at the end of the text; REACH, the octets past the stretch a match starts
-in that a scan looks, +REGEX-OVERLAP+ or for a thorough scanner
+  "What COMPILE-REGEX learnt about a pattern for scanning a rope. NEEDLE is the
+octets of text every match holds (ASCII case folded when FOLD), or NIL. SHAPE,
+when it tells more than NEEDLE, is a vector of octet sets (REQUIRED-SHAPE)
+every match holds in its place, or NIL. PREFIX is true when every match starts
+with the one or the other. LINE-BOUND is true when every match lies within a
+line. END-ANCHORED is true when the pattern uses \\z or \\Z, which only match
+at the end of the text. REACH is the octets past the stretch a match starts in
+that a scan looks, +REGEX-OVERLAP+ or for a thorough scanner
 *REGEX-LONGEST-MATCH*."
-  (needle nil) (shape nil) (fold nil) (prefix nil) (line-bound nil) (end-anchored nil) (reach +regex-overlap+) (plain nil))
+  (needle nil)
+  (shape nil)
+  (fold nil)
+  (prefix nil)
+  (line-bound nil)
+  (end-anchored nil)
+  (reach +regex-overlap+)
+  (plain nil))
 
 (setf (documentation 'make-regex-traits 'function) "Return the REGEX-TRAITS of a pattern from what its keys say."
       (documentation 'regex-traits-p 'function) "True when OBJECT is a REGEX-TRAITS."
       (documentation 'regex-traits-needle 'function) "The octets of text every match of the pattern holds, or NIL."
-      (documentation 'regex-traits-shape 'function) "The octet sets every match of the pattern holds in their place, or NIL."
+      (documentation 'regex-traits-shape 'function) "The octet sets every match of the pattern holds
+in their place, or NIL."
       (documentation 'regex-traits-fold 'function) "True when the needle is ASCII case folded and is looked for so."
-      (documentation 'regex-traits-prefix 'function) "True when every match of the pattern starts with its needle or shape."
+      (documentation 'regex-traits-prefix 'function) "True when every match of the pattern starts
+with its needle or shape."
       (documentation 'regex-traits-line-bound 'function) "True when every match of the pattern lies within a line."
-      (documentation 'regex-traits-end-anchored 'function) "True when the pattern matches only at the end of the text (\\z, \\Z)."
-      (documentation 'regex-traits-reach 'function) "Octets past the stretch a match starts in that a scan for the pattern looks."
-      (documentation 'regex-traits-plain 'function) "The pattern's scanner for text without a carriage return, or NIL when it is the same.")
+      (documentation 'regex-traits-end-anchored 'function) "True when the pattern matches only at
+the end of the text (\\z, \\Z)."
+      (documentation 'regex-traits-reach 'function) "Octets past the stretch a match starts in that
+a scan for the pattern looks."
+      (documentation 'regex-traits-plain 'function) "The pattern's scanner for text without a
+carriage return, or NIL when it is the same.")
 
 (defvar *regex-thorough* nil
   "True while a thorough command runs (regex-search-forward-thorough and the
@@ -1220,13 +1242,13 @@ matches may cross lines; the same for one kept within a line.")
 (defun line-tree (tree)
   "TREE, a cl-ppcre parse tree, with its lines ending as every text's do
 \(TUATARA.TEXT:LINE-END-OCTET-P), as the Rust regex crate reads a pattern in
-its carriage return and line feed (CRLF) mode: ^ matches after a newline and
-after a carriage return no newline follows, $ before a newline no carriage
-return comes before and before a carriage return, neither between a carriage
-return and its newline; . matches neither a carriage return nor a newline, but
-in single-line mode ((?s)). Where (?-m) makes ^ and $ the text's ends, they
-are left as they are. Plain text stays plain: a tree that is a string alone is
-given as a sequence."
+its carriage return and line feed (CRLF) mode. ^ matches after a newline and
+after a carriage return no newline follows. $ matches before a newline no
+carriage return comes before and before a carriage return, neither between a
+carriage return and its newline. . matches neither a carriage return nor a
+newline, but in single-line mode ((?s)). Where (?-m) makes ^ and $ the text's
+ends, they are left as they are. Plain text stays plain: a tree that is a
+string alone is given as a sequence."
   (labels ((mode-after (flags mode on off)
              (cond ((member on flags) t)
                    ((member off flags) nil)
@@ -1257,7 +1279,8 @@ given as a sequence."
                               (list (walk (car (last node))
                                           (mode-after flags single :single-line-mode-p :not-single-line-mode-p)
                                           (mode-after flags multi :multi-line-mode-p :not-multi-line-mode-p))))))
-                   ((member (first node) '(:char-class :inverted-char-class :property :inverted-property :back-reference :filter))
+                   ((member (first node)
+                            '(:char-class :inverted-char-class :property :inverted-property :back-reference :filter))
                     node)
                    (t (cons (first node) (mapcar (lambda (child) (walk child single multi)) (rest node)))))))
     (let ((walked (walk tree nil t)))
@@ -1282,7 +1305,8 @@ repetition with no most, a back-reference)."
                                        (let ((most (walk child))) (if most (incf total most) (return nil))))))
                         (:alternation (let ((largest 0))
                                         (dolist (child (rest node) largest)
-                                          (let ((most (walk child))) (if most (setf largest (max largest most)) (return nil))))))
+                                          (let ((most (walk child)))
+                                            (if most (setf largest (max largest most)) (return nil))))))
                         (:named-register
                          (cond ((filter-crosses-lines-p (second node)) nil)
                                ;; text a filter reads: at most a Bitcoin address's 90 characters
@@ -1455,7 +1479,9 @@ the literal scan that skips ahead to a pattern's required text."
       (documentation 'decoder-table 'function) "A DECODER's octet offset of each character of its wide text.")
 
 (sb-ext:defglobal **spare-decoders**
-    (tuatara.runtime:make-spares (lambda () (make-decoder)) :keep-p (lambda (decoder) (<= (length (decoder-octets decoder)) (* 256 1024))))
+    (tuatara.runtime:make-spares (lambda ()
+                                   (make-decoder)) :keep-p (lambda (decoder)
+                                                             (<= (length (decoder-octets decoder)) (* 256 1024))))
   "Decoders not in use, kept so that the pieces of a regex search on several
 cores reuse their buffers instead of making new ones; one a long match grew
 past 256 KB is let go.")
@@ -1567,10 +1593,10 @@ O(1)."
 
 (defun needle-line (octets filled needle fold from)
   "The line of the first occurrence of NEEDLE (folded when FOLD) in the
-first FILLED octets of OCTETS at or after FROM, as two offsets: where it
-starts, FROM at the earliest, and where it ends, after the octet that ends it
-\(TUATARA.TEXT:LINE-END-OCTET-P; a carriage return as the last octet filled
-taken for one a newline may follow) or at FILLED; NIL when NEEDLE is not
+first FILLED octets of OCTETS at or after FROM, as two offsets. They are where
+it starts, FROM at the earliest, and where it ends, after the octet that ends
+it (TUATARA.TEXT:LINE-END-OCTET-P; a carriage return as the last octet filled
+taken for one a newline may follow) or at FILLED. NIL when NEEDLE is not
 there."
   (declare (type tuatara.text:octets octets needle) (type fixnum filled from) (optimize speed))
   (let ((at (scan-chunk octets needle fold from filled filled)))
@@ -1595,30 +1621,30 @@ later. Complexity: O(log n + POSITION - FLOOR)."
     (if newline (1+ newline) floor)))
 
 (defun map-regex-matches (function rope scanner start end &key bound decoder halt (texts t) empty)
-  "Call FUNCTION with (MATCH-START MATCH-END MATCHED-STRING GROUPS), byte offsets,
-the text matched and a vector of the groups' texts (NIL for a group that took
-no part; NIL instead of the vector for a pattern without groups; both NIL when
-TEXTS is NIL, which spares copying them; with TEXTS a function, what it makes
-of the text and no groups: MATCHED-TEXT), for
-each non-empty, non-overlapping match of SCANNER in ROPE that starts at or
-after START and before END, in order; with EMPTY, each empty match too (^ at
-every line start, for one). The pattern sees no text past BOUND (the
-text end by default), so every match ends by then. Stops as soon as FUNCTION
-returns true and returns that value; else returns NIL. HALT, when given, is
-asked before each window and gives up the scan (returning NIL) when it
-answers true. For a scanner from COMPILE-REGEX (see REGEX-TRAITS): stretches
-without the text every match holds, or the shape (REQUIRED-SHAPE), are
-skipped at literal speed; a pattern
-whose matches lie within a line gets windows that end after a line and are
-looked for from the start of the line its fixed text is on, so its matches
-are found whole and from where they begin on lines up to
-*REGEX-LONGEST-MATCH* octets, and when the fixed text does not begin them,
-only the lines holding it are tried; \\z and \\Z are looked for at the end only.
-Otherwise a match needing text more than
-the pattern's reach (REGEX-TRAITS: +REGEX-OVERLAP+ octets, a thorough
-scanner's *REGEX-LONGEST-MATCH*) past the stretch it starts in may be cut short
-or missed, and so may one whose fixed text lies further than that from its
-start. DECODER, when given, holds the text decoded; else a spare one does
+  "Call FUNCTION with (MATCH-START MATCH-END MATCHED-STRING GROUPS), byte
+offsets, the text matched and a vector of the groups' texts (NIL for a group
+that took no part; NIL instead of the vector for a pattern without groups).
+Both are NIL when TEXTS is NIL, which spares copying them. With TEXTS a
+function, it is what it makes of the text and no groups: MATCHED-TEXT. It is
+called for each non-empty, non-overlapping match of SCANNER in ROPE that
+starts at or after START and before END, in order. With EMPTY, each empty
+match too (^ at every line start, for one). The pattern sees no text past
+BOUND (the text end by default), so every match ends by then. Stops as soon as
+FUNCTION returns true and returns that value; else returns NIL. HALT, when
+given, is asked before each window and gives up the scan (returning NIL) when
+it answers true.
+For a scanner from COMPILE-REGEX (see REGEX-TRAITS), stretches without the
+text every match holds, or the shape (REQUIRED-SHAPE), are skipped at literal
+speed. A pattern whose matches lie within a line gets windows that end after a
+line and are looked for from the start of the line its fixed text is on. Its
+matches are so found whole and from where they begin on lines up to
+*REGEX-LONGEST-MATCH* octets. When the fixed text does not begin them, only
+the lines holding it are tried. \\z and \\Z are looked for at the end only.
+Otherwise a match needing text more than the pattern's reach (REGEX-TRAITS:
++REGEX-OVERLAP+ octets, a thorough scanner's *REGEX-LONGEST-MATCH*) past the
+stretch it starts in may be cut short or missed. So may one whose fixed text
+lies further than that from its start.
+DECODER, when given, holds the text decoded; else a spare one does
 \(WITH-DECODER), so that a search piece after piece on several cores makes no
 new buffers."
   (declare (type fixnum start end) (type function function))
@@ -1654,7 +1680,9 @@ new buffers."
       (setf pos (max pos (tuatara.text:rope-char-start rope (max 0 (- bound *regex-longest-match*))))))
     (loop while (< pos end)
           do (when (and halt (funcall halt)) (return))
-             (let ((range (if (and traits (regex-traits-end-anchored traits)) (max 1 (- end pos)) (max +search-chunk+ overlap))))
+             (let ((range (if (and traits (regex-traits-end-anchored traits))
+                              (max 1 (- end pos))
+                              (max +search-chunk+ overlap))))
                (when (or needle shape)
                  ;; every match holds NEEDLE, or SHAPE: find its next occurrence at literal speed and
                  ;; start there when matches begin with it; else at the start of its line
@@ -1729,7 +1757,8 @@ new buffers."
                                            ;; a filter read the match on past the window: it ends there
                                            (let* ((whole (and texts (rope-text rope bs reached)))
                                                   (result (funcall function bs reached
-                                                                   (and whole (matched-text texts whole 0 (length whole)))
+                                                                   (and whole
+                                                                        (matched-text texts whole 0 (length whole)))
                                                                    (matched-groups texts string group-starts group-ends))))
                                              (when result (return-from map-regex-matches result))
                                              (setf last-end reached)
@@ -1780,9 +1809,9 @@ ASCII, as a window's text is."
 (defun regex-resync-start (rope scanner position floor)
   "Where a scan should begin so that the matches of SCANNER it finds from
 POSITION of ROPE on are those one scan from further back finds, not a match
-begun in the middle of a longer one: the start of POSITION's line for a
+begun in the middle of a longer one. It is the start of POSITION's line for a
 pattern whose matches lie within a line, else the pattern's reach before
-POSITION (REGEX-TRAITS); never before FLOOR."
+POSITION (REGEX-TRAITS). It is never before FLOOR."
   (let ((traits (gethash scanner **regex-traits**)))
     (if (and traits (regex-traits-line-bound traits))
         (line-start-within rope position (max floor (- position *regex-longest-match*)))
@@ -1837,7 +1866,8 @@ milliseconds; when it answers true the search gives up and returns NIL and
          (serial-end (min end (+ start (regex-serial-window))))
          (halted nil)
          (halt (and stop (lambda () (or halted (setf halted (and (funcall stop) t))))))
-         (hit (with-decoder (decoder) (first-regex-match rope scanner start serial-end bound decoder :halt halt :empty empty))))
+         (hit (with-decoder (decoder)
+                (first-regex-match rope scanner start serial-end bound decoder :halt halt :empty empty))))
     (cond (hit (values-list hit))
           (halted (values nil :stopped))
           ((>= serial-end end) nil)
@@ -1866,7 +1896,8 @@ SEARCH-FORWARD."
          (serial-start (max end (- start (regex-serial-window))))
          (halted nil)
          (halt (and stop (lambda () (or halted (setf halted (and (funcall stop) t))))))
-         (hit (with-decoder (decoder) (last-regex-match rope scanner serial-start start bound decoder :halt halt :floor end :empty empty))))
+         (hit (with-decoder (decoder)
+                (last-regex-match rope scanner serial-start start bound decoder :halt halt :floor end :empty empty))))
     (cond (hit (values-list hit))
           (halted (values nil :stopped))
           ((<= serial-start end) nil)
@@ -1905,14 +1936,15 @@ GROUPS) in order (GROUPS as for MAP-REGEX-MATCHES), at most LIMIT of them."
 (defun map-literal-matches (function rope string start end &key bound (case-fold (case-fold-p string)) texts halt)
   "Call FUNCTION with (MATCH-START MATCH-END TEXT NIL) for each non-overlapping
 occurrence of STRING in ROPE that starts at or after START and before END and
-ends by BOUND (the text end by default), in order; TEXT is the text matched
+ends by BOUND (the text end by default), in order. TEXT is the text matched
 when TEXTS is true, else NIL. Stops and returns FUNCTION's value as soon as it
 returns true, or returns NIL when HALT, asked before each chunk, answers true;
-else returns NIL. CASE-FOLD ignores case, as for SEARCH-FORWARD. The text is read a chunk at a
-time into a spare decoder's buffer (WITH-DECODER), so that a search piece
-after piece on several cores makes no new ones; a match's text is taken from
-that chunk, and given again as it was for a match of the same octets as the
-one before, so that billions of matches of a few texts make nothing each."
+else returns NIL. CASE-FOLD ignores case, as for SEARCH-FORWARD.
+The text is read a chunk at a time into a spare decoder's buffer
+\(WITH-DECODER), so that a search piece after piece on several cores makes no
+new ones. A match's text is taken from that chunk, and given again as it was
+for a match of the same octets as the one before, so that billions of matches
+of a few texts make nothing each."
   (declare (type fixnum start end))
   (when (folds-past-ascii-p string case-fold)
     (return-from map-literal-matches
@@ -1963,20 +1995,21 @@ remembers, to join it to the piece before (COLLECT-MATCHES).")
                                                (match-cost 400) (block-size 16384) (keep t))
   "Every match that MAPPER finds from START below END, in order, exactly as one
 scan from START finds them, gathered in parallel pieces of *PARALLEL-PIECE*
-octets on THREADS threads. MAPPER is a function of (FUNCTION FROM TO HALT) that
-calls FUNCTION with (START END TEXT GROUPS) for each non-overlapping match
-starting in [FROM, TO) as a scan from FROM finds them, stopping when FUNCTION
-returns true or HALT answers true (MAP-REGEX-MATCHES and MAP-LITERAL-MATCHES
-serve, wrapped). A match that runs out of its piece has the next piece's
-matches found again from where it ends.
-Three values: the matches as a list of (START END TEXT GROUPS); NIL when all
-were found, :STOPPED when STOP, asked on the calling thread every few
-milliseconds, answered true, or :OVER when the estimated cost passed
-COST-LIMIT (octets), counted as MATCH-COST for each match and BLOCK-SIZE for each block of
-that many octets the matches touch; then the list is NIL. And how many matches
-were found, all or before giving up. STOP is also asked once before the pieces
-start, so it is heard even when the pool's workers take every piece.
-With KEEP false the matches are only counted, the list always NIL: nothing is
+octets on THREADS threads. MAPPER is a function of (FUNCTION FROM TO HALT)
+that calls FUNCTION with (START END TEXT GROUPS) for each non-overlapping
+match starting in [FROM, TO) as a scan from FROM finds them. It stops when
+FUNCTION returns true or HALT answers true (MAP-REGEX-MATCHES and
+MAP-LITERAL-MATCHES serve, wrapped). A match that runs out of its piece has
+the next piece's matches found again from where it ends.
+Three values. The first is the matches as a list of (START END TEXT GROUPS).
+The second is NIL when all were found, :STOPPED when STOP, asked on the
+calling thread every few milliseconds, answered true, or :OVER when the
+estimated cost passed COST-LIMIT (octets). The cost is counted as MATCH-COST
+for each match and BLOCK-SIZE for each block of that many octets the matches
+touch; then the list is NIL. The third is how many matches were found, all or
+before giving up. STOP is also asked once before the pieces start, so it is
+heard even when the pool's workers take every piece.
+With KEEP false the matches are only counted, the list always NIL. Nothing is
 kept for each, so counting a hundred million costs no more memory than one."
   (declare (type fixnum start end))
   (when (and stop (funcall stop))
@@ -2032,9 +2065,9 @@ kept for each, so counting a hundred million costs no more memory than one."
 (defun join-collected-pieces (mapper results start end piece keep)
   "The matches COLLECT-MATCHES found in its pieces of PIECE octets from START
 below END, from their RESULTS, (OWN COUNT LAST-END) each, OWN the piece's
-matches (only its first ones unless KEEP): a piece the match before runs into
+matches (only its first ones unless KEEP). A piece the match before runs into
 has its matches found again from where that match ends (JOIN-PIECES), until
-one is among its own; from there they agree, and past its own remembered the
+one is among its own. From there they agree, and past its own remembered the
 rest is counted again. Two values: the matches in order (NIL unless KEEP),
 and how many there are."
   (let ((out '()) (total 0))
@@ -2067,11 +2100,11 @@ and how many there are."
 (defun join-pieces (count start-of join)
   "Go through COUNT pieces of a text cut for work in parallel, in order, as one
 scan from the first piece's start goes on, so that a match is never cut at a
-piece's start: JOIN, a function of a piece's index and FROM, takes that
+piece's start. JOIN is a function of a piece's index and FROM. It takes that
 piece's part and returns where the last match it took ends, or NIL when it
 took none. FROM is NIL, or, when a match of the pieces before runs past the
 piece's start (START-OF, a function of the index, gives it), where that match
-ends: the piece's matches are then those one scan finds from there, past its
+ends. The piece's matches are then those one scan finds from there, past its
 end too when the match runs past it."
   (let ((reach -1))
     (declare (type fixnum reach))

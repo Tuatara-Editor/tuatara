@@ -1,0 +1,670 @@
+#+title: Files
+#+language: en
+
+* Files
+
+Opening, saving and keeping track of the files on your disk, and on other
+machines.
+
+Chapter 1 explained that Tuatara shows a file in a buffer: a copy of the text
+that you change freely, kept apart from the file until you save. This chapter
+is about the file end of that. It shows how to open a file, how to make a new
+one, and what happens when you save. It explains what to do when the file has
+changed on disk behind your back, and how to give a file a new name. It also
+covers the way Tuatara handles line endings and letters from other languages,
+the file names that say what a file holds, and files that live on another
+machine. It ends with the ways of opening a file from outside Tuatara: with
+another program, and from the command line.
+
+The folders that hold files are the subject of chapter 10, and very large
+files of chapter 11. Files from a source you do not trust are in chapter 12.
+The list of recent files, bookmarks and auto-save are in chapter 7.
+
+Every key in this chapter is pressed in NORMAL state unless it starts with
+~C-x~, which works in both states. ~i~ starts INSERT state, and ~C-g~ or ~ESC~
+brings you back.
+
+** Opening a file
+
+~C-x C-f~ asks for a file name at the bottom of the screen. The question has a
+folder filled in, and a list of what is in it. Type to narrow the list, and
+press ~RET~ to open what you have chosen. If the name is a folder, you go into
+it and the list shows what it holds. The question starts in the folder of the
+last file or folder you chose, so when you work on one project you seldom type
+more than the end of a name. ~S-TAB~ puts your home folder, =~/=, in place of
+what is typed, and lists it. Typing =~/= after a folder does the same, starting
+the path again from home.
+
+Beside each file the list shows its permissions, its size and when it last
+changed. Where a file is one you opened safely before, the list marks it, and
+a buffer with changes you have not saved is marked as well.
+
+Opening a file you already have open does not make a second buffer. It takes
+you to the first. This holds for a file reached by two names, such as a link
+and the file it leads to.
+
+If the name you typed is not there, you get a new, empty file with that name.
+Nothing is written yet. The next section says more.
+
+Opening is quick even when the file is large, because Tuatara reads files in
+the background. A very large file is opened in a special way, described in
+chapter 11.
+
+*** Other places to open a file
+
+~C-x 4 f~ opens the file in another window and goes there, so you can read two
+files side by side. ~C-x 5 f~ opens it in another frame, a window of its own,
+which chapter 1 described. ~C-x C-p~ opens the file whose name is written in
+the text, such as =~/letters/council.txt= in a note. A folder written there
+opens as a list of its files.
+
+When Tuatara runs in a window of its own, you can also drag files from your
+file manager and drop them on it. Each one opens in the window it was dropped
+on. If you want these opened safely, which is the careful way described in
+chapter 12, set =*open-dropped-files-safely*=. With ~C-u~ before ~C-x C-f~ a
+file opens safely too. ~M-x find-file-safely~ does the same.
+
+~M-x show-file-name~ says in the echo area which file the buffer you are in
+shows, with its folder. You use it when two files have the same name and you
+want to be sure which one this is.
+
+~C-x C-f~ and the other ways above take the file name as you type it. A name
+starting with =/ssh:= is a file on another machine, described later in this
+chapter.
+
+*** The file's own settings
+
+A file can say how it should be shown. The first line of a program, for
+instance, may hold =-*- mode: org -*-= to say that it is an Org file, or a
+block of lines near its end may set the width of a tab. Tuatara reads those
+settings when it opens the file, unless you turn off =*file-local-variables*=.
+You will meet this in files written for Emacs. It is of no use to you until
+you see it.
+
+#+table: commands find-file find-file-other-window find-file-other-frame find-file-safely open-path-at-point open-dropped-files show-file-name
+
+#+table: settings *last-used-first* *open-dropped-files-safely* *file-local-variables* *preview-files*
+
+#+table: faces :completion-modified :completion-safe :completion-mode-read :completion-mode-write :completion-mode-exec :completion-mode-none :completion-mode-other :list-date :list-size
+
+*** Seeing a file before you choose it
+
+With =*preview-files*= set to =t=, the question for a file shows the file under
+the cursor in the window beside it while you move through the list. The file
+is opened safely, so nothing in it is acted on, and the preview goes away when
+you answer. It helps when you have several files with names like
+=letter-2.txt= and =letter-3.txt=. It is off until you turn it on.
+
+#+begin_try Try it, with a letter
+1. Press ~C-x C-f~. The question shows a folder. Type =~/letters/= and the
+   list shows what is in the folder, or nothing if it is not there yet.
+2. Type =council.txt= and press ~RET~. The buffer is empty and the echo area
+   says it is a new file. If =~/letters/= does not exist yet, it says that its
+   folder is not there and that saving asks to make it.
+3. Press ~i~, type =Dear Mr Taupo,= and press ~C-g~. The mode line shows =[*]=,
+   which means changes not saved.
+4. Leave the buffer as it is. You will save it in the next section.
+#+end_try
+
+** Creating a file
+
+You do not make a file by a separate command. You open one with a name that is
+not there. The buffer is empty and nothing exists on disk until you save. That
+suits a letter or a note: open the name, type, save, or throw the buffer away.
+
+If the folder you named does not exist either, the echo area says so when you
+open the file, and saving asks =The folder ... is not there; make it?= with a
+single key. ~y~ makes the folder and saves. ~n~ stops and writes nothing. You
+can name a file three folders deep in one go this way. If Tuatara cannot make
+the folder, because you may not write where it would go, the buffer is
+read-only and the message says why.
+
+A name that says a file is encrypted but is not encrypted by GnuPG, for
+instance one ending =.age=, is refused when you save it, because the text
+would be there to read. Names that end =.gpg= are encrypted every time they
+are saved. 
+The file gets the permissions your account normally gives a new file. A
+folder listing, chapter 10, can show a file's permissions.
+
+** Saving
+
+~C-x C-s~ saves the buffer to its file. The echo area says =Wrote= and the
+file's name, and the mode line goes from =[*]= to =[-]=. If there is nothing to
+save, it says =(No changes need to be saved)= and writes nothing. A buffer with
+no file asks where to put it, in the same way as ~C-x C-f~ asks.
+
+Chapter 7 described ~C-x s~, which saves every file with changes after one
+question, and ~C-x C-c~, which asks before it leaves.
+
+*** What a save does with your file
+
+Tuatara never edits the file in place. A save writes the whole text to a new
+file beside the old one. It gives the new file the owner and the permissions of
+the old one, and makes sure the text is on the disk, then renames the new file
+over the old one. The file on disk is always either the old one or the new
+one, even after a power cut, and a save that fails halfway leaves nothing
+behind.
+
+There is no backup copy, so you will find no =letter.txt~= next to
+=letter.txt=. The safety net for a crash is the auto-saved copy of chapter 7,
+and the safety net for a mistake is undo. A rewritten file is easier to see
+than a backup would be, since Tuatara asks before it writes over a file that
+changed behind its back.
+
+A few files cannot be replaced by a new file without losing something. These
+are files with more than one name (hard links), files whose owner or group your
+account cannot give to a new file, and a few special files that the system
+makes up. Tuatara writes these in place, after copying the old text to a spare
+copy of its own. If the write fails, the spare copy is kept and its name is
+said.
+
+*** When a save asks first
+
+A save asks a question before it does something you may not want. It asks if:
+
+- the file was changed on disk after you opened it, as =council.txt changed on
+  disk since it was read; overwrite it with this buffer?=. Say =n= and read the
+  other version first, as described later in this chapter;
+- the file is write-protected: =File ... is write-protected; try to save
+  anyway?=;
+- you save as a name that is already a file: =... exists; overwrite it?=;
+- you save as a name that another buffer has open. Tuatara offers to write over
+  it and kill that buffer.
+
+A question that cannot be undone, such as writing over a file that exists, is
+answered by typing =yes= or =no= and pressing ~RET~. This is the same as for
+leaving with changes unsaved, described in chapter 1.
+
+A large buffer takes time to write. If the save takes longer than half a second,
+Tuatara carries on in the background and the mode line shows =Saving= and a
+percentage. You can keep typing. Leaving Tuatara waits for saves still running.
+=*save-in-place*= is for very large files, which chapter 11 explains.
+
+#+table: commands save-buffer
+
+#+table: settings *save-in-place*
+
+** Save as, and a new name
+
+~C-x C-w~ writes the buffer to another file. The question works like the one
+for ~C-x C-f~, and starts in the folder of the file you are in, with the name
+to change. After the save, the buffer is the new file. The old file stays as
+it was, which makes ~C-x C-w~ the way to copy a file: open it, press ~C-x C-w~,
+and give the copy a name.
+
+~M-x rename-visited-file~ gives the file itself a new name, and the buffer
+follows it. The question offers the old name to edit. A name alone keeps the
+file in its folder. A path, such as =~/letters/sent/council.txt=, moves it
+there, provided that is on the same drive. Use this when you named a file in a
+hurry. The file on another machine is the exception: this command leaves
+that file where it is.
+
+#+begin_try Try it, with a letter
+1. In the letter from the previous try, press ~C-x C-s~. If =~/letters/= is
+   not there yet, the echo area asks whether to make it: press ~y~. It then
+   says =Wrote ~/letters/council.txt=, and the mode line shows =[-]=.
+2. Press ~C-x C-s~ again. It says =(No changes need to be saved)=.
+3. Press ~C-x C-w~. The prompt offers the folder. Type
+   =~/letters/thanks.txt=, which takes its place, and press ~RET~. The buffer
+   is =thanks.txt= now, and =council.txt= is as you saved it.
+4. Run =M-x rename-visited-file=. The old name is offered. Change it to
+   =thanks-to-aroha.txt= and press ~RET~. The echo area says it was renamed,
+   and =thanks.txt= is gone from the folder.
+5. Press ~C-x C-b~. The buffer list shows the new name and its path.
+#+end_try
+
+#+table: commands write-file rename-visited-file
+
+** Read-only files and buffers
+
+A buffer is read-only when you cannot change its text. Tuatara makes a file's
+buffer read-only when your account may not write the file, and the mode line
+shows =[%]=. You can still look at it, search it and copy from it. A key that
+would change the text is refused.
+
+~C-x C-q~ turns read-only on and off for the buffer you are in. Use it to guard
+a file that you are only reading, so that a stray key does no harm, or to make
+a read-only buffer editable when you know the file will let you save. A number
+before the key sets it: a positive number makes the buffer read-only and zero
+or a negative number makes it editable.
+
+If you turn read-only off in a file you may not write, the save still asks
+=File ... is write-protected; try to save anyway?= and the system may refuse.
+
+A file opened safely is read-only too, and so are files in evidence folders.
+Those are the subject of chapter 12.
+
+#+table: commands read-only-mode end-safe-visit
+
+** The file changed on disk
+
+Another program may change a file you have open. A build may rewrite it, a
+program may add to a log, or a copy may arrive from another machine. Tuatara
+watches the files that you have open and tells you. The echo area and the
+mode line say =Changed on disk=, =Deleted on disk= or =Stale, read-only=. The
+last word means that the file was rewritten while it was shown from the disk, so
+the text on the screen is no longer what the file holds, and the buffer is
+read-only until you read the file again.
+
+In every case Tuatara asks before it does anything to your text. A file that
+was changed on disk and a buffer with changes of your own are two versions
+of the same file, and you choose which to keep.
+
+*** Reading it again
+
+~M-x revert-buffer~ reads the file again and replaces the text in the
+buffer. It asks first when the buffer has changes you have not saved. The
+reading is one step in the undo history, so ~C-/~ (modal: ~u~) takes it back if
+you made a mistake. Point and the window stay on the same text, so you do not
+lose your place. If the file only grew, only the new part is added.
+
+Opening the file again, with ~C-x C-f~ or with ~RET~ in a list such as the git
+status, also reads it again when its buffer has no changes of your own. With
+changes of your own the buffer is left as it is, and the echo area says so. A
+buffer that ~M-x follow-file~ stopped following is not read again, and a file
+deleted on disk is said.
+
+In a buffer that Tuatara made for you, such as a list of buffers, ~r~ reads it
+again from what it shows. ~g r~ does the same. This is how a list is brought up
+to date. The buffer list does it by itself.
+
+If you want to see how the two versions differ before you choose, use
+~M-x diff-files~, which compares the file with another one you name, or a copy
+you saved under another name with ~C-x C-w~.
+
+*** Keeping up by itself
+
+Some files are meant to change under you: a log that a program is writing, or a
+build's output. For those you want the buffer to follow the file. ~M-x
+follow-file~ turns that on for the buffer you are in. What a program adds to the
+end of the file is added to your buffer as it arrives, and if point is at the
+end, it stays at the end, as =tail -f= does in a terminal. A file that is
+rewritten is read again, if you have no changes of your own. The mode line says
+=Following= while it is on. Run the command again to stop.
+
+=*reload-changed-files*= does the same for every buffer. It is off as
+standard, because most of the time you do not want the text to move under you.
+With it on, a file that changed on disk while you have unsaved changes of your
+own is not read again, since that would lose them. Tuatara says so, and you
+decide with ~M-x revert-buffer~, which takes the file's version, or ~C-x C-s~,
+which writes yours over it.
+
+#+begin_try Try it, with a recipe
+1. Open =~/recipe.txt=, type =Pikelets: 1 cup flour, 1 egg, milk= and ~RET~, so
+   that the line has its end, and save with ~C-x C-s~.
+2. In a terminal, run =echo "Add a pinch of salt" >> ~/recipe.txt=.
+3. Go back to Tuatara. The echo area, and the mode line, say that
+   =recipe.txt= changed on disk, and that ~M-x revert-buffer~ reads it again.
+4. Run ~M-x revert-buffer~. The new line is there. Press ~C-/~ (modal: ~u~) and
+   it is gone again, since a revert is one step of undo. Press ~M-_~ (modal:
+   ~U~) to bring it back.
+5. Run ~M-x follow-file~. The mode line says =Following=. Run
+   =echo "Serve warm" >> ~/recipe.txt= in the terminal again. The line appears
+   in Tuatara at once, with no command from you.
+6. Run ~M-x follow-file~ again to stop.
+#+end_try
+
+#+table: commands revert-buffer follow-file
+
+#+table: settings *reload-changed-files*
+
+** Line endings and letters from other languages
+
+*** Line endings
+
+A line in a text file ends with a code. Unix and Linux write one character, a
+newline. Windows writes two, a carriage return and a newline. Very old
+Macintosh files used a carriage return alone. You rarely see the difference
+until you open a file from another system.
+
+Tuatara looks at the first line end in a file and keeps to it. A file of
+Windows lines shows =CRLF= in the mode line, and one of carriage return lines
+shows =CR=. A file of plain newlines shows nothing, since that is the normal
+case. When you press ~RET~, or paste text, the new line ends the same way as
+the rest of the file. A save writes every line end as it was read, so opening
+and saving a Windows file does not turn it into a Unix file, and does not
+change the lines you did not touch.
+
+In a file whose lines end with a newline, a stray carriage return before the
+newline shows as =^M=. That is how a file of mixed endings shows where it is
+mixed. A carriage return that stands alone ends a line and shows no mark.
+
+Line numbers, searching, sorting and every other command count lines the same
+way, whatever the endings. A search for =^= or =$= matches at every line end.
+
+*** Letters from other languages
+
+Tuatara works in UTF-8, the way of writing letters that nearly all modern
+files use. It holds accented letters, letters of other alphabets and
+emoji, and it saves them back as they were. 
+
+There is no setting for the encoding of a file, and no command to change it.
+If a file is not UTF-8, Tuatara does not stop. Every part that is not valid
+UTF-8 is kept as a character of its own, shown as =\xE9= for the octet =E9=, and
+is written back to the file exactly as it was. A letter with an accent in an
+old file in the Latin-1 encoding is such a case. You see =\xE9= where you would
+expect an =e= with an accent, and you can edit around it, but the file is not
+changed by opening and saving it. If you need to turn such a file into UTF-8,
+use a tool such as =iconv= outside Tuatara.
+
+A file that begins with a UTF-8 byte order mark opens normally. The mark is
+kept when you save.
+
+A setting described in chapter 12 shows characters that draw nothing as their
+codes, in files opened safely. It helps you find what a file hides.
+
+** Files with formatted names
+
+A file name that says what the file holds is easy to find a year later. A
+formatted name has three parts: the moment it was made, a title, and some
+keywords. The scheme follows Denote, a package for Emacs, so such names read the
+same in both editors.
+
+#+caption: Figure 9.1. A formatted name, in three parts and an end.
+#+name: fig-formatted-name
+#+begin_example
+ 20261109T091500--letter-to-the-council__letters_house.org
+ └──────┬───────┘  └──────────┬─────────┘ └─────┬──────┘└┬┘
+   identifier              title             keywords    kind
+   (date and time)    (lower case, with     (joined by _)
+                         hyphens)
+#+end_example
+
+The identifier is the year, month and day, a =T=, then the hour, minute and
+second, so a folder of such names sorts by age by itself. Two dashes follow,
+then the title in small letters with hyphens between the words. Two
+underscores begin the keywords, which are joined by single underscores. The
+file's extension ends the name: =.org=, =.txt= or =.md=.
+
+You keep all such files under one folder, set by =*formatted-file-directory*=.
+It is your home folder until you set it. A good place is a folder of notes:
+
+#+begin_example
+(setf *formatted-file-directory* "~/notes/")
+#+end_example
+
+*** Making and finding
+
+~C-x n n~ makes a new file. It asks for a title, a subfolder, some keywords and
+the kind of file, in that order. The keywords you used before are offered.
+Press ~RET~ with nothing typed to skip a question. The new buffer is named from
+what you answered, and begins with a header for its kind, holding the title,
+the date, the keywords and the identifier. Nothing is written until you save
+with ~C-x C-s~. The date and identifier are those of the moment you asked, not
+of the moment you saved.
+
+~C-x n o~ opens one of your files by any part of its name. The list is grouped
+by kind, newest first, and shows each name as its date, its title and its
+keywords, with the size and when it changed on the right. You type a few
+letters of the title or a keyword, and ~RET~ opens the best match. The
+preview of =*preview-formatted-files*= works here as it does for ~C-x C-f~.
+
+~C-x n f~ is ~C-x C-f~ for such files. It opens a file by its path, and if the
+name you type is not there, it makes a new file with a formatted name in the
+folder you typed. It asks for the title and the keywords, and for the end of
+the name, which you can have filled in by =*formatted-file-extension*=.
+
+*** Renaming
+
+You can give an old file a formatted name. ~C-x n r~ asks for a title and
+keywords, offering the ones the file already has, and renames the file. The
+identifier is kept if the file has one, or made from the time the file last
+changed. The extension is kept. A buffer that shows the file follows the new
+name, and the list of recent files is updated.
+
+~C-x n k~ changes only the keywords. It keeps the titles and asks once for new
+keywords, which it gives to the file, or to every marked file when you use it
+in a folder listing. Use it to put a whole month of letters under =done=.
+
+#+begin_try Try it, with some notes
+1. Add =(setf *formatted-file-directory* "~/notes/")= to your init file and run
+   it, or restart Tuatara. Make the folder in a terminal with =mkdir ~/notes=.
+2. Press ~C-x n n~. Answer the title with =Pikelets for Sunday=, the folder
+   with ~RET~, the keywords with =recipe, house= and ~RET~ twice, and the kind
+   with ~RET~ for Org.
+3. The buffer is named like
+   =20261109T091500--pikelets-for-sunday__house_recipe.org=. The keywords are
+   in alphabetical order. Press ~C-x C-s~.
+4. Press ~C-x n o~, type =pike= and ~RET~. You are back in the file.
+5. Press ~C-x n k~, type =recipe, sunday= and press ~RET~ twice. The name now
+   ends =__recipe_sunday.org=, the header is changed to match, and the buffer
+   follows.
+#+end_try
+
+#+table: commands find-file-formatted open-file-formatted new-file-formatted rename-formatted rename-formatted-keywords
+
+#+table: settings *formatted-file-directory* *formatted-file-extension* *formatted-file-keywords* *formatted-file-sort-keywords* *formatted-file-prompts* *formatted-file-type* *formatted-file-types* *preview-formatted-files*
+
+#+table: faces :completion-formatted-keywords
+
+The other commands that work on these files, such as searching their text and
+writing links between them, are described with Org in chapter 14.
+
+** Files on another machine
+
+A file on a server can be opened as if it were here. Write the machine's name
+in front of the path, between =/ssh:= and a colon. The name is the one you give
+to ssh: a plain name, =me@pinetree=, or a name from your =~/.ssh/config=.
+
+#+begin_example
+C-x C-f /ssh:pinetree:/etc/hosts RET
+#+end_example
+
+Nothing has to be installed on the server. Tuatara uses the file protocol that
+every ssh server offers, through the ssh program already on your computer, with
+your own keys. It sends nothing else to the machine: it runs no commands there.
+Everything is done in the background, so Tuatara never waits for a slow
+connection.
+
+This is not the daemon of chapter 18, which runs the whole editor on the other
+machine. Here Tuatara runs on your computer, and only the files are elsewhere.
+
+#+caption: Figure 9.2. The file stays on the server; you work on a private copy.
+#+name: fig-remote-file
+#+begin_example
+   Your computer                              The server, pinetree
+  ┌──────────────────────────────────┐       ┌────────────────────┐
+  │  Tuatara                         │       │                    │
+  │   buffer  ◄── a copy only you ───┼─ ssh ─┤   /etc/hosts       │
+  │               can read           │       │   stays where it   │
+  │   opening reads it  ◄────────────┼───────┤   is              │
+  │   C-x C-s writes it back ────────┼──────►│                    │
+  └──────────────────────────────────┘       └────────────────────┘
+        both go through ssh, with your own keys
+#+end_example
+
+Typing =/ssh:pinetree:/etc/= offers the names in that folder, as for a folder on
+your own computer. =/ssh:pinetree:= alone is your home folder there. A file
+from a server opens as a local file does: a picture is drawn, and a PDF shows
+its pages. Any other file that is not text opens as octets, in the hex view.
+
+*** Saving
+
+~C-x C-s~ saves as usual. The text goes to a new file beside the one on the
+server, which takes the old file's owner, group and permissions, and takes its
+place only when the file there is still as you read it. If somebody changed it
+meanwhile, the echo area says the file was not written, since it was changed
+on the server since it was read. The buffer stays as it is, so nothing is
+lost. ~M-x revert-buffer~ reads the server's version, and then you can copy
+your changes over it. A new name is a new file on the server when you save.
+
+A file with more than one name, or one whose owner a new file cannot be given,
+is written in place, and the echo area says so. If such a write fails halfway,
+the file there is partly written. The buffer keeps your text, and the next save
+asks whether to write it over, whatever the file now holds. Answer =yes=
+to write it whole.
+
+Tuatara keeps the file you work on as a copy under =~/.cache/tuatara/remote/=,
+which only you can read. The copy is deleted when you kill the buffer. A file on
+another machine has no git marks, no language server, no auto-saved copy and no
+build, since those would read what is around the file, and what is around it is
+not here. A file's own settings are taken only from a machine you trust, listed
+by =M-x server-list=, chapter 18. Each request has =*remote-seconds*= to be
+answered, 30 as standard. Past that, the work in hand fails and says so.
+
+*** The first time you meet a machine
+
+When ssh meets a machine for the first time it asks if you trust it. Tuatara
+asks the same question. While the question is open, a buffer below the windows
+shows ssh's own words in full, with the fingerprint of the machine's key. At
+the bottom is a short prompt for your answer. Completing a file name as you
+type never asks anything. The question comes when you press ~RET~. If a
+connection takes more than a second, the echo area says =Connecting to
+pinetree...= until it is made or has failed.
+
+#+caption: Figure 9.3. The first connection: question above, prompt below.
+#+name: fig-ssh-question
+#+begin_example
+  ssh to pinetree
+
+  The authenticity of host 'pinetree (10.0.0.5)' can't be established.
+  ED25519 key fingerprint is:
+  SHA256:LRMTH6kEUp1dDyMPGJlAvQhgiX4cSO0JX/aPMh350Sk
+  This key is not known by any other names.
+
+  Type yes or the fingerprint to accept, anything else refuses.
+ TUATARA[N]  P  [-] *Question*  L1 C0  Help
+ Accept this key (yes/no/fingerprint): █
+#+end_example
+
+Compare the fingerprint with one you got from whoever runs the server. Then
+type =yes= and press ~RET~. You can type the fingerprint instead. Anything else
+refuses, a plain =y= as well. A key that has changed since ssh last saw it is
+never offered. ssh refuses the connection, and the echo area says the key
+differs from the one ssh knows. That is the sign of a machine that has been
+replaced, or of one pretending to be it. Ask the person who runs the server.
+
+*** Passwords
+
+If your key is in your ssh agent, nothing is asked. A key with a passphrase is
+asked for once, at a prompt saying it stays here, on your computer. If you log
+in with a password, the prompt says the server asks, and that what you type
+goes to the server. A jump host, if you use one, is named. What you type shows
+as stars, and is passed to ssh and kept nowhere else: not in a history, not in
+a recorded macro, and not in a log.
+
+To paste a password from a password manager, copy it there and press ~C-y~ in
+the prompt. In a terminal, the paste of the terminal works too. The password is
+not put in the kill ring. ~C-g~ gives the question up, and the connection fails
+with a message that the question was not answered. Nothing is left running.
+
+*** Folders and previews on a server
+
+~C-x C-f /ssh:pinetree:/srv/notes/ RET~, or ~C-x d~ with that name, lists the
+folder as one is listed on your computer. Chapter 10 describes the list. What
+would read many files, or keep watching them, is left out on a server: there is
+no git column and no folder size, and the list is read again after each change
+you make, not as files change.
+
+A preview shows each file beside the list as you move. On a server each file
+must come to your computer first, so the preview starts off. ~P~ in the list
+turns it on, and moving to another file stops the transfer under way. A file
+larger than =*remote-preview-size-limit*= is not fetched, and the preview says
+it is too large. The standard is 20 million octets. ~RET~ still opens it.
+Files in evidence folders are not read for a preview, and a list opened safely
+has no preview.
+
+A server keeps no trash. A file deleted there is deleted for good, and the list
+says so in its question.
+
+Evidence folders may be on a server as well. An entry of =*evidence-folders*=
+may name a folder there, and files in it open safely and are never saved.
+Chapter 12 describes it.
+
+#+begin_try Try it, with notes on a server called pinetree
+These steps need a machine you can reach with ssh. Use your own name for
+=pinetree=.
+
+1. In a terminal, run =ssh pinetree= once, so you know the login works. Leave
+   it again with =exit=.
+2. In Tuatara, press ~C-x C-f~ and type =/ssh:pinetree:=. Your home folder there
+   is offered. Add =notes.txt= and press ~RET~. The buffer is empty.
+3. Press ~i~, type =Sheep: 41 counted on Friday= and press ~C-g~. Press
+   ~C-x C-s~. The echo area says =Wrote /ssh:pinetree:notes.txt=.
+4. In another terminal, run =ssh pinetree 'echo "Gate fixed" >> notes.txt'=.
+   Back in Tuatara, press ~i~, type =x= and press ~C-g~, then ~C-x C-s~. The
+   echo area says the file changed on the server since it was read and was not
+   written. Your buffer is unchanged.
+5. Run ~M-x revert-buffer~. The line =Gate fixed= is there.
+6. Press ~C-x d~ and type =/ssh:pinetree:=, then ~RET~. Your home folder opens
+   as a list. Move to =notes.txt= and press ~P~ to see it beside the list.
+7. If you wish, press ~C-x k~ on the buffer. The private copy on your computer
+   is deleted, and the file on pinetree is as you saved it.
+#+end_try
+
+#+table: commands list-toggle-preview
+
+#+table: settings *remote-seconds* *remote-preview-size-limit*
+
+** Opening a file with another program
+
+Tuatara shows text, and also pictures, PDFs and some office documents. There is
+work it does not do, such as printing, filling in a PDF form, or playing a
+video. For that you can hand the file to the program your desktop uses for that
+kind of file. ~O~ does it in a folder listing, in a picture and in a PDF's view,
+and ~M-x open-externally~ does it for the file of the buffer you are in. Tuatara
+runs =xdg-open=, the command desktops provide for this, so the file opens in
+what you would get by double-clicking it.
+
+The other program is not shut in as Tuatara's own readers are. It can read
+everything you can. So Tuatara asks first, unless you turn off
+=*open-externally-ask*=. It also looks at what the file is, not what its name
+says. A program named =holiday.jpg= is refused. Only the kinds of file in
+=*open-externally-kinds*= are handed over: pictures, PDFs, sound and video,
+and office documents.
+
+To use another program for a kind, set =*open-externally-programs*= to a list
+of a type and a program:
+
+#+begin_example
+(setf *open-externally-programs*
+      '(("application/pdf" . "zathura")
+        ("video/*" "mpv" "--fs")))
+#+end_example
+
+The program given there is run as it is, with the file's name after it.
+=*open-externally-program*= names the command used for every other kind, which
+is =xdg-open= as standard.
+
+#+table: commands open-externally
+
+#+table: settings *open-externally-ask* *open-externally-kinds* *open-externally-program* *open-externally-programs*
+
+** Starting Tuatara with files
+
+~tuatara letter.txt~ opens the file in the terminal you typed it in. Several
+names open several buffers, the first one shown. ~tuatara --gui letter.txt~
+opens a window of its own instead. Other files you had open, if you keep a
+session as chapter 7 described, are opened behind the ones you named.
+
+A number with a plus before a file name says which line to start on. ~tuatara
++2 letter.txt~ opens the letter with the cursor on its second line. ~+2:5~ adds
+a column. The numbers count from 1. A file with fewer lines opens at its last
+line, and says so. You can name a line for each file: ~tuatara +120 main.lisp
++3 notes.org~.
+
+~tuatara --safe letter.txt~, or ~-R~ for short, opens the files safely, as
+described in chapter 12: read-only, with nothing in them acted on. It holds
+for every file in that command. ~--hex~ opens them in the hex view instead of as
+text. A single =-= reads what another program sends: =ls | tuatara -= shows the
+output in a buffer called =*stdin*=. After =--=, every word is a file, so
+=tuatara -- -odd.txt= opens a file named =-odd.txt=.
+
+The table at the end of this section lists every option, as ~tuatara --help~
+does. The ones that start the daemon, make a client, compare files or merge
+them are explained in chapters 15 and 18.
+
+#+begin_try Try it, with a letter
+1. In a terminal, make a letter of five lines:
+   =printf 'one\ntwo\nthree\nfour\nfive\n' > letter.txt=.
+2. Run =tuatara +4 letter.txt=. The cursor is on =four=, and the mode line says
+   =L4=.
+3. Press ~C-x C-c~ to leave. Run =tuatara --safe letter.txt=. The mode line
+   says =Safe=. Press ~i~. The buffer is read-only, so nothing can be typed.
+4. Press ~M-x end-safe-visit~ and ~RET~. The file opens as usual.
+5. Leave with ~C-x C-c~.
+#+end_try
+
+*** Options
+
+#+table: options

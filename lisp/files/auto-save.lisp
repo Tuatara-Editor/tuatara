@@ -31,15 +31,23 @@ or ~/.local/state/tuatara/), or a folder's name, \"~/backups/tuatara/\".")
 
 (defvar *auto-save-idle* 5
   "Seconds without a change after which a buffer's changes not saved are
-auto-saved (*AUTO-SAVE*).")
+auto-saved (*AUTO-SAVE*), 5 as standard. A shorter wait loses less when the
+editor or the machine stops, and writes more often; a longer one writes less
+while you type in bursts. Each auto-save writes the buffer whole, so a large
+buffer saved often costs disk time.")
 
 (defvar *auto-save-interval* 60
   "The most seconds changes not saved go without an auto-save while they go
-on without a pause (*AUTO-SAVE*).")
+on without a pause (*AUTO-SAVE*), 60 as standard. Without it, typing with no
+pause as long as the idle wait (*AUTO-SAVE-IDLE*) would never be saved. Lower
+it to lose less in a crash, at the cost of writing the buffer whole more
+often.")
 
 (defvar *auto-save-size-limit* (* 256 1024 1024)
-  "The largest buffer auto-saved, in octets: a larger one is not copied (each
-copy would be written whole).")
+  "The largest buffer auto-saved, in octets, 256 MB as standard: a larger one is
+not copied (each copy would be written whole), so a crash loses its changes
+not saved. Raise it to protect a larger file, at the cost of writing it whole
+at each auto-save; lower it where the disk is slow or has little room.")
 
 (defun auto-save-directory ()
   "The folder auto-saved copies go in, as *AUTO-SAVE-DIRECTORY* says; a native
@@ -102,7 +110,9 @@ auto-saved under the new one."
       (setf (tuatara.buffer:buffer-local buffer 'auto-save-written) nil
             (tuatara.buffer:buffer-local buffer 'auto-save-file) nil))))
 
-(defstruct (auto-save-job (:include tuatara.runtime:job) (:constructor make-auto-save-job (buffer content)) (:copier nil))
+(defstruct (auto-save-job (:include tuatara.runtime:job)
+                          (:constructor make-auto-save-job (buffer content))
+                          (:copier nil))
   "BUFFER's text, CONTENT the number of the text it is, written to its
 auto-saved copy in the background, a job."
   content)
@@ -201,7 +211,8 @@ otherwise."
          (copy (and file (auto-save-path (tuatara.io:native file))))
          (copy-stamp (and copy (tuatara.io:path-stamp copy)))
          (file-stamp (and file (tuatara.io:path-stamp (tuatara.io:native file)))))
-    (when (and copy-stamp (or (null file-stamp) (> (tuatara.io:stamp-mtime copy-stamp) (tuatara.io:stamp-mtime file-stamp))))
+    (when (and copy-stamp
+               (or (null file-stamp) (> (tuatara.io:stamp-mtime copy-stamp) (tuatara.io:stamp-mtime file-stamp))))
       (values copy (mtime-universal-time (tuatara.io:stamp-mtime copy-stamp))))))
 
 (defun auto-save-visited (buffer)
@@ -219,12 +230,17 @@ after asking, as one edit: \\[undo] takes it back, a save writes it to the file.
 For a buffer whose file has no auto-saved copy newer than it, says so."
   (let ((buffer (current-buffer)))
     (cond ((null (tuatara.buffer:buffer-file buffer)) (message "~a visits no file" (tuatara.buffer:buffer-name buffer)))
-          ((tuatara.io:safe-visit-p buffer) (message "~a is opened safely: nothing is recovered into it" (tuatara.buffer:buffer-name buffer)))
+          ((tuatara.io:safe-visit-p buffer) (message "~a is opened safely: nothing is recovered into it"
+                                                     (tuatara.buffer:buffer-name buffer)))
           ((buffer-read-only-p buffer) (message "~a is read-only: ~a first" (tuatara.buffer:buffer-name buffer)
                                                                     (substitute-command-keys "\\[read-only-mode]")))
           (t (multiple-value-bind (copy time) (auto-save-newer-p buffer)
-               (cond ((null copy) (message "~a has no auto-saved changes newer than its file" (tuatara.buffer:buffer-name buffer)))
-                     ((y-or-n-p* (format nil "Recover ~a from its changes auto-saved ~a?" (tuatara.buffer:buffer-name buffer) (short-time-words time)))
+               (cond ((null copy) (message "~a has no auto-saved changes newer than its file"
+                                           (tuatara.buffer:buffer-name buffer)))
+                     ((y-or-n-p* (format nil
+                                         "Recover ~a from its changes auto-saved ~a?"
+                                         (tuatara.buffer:buffer-name buffer)
+                                         (short-time-words time)))
                       (let ((octets (tuatara.io:file-octets copy)))
                         (tuatara.buffer:widen-buffer buffer)
                         (tuatara.buffer:buffer-replace buffer 0 (tuatara.buffer:buffer-size buffer) octets)
@@ -270,21 +286,24 @@ is not there)."
     (sort copies #'> :key (lambda (c) (getf c :time)))))
 
 (define-major-mode auto-saves-mode marked-list-mode
-  "The auto-saved copies there are (\\[list-auto-saves]), a line each: its mark,
-when written, how large, whether newer than their file, and the file; shown
-again as copies are written and deleted. \\<auto-saves-mode>\\[list-visit] opens the file on the
-line and offers to take its changes in; \\[list-mark-entry] marks a copy (>), \\[list-mark-for-deletion] marks
-it for deletion (D), \\[list-unmark-entry] unmarks it, \\[list-unmark-all] unmarks them all; \\[list-delete-marked]
-deletes the marked copies (the one on the line when none is), \\[list-execute] those
-marked for deletion, after asking, their files not touched; \\[revert-buffer]
-lists them again; \\[quit-window] closes."
+  "The auto-saved copies there are (\\[list-auto-saves]), a line each: its
+mark, when written, how large, whether newer than their file, and the file.
+The list is shown again as copies are written and deleted.
+\\<auto-saves-mode>\\[list-visit] opens the file on the line and offers to
+take its changes in. \\[list-mark-entry] marks a copy (>),
+\\[list-mark-for-deletion] marks it for deletion (D), \\[list-unmark-entry]
+unmarks it, \\[list-unmark-all] unmarks them all. \\[list-delete-marked]
+deletes the marked copies (the one on the line when none is),
+\\[list-execute] those marked for deletion, after asking, their files not
+touched. \\[revert-buffer] lists them again, and \\[quit-window] closes."
   :lighter "Auto-saves" :interactive nil)
 
 (defvar *auto-saves-keymap* (mode-keymap 'auto-saves-mode)
   "Keys of the list of auto-saved copies (auto-saves-mode's keymap).")
 
-(defparameter *auto-saves-columns* '((" " :width 1) ("Written" :width 16) ("Size" :width 9 :right t :elide nil) ("State" :width 19)
-                                     ("File"))
+(defparameter *auto-saves-columns*
+  '((" " :width 1) ("Written" :width 16) ("Size" :width 9 :right t :elide nil) ("State" :width 19)
+    ("File"))
   "The columns of the list of auto-saved copies, as TABLE-HEADING-PIECES takes
 them: the mark (> or D), when a copy was written, its size, whether it is
 newer than its file, and the file.")
@@ -309,7 +328,10 @@ newer than its file in :warning, the file of a marked one in its mark's face."
                      face)
                (cons (abbreviated-path (getf copy :file)) (or (list-mark-face mark) face)))))
      :marked-by (lambda (copy section) (declare (ignore section)) (auto-save-copy-key copy))
-     :after (list (format nil "~%Auto-saved changes in ~a: ~d~%" (abbreviated-path (auto-save-directory)) (length copies)))
+     :after (list (format nil
+                          "~%Auto-saved changes in ~a: ~d~%"
+                          (abbreviated-path (auto-save-directory))
+                          (length copies)))
      :point point
      :refill (lambda (buffer) (auto-saves-show buffer :keep)))))
 

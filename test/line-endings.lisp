@@ -88,7 +88,8 @@
         (is string= (format nil "x~c~%y~c~%" #\Return #\Return)
             (tuatara.defaults::text-for-buffer (format nil "x~%y~c~%" #\Return) b)))
       ;; lines pasted one to a cursor carry no carriage return with them
-      (let ((pasted (after "V j y g e k k t p" (format nil "1~c~%2~c~%ab~c~%cd~c~%" #\Return #\Return #\Return #\Return))))
+      (let ((pasted (after "V j y g e k k t p"
+                           (format nil "1~c~%2~c~%ab~c~%cd~c~%" #\Return #\Return #\Return #\Return))))
         (is = 4 (count #\Return pasted))
         (is = 2 (count #\2 pasted))))))
 
@@ -106,7 +107,8 @@
     (is equal '(0 0 1 1 1 2 2 3 3 4) (loop for byte from 0 to 9 collect (tuatara.text:byte->line rope byte)))
     (is equal '(0 0 2 2 2 5 5 7 7 9) (loop for byte from 0 to 9 collect (tuatara.text:rope-line-start rope byte)))
     (is equal '(1 1 4 4 4 6 6 8 8 9) (loop for byte from 0 to 9 collect (tuatara.text:rope-line-end rope byte)))
-    (is equal '(t nil t nil nil t nil t nil t) (loop for byte from 0 to 9 collect (tuatara.text:rope-line-start-p rope byte)))
+    (is equal '(t nil t nil nil t nil t nil t)
+        (loop for byte from 0 to 9 collect (tuatara.text:rope-line-start-p rope byte)))
     (is = 3 (tuatara.text:rope-count-newlines rope 0 8))
     ;; the carriage return before a newline ends no line of its own, counted to there or from there
     (is = 1 (tuatara.text:rope-count-newlines rope 0 4))
@@ -183,7 +185,8 @@
       (is equal '() (starts "d.\\n"))
       (is equal '(1) (starts "b\\rc"))))
   ;; lines sorted with the line ends staying where they were
-  (is string= (cr "a|b~%c|") (session-text (nth-value 1 (run-keys "C-x h M-x s o r t - l i n e s RET" :text (cr "c|b~%a|"))))))
+  (is string= (cr "a|b~%c|")
+      (session-text (nth-value 1 (run-keys "C-x h M-x s o r t - l i n e s RET" :text (cr "c|b~%a|"))))))
 
 (defun ending-session (text ending parts &key (point 0) mode mark modal)
   "Run an editor session on a scratch buffer holding TEXT, its lines ending as
@@ -224,7 +227,8 @@ terminal. Returns the buffer's text."
         (tuatara.buffer:kill-buffer b)))
     ;; text pasted into the terminal takes the buffer's line ends as a yank does: CR LF into a
     ;; buffer of carriage returns is one carriage return
-    (is string= (cr "ax|y|b") (ending-session "ab" :cr (list (list :paste (format nil "x~c~%y~c~%" #\Return #\Return))) :point 1))
+    (is string= (cr "ax|y|b")
+        (ending-session "ab" :cr (list (list :paste (format nil "x~c~%y~c~%" #\Return #\Return))) :point 1))
     ;; DEL after a carriage return and a newline in a buffer of newlines takes both: the lines join
     (is string= "ab" (ending-session (cr "a|~%b") :lf '("DEL") :point 3))))
 
@@ -232,8 +236,9 @@ terminal. Returns the buffer's text."
   ;; text put back by lines tells a line ended by a carriage return from one ended by a newline
   (let ((b (tuatara.buffer:make-buffer (tuatara.buffer:unique-buffer-name "lines") :text (cr "a|b~%"))))
     (unwind-protect
-         (progn (true (plusp (tuatara.defaults::put-text-by-lines b (tuatara.buffer:buffer-text b) (format nil "a~%b~%"))))
-                (is string= (format nil "a~%b~%") (tuatara.buffer:buffer-string b)))
+         (progn
+           (true (plusp (tuatara.defaults::put-text-by-lines b (tuatara.buffer:buffer-text b) (format nil "a~%b~%"))))
+           (is string= (format nil "a~%b~%") (tuatara.buffer:buffer-string b)))
       (tuatara.buffer:kill-buffer b)))
   ;; a subtree moved keeps each of its lines' ends, in a buffer of each kind
   (loop for (ending text moved) in (list (list :lf (cr "* A|body~%* B~%") (cr "* B~%* A|body~%"))

@@ -45,7 +45,9 @@
   (sort (remove-if-not (lambda (package)
                          (let ((name (package-name package)))
                            (and (>= (length name) 7) (string-equal "TUATARA" name :end2 7)
-                                (not (member name '("TUATARA.TESTS" "TUATARA.BENCH" "TUATARA-COMPILE-GATE") :test #'string=)))))
+                                (not (member name
+                                             '("TUATARA.TESTS" "TUATARA.BENCH" "TUATARA-COMPILE-GATE")
+                                             :test #'string=)))))
                        (list-all-packages))
         #'string< :key #'package-name))
 
@@ -66,7 +68,8 @@
         (when (string= (package-name package) "TUATARA.DEFAULTS")
           ;; undocumented internals are structure accessors, found by the structure's name
           (do-symbols (symbol package)
-            (when (and (eq (symbol-package symbol) package) (eq (nth-value 1 (find-symbol (symbol-name symbol) package)) :internal)
+            (when (and (eq (symbol-package symbol) package)
+                       (eq (nth-value 1 (find-symbol (symbol-name symbol) package)) :internal)
                        (fboundp symbol) (not (special-operator-p symbol)) (not (macro-function symbol)))
               (add package symbol " (internal)"))))))
     (stable-sort rows (lambda (a b)

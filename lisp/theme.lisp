@@ -17,58 +17,103 @@ colours show until a theme sets them.")
 (define-face :mode-line-directory "The buffer's directory at the end of the mode line.")
 (define-face :minibuffer-prompt "The prompt of the minibuffer." :bold t)
 (define-face :completion-selected "The selected completion candidate." :reverse t)
-(define-face :completion-annotation "Annotations beside completion candidates: documentation, and what else has no face of its own." :dim t)
-(define-face :completion-group-title "The title of a group of completion candidates, such as the directory of the files under it." :bold t)
+(define-face :completion-annotation "Annotations beside completion candidates:
+documentation, and what else has no face of its own." :dim t)
+(define-face :completion-group-title "The title of a group of completion
+candidates, such as the directory of the files under it." :bold t)
 (define-face :completion-group-line "The line either side of the title of a group of completion candidates." :dim t)
 (define-face :completion-match-0 "The part of a completion candidate the first word typed matches." :fg :blue :bold t)
-(define-face :completion-match-1 "The part of a completion candidate the second word typed matches." :fg :magenta :bold t)
+(define-face :completion-match-1 "The part of a completion candidate the second word typed matches."
+  :fg :magenta
+  :bold t)
 (define-face :completion-match-2 "The part of a completion candidate the third word typed matches." :fg :green :bold t)
-(define-face :completion-match-3 "The part of a completion candidate the fourth and later words typed match." :fg :yellow :bold t)
+(define-face :completion-match-3 "The part of a completion candidate the fourth and later words typed match."
+  :fg :yellow
+  :bold t)
 (define-face :completion-key "Key bindings beside the commands among completion candidates." :bold t)
-(define-face :input-method-pending "Keys typed under an input method that wait for the next key to settle them (an a under swedish-postfix, waiting to see whether an a, an e or another key comes), underlined." :underline t)
+(define-face :input-method-pending "Keys typed under an input method that wait
+for the next key to settle them (an a under swedish-postfix, waiting to see
+whether an a, an e or another key comes), underlined." :underline t)
 (define-face :completion-major-mode "The major mode beside a buffer among completion candidates." :fg :cyan)
-(define-face :completion-modified "The mark beside a buffer among completion candidates that has changes not saved." :fg :yellow)
-(define-face :completion-safe "The mark beside a file among completion candidates that was opened safely, and opens so again." :fg :yellow :bold t)
-(define-face :completion-formatted-keywords "The keywords of a file with a formatted name, from the name, in the list \\[open-file-formatted] shows." :fg :blue)
-(define-face :completion-mode-none "A permission a file does not give (-), beside it among completion candidates." :dim t)
-(define-face :completion-mode-directory "The d of a directory's permissions beside it among completion candidates." :fg :blue)
-(define-face :completion-mode-link "The l of a symbolic link's permissions beside it among completion candidates." :fg :cyan)
+(define-face :completion-modified "The mark beside a buffer among completion candidates that has changes not saved."
+  :fg :yellow)
+(define-face :completion-safe "The mark beside a file among completion
+candidates that was opened safely, and opens so again." :fg :yellow :bold t)
+(define-face :completion-formatted-keywords "The keywords of a file with a
+formatted name, from the name, in the list \\[open-file-formatted] shows." :fg :blue)
+(define-face :completion-mode-none "A permission a file does not give (-), beside it among completion candidates."
+  :dim t)
+(define-face :completion-mode-directory "The d of a directory's permissions beside it among completion candidates."
+  :fg :blue)
+(define-face :completion-mode-link "The l of a symbolic link's permissions beside it among completion candidates."
+  :fg :cyan)
 (define-face :completion-mode-read "The permission to read (r) beside a file among completion candidates.")
 (define-face :completion-mode-write "The permission to write (w) beside a file among completion candidates." :fg :red)
-(define-face :completion-mode-exec "The permission to run or enter (x) beside a file among completion candidates." :fg :green)
-(define-face :completion-mode-other "Other letters of a file's permissions (s, t, and the kinds of special files) beside it among completion candidates." :fg :yellow)
-(define-face :popup "The list of completions beside the cursor (\\<lisp-mode>\\[completion-at-point]), and the documentation beside it: their text and ground." :fg :black :bg :white)
+(define-face :completion-mode-exec "The permission to run or enter (x) beside a file among completion candidates."
+  :fg :green)
+(define-face :completion-mode-other "Other letters of a file's permissions (s,
+t, and the kinds of special files) beside it among completion candidates." :fg :yellow)
+(define-face :popup "The list of completions beside the cursor (\\<lisp-mode>\\[completion-at-point]),
+and the documentation beside it: their text and ground." :fg :black :bg :white)
 (define-face :popup-current "The chosen completion in the list beside the cursor." :fg :white :bg :blue :bold t)
 (define-face :popup-annotation "What is said of a completion in the list beside the cursor: what it is." :fg :blue)
 (define-face :popup-bar "The scroll bar of the list of completions beside the cursor." :bg :black)
-(define-face :popup-heading "The first line of the documentation beside the list of completions: the name and its parameters." :bold t)
+(define-face :popup-heading "The first line of the documentation beside the list
+of completions: the name and its parameters." :bold t)
 (define-face :key-hint-key "Keys in the panel that lists the bindings under a prefix key." :bold t)
 (define-face :help-key-binding "Keys named in help, documentation and messages: those that run a command now." :bold t)
 (define-face :key-hint-command "Commands in the key-hint panel shown after a prefix key.")
 (define-face :key-hint-prefix "Prefix keys (further keymaps) in the key-hint panel." :fg :blue)
-(define-face :menu-argument-on "An argument a menu has on (a switch, an option given a value): what its actions are given." :inherit :key-hint-key)
+(define-face :menu-argument-on "An argument a menu has on (a switch, an option
+given a value): what its actions are given." :inherit :key-hint-key)
 (define-face :menu-argument-off "An argument a menu has off: shown, not given." :dim t)
-(define-face :key-hint-unavailable "A key in the key hints or a menu whose command cannot run here, such as one that would change a git repository looked at only: dimmed, and pressing it says why." :dim t)
-(define-face :header-line "Header lines of lists and tables, such as the column titles of *Health*." :bold t :underline t)
+(define-face :key-hint-unavailable "A key in the key hints or a menu whose
+command cannot run here, such as one that would change a git repository looked
+at only: dimmed, and pressing it says why." :dim t)
+(define-face :header-line "Header lines of lists and tables, such as the column titles of *Health*."
+  :bold t
+  :underline t)
 ;;; Lists: one face for each kind of thing a list shows, the same in every
 ;;; list that shows it, so that a theme sets each once
 
-(define-face :list-marked "An entry marked (>) in any list whose entries are marked, rimu's too, for the commands that act on those marked: the mark and the name, in the colour of warnings." :inherit :warning)
-(define-face :list-deletion "An entry marked for deletion (D) in any list whose entries are marked, rimu's too: the mark and the name, in the colour of errors." :inherit :error)
-(define-face :list-marked-other "An entry given a mark of another kind in a rimu list (a master's M, RIMU-MARK-MASTER): the mark and the name." :fg :cyan :bold t)
-(define-face :list-filters "The line above a list narrowed by search filters (\\[search-filter-regex]), saying by what and how many entries are left." :inherit :warning)
-(define-face :list-special "Something Tuatara made rather than a file of yours, in a list: the names in stars in the buffer list (\\[buffers]), *Messages* and *scratch*." :fg :green)
-(define-face :list-read-only "Something that cannot be changed, in a list: the names of read-only buffers in the buffer list (\\[buffers])." :fg :blue)
-(define-face :list-dim "What is of less interest in a list, set back: help buffers and the headings of clients that ended in the buffer list (\\[buffers]), packages not loaded, bookmarks whose file is gone, files ignored in rimu and in a git status, a value missing in the health report (\\[check-health]), a line saying more are not shown." :fg :bright-black)
-(define-face :list-directory "The names of folders in a list: in rimu (\\[rimu]) and where a link to a folder leads, in the trash (\\[rimu-trash]) and among bookmarks (\\[bookmark-manager])." :fg :blue)
-(define-face :list-date "Dates and times in a list or beside completion candidates: when a file last changed, the date in a formatted name, a rimu list's last commits (\\<rimu-mode>\\[rimu-toggle-git]), when a message was sent." :fg :blue)
-(define-face :list-size "Sizes in a list or beside completion candidates: of files and buffers, and a rimu list's sizes column (\\<rimu-mode>\\[rimu-toggle-sizes])." :fg :cyan)
-(define-face :list-note "What is said of an entry beside it in a list: the first line of a rimu list's last commit messages, the first sentence of a face's description in \\[list-faces], the details under a finding in a report." :fg :bright-black)
+(define-face :list-marked "An entry marked (>) in any list whose entries are
+marked, rimu's too, for the commands that act on those marked: the mark and the
+name, in the colour of warnings." :inherit :warning)
+(define-face :list-deletion "An entry marked for deletion (D) in any list whose
+entries are marked, rimu's too: the mark and the name, in the colour of errors." :inherit :error)
+(define-face :list-marked-other "An entry given a mark of another kind in a rimu
+list (a master's M, RIMU-MARK-MASTER): the mark and the name." :fg :cyan :bold t)
+(define-face :list-filters "The line above a list narrowed by search filters (\\[search-filter-regex]),
+saying by what and how many entries are left." :inherit :warning)
+(define-face :list-special "Something Tuatara made rather than a file of yours,
+in a list: the names in stars in the buffer list (\\[buffers]), *Messages* and
+*scratch*." :fg :green)
+(define-face :list-read-only "Something that cannot be changed, in a list: the
+names of read-only buffers in the buffer list (\\[buffers])." :fg :blue)
+(define-face :list-dim "What is of less interest in a list, set back: help
+buffers and the headings of clients that ended in the buffer list (\\[buffers]),
+packages not loaded, bookmarks whose file is gone, files ignored in rimu and in
+a git status, a value missing in the health report (\\[check-health]), a line
+saying more are not shown." :fg :bright-black)
+(define-face :list-directory "The names of folders in a list: in rimu (\\[rimu])
+and where a link to a folder leads, in the trash (\\[rimu-trash]) and among
+bookmarks (\\[bookmark-manager])." :fg :blue)
+(define-face :list-date "Dates and times in a list or beside completion
+candidates: when a file last changed, the date in a formatted name, a rimu
+list's last commits (\\<rimu-mode>\\[rimu-toggle-git]), when a message was sent." :fg :blue)
+(define-face :list-size "Sizes in a list or beside completion candidates: of
+files and buffers, and a rimu list's sizes column (\\<rimu-mode>\\[rimu-toggle-sizes])." :fg :cyan)
+(define-face :list-note "What is said of an entry beside it in a list: the first
+line of a rimu list's last commit messages, the first sentence of a face's
+description in \\[list-faces], the details under a finding in a report." :fg :bright-black)
 (define-face :list-name "The name of a thing set apart in a list, above what it holds: a font's family over its variants
 in \\[font-list]." :fg :magenta :bold t)
-(define-face :list-label "The name of a field before its value, in a report or a message's details (Subject:, Verdict)." :fg :yellow)
-(define-face :list-good "A state that is as it should be, in a list: a check that passed in the health report (\\[check-health])." :fg :green :bold t)
-(define-face :list-bad "A state that is not as it should be, in a list: a check that failed in the health report (\\[check-health])." :fg :red :bold t)
+(define-face :list-label "The name of a field before its value, in a report or a message's details (Subject:, Verdict)."
+  :fg :yellow)
+(define-face :list-good "A state that is as it should be, in a list: a check
+that passed in the health report (\\[check-health])." :fg :green :bold t)
+(define-face :list-bad "A state that is not as it should be, in a list: a check
+that failed in the health report (\\[check-health])." :fg :red :bold t)
 (define-face :font-list-line "The line for the init file that chooses a font, in the list of fonts (\\[font-list])."
   :fg :green)
 
@@ -77,8 +122,10 @@ in \\[font-list]." :fg :magenta :bold t)
 (define-face :rimu-symlink "The names of symbolic links in a rimu list." :fg :cyan)
 (define-face :rimu-broken-symlink "Symbolic links in a rimu list that lead nowhere, and what they hold." :fg :red)
 (define-face :rimu-special "The names of named pipes, sockets and devices in a rimu list." :fg :magenta)
-(define-face :rimu-perm-write "The permission to write (w) of the group and of others, among the details of an entry in a rimu list." :fg :bright-black)
-(define-face :rimu-set-id "The set-user, set-group and sticky letters (s, S, t, T) among the permissions of an entry in a rimu list." :fg :red :bold t)
+(define-face :rimu-perm-write "The permission to write (w) of the group and of
+others, among the details of an entry in a rimu list." :fg :bright-black)
+(define-face :rimu-set-id "The set-user, set-group and sticky letters (s, S, t,
+T) among the permissions of an entry in a rimu list." :fg :red :bold t)
 (define-face :mode-line-sign-idle "The mode line's signs before [-] (P, U and S) while their work is not going on:
 faint, barely seen. Unless set, its colour is worked out from the mode line's
 as the theme in force has it, its ground moved a sixth of the way towards its
@@ -137,11 +184,19 @@ text added, on a ground of its own."
 
 (define-face :line-number "Line numbers in the gutter." :dim t)
 (define-face :current-line-number "The current line's number in the gutter." :bold t)
-(define-face :hl-line "The line point is on, in the selected window, out to its edge (\\[hl-line-mode], \\[global-hl-line-mode])." :extend t)
-(define-face :cursor-column "The column point is in, down the selected window (\\[cursor-column-mode], \\[global-cursor-column-mode]): the same as :hl-line unless set apart, (set-face :cursor-column :bg ...) in the init file." :inherit :hl-line)
-(define-face :soft-wrap-row "The row point is on, where long lines wrap (\\[soft-wrap-mode]), painted over the line's :hl-line: the same as it unless set apart, (set-face :soft-wrap-row :bg ...) in the init file." :inherit :hl-line :extend t)
-(define-face :visual-line "The line down the window at the fill column (\\[visual-line-mode]): its background, over a source block's or the selection's, under the line point is on (:hl-line)." :bg :bright-black)
-(define-face :wrap-indicator "The mark in the gutter beside a row that goes on from the one above, where long lines wrap (\\[soft-wrap-mode])." :fg :bright-black)
+(define-face :hl-line "The line point is on, in the selected window, out to its
+edge (\\[hl-line-mode], \\[global-hl-line-mode])." :extend t)
+(define-face :cursor-column "The column point is in, down the selected window (\\[cursor-column-mode],
+\\[global-cursor-column-mode]): the same as :hl-line unless set apart, (set-face
+:cursor-column :bg ...) in the init file." :inherit :hl-line)
+(define-face :soft-wrap-row "The row point is on, where long lines wrap (\\[soft-wrap-mode]),
+painted over the line's :hl-line: the same as it unless set apart, (set-face
+:soft-wrap-row :bg ...) in the init file." :inherit :hl-line :extend t)
+(define-face :visual-line "The line down the window at the fill column (\\[visual-line-mode]):
+its background, over a source block's or the selection's, under the line point
+is on (:hl-line)." :bg :bright-black)
+(define-face :wrap-indicator "The mark in the gutter beside a row that goes on
+from the one above, where long lines wrap (\\[soft-wrap-mode])." :fg :bright-black)
 (define-face :vc-added "Gutter mark for lines added since the last commit." :fg :green :bold t)
 (define-face :vc-changed "Gutter mark for lines changed since the last commit." :fg :yellow :bold t)
 (define-face :vc-deleted "Gutter mark after lines deleted since the last commit." :fg :red :bold t)
@@ -152,10 +207,16 @@ text added, on a ground of its own."
 (define-face :string "String and character literals." :fg :green)
 (define-face :escape "Escape sequences inside strings." :fg :cyan :bold t)
 (define-face :raw-byte "Octets that are not UTF-8, each shown as \\xNN." :fg :red :bold t)
-(define-face :invisible-character "A character that draws nothing, shown as its code, <FEFF> for the byte-order mark, while its buffer shows such characters (\\[invisible-characters-mode]), and a character that sets the direction text is drawn in, shown as ? otherwise: as escape sequences are, unless set apart." :inherit :escape)
-(define-face :right-to-left "Text written from right to left, shown in the order it is read: nothing of its own unless set apart; the frontends find the runs whose letters they join by it.")
+(define-face :invisible-character "A character that draws nothing, shown as its
+code, <FEFF> for the byte-order mark, while its buffer shows such characters (\\[invisible-characters-mode]),
+and a character that sets the direction text is drawn in, shown as ? otherwise:
+as escape sequences are, unless set apart." :inherit :escape)
+(define-face :right-to-left "Text written from right to left, shown in the order
+it is read: nothing of its own unless set apart; the frontends find the runs
+whose letters they join by it.")
 (define-face :hex-offset "The offsets at the start of the hex view's rows." :dim t)
-(define-face :hex-mirror "The octet at the hex view's cursor, marked in both its hex digits and its character, the cursor on the one typing goes to." :inherit :paren-match)
+(define-face :hex-mirror "The octet at the hex view's cursor, marked in both its
+hex digits and its character, the cursor on the one typing goes to." :inherit :paren-match)
 (define-face :hex-unprintable "The dots the hex view's text column shows for octets that are not printable." :dim t)
 (define-face :keyword "Keywords of the language." :fg :magenta)
 (define-face :function "Names of functions where they are defined or called." :fg :blue)
@@ -182,15 +243,18 @@ text added, on a ground of its own."
 ;;; colour apart from the part before them.
 
 (define-face :constructor "Constructors: enum variants and structures built by name." :inherit :type)
-(define-face :constant.character.escape "Escape sequences in strings, captured as tree-sitter names them." :inherit :escape)
+(define-face :constant.character.escape "Escape sequences in strings, captured as tree-sitter names them."
+  :inherit :escape)
 (define-face :constant.numeric "Numbers, captured as tree-sitter names them." :inherit :number)
 (define-face :string.regexp "Regular expressions written as strings." :inherit :string)
 (define-face :variable.parameter "Parameters of functions and closures." :inherit :variable)
 (define-face :variable.other "Other variables: fields and members." :inherit :property)
 (define-face :punctuation.bracket "Brackets, braces and parentheses." :inherit :punctuation)
-(define-face :punctuation.special "Punctuation with a meaning of its own, such as string interpolation." :inherit :punctuation)
+(define-face :punctuation.special "Punctuation with a meaning of its own, such as string interpolation."
+  :inherit :punctuation)
 (define-face :keyword.operator "Keywords that are operators, such as and, or and as." :inherit :keyword)
-(define-face :keyword.directive "Preprocessor directives and pragmas, captured as tree-sitter names them." :inherit :preprocessor)
+(define-face :keyword.directive "Preprocessor directives and pragmas, captured as tree-sitter names them."
+  :inherit :preprocessor)
 (define-face :keyword.storage.modifier "Storage modifiers such as mut, static and const." :inherit :keyword)
 (define-face :function.method "Methods, where defined or called." :inherit :function)
 (define-face :function.macro "Macros, where defined or called." :inherit :function)
@@ -221,18 +285,34 @@ text added, on a ground of its own."
 (define-face :diff.plus "Lines a difference between files adds." :fg :green)
 (define-face :diff.minus "Lines a difference between files takes away." :fg :red)
 (define-face :diff.delta "Lines a difference between files changes." :fg :yellow)
-(define-face :git-status-staged "A file staged, under Staged changes in a git status, apart from those not staged yet: in the theme's colour for added lines." :inherit :diff.plus)
-(define-face :git-status-deleted "A file deleted and staged, under Staged changes in a git status: in the theme's colour for lines taken away." :inherit :diff.minus)
-(define-face :git-status-branch "The branch you are on, at the top of a git status: lit up, to be seen at once." :inherit :heading)
-(define-face :git-status-commit "The latest commits at the end of a git status, and the stashes: a colour of their own." :fg :red)
-(define-face :conflict-marker "The marker lines of a conflict a merge left in a file (\\[conflict-markers-mode]): <<<<<<<, ||||||| and >>>>>>> with the names after them, and =======, out to the window's edge." :bold t :extend t)
-(define-face :conflict-first "The first side of a conflict a merge left in a file, the lines after its <<<<<<< line: as the lines a difference takes away unless set." :inherit :diff.minus :extend t)
-(define-face :conflict-base "The base of a conflict a merge left in a file, the lines after its ||||||| line, as they were before either side changed them." :fg :yellow :extend t)
-(define-face :conflict-second "The second side of a conflict a merge left in a file, the lines after its ======= line: as the lines a difference adds unless set." :inherit :diff.plus :extend t)
+(define-face :git-status-staged "A file staged, under Staged changes in a git
+status, apart from those not staged yet: in the theme's colour for added lines." :inherit :diff.plus)
+(define-face :git-status-deleted "A file deleted and staged, under Staged
+changes in a git status: in the theme's colour for lines taken away." :inherit :diff.minus)
+(define-face :git-status-branch "The branch you are on, at the top of a git status: lit up, to be seen at once."
+  :inherit :heading)
+(define-face :git-status-commit "The latest commits at the end of a git status, and the stashes: a colour of their own."
+  :fg :red)
+(define-face :conflict-marker "The marker lines of a conflict a merge left in a
+file (\\[conflict-markers-mode]): <<<<<<<, ||||||| and >>>>>>> with the names
+after them, and =======, out to the window's edge." :bold t :extend t)
+(define-face :conflict-first "The first side of a conflict a merge left in a
+file, the lines after its <<<<<<< line: as the lines a difference takes away
+unless set." :inherit :diff.minus :extend t)
+(define-face :conflict-base "The base of a conflict a merge left in a file, the
+lines after its ||||||| line, as they were before either side changed them." :fg :yellow :extend t)
+(define-face :conflict-second "The second side of a conflict a merge left in a
+file, the lines after its ======= line: as the lines a difference adds unless
+set." :inherit :diff.plus :extend t)
 (define-face :error "Errors marked in text, such as the error lines of a log." :fg :red :bold t)
 (define-face :warning "Warnings marked in text, such as the warning lines of a log." :fg :yellow :bold t)
-(define-face :stored-order "Right-to-left letters shown in the order they are stored, in a stretch of a line too long, or too far past an embedding or override, for the order they are read in to be worked out." :inherit :warning)
-(define-face :mode-line-rewind "Rewind and the commit shown, in the mode line of a file or folder shown as a commit left it (\\[git-rewind]): lit up in the theme's warning colour, so that it is seen at once that this is not the file as it is now." :inherit :warning :reverse t)
+(define-face :stored-order "Right-to-left letters shown in the order they are
+stored, in a stretch of a line too long, or too far past an embedding or
+override, for the order they are read in to be worked out." :inherit :warning)
+(define-face :mode-line-rewind "Rewind and the commit shown, in the mode line of
+a file or folder shown as a commit left it (\\[git-rewind]): lit up in the
+theme's warning colour, so that it is seen at once that this is not the file as
+it is now." :inherit :warning :reverse t)
 (define-face :mode-line-narrowed "Narrow, in the mode line of a buffer narrowed to a part of it
 \(\\[narrow-to-region], \\[narrow-to-section]): lit up in the theme's warning
 colour, so that it is seen at once that the rest of the buffer is out of
@@ -249,31 +329,59 @@ warning colour, so that it is never taken for a repository you work in."
   :inherit :warning :reverse t)
 (define-face :git-look-only "The line at the top of a git status of a repository looked at only,
 saying why and that git only reads it." :inherit :warning)
-(define-face :mode-line-sign "The mode line's signs before [-] while their work goes on: P while a job of the buffer runs or waits its turn (*processing-indicator*), U while a directory of *indexed-directories* is being read (*indexing-indicator*), S while one is searched (*searching-indicator*), D while the editor runs as a daemon (*daemon-indicator*); in the theme's warning colour, to stand out." :inherit :warning)
-(define-face :mode-line-recording "Rec in the mode line while keys are recorded (\\[start-recording-keys]), and how many plays are done while recorded keys play over and over (\\[play-recorded-keys]); as the signs of work, in the theme's warning colour." :inherit :mode-line-sign)
+(define-face :mode-line-sign "The mode line's signs before [-] while their work
+goes on: P while a job of the buffer runs or waits its turn (*processing-indicator*),
+U while a directory of *indexed-directories* is being read (*indexing-indicator*),
+S while one is searched (*searching-indicator*), D while the editor runs as a
+daemon (*daemon-indicator*); in the theme's warning colour, to stand out." :inherit :warning)
+(define-face :mode-line-recording "Rec in the mode line while keys are recorded (\\[start-recording-keys]),
+and how many plays are done while recorded keys play over and over (\\[play-recorded-keys]);
+as the signs of work, in the theme's warning colour." :inherit :mode-line-sign)
 (define-face :terminal-bold "Text a program in a terminal set in bold." :bold t)
 (define-face :terminal-italic "Text a program in a terminal set in italics." :italic t)
 (define-face :terminal-underline "Text a program in a terminal underlined." :underline t)
 (define-face :terminal-dim "Text a program in a terminal set faint." :dim t)
 
 (define-face :terminal-reverse "Text a program in a terminal shown in reverse, its colours swapped." :reverse t)
-(define-face :spellcheck "A word spelt wrong (\\[spellcheck-mode], \\[global-spellcheck-mode]): underlined, wavy in a window of its own as standard; (set-face :spellcheck :underline :dotted) in the init file for dots, :underline t for a line, :underline-colour for its colour." :underline :wave :underline-colour :yellow)
+(define-face :spellcheck "A word spelt wrong (\\[spellcheck-mode],
+\\[global-spellcheck-mode]): underlined, wavy in a window of its own as
+standard; (set-face :spellcheck :underline :dotted) in the init file for dots,
+:underline t for a line, :underline-colour for its colour." :underline :wave :underline-colour :yellow)
 (define-face :info "Information marked in text, such as the info lines of a log." :fg :blue)
-(define-face :diagnostic-error "The text a language server finds an error in: underlined, wavy." :underline :wave :underline-colour :red)
-(define-face :diagnostic-warning "The text a language server warns of: underlined, wavy." :underline :wave :underline-colour :yellow)
-(define-face :diagnostic-info "The text a language server says something of: underlined, dotted." :underline :dotted :underline-colour :blue)
-(define-face :diagnostic-hint "The text a language server hints at: underlined, dotted." :underline :dotted :underline-colour :bright-black)
-(define-face :diagnostic-error-ground "The text a language server finds an error in, with *lsp-diagnostics-style* :background: on the theme's error ground." :fg :white :bg :red)
-(define-face :diagnostic-warning-ground "The text a language server warns of, with *lsp-diagnostics-style* :background: on the theme's warning ground." :fg :black :bg :yellow)
-(define-face :diagnostic-info-ground "The text a language server says something of, with *lsp-diagnostics-style* :background: on the theme's information ground." :fg :black :bg :cyan)
-(define-face :diagnostic-hint-ground "The text a language server hints at, with *lsp-diagnostics-style* :background: faint." :dim t)
-(define-face :code-lens "What a language server says of a line (3 references, Run test), at its end: as an inlay hint." :inherit :inlay-hint)
-(define-face :symbol-highlight "The name the cursor rests on, and its other uses the language server finds in the window: bold." :bold t)
-(define-face :inlay-hint "What a language server shows within the code, no text of it (a type, a parameter's name): faint." :dim t :italic t)
+(define-face :diagnostic-error "The text a language server finds an error in: underlined, wavy."
+  :underline :wave
+  :underline-colour :red)
+(define-face :diagnostic-warning "The text a language server warns of: underlined, wavy."
+  :underline :wave
+  :underline-colour :yellow)
+(define-face :diagnostic-info "The text a language server says something of: underlined, dotted."
+  :underline :dotted
+  :underline-colour :blue)
+(define-face :diagnostic-hint "The text a language server hints at: underlined, dotted."
+  :underline :dotted
+  :underline-colour :bright-black)
+(define-face :diagnostic-error-ground "The text a language server finds an error
+in, with *lsp-diagnostics-style* :background: on the theme's error ground." :fg :white :bg :red)
+(define-face :diagnostic-warning-ground "The text a language server warns of,
+with *lsp-diagnostics-style* :background: on the theme's warning ground." :fg :black :bg :yellow)
+(define-face :diagnostic-info-ground "The text a language server says something
+of, with *lsp-diagnostics-style* :background: on the theme's information ground." :fg :black :bg :cyan)
+(define-face :diagnostic-hint-ground "The text a language server hints at, with
+*lsp-diagnostics-style* :background: faint." :dim t)
+(define-face :code-lens "What a language server says of a line (3 references, Run test), at its end: as an inlay hint."
+  :inherit :inlay-hint)
+(define-face :symbol-highlight "The name the cursor rests on, and its other uses
+the language server finds in the window: bold." :bold t)
+(define-face :inlay-hint "What a language server shows within the code, no text
+of it (a type, a parameter's name): faint." :dim t :italic t)
 (define-face :hint "Hints and debugging marked in text, such as the debug lines of a log." :fg :bright-black)
-(define-face :compile-error "The lines of a compile's output (\\[compile]) that say an error, and the line saying the command failed: as errors are marked in text." :inherit :error)
-(define-face :compile-warning "The lines of a compile's output (\\[compile]) that say a warning: as warnings are marked in text." :inherit :warning)
-(define-face :compile-note "The lines of a compile's output (\\[compile]) that say a note or give help: as information is marked in text." :inherit :info)
+(define-face :compile-error "The lines of a compile's output (\\[compile]) that
+say an error, and the line saying the command failed: as errors are marked in
+text." :inherit :error)
+(define-face :compile-warning "The lines of a compile's output (\\[compile])
+that say a warning: as warnings are marked in text." :inherit :warning)
+(define-face :compile-note "The lines of a compile's output (\\[compile]) that
+say a note or give help: as information is marked in text." :inherit :info)
 
 ;;; CSV and other delimited data: one colour per column, cycling
 
@@ -303,15 +411,21 @@ saying why and that git only reads it." :inherit :warning)
 (define-face :org-level-8 "Org headlines of the eighth level and deeper." :inherit :heading)
 (define-face :org-todo "Org's keywords of tasks not done (TODO)." :fg :red :bold t)
 (define-face :org-done "Org's keywords of tasks done (DONE)." :fg :green :bold t)
-(define-face :org-wait "Org's keyword of tasks open but waiting on something (WAIT), apart from TODO." :fg :yellow :bold t)
-(define-face :org-cancelled "Org's keyword of tasks cancelled (CANCELLED), closed but apart from DONE." :dim t :bold t :italic t)
+(define-face :org-wait "Org's keyword of tasks open but waiting on something (WAIT), apart from TODO."
+  :fg :yellow
+  :bold t)
+(define-face :org-cancelled "Org's keyword of tasks cancelled (CANCELLED), closed but apart from DONE."
+  :dim t
+  :bold t
+  :italic t)
 (define-face :org-headline-done "The titles of Org headlines whose task is done." :dim t)
 (define-face :org-priority "An Org headline's priority, [#A]." :bold t)
 (define-face :org-tag "An Org headline's tags, :work:urgent:." :bold t)
 (define-face :org-archived "Org headlines tagged ARCHIVE." :dim t)
 (define-face :org-document-title "The title an Org document gives itself (#+title:)." :bold t)
 (define-face :org-document-info "What an Org document says of itself: its author, date and the like." :bold nil)
-(define-face :org-document-info-keyword "The keywords before an Org document's title, author and date (#+title:)." :dim t)
+(define-face :org-document-info-keyword "The keywords before an Org document's title, author and date (#+title:)."
+  :dim t)
 (define-face :org-meta-line "Org's keyword lines (#+name:, #+caption:...)." :dim t)
 (define-face :org-block "The contents of Org's blocks (#+begin_src... #+end_src)." :extend t)
 (define-face :org-block-begin-line "The first line of an Org block, #+begin_src and its arguments." :dim t :extend t)
@@ -329,8 +443,10 @@ saying why and that git only reads it." :inherit :warning)
 (define-face :org-link "Links in Org." :inherit :link)
 (define-face :org-date "Timestamps in Org (<2026-10-01 Thu>)." :fg :cyan)
 (define-face :org-special-keyword "Org's CLOSED: and CLOCK:." :dim t)
-(define-face :org-scheduled-keyword "Org's SCHEDULED:, in the colour the agenda gives a task scheduled." :inherit :org-scheduled)
-(define-face :org-deadline-keyword "Org's DEADLINE:, in the colour the agenda gives a deadline." :inherit :org-upcoming-deadline)
+(define-face :org-scheduled-keyword "Org's SCHEDULED:, in the colour the agenda gives a task scheduled."
+  :inherit :org-scheduled)
+(define-face :org-deadline-keyword "Org's DEADLINE:, in the colour the agenda gives a deadline."
+  :inherit :org-upcoming-deadline)
 (define-face :org-drawer "Org's drawers' first and last lines (:PROPERTIES:, :END:)." :dim t)
 (define-face :org-log-note "The notes a task's log keeps of its changes of state, wholly, the time
 included: - State \"DONE\" from \"TODO\" [2026-10-01 Thu 18:00]." :dim t)
@@ -341,7 +457,9 @@ included: - State \"DONE\" from \"TODO\" [2026-10-01 Thu 18:00]." :dim t)
 (define-face :org-mode-line-clock "The clock running on an Org task, in the mode line: [0:22] (Task).")
 (define-face :org-list-dt "The terms of Org's description lists (term :: description)." :bold t)
 (define-face :org-footnote "Org's footnotes, [fn:1]." :inherit :link)
-(define-face :org-agenda-structure "The agenda's headers: Week-agenda (W40):, Global list of TODO items." :fg :blue :bold t)
+(define-face :org-agenda-structure "The agenda's headers: Week-agenda (W40):, Global list of TODO items."
+  :fg :blue
+  :bold t)
 (define-face :org-agenda-date "A day's date in the agenda: Monday     28 September 2026." :inherit :org-agenda-structure)
 (define-face :org-agenda-date-today "Today's date in the agenda." :inherit :org-agenda-date :underline t)
 (define-face :calendar-month-header "The months' titles in the calendar (October 2026)." :bold t)
@@ -356,29 +474,38 @@ date question has them chosen (\\[org-schedule], \\[org-time-stamp])." :fg :mage
 (define-face :calendar-selected "The day the cursor is on in the calendar, both its digits on the cursor's
 colour as the cursor's character is (set as the cursor's colour changes)." :reverse t :bold t)
 (define-face :org-agenda-date-weekend "The date of a Saturday or a Sunday in the agenda." :inherit :org-agenda-date)
-(define-face :org-agenda-date-weekend-today "Today's date in the agenda, on a Saturday or a Sunday." :inherit :org-agenda-date-today)
+(define-face :org-agenda-date-weekend-today "Today's date in the agenda, on a Saturday or a Sunday."
+  :inherit :org-agenda-date-today)
 (define-face :org-time-grid "The lines of today's time grid in the agenda, 8:00 ┄┄┄┄┄." :fg :yellow)
 (define-face :org-agenda-current-time "The time now in the agenda's time grid, ← now." :inherit :org-time-grid)
 (define-face :org-scheduled "A task scheduled for a day to come, in the agenda." :fg :green)
 (define-face :org-scheduled-today "A task scheduled for today, in the agenda." :fg :green)
-(define-face :org-scheduled-previously "A task scheduled for a day gone and not done, in the agenda: Sched. 3x:." :fg :red)
+(define-face :org-scheduled-previously "A task scheduled for a day gone and not done, in the agenda: Sched. 3x:."
+  :fg :red)
 (define-face :org-upcoming-deadline "A deadline in the second half of its warning, in the agenda." :fg :red)
 (define-face :org-upcoming-distant-deadline "A deadline early in its warning, in the agenda.")
 (define-face :org-imminent-deadline "A deadline today, or gone, in the agenda." :fg :red :bold t)
 (define-face :org-agenda-done "A task done, and what was closed, in the agenda." :fg :green)
 (define-face :org-agenda-calendar-event "An entry at a time or on a range of days, and what was clocked, in the agenda.")
-(define-face :org-agenda-category "The category an agenda line begins with, the file's name or its CATEGORY (garden:)." :dim t)
+(define-face :org-agenda-category "The category an agenda line begins with, the file's name or its CATEGORY (garden:)."
+  :dim t)
 (define-face :org-agenda-time "The time of an agenda line, 9:30-10:15." :fg :cyan)
-(define-face :org-agenda-event-kind "The kind of an agenda line of a date in an entry's text, `Event:' or `Task:' for a task's (*org-agenda-event-kind-text*, *org-agenda-task-kind-text*)." :inherit :org-agenda-calendar-event)
-(define-face :org-agenda-untimed "The time column of an agenda line with no time of day, all day (*org-agenda-untimed-text*)." :dim t)
+(define-face :org-agenda-event-kind "The kind of an agenda line of a date in an
+entry's text, `Event:' or `Task:' for a task's (*org-agenda-event-kind-text*,
+*org-agenda-task-kind-text*)." :inherit :org-agenda-calendar-event)
+(define-face :org-agenda-untimed "The time column of an agenda line with no time
+of day, all day (*org-agenda-untimed-text*)." :dim t)
 (define-face :org-agenda-tags "The tags at the end of an agenda line, :work:meeting:." :dim t)
 (define-face :org-latex-and-related "LaTeX in Org text ($x^2$, \\alpha)." :fg :magenta)
 (define-face :org-target "Org's targets, <<target>>." :underline t)
 (define-face :org-cite "Org's citations, [cite:@key]." :inherit :link)
-(define-face :org-hide "The stars of Org's headlines hidden in the indented view: the ground's colour (dim where it is not known)." :dim t)
-(define-face :org-leading-stars "The stars of Org's headlines before the last, shown faint (*org-hide-leading-stars* nil)." :dim t)
+(define-face :org-hide "The stars of Org's headlines hidden in the indented
+view: the ground's colour (dim where it is not known)." :dim t)
+(define-face :org-leading-stars "The stars of Org's headlines before the last,
+shown faint (*org-hide-leading-stars* nil)." :dim t)
 (define-face :org-list-bullet "The signs list items show for their bullets (*org-list-bullets*)." :bold t)
-(define-face :org-checkbox-todo "TODO in the agenda for a list item's checkbox kept as a task, apart from a headline's TODO." :bold t :inherit :org-checkbox)
+(define-face :org-checkbox-todo "TODO in the agenda for a list item's checkbox
+kept as a task, apart from a headline's TODO." :bold t :inherit :org-checkbox)
 
 ;;; Themes
 
@@ -525,7 +652,9 @@ steel-blue mode line. From the Ao theme by the same author."
   (:keyword.storage.modifier :fg green) (:function.method :fg green) (:function.macro :fg green)
   (:function.special :fg yellow) (:namespace :fg text)
   (:markup.heading :inherit nil :fg orange)
-  (:markup.heading.1 :bold t :fg blue-cooler) (:markup.heading.2 :bold t :fg blue) (:markup.heading.3 :bold t :fg blue-warmer)
+  (:markup.heading.1 :bold t :fg blue-cooler)
+  (:markup.heading.2 :bold t :fg blue)
+  (:markup.heading.3 :bold t :fg blue-warmer)
   (:markup.heading.4 :fg blue-cooler) (:markup.heading.5 :fg blue) (:markup.heading.6 :fg blue-warmer)
   (:markup.list :fg orange) (:markup.bold :fg blue-cooler) (:markup.italic :fg blue-cooler)
   (:markup.strikethrough :fg blue-cooler) (:markup.link :fg blue-cooler) (:markup.link.url :fg magenta)
@@ -549,20 +678,34 @@ steel-blue mode line. From the Ao theme by the same author."
   (:org-priority :bold nil :fg magenta) (:org-tag :bold nil :fg green) (:org-archived :dim nil :fg text-dim)
   (:org-agenda-structure :bold t :fg blue) (:org-agenda-date :inherit nil :bold t :fg blue-cooler)
   (:org-agenda-date-today :inherit nil :bold t :underline t :fg blue-cooler)
-  (:org-agenda-date-weekend :inherit nil :bold t :fg orange) (:org-agenda-date-weekend-today :inherit nil :bold t :underline nil :fg orange)
-  (:calendar-weekday-header :fg blue) (:calendar-weekend-header :fg orange) (:calendar-marked :bold nil :fg blue) (:calendar-journal :bold t :underline t)
-  (:calendar-today :reverse nil :underline nil :bold t :fg ground :bg blue) (:calendar-chosen :bold t :underline t :fg magenta)
+  (:org-agenda-date-weekend :inherit nil :bold t :fg orange)
+  (:org-agenda-date-weekend-today :inherit nil :bold t :underline nil :fg orange)
+  (:calendar-weekday-header :fg blue)
+  (:calendar-weekend-header :fg orange)
+  (:calendar-marked :bold nil :fg blue)
+  (:calendar-journal :bold t :underline t)
+  (:calendar-today :reverse nil :underline nil :bold t :fg ground :bg blue)
+  (:calendar-chosen :bold t :underline t :fg magenta)
   (:org-time-grid :fg text-dim) (:org-agenda-current-time :inherit nil :fg orange)
   (:org-scheduled :fg yellow) (:org-scheduled-today :bold t :fg yellow) (:org-scheduled-previously :bold t :fg yellow)
   (:org-upcoming-deadline :fg red) (:org-upcoming-distant-deadline :fg text) (:org-imminent-deadline :bold t :fg red)
   (:org-agenda-done :fg comment) (:org-agenda-calendar-event :fg text)
-  (:org-agenda-category :dim nil :fg text-dim) (:org-agenda-time :fg blue) (:org-agenda-untimed :dim nil :fg text-dim) (:org-agenda-tags :dim nil :fg text-dim)
+  (:org-agenda-category :dim nil :fg text-dim)
+  (:org-agenda-time :fg blue)
+  (:org-agenda-untimed :dim nil :fg text-dim)
+  (:org-agenda-tags :dim nil :fg text-dim)
   (:org-document-title :bold t :fg orange) (:org-document-info :fg text-alt)
   (:org-document-info-keyword :dim nil :fg text-dim) (:org-meta-line :dim nil :fg text-dim)
   (:org-block :bg ground-dim) (:org-block-begin-line :dim nil :fg text-dim :bg ground-dim)
   (:org-code :inherit nil :fg code) (:org-verbatim :inherit nil :fg code) (:org-macro :fg magenta)
-  (:org-link :inherit nil :fg link) (:org-macro-text :fg green) (:org-date :fg blue) (:org-special-keyword :dim nil :fg text-dim)
-  (:org-drawer :dim nil :fg text-dim) (:org-log-note :dim nil :fg text-dim) (:org-property-value :fg blue-cooler) (:org-table :fg blue-cooler)
+  (:org-link :inherit nil :fg link)
+  (:org-macro-text :fg green)
+  (:org-date :fg blue)
+  (:org-special-keyword :dim nil :fg text-dim)
+  (:org-drawer :dim nil :fg text-dim)
+  (:org-log-note :dim nil :fg text-dim)
+  (:org-property-value :fg blue-cooler)
+  (:org-table :fg blue-cooler)
   (:org-formula :dim nil :fg text-alt) (:org-checkbox :bold nil :fg yellow) (:org-footnote :inherit nil :fg link)
   (:org-latex-and-related :fg magenta-faint) (:org-cite :inherit nil :fg link) (:org-hide :dim nil :fg ground)
   (:csv-column-6 :fg orange) (:csv-column-7 :fg blue-cooler) (:csv-separator :fg orange))
@@ -600,6 +743,32 @@ steel-blue mode line. From the Ao theme by the same author."
    (cursor blaze-orange-pure) (paren-ground docs-white)
    (line-number-current "#8a4e00") (line-number-current-ground docs-smoke-70)
    (yellow-subtle "#fdf3e0") (blue-subtle "#e7f0fb") (teal-subtle "#e2f4f0")))
+
+(defparameter *web-page-roles*
+  '(("bg" ground) ("panel" docs-smoke-70 ground-dim) ("fg" text) ("soft" text-dim) ("rule" whitespace) ("accent" link)
+    ("key-bg" current-line) ("note" blue-subtle) ("ml" mode-line-ground) ("ml-fg" mode-line-text)
+    ("ml-faint" mode-line-directory) ("amber" cursor))
+  "Each (NAME ROLE [DARK-ROLE]): the variable a web page's stylesheet names NAME,
+the role giving it in the light Ao theme and in the dark one, ROLE again when
+DARK-ROLE is left out.")
+
+(defparameter *web-page-screen-roles*
+  '(("screen" ground ground-dim) ("screen-fg" text text) ("screen-soft" text-dim text-dim))
+  "Each (NAME LIGHT DARK): the variable a web page's stylesheet names NAME, for a
+picture of the screen, and the role giving it in a light page and in a dark
+page, both taken from the dark Ao theme: a picture of the screen is dark in either.")
+
+(defun web-page-colours (style)
+  "The colours of a web page made from an Org document, in STYLE, :LIGHT or
+:DARK, each (NAME . #rrggbb), NAME a variable of its stylesheet (ORG-HTML-STYLESHEET):
+from the Ao theme, the screen's pictures always from its dark side."
+  (let ((theme (tuatara.display:find-theme (if (eq style :dark) 'ao-dark 'ao-light)))
+        (dark (tuatara.display:find-theme 'ao-dark)))
+    (append (loop for (name role dark-role) in *web-page-roles*
+                  collect (cons name
+                                (tuatara.display:theme-role-colour theme (or (and (eq style :dark) dark-role) role))))
+            (loop for (name light-role dark-role) in *web-page-screen-roles*
+                  collect (cons name (tuatara.display:theme-role-colour dark (if (eq style :dark) dark-role light-role)))))))
 
 (defvar *startup-theme* 'ao-dark
   "The theme in force when the editor starts, before the init file runs; the
@@ -666,7 +835,8 @@ dark style is not followed after it."
   (mapcar (lambda (name)
             (let ((theme (tuatara.display:find-theme name)))
               (make-candidate (string-downcase (symbol-name name))
-                              :annotation (list (list (first-sentence (tuatara.display:theme-doc theme)) :completion-annotation 1/2))
+                              :annotation (list (list (first-sentence (tuatara.display:theme-doc theme))
+                                                      :completion-annotation 1/2))
                               :value name)))
           (tuatara.display:theme-names)))
 

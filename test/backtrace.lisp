@@ -19,7 +19,10 @@ own frames below left out; RET goes to the definition of the function called on 
   (with-debug-on-error-restored
     ;; switched on, an evaluation's error shows *Backtrace*, the message too
     (multiple-value-bind (f editor)
-        (fresh-start (format nil "M-x ~a RET o ~a C-g C-x C-e" (key-string "toggle-debug-on-error") (key-string "(goto-char 'x)"))
+        (fresh-start (format nil
+                             "M-x ~a RET o ~a C-g C-x C-e"
+                             (key-string "toggle-debug-on-error")
+                             (key-string "(goto-char 'x)"))
                      :width 160 :height 20)
       (true (showing f "Debug on Error enabled globally"))
       (is string= "*Backtrace*" (current-name editor))
@@ -41,7 +44,8 @@ own frames below left out; RET goes to the definition of the function called on 
                        (first (tuatara.defaults::mode-find-definitions (tuatara.modes:buffer-major-mode b) b "GOTO-CHAR")))))))
     ;; switched off again: the message alone
     (setf tuatara-user:*debug-on-error* nil)
-    (multiple-value-bind (f editor) (fresh-start (format nil "o ~a C-g C-x C-e" (key-string "(goto-char 'x)")) :width 160)
+    (multiple-value-bind (f editor)
+        (fresh-start (format nil "o ~a C-g C-x C-e" (key-string "(goto-char 'x)")) :width 160)
       (true (showing f "Error: Wrong type argument"))
       (is string= "*lisp-scratch*" (current-name editor)))))
 

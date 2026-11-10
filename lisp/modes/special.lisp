@@ -76,14 +76,15 @@ list kept current while shown."
 (defun set-made-text (buffer text &key spans buttons (key nil key-p) refill)
   "Make TEXT the whole of BUFFER, a read-only buffer whose text the editor
 makes: read-only again however the change ends, unmodified after (so that
-killing it asks nothing), with nothing to undo. SPANS, each (START END FACE) in
-octets of TEXT, a list or a vector, are the parts of it shown in a face, found
-by special-mode's highlight method (MADE-SPANS-BETWEEN); BUTTONS, each (START
-END ACTION), are its buttons (\\[push-button]); KEY is what the list was made
-from, for KEEP-SHOWN-CURRENT, worked out by its kind's key function when not
-given; REFILL, when given, is how BUFFER is made again (its :REFILL local,
-which \\[revert-buffer] calls with BUFFER). A narrowed BUFFER is widened
-first. Point is left where the change leaves it. O(size of TEXT + number of SPANS)."
+killing it asks nothing), with nothing to undo. SPANS, each (START END FACE)
+in octets of TEXT, a list or a vector, are the parts of it shown in a face,
+found by special-mode's highlight method (MADE-SPANS-BETWEEN). BUTTONS, each
+\(START END ACTION), are its buttons (\\[push-button]). KEY is what the list
+was made from, for KEEP-SHOWN-CURRENT, worked out by its kind's key function
+when not given. REFILL, when given, is how BUFFER is made again (its :REFILL
+local, which \\[revert-buffer] calls with BUFFER). A narrowed BUFFER is
+widened first. Point is left where the change leaves it. O(size of TEXT +
+number of SPANS)."
   (tuatara.buffer:widen-buffer buffer)
   (tuatara.buffer:with-read-only-lifted (buffer :after t)
     (tuatara.buffer:buffer-replace buffer 0 (tuatara.buffer:buffer-size buffer) text))
@@ -176,8 +177,9 @@ function of the buffer and the position, gives the entry there."
                         (tuatara.buffer:buffer-local buffer 'list-first-line 0))))
           (and (< -1 index (length entries)) (elt entries index))))))
 
-(defun render-pieces (buffer pieces &key (point :keep) (entries nil entries-p) (first-line 0) keys (key nil key-p) refill
-                                         redraw mark-key)
+(defun render-pieces
+    (buffer pieces &key (point :keep) (entries nil entries-p) (first-line 0) keys (key nil key-p) refill
+                        redraw mark-key)
   "Make PIECES (as PIECES-TEXT joins them, the keys marked in them shown with
 KEYS) the text of BUFFER, read-only (SET-MADE-TEXT, with KEY and REFILL), and
 put point back. PIECES may be a function of no arguments making them: it is
@@ -190,11 +192,11 @@ function of an entry, gives what a mark on it is kept by (ENTRY-MARK-KEY), NIL
 for an entry that takes none. POINT :keep keeps point on the entry it was on
 while that is still listed (an entry made again found by its likeness), else
 on its line, at the same column as far as the line goes (point on an entry
-gone stays among the entries' lines); :line does the same at the line's
-start; :start puts it at the start, :button on the first button (else the
-start), a number at the start of that line, one of the entries' lines when
-there are ENTRIES. Each window showing BUFFER keeps its own point so too, and
-shows it from the same line as before. Returns BUFFER."
+gone stays among the entries' lines). :line does the same at the line's start.
+:start puts it at the start. :button puts it on the first button (else the
+start). A number puts it at the start of that line, one of the entries' lines
+when there are ENTRIES. Each window showing BUFFER keeps its own point so too,
+and shows it from the same line as before. Returns BUFFER."
   (when (functionp pieces)
     (let ((make pieces))
       (setf pieces (funcall make))
@@ -260,7 +262,8 @@ CAPTURE is NIL, when it is that whole list being narrowed again. Returns BUFFER.
                      (cond ((eq point :start) 0)
                            ((eq point :button) (let ((first (first buttons))) (if first (first first) 0)))
                            ((integerp point)
-                            (tuatara.buffer:buffer-goto-line buffer (if entries-p (among-entries point) (within-text point))))
+                            (tuatara.buffer:buffer-goto-line buffer
+                                                             (if entries-p (among-entries point) (within-text point))))
                            (found (at-column (+ first-line found) column))
                            ((and entries-p (on-entry-p line)) (at-column (among-entries (or line first-line)) column))
                            (t (at-column (within-text (or line 0)) column))))))
@@ -279,12 +282,13 @@ CAPTURE is NIL, when it is that whole list being narrowed again. Returns BUFFER.
 (define-major-mode marked-list-mode special-mode
   "A list whose entries can be marked, for its commands to act on them
 together, as the buffer list (\\[buffers]) and the bookmark manager
-\(\\[bookmark-manager]) are: \\<marked-list-mode>\\[list-mark-entry] marks the entry on the line
-\(>), \\[list-mark-for-deletion] marks it for deletion (D), \\[list-unmark-entry] takes its mark off,
-each then moving down, a count marking as many; \\[list-unmark-all] takes every mark
-off; \\[list-toggle-marks] marks those not marked and unmarks those marked, as in rimu;
-\\[list-delete-marked] deletes those marked, or the one on the line, \\[list-execute] those marked for
-deletion, after asking."
+\(\\[bookmark-manager]) are. \\<marked-list-mode>\\[list-mark-entry] marks the
+entry on the line (>). \\[list-mark-for-deletion] marks it for deletion (D).
+\\[list-unmark-entry] takes its mark off. Each of these then moves down, a
+count marking as many. \\[list-unmark-all] takes every mark off.
+\\[list-toggle-marks] marks those not marked and unmarks those marked, as in
+rimu. \\[list-delete-marked] deletes those marked, or the one on the line.
+\\[list-execute] deletes those marked for deletion, after asking."
   :lighter "List" :interactive nil)
 
 (defvar *list-mark-order* 0
@@ -426,8 +430,9 @@ on the current line; NIL on a line showing none, or one that takes no mark."
       (let ((key (entry-mark-key list (list-entry-at list)))) (and key (list key)))))
 
 (define-command list-mark-entry ()
-  "Mark the entry on the current line of the list (>), for the list's commands that act on those marked, and move down; with
-a count, as many entries, up the list for a negative one."
+  "Mark the entry on the current line of the list (>), for the list's commands
+that act on those marked, and move down; with a count, as many entries, up the
+list for a negative one."
   (mark-entries (buffer-major-mode (current-buffer)) (current-buffer) :marked (prefix)))
 
 (define-command list-mark-for-deletion ()
@@ -611,9 +616,11 @@ there is one, before them all, and the section LAST after them. O(items)."
             (push item (cdr place))
             (push (setf (gethash section table) (list section item)) sections))))
     (let* ((sections (mapcar (lambda (place) (cons (car place) (reverse (cdr place)))) (nreverse sections)))
-           (others (remove-if (lambda (place) (or (and first (equal (car place) first)) (and last (equal (car place) last))))
+           (others (remove-if (lambda (place)
+                                (or (and first (equal (car place) first)) (and last (equal (car place) last))))
                               sections)))
-      (flet ((alone (section) (let ((place (and section (assoc section sections :test #'equal)))) (and place (list place)))))
+      (flet ((alone (section)
+               (let ((place (and section (assoc section sections :test #'equal)))) (and place (list place)))))
         (append (alone first)
                 (if order (stable-sort others order :key #'car) others)
                 (alone last))))))
@@ -623,20 +630,20 @@ there is one, before them all, and the section LAST after them. O(items)."
 their entries, for RENDER-PIECES, and their pieces. Each section has a
 heading: ▾, or ▸ when it is folded, its title (TITLE, a function of the
 section) and how many it holds in brackets, all in :heading, its entry
-\(:SECTION SECTION); how many is the number of its members, or what COUNT, a
-function of the section and its members, gives, no brackets when that is
-NIL. Unless the section is folded, each member has a line under it (folded
-too while search filters narrow LIST, which then hide it), ROW (a
-function of the member and the section) giving its pieces, its entry
-\(:MEMBER MEMBER SECTION); for a member shown on several lines, or on lines
-with entries of their own, ROW gives as a second value their entries, a
-sequence of one for each line. AFTER, a function of the section and its
-members, gives lines following the members of an open section the same way,
-their pieces and their entries (\"... 3 more\"). An empty line follows each
-open section another comes after. SECTION-FACE, a function of a section,
-gives the face of its heading, :heading when it gives none. SECTION-NOTE, a
-function of a section, gives words shown after its heading in :warning, or NIL.
-The sections are kept for \\[list-toggle-all-folds]."
+\(:SECTION SECTION). How many is the number of its members, or what COUNT, a
+function of the section and its members, gives, no brackets when that is NIL.
+Unless the section is folded, each member has a line under it (folded too
+while search filters narrow LIST, which then hide it). ROW (a function of the
+member and the section) gives its pieces, its entry (:MEMBER MEMBER SECTION).
+For a member shown on several lines, or on lines with entries of their own,
+ROW gives as a second value their entries, a sequence of one for each line.
+AFTER, a function of the section and its members, gives lines following the
+members of an open section the same way, their pieces and their entries (\"...
+3 more\"). An empty line follows each open section another comes after.
+SECTION-FACE, a function of a section, gives the face of its heading, :heading
+when it gives none. SECTION-NOTE, a function of a section, gives words shown
+after its heading in :warning, or NIL. The sections are kept for
+\\[list-toggle-all-folds]."
   (setf (tuatara.buffer:buffer-local list 'list-sections) (mapcar #'car sections))
   (let ((folded (list-folded list)) (entries '()) (pieces '()))
     (flet ((add (&optional more-pieces more-entries)
@@ -855,7 +862,8 @@ the texts of its cells, and the first row's texts."
                            pieces))
             texts first)))
 
-(defun render-made-table-list (list columns rows texts first &rest options &key before after first-line &allow-other-keys)
+(defun render-made-table-list
+    (list columns rows texts first &rest options &key before after first-line &allow-other-keys)
   "Fill LIST with a table whose ROWS are made (TABLE-LIST-ROWS, TEXTS and
 FIRST as it gives them): the titles of COLUMNS over them, BEFORE and AFTER,
 pieces, above the titles and below the rows; the columns kept for a filter to
@@ -907,7 +915,9 @@ that \\[search-filter-show-records] can try a pattern on one column."
         (apply #'render-made-table-list list columns rows texts first
                :entries entries
                :mark-key (if sections
-                             (lambda (entry) (let ((member (entry-member entry))) (and member (funcall marked-by member (third entry)))))
+                             (lambda (entry)
+                               (let ((member (entry-member entry)))
+                                 (and member (funcall marked-by member (third entry)))))
                              (lambda (entry) (funcall marked-by entry nil)))
                (loop for (name value) on options by #'cddr
                      unless (member name '(:marked-by :sections :section-title :section-face :section-note :keep-marks))
@@ -998,10 +1008,11 @@ the line's end."
 (defun keep-shown-current (mode key &optional follow)
   "Keep the lists of major mode MODE current while a window shows them. KEY, a
 function of such a list, gives cheaply what it is made from, equal keys
-meaning nothing it shows has changed; when KEY gives other than it gave when
-the list was last filled (SET-MADE-TEXT), the list is made again: by FOLLOW, a
-function of the list and a window showing it (the selected one when that is
-one), when given, else as \\[revert-buffer] makes it (its :REFILL)."
+meaning nothing it shows has changed. When KEY gives other than it gave when
+the list was last filled (SET-MADE-TEXT), the list is made again. It is made
+by FOLLOW, a function of the list and a window showing it (the selected one
+when that is one), when given, else as \\[revert-buffer] makes it (its
+:REFILL)."
   (setf *shown-lists* (append (remove mode *shown-lists* :key #'first) (list (list mode key follow))))
   mode)
 
@@ -1050,11 +1061,12 @@ selecting lines and \\`J' and \\`K' growing that selection.")
 
 (defun install-special-buffers ()
   "Give every buffer a command makes (special-mode and those made from it) the
-same keys to leave it and to make it again: \\`q' quit-window, \\`r' and \\`g r'
-revert-buffer, and text made in a mode of its own (VIEW-MADE-TEXT) its \\`q';
-every list whose entries are marked (marked-list-mode) the same keys to mark
-and delete them and no moves by word nor selections but by lines (FREE-LIST-KEYS), and every list in sections (sectioned-list-mode) the same keys to fold
-them; and make the lists kept current again as what they show changes
+same keys to leave it and to make it again: \\`q' quit-window, \\`r' and
+\\`g r' revert-buffer, and text made in a mode of its own (VIEW-MADE-TEXT) its
+\\`q'. Give every list whose entries are marked (marked-list-mode) the same
+keys to mark and delete them and no moves by word nor selections but by lines
+\(FREE-LIST-KEYS). Give every list in sections (sectioned-list-mode) the same
+keys to fold them. Make the lists kept current again as what they show changes
 \(KEEP-SHOWN-LISTS-CURRENT)."
   (define-keys (mode-keymap 'special-mode) '(("q" quit-window) ("r" revert-buffer) ("g r" revert-buffer)))
   (define-key *made-text-keymap* "q" 'quit-window)

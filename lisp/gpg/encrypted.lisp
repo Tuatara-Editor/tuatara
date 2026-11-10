@@ -1,4 +1,5 @@
-;;;; lisp/gpg/encrypted.lisp --- Files encrypted with GnuPG (.gpg): opened decrypted, saved encrypted, their text never on disk.
+;;;; lisp/gpg/encrypted.lisp --- Files encrypted with GnuPG (.gpg): opened decrypted, saved encrypted, their text
+;;;; never on disk.
 ;;;; Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
 ;;;;
 ;;;; A file whose name ends in .gpg opens decrypted: gpg (GnuPG) reads it from
@@ -172,12 +173,12 @@ says it does not know them (GPG-OPTIONS), kept when it gives no answer."
                    *gpg-staying-home-options*))))
 
 (defun gpg-home-refusal ()
-  "Why the folder gpg takes its keys and options from is not safe, in words,
-or NIL when it is: GNUPGHOME, or with none ~/.gnupg (your home folder while
-that is not made yet), must be a folder of yours that only you may write in,
-no link, named from the root, every folder on the way to it root's or yours
-and writable by others only with the sticky bit (FOLDER-REFUSAL). gpg reads
-its options there, and options can have it run programs."
+  "Why the folder gpg takes its keys and options from is not safe, in words, or
+NIL when it is. GNUPGHOME, or with none ~/.gnupg (your home folder while that is
+not made yet), must be a folder of yours that only you may write in. It must be
+no link, named from the root, every folder on the way to it root's or yours and
+writable by others only with the sticky bit (FOLDER-REFUSAL). gpg reads its
+options there, and options can have it run programs."
   (let ((uid (sb-posix:geteuid))
         (home (tuatara.io:program-variable "GNUPGHOME")))
     (if (and home (plusp (length home)))
@@ -300,7 +301,10 @@ to the debug log (*SECRET-AT-HAND*). It runs with an environment of its own
                                    :name "tuatara gpg input")))
                      (reader (tuatara.runtime:make-guarded-thread
                               (lambda ()
-                                (let ((lines (sb-sys:make-fd-stream status-fd :input t :external-format :latin-1 :buffering :full)))
+                                (let ((lines (sb-sys:make-fd-stream status-fd
+                                                                    :input t
+                                                                    :external-format :latin-1
+                                                                    :buffering :full)))
                                   (unwind-protect
                                        (let ((tuatara.runtime:*secret-at-hand* t))
                                          (ignoring-errors-reported ("reading the status gpg gives")
@@ -334,7 +338,9 @@ to the debug log (*SECRET-AT-HAND*). It runs with an environment of its own
                 (when too-much
                   (push (format nil "it gave more than ~a, far more than this holds: stopped" (octets-words most)) said))))
             :input (if (or input input-path) :stream nil) :output :stream :error :stream :external-format :latin-1
-            :preserve-fds (append (list (second status)) (and pipe (list (first pipe))) (and second (list (first second))))
+            :preserve-fds (append (list (second status))
+                                  (and pipe (list (first pipe)))
+                                  (and second (list (first second))))
             :environment environment))
       (dolist (fd (append pipe second))
         (when fd (ignoring-errors-reported ("closing a pipe to gpg") (sb-posix:close fd))))
@@ -480,7 +486,9 @@ first where it would write it as it is (TUATARA.IO:HOST-SAVE-TRANSFORM)."
   (setf (tuatara.buffer:buffer-undo-stack buffer) '() (tuatara.buffer:buffer-redo-stack buffer) '())
   (tuatara.buffer:buffer-mark-saved buffer))
 
-(defstruct (decrypt-job (:include tuatara.runtime:job) (:constructor make-decrypt-job (buffer path passphrase)) (:copier nil))
+(defstruct (decrypt-job (:include tuatara.runtime:job)
+                        (:constructor make-decrypt-job (buffer path passphrase))
+                        (:copier nil))
   "The encrypted file at PATH being decrypted for BUFFER, a job: PASSPHRASE,
 the one typed, if any; TEXT, the octets decrypted; INFO, what GPG-DECRYPT says
 of how; STAMP, the file's as read."
@@ -527,7 +535,8 @@ gone."
                  (tuatara.buffer:buffer-local buffer :disk-state-said) nil
                  (tuatara.buffer:buffer-line-ending buffer)
                  (tuatara.buffer:detect-line-ending (tuatara.buffer:buffer-text buffer))
-                 (tuatara.buffer:buffer-local buffer :encrypted) (list :keys (getf info :keys) :symmetric (getf info :symmetric))
+                 (tuatara.buffer:buffer-local buffer :encrypted)
+                 (list :keys (getf info :keys) :symmetric (getf info :symmetric))
                  (buffer-override-keymap buffer) nil)
            (tuatara.buffer:buffer-mark-saved buffer)
            (set-major-mode buffer (tuatara.modes:mode-for-file path))
@@ -606,7 +615,8 @@ encrypted with a passphrase asks for it first."
                         (let ((buffer (tuatara.buffer:make-buffer (tuatara.buffer:unique-buffer-name (tuatara.io:native-file-name native)))))
                           (setf (tuatara.buffer:buffer-file buffer) native
                                 (tuatara.io:buffer-file-stamp buffer) (tuatara.io:path-stamp native)
-                                (tuatara.buffer:buffer-local buffer :reread) (lambda (b) (start-decrypting b (tuatara.io:native (tuatara.buffer:buffer-file b)))))
+                                (tuatara.buffer:buffer-local buffer :reread)
+                                (lambda (b) (start-decrypting b (tuatara.io:native (tuatara.buffer:buffer-file b)))))
                           (note-encrypted buffer (list :keys '() :symmetric nil))
                           (start-decrypting buffer native
                                             (and (gpg-minibuffer-p)
@@ -643,10 +653,14 @@ save is refused."
     (let ((encryption (tuatara.buffer:buffer-local buffer :encrypted)))
       (unless (or (getf encryption :keys) (getf encryption :symmetric))
         (setf encryption (or (read-encryption (tuatara.buffer:buffer-name buffer))
-                             (refuse "~a is not saved: nothing chosen to encrypt it to" (tuatara.buffer:buffer-name buffer)))))
+                             (refuse "~a is not saved: nothing chosen to encrypt it to"
+                                     (tuatara.buffer:buffer-name buffer)))))
       (note-encrypted buffer encryption)
       (let ((passphrase (and (getf encryption :symmetric) (gpg-minibuffer-p)
-                             (gpg-read-passphrase (format nil "Passphrase to encrypt ~a with: " (tuatara.buffer:buffer-name buffer)) :confirm t)))
+                             (gpg-read-passphrase (format nil
+                                                          "Passphrase to encrypt ~a with: "
+                                                          (tuatara.buffer:buffer-name buffer))
+                                                  :confirm t)))
             (name (tuatara.buffer:buffer-name buffer)))
         (when (eq (gpg-asker) :terminal)
           ;; encrypted now, the terminal lent to the pinentry: the save writes what it gave
@@ -678,7 +692,9 @@ save is refused."
 :SUBKEYS (the IDs of its subkeys, which a file names it by), :FINGERPRINT and
 :CAPABILITIES (gpg's letters: e encrypts, s signs, c certifies); with ALL, the
 keys that cannot encrypt too."
-  (flet ((lines (arguments) (uiop:split-string (tuatara.text:lenient-string (or (gpg-run arguments :asker :agent) #())) :separator '(#\Newline)))
+  (flet ((lines (arguments)
+           (uiop:split-string (tuatara.text:lenient-string (or (gpg-run arguments :asker :agent) #()))
+                              :separator '(#\Newline)))
          (fields (line) (uiop:split-string line :separator '(#\:))))
     (let ((secret (loop for line in (lines (list "--list-secret-keys" "--with-colons"))
                         for f = (fields line)
@@ -688,7 +704,9 @@ keys that cannot encrypt too."
         (let ((f (fields line)))
           (cond ((string= (first f) "pub")
                  (setf current (and (>= (length f) 12) (or all (find #\E (nth 11 f)))
-                                    (list :id (fifth f) :name nil :capabilities (remove-duplicates (string-downcase (nth 11 f)))
+                                    (list :id (fifth f)
+                                          :name nil
+                                          :capabilities (remove-duplicates (string-downcase (nth 11 f)))
                                           :validity (case (char (concatenate 'string (second f) "-") 0)
                                                       (#\u "ultimate") (#\f "full") (#\m "marginal") (#\n "never")
                                                       (#\e "expired") (#\r "revoked") (t "unknown"))
@@ -729,7 +747,10 @@ choices being separated by commas), with what more to say of it, as a
 cons."
   (if (eq entry :passphrase)
       (cons "a passphrase" "asked for as it is saved (symmetric)")
-      (cons (format nil "~@[~a ~]~a" (and (getf entry :name) (substitute #\Space #\, (getf entry :name))) (getf entry :id))
+      (cons (format nil
+                    "~@[~a ~]~a"
+                    (and (getf entry :name) (substitute #\Space #\, (getf entry :name)))
+                    (getf entry :id))
             (format nil "~a~@[, expires ~a~]~:[~;, yours~]" (getf entry :validity)
                     (let ((e (getf entry :expires))) (and e (format-time "%F" e))) (getf entry :secret)))))
 

@@ -11,7 +11,8 @@
                         (remove nil (list (let ((given (sb-ext:posix-getenv "QUICKLISP_SETUP")))
                                             (and given (plusp (length given)) (pathname given)))
                                           (merge-pathnames "quicklisp/setup.lisp" (user-homedir-pathname))
-                                          (merge-pathnames ".local/share/quicklisp/setup.lisp" (user-homedir-pathname)))))))
+                                          (merge-pathnames ".local/share/quicklisp/setup.lisp"
+                                                           (user-homedir-pathname)))))))
     (if setup
         (load setup)
         (error "Quicklisp is not installed: see HACKING.org, or set QUICKLISP_SETUP to its setup.lisp"))))

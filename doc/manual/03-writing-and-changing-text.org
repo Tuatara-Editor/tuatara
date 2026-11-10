@@ -1,0 +1,524 @@
+#+title: Writing and changing text
+#+language: en
+
+* Writing and changing text
+
+How to type, correct, undo, repeat and tidy text.
+
+This chapter is about the text itself. It shows how to type it, take it out,
+change it in place, bring it back after a mistake, and do the same thing again
+without typing it again. It ends with the commands that tidy a whole block of
+lines: filling, sorting, spelling and recording keys. Chapter 2 shows how to
+get to the place you want to change, and chapter 4 shows what happens to the
+text you cut.
+
+Keys are written as chapter 1 explains: ~C-x~ is Control and x, ~M-x~ is Alt
+and x, ~RET~ is Return, ~DEL~ is Backspace. The tables say "none" for a command
+that has no key and can only be run by name with ~M-x~.
+
+** The two states
+
+In NORMAL state the letter keys are commands. ~d~ deletes, ~u~ (non-modal:
+~C-/~) undoes, ~i~ starts typing. In INSERT state the letter keys write text.
+Most of your time goes to NORMAL state, where you choose what to change, and you
+go into INSERT state only to type. Figure 3.1 shows how the two connect.
+
+#+caption: Figure 3.1. The two states and the keys that move between them.
+#+name: fig-states
+#+begin_example
+                  i  a  I  A  o  O  c
+        +----------------------------------->+
+        |                                    |
+   +----+-----+                        +-----+------+
+   |  NORMAL  |                        |   INSERT   |
+   | TUATARA[N]                        | TUATARA[I] |
+   |  letters |                        |  letters   |
+   | are keys |                        |  are text  |
+   +----+-----+                        +-----+------+
+        ^                                    |
+        +<-----------------------------------+
+                   C-g  or  ESC
+#+end_example
+
+The mode line says which state you are in. Each buffer keeps its own state,
+so a buffer you left in INSERT state is still in it when you come back to it.
+
+Everything you type between the key that starts INSERT state and the key that
+ends it is one step for undo, line breaks included. If you type two lines and
+press ~u~ (non-modal: ~C-/~), both go.
+
+*** Commands for starting to type
+
+| Modal        | Non-modal    | Command                     | What it does                          |
+|--------------+--------------+-----------------------------+---------------------------------------|
+| ~i~          | none         | =tuatara-insert=            | Starts typing at the cursor. A selection, if there is one, is dropped first. |
+| ~a~          | none         | =tuatara-insert-after=      | Starts typing after the character under the cursor. |
+| ~I~          | none         | =tuatara-insert-line-start= | Starts typing at the start of the line. |
+| ~A~          | none         | =tuatara-insert-line-end=   | Starts typing at the end of the line. |
+| ~o~          | none         | =tuatara-open-below=        | Opens a new line below this one and starts typing on it. A number first opens that many lines, with the cursor on the first. |
+| ~O~          | none         | =tuatara-open-above=        | Opens a new line above this one and starts typing on it. A number first opens that many lines. |
+| ~c~          | none         | =tuatara-change=            | Cuts the selection, or deletes the character under the cursor, and starts typing. See "Changing text" below. |
+| ~C-g~, ~ESC~ | none         | =tuatara-normal=            | In INSERT state, goes back to NORMAL state. The selection is dropped, and a line you began and left blank loses the blanks that were put in to indent it. |
+| none         | ~C-g~, ~ESC~ | =tuatara-quit=              | The key's command in the global map. In INSERT state it does the same as =tuatara-normal=, and in NORMAL state it drops the selection. |
+
+At the end of a line the cursor stands on the line break, so ~a~ types after
+it, at the start of the next line. ~A~ types at the end of the line you are on.
+
+~RET~, ~DEL~ and ~<delete>~ change no text in NORMAL state, so you cannot spoil
+a file by leaning on them. ~TAB~ does nothing there either, except in the
+modes named by =*tuatara-normal-tab-modes*=, where it does what it does in
+INSERT state. =tuatara-normal-return=, =tuatara-normal-inert= and
+=tuatara-normal-tab= are the commands that stand behind those three keys. ~RET~
+follows a link in an Org buffer and does nothing in a plain text buffer.
+
+Typing the two keys of =*insert-escape-keys*= quickly one after the other leaves
+INSERT state too. The first goes into the text as soon as you press it, and is
+taken out again when the second follows within a fifth of a second. Typed more
+slowly, both letters stay. It works in ordinary editing buffers, but not in the
+minibuffer, a terminal or at several cursors.
+
+With =*modal-editing*= set to =nil=, there are no states. Every buffer is
+always typing, letters write text, and all the other keys and commands in this
+chapter that start with Control or Meta still work.
+
+** Typing
+
+In INSERT state a key that stands for a character puts that character in at the
+cursor. =self-insert-command= is the command behind that. A number before such
+a key puts the character in that many times, so ~C-u 20 =~ types a row of
+twenty equals signs.
+
+Characters you type and delete one after another, in either state, join into one
+step for undo. After typing "weekend" and deleting the "d" with ~DEL~, one ~u~
+(non-modal: ~C-/~) takes back all of it.
+
+#+begin_try Try it, with a letter
+1. Press ~C-x C-f~, type =~/letter.txt= and press ~RET~. The file is new, so
+   the buffer is empty. Press ~i~. The mode line shows =TUATARA[I]=.
+2. Type =Dear Hana,=, press ~RET~ twice, then type =Thanks for the weekend in
+   Taupo. The weather was kind.= Press ~RET~ and type =Love, Aroha=.
+3. Press ~DEL~ three times. The last letters of the name go.
+4. Press ~C-g~. The mode line shows =TUATARA[N]= again. Press ~DEL~ once more.
+   Nothing happens, because ~DEL~ changes no text in NORMAL state.
+5. Press ~u~ (non-modal: ~C-/~). All the typing goes in one step and the buffer
+   is empty again. Press ~U~ (non-modal: ~C-?~) and all of it comes back.
+6. Press ~A~ to type at the end of the line. Type =oha.=, which finishes
+   the name again. Press ~C-g~.
+7. Press ~C-x C-s~ to save.
+#+end_try
+
+*** Commands
+
+| Modal | Non-modal         | Command                  | What it does                      |
+|-------+-------------------+--------------------------+-----------------------------------|
+| none  | any character key | =self-insert-command=    | Puts the character in. With a number, that many times. With an input method on and no number, the character goes through its rules. |
+| none  | ~RET~, ~C-j~      | =newline=                | Starts a new line, indented as the buffer's mode indents it. Spaces left at the end of the line before go. A number gives that many line breaks. |
+| none  | ~C-o~             | =open-line=              | Puts a line break in after the cursor, and the cursor stays before it. The new line is not indented. |
+| none  | ~TAB~             | =indent-for-tab-command= | In plain text, Org and CSV, goes on to the next tab stop. In code, indents the line. |
+| none  | ~M-i~             | =tab-to-tab-stop=        | Goes on to the next tab stop in any buffer. A number goes that many stops on. |
+| none  | ~C-q~             | =quoted-insert=          | Reads one more key and puts in the character it stands for. See "Special characters". |
+| none  | ~M-/~             | =expand-word=            | Finishes the word before the cursor with the nearest word that starts the same way. Press it again for the next one. |
+| none  | ~C-M-/~           | =complete-word=          | Lists the words that start like the one before the cursor. |
+
+*** Settings
+
+| Setting                      | Standard | What it changes                     |
+|------------------------------+----------+-------------------------------------|
+| =*modal-editing*=            | =t=      | =nil= turns NORMAL and INSERT state off. |
+| =*insert-escape-keys*=       | =nil=    | Two characters, ="jk"= for example, that leave INSERT state when typed quickly together. |
+| =*escape-quits*=             | =nil=    | =t= makes ~ESC~ do everything ~C-g~ does: close a question, stop a wait, stop work in the background. |
+| =*indent-new-lines*=         | =t=      | =nil= keeps new lines at column 0 instead of indenting them as the mode does. |
+| =*word-completion-keep-case*= | =t=     | Words are found whatever their case and put in with the case you typed. =nil= finds only words that start exactly as typed. |
+
+** Deleting
+
+In INSERT state, ~DEL~ deletes the character before the cursor and ~C-d~ or
+~<delete>~ the one after it. A letter with accents, or an emoji with a skin
+tone, goes as one character. A number first deletes that many, and a negative
+number deletes the other way. A Windows line end, a carriage return and a
+newline, counts as one.
+
+In NORMAL state ~d~ does the same job and also works on a selection. Without a
+selection it deletes the character under the cursor. It keeps no copy, because
+a character under the cursor is a slip being corrected and not a cut. With a
+selection it cuts the text into the kill ring, which chapter 4 describes. A
+number before ~d~ deletes that many characters.
+
+There is no command that deletes a word in one key. In NORMAL state press ~m w~
+to select the word at the cursor, which chapter 5 explains, and then ~d~. Press
+~m w~ again before ~d~ to take one more word. ~M-z~ cuts up to the next
+character you name.
+
+*** Commands
+
+| Modal | Non-modal            | Command                    | What it does           |
+|-------+----------------------+----------------------------+------------------------|
+| none  | ~DEL~                | =delete-backward-char=     | Deletes the character before the cursor. A number deletes that many. |
+| none  | ~C-d~, ~<delete>~    | =delete-char=              | Deletes the character after the cursor. A negative number deletes backwards. |
+| ~d~   | none                 | =delete-selection-or-char= | In NORMAL state. Cuts the selection, or deletes the characters under the cursor. A line selection takes the whole lines. |
+| ~D~   | ~C-k~                | =kill-line=                | Cuts the rest of the line. At the end of a line, cuts the line break, which joins the next line on. ~D~ is for NORMAL state. |
+| none  | ~C-S-<backspace>~    | =kill-whole-line=          | Cuts the whole line and its line break. A number cuts that many lines. |
+| none  | ~M-z~                | =zap-up-to-char=           | Cuts up to, and not including, the next character you type. |
+| none  | ~M-\~                | =delete-horizontal-space=  | Deletes the spaces and tabs around the cursor. With a number first, only those before it. |
+| none  | ~M-SPC~              | =cycle-spacing=            | Leaves one space where there were several. Press it again for none. A third press brings the spaces back. |
+| none  | ~M-x just-one-space~ | =just-one-space=           | Leaves one space, with the cursor after it. A number leaves that many. |
+| none  | ~C-x C-o~            | =delete-blank-lines=       | On a run of blank lines, leaves one. On a lone blank line, deletes it. On a line with text, deletes the blank lines after it. |
+
+Where a fold hides text, a delete never removes what you cannot see. The fold
+opens first, and the same key pressed again deletes.
+
+** Changing text
+
+~c~ is delete and type in one key. With a selection, it cuts the selection and
+starts INSERT state. Without one, it deletes the character under the cursor and
+starts INSERT state. A line selection keeps its final line break, so what you
+type takes the place of the line's words and the line stays a line. The cut and
+what you type after it are one step for undo, so ~u~ (non-modal: ~C-/~) puts
+back the old text whole.
+
+To replace a word, select it with ~m w~, press ~c~, type the new word and
+press ~C-g~. To replace the end of a line, press ~D~ (non-modal: ~C-k~) and then
+~A~ and type. ~p~ with a selection pastes the kill ring over it, and chapter 4
+describes it.
+
+#+begin_try Try it, with a recipe
+1. Press ~C-x C-f~, type =~/pancakes.txt=, ~RET~. Press ~i~ and type the
+   lines =Pancakes=, =eggs=, =milk=, =flour=, each ended with ~RET~ except the
+   last. Press ~C-g~.
+2. The flour should come before the milk. The cursor is on the last line. Press
+   ~C-x C-t~. The flour line and the milk line trade places.
+3. Press ~g g~ (non-modal: ~M-<~) to go to the top, then ~M-u~. The title
+   becomes =PANCAKES=. Press ~u~ (non-modal: ~C-/~) and it is =Pancakes= again.
+4. Press ~j~ (non-modal: ~C-n~) to go to the eggs line. Press ~d~. The first
+   letter goes. Press ~.~. The next letter goes. Press ~u~ twice.
+5. Press ~g h~ (non-modal: ~C-a~) to go to the start of the line, then
+   ~C-u 3 d~. Three letters go. Press ~u~.
+6. On the eggs line press ~g j~. The flour line joins the eggs line, with one
+   space between. Press ~u~.
+7. Press ~g g j A~, type =, large=, and press ~C-g~. Press ~g g~ and ~m w c~,
+   type =Thin pancakes= and press ~C-g~. The title changes in one step.
+8. Press ~C-x C-s~ to save.
+#+end_try
+
+*** Commands for case
+
+| Modal | Non-modal | Command           | What it does                             |
+|-------+-----------+-------------------+------------------------------------------|
+| none  | ~M-u~     | =upcase-word=     | Puts the next word in capitals and moves over it. A number does that many words, and a negative number does the words before the cursor. |
+| none  | ~M-l~     | =downcase-word=   | Puts the next word in small letters.     |
+| none  | ~M-c~     | =capitalize-word= | Makes the first letter a capital and the rest small. |
+| none  | ~C-x C-u~ | =upcase-region=   | Puts the selected text in capitals.      |
+| none  | ~C-x C-l~ | =downcase-region= | Puts the selected text in small letters. |
+
+*** Commands for swapping and joining
+
+| Modal | Non-modal | Command               | What it does                               |
+|-------+-----------+-----------------------+--------------------------------------------|
+| none  | ~C-t~     | =transpose-chars=     | Swaps the two characters about the cursor and moves on past them. At the end of a line, swaps the last two. A number carries the character before the cursor that many characters on. |
+| none  | ~M-t~     | =transpose-words=     | Swaps the words about the cursor. A number carries a word that many words on. |
+| none  | ~C-x C-t~ | =transpose-lines=     | Swaps this line with the one before it. A number carries the line that many lines on, and a negative number carries it back. |
+| none  | ~C-M-t~   | =transpose-sexps=     | Swaps the balanced pieces about the cursor, such as two bracketed groups. Chapter 13 says more about it. |
+| none  | ~M-^~     | =join-line=           | Joins this line to the one before it. The line break goes, and the spaces around it become one space, or none before a closing bracket or after an opening one. With a number first, joins the next line to this one. With a selection, joins all the lines it touches. |
+| ~g j~ | none      | =join-selected-lines= | In NORMAL state. Pulls the next line up onto this one. A number pulls that many. With a selection, joins the lines it touches into one. |
+
+A number of 0 given to a transpose command swaps the thing at the cursor with
+the thing at the mark.
+
+** Undo, redo and repeat
+
+Every change can be undone, back to the file as you opened it. Nothing is let
+go unless you set =*undo-limit*=. Undo also covers work Tuatara does in the
+background. A replacement or a sort of a large file is one step, and it stands
+where you gave it: while it runs you can keep typing, and ~u~ (non-modal: ~C-/~)
+takes back your edits first and then the background job.
+
+*** Commands
+
+| Modal | Non-modal             | Command              | What it does                       |
+|-------+-----------------------+----------------------+------------------------------------|
+| ~u~   | ~C-x u~, ~C-/~, ~C-_~ | =undo=               | Undoes the last change. In a narrowed buffer a change outside the part shown is undone too, and the echo area says so. |
+| ~U~   | ~M-_~, ~C-?~, ~C-M-_~ | =redo=               | Redoes the last change you undid. The cursor goes after the text that comes back. |
+| ~.~   | none                  | =repeat=             | Runs the last command again, with the number it had. |
+| none  | ~C-u~                 | =universal-argument= | Starts a number for the next command. See "Repeat counts". |
+
+~u~ and ~U~ (non-modal: ~C-/~, ~C-?~) work in NORMAL state. The other keys work
+in both states.
+
+=repeat= is the key for "do that again". If the last command acted on a
+selection, the selection is made again first, as large as before, from the
+cursor. It is the same number of whole lines, or characters, or the same kind of
+text piece, or the same size of rectangle. After ~V J d~ deletes two lines, ~.~
+deletes the next two. Pressing ~.~ again runs the command once more. It repeats
+one command only, so for a longer run of keys, record them (see "Recording
+keys").
+
+A number given to ~.~ replaces the one the command had. After ~C-u 3 d~, a plain
+~.~ deletes three characters again, and ~C-u 5 .~ deletes five.
+
+*** Settings
+
+| Setting        | Standard | What it changes                              |
+|----------------+----------+----------------------------------------------|
+| =*undo-limit*= | =nil=    | The most memory, in bytes, that one buffer's undo history may hold. =nil= keeps every change. With a limit, the oldest changes go first, down to about three quarters of it, and never the newest. |
+
+** Repeat counts
+
+A number before a command makes it act that many times, or on that many
+things. Type ~C-u~, then the digits, then the command: ~C-u 3 d~ deletes three
+characters and ~C-u 12 M-u~ puts twelve words in capitals. ~C-u~ alone means 4,
+~C-u C-u~ means 16, and ~C-u -~ before a command gives it a negative number.
+While you type the number, the echo area shows it.
+
+Each command in this chapter says what its number does. A command whose entry
+says nothing about a number does not use one.
+
+** Special characters
+
+~C-q~ reads the next key and puts in the character it stands for, whatever that
+key does otherwise. ~C-q TAB~ puts in a real tab character. ~C-q C-l~ puts in a
+form feed, the character that ends a page, and ~C-q RET~ puts in a carriage
+return. A number first puts the character in that many times.
+
+For letters your keyboard lacks there are three ways. You can type a character
+by its Unicode name with ~C-x 8 RET~, by a digraph (two keys that stand for one
+character) with ~C-x 8 &~, or by an input method that changes what keys type
+while it is on.
+
+#+begin_try Try it, with a card for a friend in Sweden
+1. In =~/letter.txt=, press ~g e~ to go to the end, then ~o~ to start a new
+   line. Type =Greetings from Akaroa= and press ~C-g~.
+2. Press ~C-x 8 RET~, type =em dash= and press ~RET~. The dash is put in at the
+   cursor.
+3. Press ~C-x 8 &~, then ~e~ and ~'~. An é goes in.
+4. Press ~C-x RET C-\~, type =swedish-postfix= and press ~RET~. Press ~i~ and
+   type =smaaland=. The word reads =småland=. Press ~C-g~.
+5. Press ~C-\~ to turn the method off and ~C-\~ again to turn it on.
+6. Press ~C-x 8 -~ to turn the method off.
+#+end_try
+
+*** Commands
+
+| Modal | Non-modal           | Command                   | What it does                    |
+|-------+---------------------+---------------------------+---------------------------------|
+| none  | ~C-q~               | =quoted-insert=           | Puts in the character the next key stands for. |
+| none  | ~M-x insert-tab~    | =insert-tab=              | Puts in a tab character, whatever the tab settings say. |
+| none  | ~C-x 8 RET~         | =insert-char=             | Asks for a Unicode name, such as =em dash=, or a code in hex such as =e9=, =U+00E9= or =#xe9=. The names that fit are listed as you type. A number first puts the character in that many times. |
+| none  | ~C-x 8 &~           | =insert-digraph=          | Asks for the two keys of a digraph, =e'= for é, =->= for an arrow, =<<= for a guillemet. With a selection, the character wraps it in a pair, such as « ». It works from NORMAL state too. |
+| none  | ~M-x list-digraphs~ | =list-digraphs=           | Lists every digraph, the common ones first. |
+| none  | ~C-x 8 .~           | =digraph-input-mode=      | Turns digraphs on as you type: ~&~ and the digraph's keys give the character, so =&e'= types é. |
+| none  | ~C-x 8 -~           | =deactivate-input-method= | Turns off whichever input method is on in this buffer. |
+| none  | ~C-\~               | =toggle-input-method=     | Turns this buffer's input method off, or on again. The first time it uses =*default-input-method*=, or asks. |
+| none  | ~C-x RET C-\~       | =set-input-method=        | Asks for an input method, turns it on, and makes it the one ~C-\~ switches. |
+| none  | ~C-h I~             | =describe-input-method=   | Shows the rules of the input method that is on, or of one you name. |
+
+While an input method is on, the mode line carries its short name after the mode
+name, =SV<= for Swedish.
+
+*** Settings
+
+| Setting                  | Standard | What it changes                        |
+|--------------------------+----------+----------------------------------------|
+| =*default-input-method*= | =nil=    | The method ~C-\~ turns on in a buffer that has had none, such as ="swedish-postfix"=. =nil= asks. |
+| =*input-method-keys*=    | none     | Methods of your own, each a key, a label and a method's name. =(setf *input-method-keys* '(("s" "swedish" "swedish-postfix")))= makes =SPC i s= turn it on. |
+
+** Indentation and filling in plain text
+
+~TAB~ in plain text goes on to the next tab stop, which is every four columns
+as standard. Spaces are put in unless you ask for tab characters. In a language
+mode ~TAB~ indents the line as the language does, which chapter 13 describes.
+
+Filling re-flows a paragraph so that no line is longer than the fill column,
+which is 80 as standard. The words stay in order, and the text that starts each
+line (an indent, a ~>~ for a quotation, a comment mark) is kept. Each item of a
+list is filled as a paragraph of its own, and its lines go on under its words,
+past the mark and any check box: =- [ ] a task= continues six columns in.
+
+*** Commands
+
+| Modal | Non-modal              | Command                    | What it does                           |
+|-------+------------------------+----------------------------+----------------------------------------|
+| ~g Q~ | ~M-q~                  | =fill-paragraph=           | Fills the paragraph at the cursor. In code, fills the comment there. Asks for the column first, with the buffer's offered. A number first answers the question. |
+| ~g q~ | none                   | =fill-region=              | Fills the paragraphs of the lines the selection touches. The lines before and after it are left alone. |
+| none  | ~C-x f~                | =set-fill-column=          | Sets the fill column of this buffer for as long as Tuatara runs. A number first sets it without asking, as in ~C-u 72 C-x f~. |
+| none  | ~M-i~                  | =tab-to-tab-stop=          | Goes on to the next tab stop.          |
+| none  | ~C-M-\~                | =indent-region=            | Indents the selected lines as the mode indents them. |
+| ~>~   | none                   | =indent-selection-or-line= | In NORMAL state. Indents the selected lines, or this line, as the mode does. |
+| none  | ~M-m~                  | =back-to-indentation=      | Moves to the first character of the line that is not a space or tab. |
+| none  | ~M-x indent-tabs-mode~ | =indent-tabs-mode=         | Switches this buffer between spaces and tab characters. A positive number turns tabs on, and zero or less turns them off. |
+| none  | ~M-=~                  | =count-words=              | Counts the lines, sentences, words and characters of the selection, or of the whole buffer. |
+
+Filling takes prose only. In an Org file, headlines, tables, property drawers,
+comment lines and the inside of source blocks are left as they are. In Markdown,
+tables and the lines between code fences stay. So ~g q~ over a whole note
+re-flows its paragraphs and leaves its tables and code alone.
+
+A paragraph larger than =*fill-paragraph-limit*= is left and the echo area says
+so, so filling never holds the editor up. A sentence ends at ~.~, ~?~, ~!~ or
+~…~ followed by a space or a line end, or at a blank line. Short forms such as
+=Dr.= end no sentence.
+
+In your init file two functions set the tab habits for one kind of file.
+=(set-tab-width 'c-mode 8)= makes tab stops 8 columns apart in C files, and
+=(set-indent-tabs-mode 'bash t)= puts tab characters in shell scripts. Their
+first argument is a major mode, and =prog= stands for every programming
+language.
+
+*** Settings
+
+| Setting                          | Standard   | What it changes              |
+|----------------------------------+------------+------------------------------|
+| =*tab-width*=                    | =4=        | The columns from one tab stop to the next, a whole number from 1 to 64. |
+| =*indent-tabs-mode*=             | =nil=      | =t= puts tab characters in where ~TAB~ goes on to a tab stop. =nil= puts spaces in. |
+| =*tab-always-indent*=            | =:complete= | What ~TAB~ does in code. =:complete= indents the line and, when that changes nothing, completes the name. =t= only indents. =nil= indents when the cursor is in the leading blanks and otherwise goes to the next stop. |
+| =*tuatara-normal-tab-modes*=     | =(org-mode)= | The modes where ~TAB~ works in NORMAL state, and the modes made from them. |
+| =*fill-column*=                 | =80=       | The column filled lines end by. |
+| =*fill-ask-column*=              | =t=        | =nil= fills at once, without asking for the column. |
+| =*fill-paragraph-limit*=         | =1048576=  | The most bytes a paragraph may span to be filled. |
+| =*sentence-end-double-space*=    | =nil=      | =t= for two spaces between sentences: a sentence ends at a full stop followed by two spaces, and filling keeps two. |
+| =*extra-sentence-abbreviations*= | =()=       | Abbreviations of your own whose full stop ends no sentence, such as ='("Ph.D." "et al.")=. |
+| =*removed-sentence-abbreviations*= | =()=     | Abbreviations of Tuatara's own list that should end a sentence after all, such as ='("St.")=. |
+
+** Spelling
+
+~M-x spellcheck-mode~ underlines the words spelt wrong in the buffer you are in.
+It looks only at the words you can see, so a large file costs no more than a
+small one. In text and Org every word is checked except code, links, dates and
+tags. In code only comments and strings are checked. It uses enchant, a spelling
+library, and needs a dictionary for your language installed. It is off until you
+turn it on, and it never runs in a file opened safely or shown as bytes.
+
+*** Commands
+
+| Modal | Non-modal                    | Command                       | What it does                    |
+|-------+------------------------------+-------------------------------+---------------------------------|
+| none  | ~M-x spellcheck-mode~        | =spellcheck-mode=             | Marks the words spelt wrong in this buffer, or stops. |
+| none  | ~M-x global-spellcheck-mode~ | =global-spellcheck-mode=      | The same for every buffer.      |
+| ~z n~ | none                         | =spellcheck-next=             | Goes to the next word spelt wrong. A number goes that many on. |
+| ~z p~ | none                         | =spellcheck-previous=         | Goes to the word spelt wrong before the cursor. |
+| ~z =~ | ~M-$~                        | =spellcheck-correct=          | Offers suggestions for the word, lets you type a replacement, or keeps the word as right. |
+| ~z g~ | none                         | =spellcheck-add-word=         | Adds the word to your own word list for a language. Other programs that use enchant share that list. |
+| ~z f~ | none                         | =spellcheck-add-word-to-file= | Keeps the word as right in this file only, in a =LocalWords:= line at the end of it, written as a comment. |
+| none  | ~M-x spellcheck-languages~   | =spellcheck-languages=        | Sets the languages this buffer is checked in, such as =en_NZ sv_SE=. |
+
+~z n~, ~z p~, ~z =~ (non-modal: ~M-$~), ~z g~ and ~z f~ work in NORMAL state.
+
+*** Settings
+
+| Setting                          | Standard    | What it changes             |
+|----------------------------------+-------------+-----------------------------|
+| =*global-spellcheck-mode*=       | =nil=       | =t= checks every buffer.    |
+| =*spellcheck-modes*=             | none        | Per major mode, such as ='((org-mode . t) (prog-mode . :comments) (csv-mode . nil))=. =:strings= checks strings only, and =:all= checks all of a code buffer. |
+| =*spellcheck-languages*=         | the locale's | A list such as ='("en_NZ" "sv_SE")=. A word is right when any of them takes it. =nil= takes the language of the system's locale, else en_US. |
+| =*spellcheck-excluded-faces*=    | code, links, dates, tags, keywords | In text, the faces whose words are not checked. |
+| =*spellcheck-comment-faces*=     | =(:comment)= | In code, the faces of comments that are checked. |
+| =*spellcheck-string-faces*=      | =(:string)= | In code, the faces of strings that are checked. |
+
+*** Faces
+
+| Face           | Standard                | What it paints                  |
+|----------------+-------------------------+---------------------------------|
+| =:spellcheck=  | wavy yellow underline   | A word spelt wrong. =(set-face :spellcheck :underline :dotted)= in your init file makes dots, and =:underline t= a plain line. |
+
+** Sorting and tidying lines
+
+These commands work on the lines a selection touches. Without a selection they
+do nothing and say so. A large selection is handled in the background, so
+Tuatara never waits on it. With a number, a sort runs in descending order.
+
+#+begin_try Try it, with a shopping list
+1. Press ~C-x C-f~, type =~/shopping.txt=, ~RET~. Press ~i~ and type the lines
+   =milk=, =eggs=, =bread=, =eggs=, =butter=, each ended with ~RET~ except the
+   last. Press ~C-g~.
+2. Press ~g g~ (non-modal: ~M-<~), then ~V~ and ~J~ four times to select all
+   five lines.
+3. Press ~M-x~, type =sort-lines= and press ~RET~. The list reads bread,
+   butter, eggs, eggs, milk.
+4. Select the five lines again with ~g g~, ~V~ and ~J~ four times, as the sort
+   ended the selection. Press ~M-x~, type =delete-duplicate-lines= and press
+   ~RET~. The second =eggs= goes, and the echo area says one line was deleted.
+5. Press ~u~ (non-modal: ~C-/~) twice to get the original list back.
+6. Select the lines again, run =flush-lines=, type =e= and press ~RET~. Every
+   line with an =e= in it goes, so only =milk= is left. Press ~u~.
+#+end_try
+
+*** Commands
+
+| Command                     | What it does                                 |
+|-----------------------------+----------------------------------------------|
+| =sort-lines=                | Sorts the lines by their text. Capital and small letters compare by their codes unless =*sort-fold-case*= is on. |
+| =sort-fields=               | Sorts the lines by one field. Fields are apart by spaces. A number names the field, and a negative one counts from the end of the line. In a CSV file or a log it asks for a column and moves each record whole, the header staying first. |
+| =sort-numeric-fields=       | Sorts by the number at the start of a field. =0x= starts a hexadecimal number. A field with no number counts as 0. |
+| =sort-columns=              | Sorts by the text between the columns where the selection starts and ends. |
+| =sort-paragraphs=           | Sorts paragraphs, which are apart by blank lines. |
+| =sort-pages=                | Sorts pages, which end with a form feed at the start of a line. |
+| =sort-regexp-fields=        | Sorts the pieces a pattern finds, by a key you name: =\&= for the whole piece or =\1= to =\9= for a group. |
+| =sort-lines-reverse=, =sort-fields-reverse=, =sort-numeric-fields-reverse=, =sort-columns-reverse=, =sort-paragraphs-reverse=, =sort-pages-reverse=, =sort-regexp-fields-reverse= | The same sorts, largest first. |
+| =reverse-region=            | Puts the lines in the opposite order.        |
+| =delete-duplicate-lines=    | Deletes all but the first of each set of identical lines. ~C-u~ keeps the last. ~C-u C-u~ deletes only a line identical to the one before it. ~C-u C-u C-u~ keeps all blank lines. Says how many went. |
+| =flush-lines=               | Asks for a pattern and deletes the lines that match it. =^$= matches the empty lines. |
+| =keep-lines=                | Asks for a pattern and deletes the lines that do not match it. |
+
+None of these has a key. Run them with ~M-x~. =flush-lines= and =keep-lines= use
+the same pattern rules as search, which chapter 6 describes. In a CSV file or a
+log they first ask which column to try the pattern on, and a header line always
+stays.
+
+*** Settings
+
+| Setting                   | Standard    | What it changes                     |
+|---------------------------+-------------+-------------------------------------|
+| =*sort-fold-case*=        | =nil=       | =t= ignores the case of ASCII letters, so =b= sorts before =C=. |
+
+** Recording keys
+
+When you want the same few keys on line after line, record them once and play
+them back. ~C-x (~ starts recording, ~C-x )~ stops, and ~C-x e~ plays the keys
+as if you had pressed them again. What you type in answer to a question is
+recorded too, so a search for a word searches for the same word each time. The
+mouse is not recorded, and a passphrase is never recorded. A play stops where a
+passphrase was typed and leaves that question to you. While you record, the mode
+line shows =Rec=.
+
+A number before ~C-x e~ plays that many times, and 0 plays until a play fails. A
+play fails when a command in it fails, a search finds nothing or a move cannot
+go on. ~e~ pressed straight after a play plays once more, and again, until you
+press another key. Each play is one step for undo. A long run shows its progress
+in the mode line as =Played 120/300=, and ~C-g~ stops it between two plays.
+~C-g~ while recording gives the recording up, and the keys recorded before it
+are kept. In INSERT state the first ~C-g~ only leaves INSERT state.
+
+#+begin_try Try it, with a numbered list of birds
+1. Press ~C-x C-f~, type =~/birds.txt=, ~RET~. Press ~i~, type =kea=, ~RET~,
+   =weka=, ~RET~, =kiwi=, ~RET~, =takahe=, ~RET~, =kaka=. Press ~C-g~, then
+   ~g g~.
+2. Press ~C-x (~. Press ~M-x~, type =insert-keys-counter=, press ~RET~. Then
+   press ~i~, type a full stop and a space, press ~C-g~, then ~C-n~ and
+   ~C-a~, and press ~C-x )~.
+3. The first line now begins with =1. =. Press ~C-u 4 C-x e~. The other four
+   lines are numbered. The last play meets the end of the buffer when it
+   moves down, so the echo area says =Stopped after 3 of 4 plays: End of
+   buffer=, but the number is already in.
+4. Press ~u~ (non-modal: ~C-/~) four times. The four plays are taken back one at
+   a time.
+#+end_try
+
+*** Commands
+
+| Modal | Non-modal                             | Command                           | What it does                      |
+|-------+---------------------------------------+-----------------------------------+-----------------------------------|
+| none  | ~C-x (~                               | =start-recording-keys=            | Starts recording keys.            |
+| none  | ~C-x )~                               | =stop-recording-keys=             | Ends the recording. The keys are kept for ~C-x e~. |
+| none  | ~C-x e~                               | =play-recorded-keys=              | Plays the recorded keys. A number plays them that many times. |
+| none  | ~M-x insert-keys-counter~             | =insert-keys-counter=             | Types a number and adds 1 to it, so recorded keys number the lines as they go. A number first adds that number. |
+| none  | ~M-x set-keys-counter~                | =set-keys-counter=                | Sets the number typed next.       |
+| none  | ~M-x set-keys-counter-format~         | =set-keys-counter-format=         | Sets how the counter is written: =%d= for the number, =%03d= for three digits with zeros, =%3d= with spaces before, =%-3d= with spaces after, and =Item %d.= for =Item 7.= |
+| none  | ~M-x name-recorded-keys~              | =name-recorded-keys=              | Gives the recorded keys a name, which then plays them as =M-x NAME=. The name lasts while Tuatara runs. |
+| none  | ~M-x insert-recorded-keys-definition~ | =insert-recorded-keys-definition= | Types the init file lines that make the keys a command again and bind it to a key. You put them in the init file yourself. |
+
+The lines =insert-recorded-keys-definition= types look like this, with your own
+name and keys.
+
+#+begin_example
+(define-recorded-keys 'kill-after-date "C-s date RET C-k")
+(bind-key "C-c d" 'kill-after-date)
+#+end_example

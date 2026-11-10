@@ -236,14 +236,14 @@ laid out with it (KEY-HINT-ROWS' COLUMN-WIDTH) line up."
 (defun key-hint-rows (entries width max-rows
                       &key (note (format nil "... ~a lists all" *prefix-help-key*)) column-width unavailable)
   "Lay out key-hint ENTRIES, a list of (KEY . NAME), in columns fitting WIDTH
-and at most MAX-ROWS rows, as panel rows (STRING FACE SPANS), the columns
-COLUMN-WIDTH wide when given (KEY-HINT-COLUMN-WIDTH, the same for groups
-shown one under another), else as wide as the widest entry, ended by NOTE
-when not all fit (as standard, the key that lists them all, *PREFIX-HELP-KEY*): after the last row's
-entries, or on a row of its own when it is too long for that. The keys get
-:key-hint-key, prefix names (starting with +) :key-hint-prefix, commands
-:key-hint-command, and those of the keys UNAVAILABLE, whose commands cannot
-run here, :key-hint-unavailable."
+and at most MAX-ROWS rows, as panel rows (STRING FACE SPANS). The columns are
+COLUMN-WIDTH wide when given (KEY-HINT-COLUMN-WIDTH, the same for groups shown
+one under another), else as wide as the widest entry. NOTE ends them when not
+all fit (as standard, the key that lists them all, *PREFIX-HELP-KEY*). It
+comes after the last row's entries, or on a row of its own when it is too long
+for that. The keys get :key-hint-key, prefix names (starting with +)
+:key-hint-prefix, commands :key-hint-command, and those of the keys
+UNAVAILABLE, whose commands cannot run here, :key-hint-unavailable."
   (let* ((entries (coerce entries 'simple-vector))
          (cells (map 'simple-vector (lambda (e) (format nil "~a ~a" (car e) (cdr e))) entries))
          (column-width (max (or column-width 1) (if (plusp (length cells)) (+ 2 (reduce #'max cells :key #'length)) 1)))
@@ -262,7 +262,8 @@ run here, :key-hint-unavailable."
                                     (push (list pos (+ pos (length key)) :key-hint-key) spans)
                                     (push (list (+ pos (length key) 1) (+ pos (length cell))
                                                 (cond ((member key unavailable :test #'string=) :key-hint-unavailable)
-                                                      ((and (plusp (length name)) (char= (char name 0) #\+)) :key-hint-prefix)
+                                                      ((and (plusp (length name)) (char= (char name 0) #\+))
+                                                       :key-hint-prefix)
                                                       (t :key-hint-command)))
                                           spans)
                                     (write-string cell line)
@@ -384,14 +385,16 @@ Control and invisible characters are written out (ESCAPE-CONTROLS)."
 (defun fit-key-list (string spans columns name-end)
   "STRING, a name ending at NAME-END and the keys that run it in brackets after
 it, as \"undo (u, C-/, C-_)\", and its SPANS, lists of (START END FACE), cut
-to take at most COLUMNS columns: the keys give way whole from the end of the
-list, \"…\" standing for them, then the list goes, then the name is cut at its
+to take at most COLUMNS columns. The keys give way whole from the end of the
+list, \"…\" standing for them. Then the list goes. Then the name is cut at its
 end (FIT-COLUMNS). Returns the string and the spans."
   (flet ((cut (keep tail)
            (let ((text (concatenate 'string (subseq string 0 keep) tail)))
              (values text (loop for (start end face) in spans
                                 when (< start keep)
-                                  collect (list start (if (>= end (length string)) (length text) (min end keep)) face))))))
+                                  collect (list start (if (>= end (length string))
+                                                          (length text)
+                                                          (min end keep)) face))))))
     (if (<= (panel-columns string) columns)
         (values string spans)
         (let ((keep (loop for at = (search ", " string :from-end t) then (search ", " string :from-end t :end2 at)
@@ -418,7 +421,8 @@ or the keys after its name down to the name (FIT-LEFT), then the annotation
 is cut, or left out when little of it would show.
 SELECTED paints the row in :completion-selected."
   (multiple-value-bind (left left-spans matched) (candidate-left candidate widths)
-    (let* ((left-spans (flatten-spans (append left-spans (match-spans components (subseq left 0 matched))) (length left)))
+    (let* ((left-spans (flatten-spans (append left-spans (match-spans components (subseq left 0 matched)))
+                                      (length left)))
            (room (max 1 (1- width)))
            (fields (cond ((null annotation) '())
                          ((stringp annotation) (list annotation))
@@ -521,7 +525,10 @@ and where in PROMPT each of those rows begins."
                         (break (or (position #\Space prompt :start (1+ start) :end limit :from-end t) limit)))
                    (push (subseq prompt start break) rows)
                    (push start starts)
-                   (setf start (min (length prompt) (if (and (< break (length prompt)) (char= (char prompt break) #\Space)) (1+ break) break)))))
+                   (setf start
+                         (min (length prompt)
+                              (if (and (< break (length prompt))
+                                       (char= (char prompt break) #\Space)) (1+ break) break)))))
         (values (nreverse rows) (subseq prompt start) (nreverse starts)))))
 
 (defun spans-within (spans start end)
@@ -533,11 +540,11 @@ to it and counted from START."
 
 (defun key-question-pieces (editor)
   "While a question of one key waits in the echo area (READ-KEY), its prompt
-as PROMPT-BROKEN gives it: the rows over the echo row holding its start, when
-it is wider than the row, and what of it stays on the echo row, the cursor
-after it; else NIL and the message shown; as a third value, where in the
-message each of those rows begins. A long question is so read whole, as the
-minibuffer's are."
+as PROMPT-BROKEN gives it. The first value is the rows over the echo row
+holding its start, when it is wider than the row, and what of it stays on the
+echo row, the cursor after it. Else it is NIL and the message shown. The third
+value is where in the message each of those rows begins. A long question is so
+read whole, as the minibuffer's are."
   (let ((text (or (editor-message editor) "")))
     (if (and *key-question* (echo-question-p editor))
         (let ((width (max 10 (1- (editor-width editor)))))
@@ -546,19 +553,23 @@ minibuffer's are."
 
 (defun panel-rows (editor)
   "The rows of the bottom panel as a list of (STRING FACE SPANS), and the
-index of the minibuffer or echo row among them: while the minibuffer reads,
-the prompt row (its prompt in :minibuffer-prompt) and the candidates of a
-completing read, the selected one in :completion-selected, above or below the
-prompt as *PROMPT-ABOVE-CANDIDATES* says, as many rows as the most it has
-shown for the question (COMPLETION-TALLEST), at most CANDIDATE-ROOM, and
-after the text typed what a key in it said, in brackets; the menu
-open (OPEN-MENU), while no key of it is half typed; the key hints under a
-pending prefix key; else the echo row."
+index of the minibuffer or echo row among them.
+While the minibuffer reads, they are the prompt row (its prompt in
+:minibuffer-prompt) and the candidates of a completing read, the selected one
+in :completion-selected. The candidates are above or below the prompt as
+*PROMPT-ABOVE-CANDIDATES* says, as many rows as the most it has shown for the
+question (COMPLETION-TALLEST), at most CANDIDATE-ROOM. After the text typed
+comes what a key in it said, in brackets.
+Otherwise they are the menu open (OPEN-MENU), while no key of it is half
+typed; the key hints under a pending prefix key; else the echo row."
   (let ((width (editor-width editor)))
     (cond ((editor-minibuffer-active editor)
            (let* ((completion (editor-completion editor))
                   (rows (if (and completion (plusp (length (completion-candidates completion))))
-                            (completion-rows editor completion width (1- (panel-room editor *panel-max-rows* (completion-tall completion))))
+                            (completion-rows editor completion width (1-
+                                                                      (panel-room editor
+                                                                                  *panel-max-rows*
+                                                                                  (completion-tall completion))))
                             '()))
                   ;; the panel grows but does not shrink while the question is open: blank
                   ;; rows on the side away from the prompt, so that the windows above stay put
@@ -609,8 +620,10 @@ pending prefix key; else the echo row."
                           (if chosen
                               ;; what acts on what the cursor is on, under its title, then the rest
                               (let* ((column (key-hint-column-width chosen rest))
-                                     (first (key-hint-rows chosen width (- (key-hint-room editor) 2) :column-width column
-                                                                                                    :unavailable unavailable)))
+                                     (first (key-hint-rows chosen width (- (key-hint-room editor)
+                                                                           2) :column-width column
+                                                                                                    :unavailable
+                                                                                                    unavailable)))
                                 (append (list (group-title-row title width)) first
                                         (key-hint-rows rest width (max 0 (- (key-hint-room editor) 2 (length first)))
                                                        :column-width column :unavailable unavailable)))
@@ -643,7 +656,8 @@ completing read (*SHOW-COMPLETION-COUNT*), what another question counts
     (cond ((not *show-completion-count*) "")
           (completion
            (let* ((total (length (completion-candidates completion)))
-                  (place (cond ((and (plusp total) (>= (completion-index completion) 0)) (1+ (completion-index completion)))
+                  (place (cond ((and (plusp total) (>= (completion-index completion) 0))
+                                (1+ (completion-index completion)))
                                ((completion-require-match completion) "!")
                                (t "*"))))
              (format nil "~6a " (format nil "~a/~a" place total))))

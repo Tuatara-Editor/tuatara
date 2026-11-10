@@ -50,8 +50,9 @@ A setting is a variable named in asterisks, set with
 .fi
 .RE
 .PP
-The settings are listed below, each with the first sentence of its
-documentation.
+The settings are listed below, each with the first paragraph of its
+documentation: what it is, and for one with a choice why you would change it
+and what to expect.
 In the editor,
 .B C\-h v
 shows all of it, and what the setting is now.
@@ -176,7 +177,7 @@ The settings, key functions and command line options stay as they are in the
 major version; they change only in the next one.
 .SH SETTINGS
 Each setting, by the part of the starter init file that sets it, with the
-first sentence of its documentation.
+first paragraph of its documentation.
 @SETTINGS@
 .SH SEE ALSO
 .BR tuatara (1)

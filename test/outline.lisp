@@ -77,7 +77,10 @@ the buffer killed afterwards."
 (define-test (outline shown-as-selected)
   ;; a heading out of sight is shown in the middle of the window as it is
   ;; selected, and stays shown after RET; C-g puts the window back
-  (let* ((text (format nil "* Near~%~{~a~%~}* Far~%~{~a~%~}" (loop for i below 60 collect i) (loop for i below 60 collect i)))
+  (let* ((text (format nil
+                       "* Near~%~{~a~%~}* Far~%~{~a~%~}"
+                       (loop for i below 60 collect i)
+                       (loop for i below 60 collect i)))
          (far (search "* Far" text)))
     (multiple-value-bind (f point mark start) (outline-run "M-g o C-n RET" "long.org" text :height 12)
       (declare (ignore mark))

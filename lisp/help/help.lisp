@@ -247,7 +247,9 @@ first: \\<minibuffer>\\[minibuffer-finish] alone describes it."
 documentation, the question taken away once the keys are read."
   (let ((specs '()))
     (loop
-      (let* ((key (read-key (format nil "Describe key: ~@[~a ~]" (and specs (tuatara.frontend:key-sequence-description specs)))))
+     (let* ((key (read-key (format nil
+                                   "Describe key: ~@[~a ~]"
+                                   (and specs (tuatara.frontend:key-sequence-description specs)))))
              (spec (tuatara.frontend:key-spec key))
              (binding (progn (setf specs (append specs (list spec)))
                              (resolve-keys *editor* specs))))
@@ -335,7 +337,10 @@ words typed, in *Apropos*. Each name is a link to its description:
                (put "  ")
                (put name :button (lambda () (show-help-pieces (describe-command-pieces s))))
                ;; the keys from the 31st column
-               (put (format nil "~a~a~%    ~a~%" (column-text "" (max 1 (- 28 (text-columns name)))) (command-bindings-text s)
+               (put (format nil
+                            "~a~a~%    ~a~%"
+                            (column-text "" (max 1 (- 28 (text-columns name))))
+                            (command-bindings-text s)
                             (first-sentence (documentation-text s 'function))))))
            (put (format nil "~%Variables:~%"))
            (dolist (s variables)

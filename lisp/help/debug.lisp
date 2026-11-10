@@ -18,7 +18,9 @@
 what the editor's parts do is reported in *Debug*. Set it in the init file.")
 
 (defvar *debug-log-limit* 10000
-  "The lines *Debug* keeps, the oldest going first; NIL keeps them all.")
+  "The lines *Debug* keeps, the oldest going first, 10000 as standard; NIL
+keeps them all, and the buffer then grows for as long as debug mode is on.
+Raise it to look back further; the debug log on disk is not cut by it.")
 
 (defun debug-buffer ()
   "The *Debug* buffer, made when there is none: read-only, shown where
@@ -67,18 +69,18 @@ time of day."
 
 (define-command debug-mode ()
   "Switch debug mode on or off. While it is on, what the editor's parts do goes
-to *Debug*, a line each, stamped with the seconds since the start and the
-thread that did it: rules compiled and texts parsed, jobs in the background
+to *Debug*, a line each, stamped with the seconds since the start and the thread
+that did it. They are rules compiled and texts parsed, jobs in the background
 starting and ending, what the file watcher found, frames slow to draw,
-collections of garbage, the commands run and the keys that ran them, and
-errors, with the calls under way, in commands, in jobs in the background and
-in Lisp evaluated. *Messages* keeps to what you were told. The same lines go
-at once to debug.log in the cache directory, readable by you alone (the logs
-of the three sessions before kept as debug.log.1 to debug.log.3; while another
-session writes to it, the lines follow its own), where they outlast a crash. The
-mode line says Debug while it is on; \\[view-debug-buffer] shows *Debug*. While
-it is off nothing is kept, and it costs nothing. *DEBUG-MODE* in the init
-file starts the editor with it on."
+collections of garbage, the commands run and the keys that ran them, and errors,
+with the calls under way, in commands, in jobs in the background and in Lisp
+evaluated. *Messages* keeps to what you were told. The same lines go at once to
+debug.log in the cache directory, readable by you alone (the logs of the three
+sessions before kept as debug.log.1 to debug.log.3; while another session writes
+to it, the lines follow its own), where they outlast a crash. The mode line says
+Debug while it is on; \\[view-debug-buffer] shows *Debug*. While it is off
+nothing is kept, and it costs nothing. *DEBUG-MODE* in the init file starts the
+editor with it on."
   (let ((on (not tuatara.runtime:*debug-on*)))
     (switch-debug-mode on)
     (message "Debug mode ~:[off~;on: what the editor does goes to *Debug* (\\[view-debug-buffer])~]" on)))

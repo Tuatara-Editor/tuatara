@@ -83,7 +83,9 @@
     (let ((text (format nil "abc ~c~c中" (code-char #x200D) (code-char #x301))))
       (is eq text (tuatara.display:displayable text)))
     ;; without CONTROLS only what cannot be sent is changed
-    (is equal (list #x202E #x10EEEE #x9B) (map 'list #'char-code (tuatara.display:displayable (map 'string #'code-char '(#x202E #x10EEEE #x9B)) :controls nil))))
+    (is equal (list #x202E #x10EEEE #x9B)
+        (map 'list #'char-code (tuatara.display:displayable (map 'string #'code-char '(#x202E #x10EEEE #x9B))
+                                                            :controls nil))))
   ;; a direction character takes a column of its own, where its stand-in is drawn
   (is = 1 (tuatara.display:char-columns (code-char #x200F)))
   (is = 1 (tuatara.display:char-columns (code-char #x202E)))
@@ -148,7 +150,8 @@
         (is = 42 (to-line 45))
         ;; at the end of the text: its last row no further up than the window's last
         (is = 90 (to-line 99))
-        (true (tuatara.display:row-last-p (let ((rows (tuatara.display:window-rows w))) (aref rows (1- (length rows))))))
+        (true (tuatara.display:row-last-p (let ((rows (tuatara.display:window-rows w)))
+                                            (aref rows (1- (length rows))))))
         ;; scrolling takes point three rows in, and showing it leaves the window where it was
         (to-line 45)
         (tuatara.display:window-scroll w 20)
@@ -197,11 +200,13 @@
                                       do (is equal (list (tuatara.display:row-start n) (tuatara.display:row-end n)
                                                          (coerce (tuatara.display:row-string n) 'list)
                                                          (coerce (tuatara.display:row-bytes n) 'list)
-                                                         (tuatara.display:row-continuation-p n) (tuatara.display:row-last-p n))
+                                                         (tuatara.display:row-continuation-p n)
+                                                         (tuatara.display:row-last-p n))
                                              (list (tuatara.display:row-start k) (tuatara.display:row-end k)
                                                    (coerce (tuatara.display:row-string k) 'list)
                                                    (coerce (tuatara.display:row-bytes k) 'list)
-                                                   (tuatara.display:row-continuation-p k) (tuatara.display:row-last-p k))))))
+                                                   (tuatara.display:row-continuation-p k)
+                                                   (tuatara.display:row-last-p k))))))
                      (nth-value 2 (measuring (loop repeat lines do (step-down)))))))))
       (walk 12 300 :check t)
       (walk 12 300 :wrap t :check t)
@@ -239,8 +244,10 @@
                                 (let ((whole (tuatara.display:window-layout-rows w (tuatara.display:window-start w) height))
                                       (again (tuatara.display:window-rows w)))
                                   (is eq kept again)
-                                  (is equal (map 'list #'tuatara.display:row-start whole) (map 'list #'tuatara.display:row-start again))
-                                  (is equal (map 'list (lambda (row) (coerce (tuatara.display:row-string row) 'list)) whole)
+                                  (is equal (map 'list #'tuatara.display:row-start whole)
+                                      (map 'list #'tuatara.display:row-start again))
+                                  (is equal (map 'list (lambda (row)
+                                                         (coerce (tuatara.display:row-string row) 'list)) whole)
                                       (map 'list (lambda (row) (coerce (tuatara.display:row-string row) 'list)) again))
                                   (true (every (lambda (row) (every #'null (tuatara.display:row-faces row))) again)
                                         "highlights left on rows used again"))))
@@ -257,7 +264,8 @@
 
 (define-test (display wrapped-rows-keep-a-scroll-margin)
   ;; where long lines wrap, the margin is counted in rows
-  (with-test-buffer (b "*w*" :text (format nil "~{~a~%~}" (loop repeat 20 collect (make-string 15 :initial-element #\a))))
+  (with-test-buffer (b "*w*"
+                       :text (format nil "~{~a~%~}" (loop repeat 20 collect (make-string 15 :initial-element #\a))))
     (let ((w (tuatara.display:make-window b :width 10 :height 6))
           (tuatara-user:*scroll-margin* 2))
       (setf (tuatara.display:window-wrap w) t)
@@ -305,7 +313,8 @@
     (is = 1 (tuatara.display:row-scale (aref (tuatara.display:layout rope 0 10 1 :scale scale) 0)))
     (is equal '("big l") (row-strings (tuatara.display:layout rope 0 10 3 :scale scale :wrap t)))
     ;; half as large again: two thirds of the columns, two such rows in three
-    (let ((rows (tuatara.display:layout rope 0 10 3 :scale (lambda (line-start) (if (zerop line-start) 3/2 1)) :wrap t)))
+    (let ((rows (tuatara.display:layout rope 0 10 3 :scale (lambda (line-start)
+                                                             (if (zerop line-start) 3/2 1)) :wrap t)))
       (is equal '("big li" "ne") (row-strings rows))
       (is equal '(3/2 3/2) (map 'list #'tuatara.display:row-scale rows)))
     ;; a column of a large row in the window's columns, and back
@@ -394,7 +403,9 @@
     ;; a tab wider than the row: the spaces that fit
     (is equal '("   " "x") (row-strings (rows (format nil "~ax" #\Tab) 3)))
     ;; a prefix leaving no room: the character still takes the row
-    (let ((rows (rows "ab" 2 :prefix (lambda (start continuation) (declare (ignore start continuation)) (values "↪ " nil)))))
+    (let ((rows (rows "ab" 2 :prefix (lambda (start continuation)
+                                       (declare (ignore start continuation))
+                                       (values "↪ " nil)))))
       (is equal '(0 1 2) (map 'list #'tuatara.display:row-start rows))))
   ;; the session that froze: soft wrap in a window narrower than a wide character and its mark
   (dolist (case (list (list "あいうえお" 3) (list "あ" 1) (list (format nil "~ax" #\Tab) 5)))
@@ -422,7 +433,8 @@
     (is = 0 (tuatara.display:char-columns (code-char #xFEFF)))
     (is equal '(0 0) (at (format nil "~cbom" (code-char #xFEFF)) 0)))
   ;; in a session, point on the mark shows the cursor on the letter rather than on the bottom row
-  (let ((f (run-keys (list (lambda () (setf (tuatara.buffer:buffer-point (tuatara.buffer:find-buffer "*scratch*")) 2)) :tick)
+  (let ((f (run-keys (list (lambda ()
+                             (setf (tuatara.buffer:buffer-point (tuatara.buffer:find-buffer "*scratch*")) 2)) :tick)
                      :text (format nil "ae~cb" (code-char #x301)) :width 20 :height 6)))
     (is equal '(0 . 1) (tuatara.frontend.fake:fake-cursor f))))
 
@@ -451,7 +463,9 @@
                             ;; on along the line as the scroll grows, near the column asked for
                             (true (>= first last))
                             (setf last first)
-                            (true (<= (- hscroll 3) (tuatara.display::line-screen-column rope 0 first) (+ hscroll 8))))))
+                            (true (<= (- hscroll 3)
+                                      (tuatara.display::line-screen-column rope 0 first)
+                                      (+ hscroll 8))))))
                (true (plusp last))))
         (when mapping (tuatara.text:close-mapping mapping))
         (delete-file path))))
@@ -473,7 +487,8 @@
   ;; on a line of 20 MB, keeping point shown costs no read of the line: a few milliseconds a key
   (with-test-buffer (b "*long*" :text (let ((piece (format nil "abc def ghi~cjkl " #\Tab)))
                                         (with-output-to-string (out)
-                                          (dotimes (i (floor (* 20 1024 1024) (length piece))) (write-string piece out)))))
+                                          (dotimes (i (floor (* 20 1024 1024) (length piece)))
+                                            (write-string piece out)))))
     (let* ((w (tuatara.display:make-window b :width 60 :height 6))
            (size (tuatara.buffer:buffer-size b))
            (times '()))
@@ -720,7 +735,9 @@
                   (rope (tuatara.text:string->rope text))
                   (rows (tuatara.display:layout rope 0 20 2)))
              (is = 3 (tuatara.display:row-columns (aref rows 0)) "~a lays out in three columns" text)
-             (is equal '(0 2) (multiple-value-list (tuatara.display:point-row-column rows (1- (tuatara.text:rope-octet-length rope)))))
+             (is equal '(0 2)
+                 (multiple-value-list (tuatara.display:point-row-column rows
+                                                                        (1- (tuatara.text:rope-octet-length rope)))))
              (is = 2 (tuatara.display:display-column rope 0 (1- (tuatara.text:rope-octet-length rope))))))
   ;; both columns of a heart made a picture stand for the heart, and the selector is shown on it
   (let ((rows (tuatara.display:layout (tuatara.text:string->rope (codes #x2764 #xFE0F #x78)) 0 20 2)))
@@ -735,7 +752,8 @@
   (let* ((text (format nil "first~%~csecond" (code-char #x301)))
          (rope (tuatara.text:string->rope text))
          (rows (tuatara.display:layout rope 0 20 3)))
-    (is string= (format nil "~c~csecond" (code-char #x25CC) (code-char #x301)) (tuatara.display:row-string (aref rows 1)))
+    (is string= (format nil "~c~csecond" (code-char #x25CC) (code-char #x301))
+        (tuatara.display:row-string (aref rows 1)))
     (is = 7 (tuatara.display:row-columns (aref rows 1)))
     (is = 1 (tuatara.display:display-column rope 6 8))
     (is = 7 (tuatara.display:string-columns (format nil "~csecond" (code-char #x301))))))
@@ -825,7 +843,8 @@
         (tuatara.display:window-layout w)
         (let ((consed (loop repeat 3
                             minimize (progn (tuatara.buffer:buffer-insert b 10 "z")
-                                            (nth-value 2 (tuatara.bench::measuring (tuatara.display:window-layout w)))))))
+                                            (nth-value 2
+                                                       (tuatara.bench::measuring (tuatara.display:window-layout w)))))))
           (true (< consed (* 6 1024)) "a layout after a key consed ~:d octets" consed))
         (same-as-anew)
         ;; scrolled, then the end of the text, then edited again
@@ -932,7 +951,12 @@ for each, its layout and colours left out."
 (define-test (display rows-fitted-in-one-pass)
   ;; a piece of a screen row is cut or padded to its columns as before, looking at each
   ;; character once: a row of plain text in less time than counting its columns takes
-  (dolist (string (list "" "plain" "wide 中文 text" (format nil "e~cx" (code-char #x301)) "👍🏽 ok" (make-string 130 :initial-element #\x)))
+  (dolist (string (list ""
+                        "plain"
+                        "wide 中文 text"
+                        (format nil "e~cx" (code-char #x301))
+                        "👍🏽 ok"
+                        (make-string 130 :initial-element #\x)))
     (dolist (columns '(0 1 3 5 10 120))
       (let ((kept (tuatara.display:chars-in-columns string columns)))
         (is equal (list (tuatara.display:pad-columns (subseq string 0 kept) columns) kept)

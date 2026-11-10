@@ -5,8 +5,8 @@
 
 (define-test wipe
   :description "A file wiped is overwritten, emptied and deleted, a link, a folder and a file with
-other names refused, a stop leaving it there; M-x wipe-file asks first, saying what it cannot promise;
-encrypting a file offers to wipe it, at once with keys, with a passphrase only once it, asked again,
+other names refused, a stop leaving it there. M-x wipe-file asks first, saying what it cannot promise.
+Encrypting a file offers to wipe it, at once with keys, with a passphrase only once it, asked again,
 opens what was made; gpg-lock makes gpg-agent forget its passphrases.")
 
 (defun wiping-p ()
@@ -46,9 +46,13 @@ opens what was made; gpg-lock makes gpg-agent forget its passphrases.")
       (alexandria:write-string-into-file "notes to wipe" plain)
       ;; no: kept
       (multiple-value-bind (f editor)
-          (auto-save-session (list (format nil "M-x w i p e - f i l e RET C-a C-k ~a C-j" (rimu-typed plain)) (list :wait 0.2) "n RET"))
+          (auto-save-session (list (format nil "M-x w i p e - f i l e RET C-a C-k ~a C-j" (rimu-typed plain))
+                                   (list :wait 0.2) "n RET"))
         (declare (ignore editor))
-        (true (tuatara.frontend.fake:fake-frame-showing f (format nil "Wipe notes.txt for good? (~a)" (tuatara.defaults::wipe-caveat (list plain))))))
+        (true (tuatara.frontend.fake:fake-frame-showing f
+                                                        (format nil
+                                                                "Wipe notes.txt for good? (~a)"
+                                                                (tuatara.defaults::wipe-caveat (list plain))))))
       (true (probe-file plain))
       ;; yes: gone
       (multiple-value-bind (f editor)
@@ -77,7 +81,9 @@ opens what was made; gpg-lock makes gpg-agent forget its passphrases.")
               (tuatara-user:*gpg-passphrase-from* :minibuffer))
           (gpg-test-key)
           (flet ((encrypting (path keys)
-                   (auto-save-session (append (cons (format nil "M-x g p g - e n c r y p t - f i l e RET C-a C-k ~a C-j" (rimu-typed path)) keys)
+                   (auto-save-session (append (cons (format nil
+                                                            "M-x g p g - e n c r y p t - f i l e RET C-a C-k ~a C-j"
+                                                            (rimu-typed path)) keys)
                                               (list (list :until (lambda () (not (wiping-p)))) (list :wait 0.3)
                                                     (list :until (lambda () (not (wiping-p)))))))))
             ;; to a key: wiped once said, no passphrase asked
@@ -90,16 +96,19 @@ opens what was made; gpg-lock makes gpg-agent forget its passphrases.")
             ;; with a passphrase: a wrong one asked again keeps the file
             (let ((plain (namestring (merge-pathnames "pass.txt" dir))))
               (alexandria:write-string-into-file "pass words" plain)
-              (let ((f (encrypting plain (list "C-n RET RET" "p w RET p w RET" (list :until (lambda () (not (wiping-p))))
-                                               "y RET" "w r o n g RET"))))
+              (let ((f (encrypting plain
+                                   (list "C-n RET RET" "p w RET p w RET" (list :until (lambda () (not (wiping-p))))
+                                         "y RET" "w r o n g RET"))))
                 (true (tuatara.frontend.fake:fake-frame-showing f "pass.txt is not wiped: the passphrase given does not open pass.txt.gpg")))
               (true (probe-file plain))
               (is string= "pass words" (gpg-test-plain (concatenate 'string plain ".gpg") :passphrase "pw"))
               ;; the right one: wiped
               (sb-posix:unlink (concatenate 'string plain ".gpg"))
-              (let ((f (encrypting plain (list "C-n RET RET" "p w RET p w RET" (list :until (lambda () (not (wiping-p))))
-                                               "y RET" "p w RET"))))
-                (true (tuatara.frontend.fake:fake-frame-showing f "The passphrase again, to check it opens pass.txt.gpg"))
+              (let ((f (encrypting plain
+                                   (list "C-n RET RET" "p w RET p w RET" (list :until (lambda () (not (wiping-p))))
+                                         "y RET" "p w RET"))))
+                (true (tuatara.frontend.fake:fake-frame-showing f
+                                                                "The passphrase again, to check it opens pass.txt.gpg"))
                 (true (tuatara.frontend.fake:fake-frame-showing f "Wiped: pass.txt")))
               (false (probe-file plain)))
             ;; the list of keys gone once used, nothing left waiting in it

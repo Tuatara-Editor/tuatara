@@ -1,0 +1,453 @@
+#+title: Searching and replacing
+#+language: en
+
+* Searching and replacing
+
+Finding text, changing it, and narrowing what you look at to the lines that
+matter.
+
+A search answers the question "where is this?". A replacement answers "change
+this everywhere". Both start from a pattern, a short description of the text
+you want. This chapter begins with the search you will use all day, then
+covers replacing, narrowing a list to its matches, searching a whole folder
+of files, and going to a heading. A table at the end of each section lists
+every command, setting and face that belongs to it.
+
+** Searching a buffer
+
+Press ~C-s~ and Tuatara asks =Regex search forward:= in the minibuffer, the
+same row where it asks for a file name. Type a few letters. The cursor jumps
+to the first match while you type, and the matches in sight are lit. ~C-r~
+does the same going backward, towards the start of the buffer.
+
+You do not need to finish the word. Typing =kere= finds the first place that
+has those four letters, and typing =kereru= moves to the first place with all
+six. If you make a mistake, ~DEL~ takes a letter off the end and the cursor
+goes back to where the shorter pattern matched.
+
+Three keys end a search.
+
+- ~RET~ ends it at the match. The cursor stays there, and the place where you
+  began is saved as the mark, so ~C-x C-x~ takes you back.
+- ~C-g~ or ~ESC~ gives up. The cursor goes back to where you began.
+- ~C-s~ or ~C-r~ do not end it. They go to the next match, or the one before.
+  At the last match, ~C-s~ goes round to the first.
+
+Straight after ~RET~, the keys ~C-s~ and ~C-r~ keep working: the echo area says
+=Repeat with C-s, C-r=, and each press moves to the next or previous match
+without asking again. Any other key ends that.
+
+Figure 6.1 shows the screen while a search is open.
+
+#+caption: Figure 6.1. A search for "ki" in a list of birds, at its first match.
+#+name: fig-search
+#+begin_example
+ +----------------------------------------------------------------+
+ | kakapo                                                         |
+ | kea                                                            |
+ | [ki]wi        <- the current match, in :search-current         |
+ | takahe                                                         |
+ | [ki]ngfisher  <- other matches in sight, in :search-other      |
+ |                                                                |
+ +----------------------------------------------------------------+
+ | TUATARA[N] PD [-] birds.txt L3 C0                              |
+ +----------------------------------------------------------------+
+ | 1/2    Regex search forward: ki                                |
+ +----------------------------------------------------------------+
+    ^                                                  ^
+    place and number of matches                        what you typed
+#+end_example
+
+The =1/2= before the prompt says the cursor is at the first of two matches.
+It is exact however large the buffer is. In a very large buffer the count may
+wait until you pause (see "The count before the prompt" below), and typing
+never waits for it.
+
+*** Capital letters
+
+A pattern that has no capital letters ignores case: =kiwi= finds Kiwi, KIWI and
+kiwi. As soon as the pattern has a capital, case counts: =Kiwi= finds only
+Kiwi. So you can search loosely most of the time, and type one capital when a
+word is too common.
+
+*** Regular expressions and plain text
+
+What you type after ~C-s~ is a regular expression, called a regex for short. It
+is a pattern in which a few characters are special. A dot stands for any one
+character, a star means "any number of the one before", and so on. That lets
+you search for "a digit in brackets" or "a line that starts with a date".
+Table 6.1 lists the forms you will use most. The regex handbook teaches the
+whole language.
+
+When the text you want is full of special characters, you do not want to
+escape each one. Press ~M-r~ in the middle of a search to switch to plain
+text. The prompt changes to =Literal search forward:= and every character
+stands for itself, so =(4)= finds the four characters ( 4 ). Press ~M-r~ again
+to switch back. ~C-M-s~ and ~C-M-r~ start a search that is plain text from the
+first key.
+
+A regex that is not finished, such as =kea(=, cannot be searched for. The
+prompt says why in brackets, for example =[incomplete]=, and ~RET~ waits until
+you mend it. Either fix it or press ~M-r~ to take it as plain text.
+
+#+caption: Table 6.1. The regex forms you will use most.
+| Form       | Finds                              | Example                       |
+|------------+------------------------------------+-------------------------------|
+| =.=        | Any one character                  | =k.a= finds kea, kia, k-a     |
+| =\.=       | A real dot (a backslash makes a special character plain) | =3\.5= finds 3.5 |
+| =\d=       | One digit                          | =\d\d= finds 07, 42           |
+| =\w=       | One letter, digit or underscore    | =\w+= finds a whole word      |
+| =\s=       | One space or tab                   | =\s+$= finds spaces at a line's end |
+| =[abc]=    | One of the characters in brackets  | =gr[ae]y= finds gray, grey    |
+| =[^abc]=   | One character not in the brackets  | =[^0-9]= finds a non-digit    |
+| =*=        | The one before it, any number of times, even none | =ka*= finds k, ka, kaaa |
+| =+=        | The one before it, at least once   | =\d+= finds 7, 2026           |
+| =?=        | The one before it, once or not at all | =colou?r= finds color, colour |
+| =^=, =$=   | The start, the end of a line       | =^Dear= finds lines starting with Dear |
+| =\b=       | The edge of a word                 | =\bkea\b= does not find kearns |
+| =a\|b=     | Either one                         | =tui\|kea=                    |
+| =(...)=    | A group; later it can be called =\1=, =\2= | =(\d+)-(\d+)=         |
+
+A pattern that is only an edge, such as =^$= for an empty line, is a match too.
+Searching for it goes from one empty line to the next.
+
+*** Starting from the word under the cursor
+
+Put the cursor on a word and press ~C-s~, then ~M-.~. The word is added to the
+pattern as a whole word, so that searching for =tui= never stops in the middle
+of =tuition=. In plain text mode (~M-r~) the word goes in as it is.
+
+*** Search history
+
+Every pattern you finish a search with is remembered while Tuatara runs. In
+the prompt, ~M-p~ or the up arrow brings back the one before, and ~M-n~ or the
+down arrow a later one. One history serves every question that asks for a
+pattern: searching, replacing, and the filters below. Press ~C-s~ with nothing
+typed and ~RET~, and the last pattern is used again.
+
+*** Keeping the matches lit
+
+After a search ends, its matches stay lit as you move on, which is handy when
+you want to see how many there are and where. ~C-g~, or =keyboard-quit=, puts
+them out. ~C-x T s~ lights them again, or takes them away if they are lit.
+
+*** The count before the prompt
+
+Before the question, Tuatara shows a count such as =3/12=. In a search it says
+the match the cursor is at and how many there are. In a question that offers
+choices, such as the list of files for ~C-x C-f~, it says which choice is
+selected and how many there are. When nothing matches it says =0/0= and
+the search says =No match=. It always stands in the same six columns, so what
+you type does not move as you go from match to match.
+
+Counting takes time in a large buffer, and Tuatara does it in the background so
+that typing never lags. A text of up to a megabyte is counted at every key. A
+larger one is counted at every key when Tuatara can go through it in about a
+hundredth of a second. Otherwise the count waits until you stop typing for
+=*typing-pause*= seconds, half a second as standard. While a new pattern is
+being counted, the old count stays in view. If you do not want the count, set
+=*show-completion-count*= to nil.
+
+*** Matches that cross many lines
+
+A regex search is fast because it looks only at the part of the text in view,
+plus what it needs. It will find a match of more than 4 KB that runs across
+lines only when the text after the match is already in view. For a block such
+as =BEGIN[\s\S]*?END= use a thorough command instead. It finds every match of
+up to a megabyte, at up to twice the time. The prompt says =thorough= when it
+is in use. The thorough form of replacing is described in the next section.
+
+#+begin_try Try it, with a list of names
+1. Press ~C-x C-f~, type =~/birds.txt= and press ~RET~. Press ~i~ and type these
+   six lines, ~RET~ after each: =Kereru=, =Tui at Akaroa=, =Kea (4)=,
+   =Fantail at Kaikoura=, =kiwi=, =Tui (2)=. Then ~C-g~ and ~g g~ to go to the
+   top.
+2. Press ~C-s~ and type =tui=. The cursor goes to the first Tui, because a
+   pattern with no capital ignores case. The prompt says =1/2=. Press ~C-s~ to
+   go to the second one and ~RET~ to stay.
+3. Press ~g g~ (non-modal: ~M-<~), then ~C-s~ and type =Kiwi= with the capital.
+   Nothing matches =Kiwi= here, because the list has only =kiwi=, and the prompt
+   says =0/0=. Delete the capital and type =k= instead: now it matches. Press
+   ~C-g~.
+4. Press ~C-s~ and type =(2)=. In a regular expression the brackets only make
+   a group, so the search stops at the digit 2 alone. Press ~M-r~: the prompt
+   now starts =Literal search forward:= and the match is the three characters
+   =(2)= on the last line. Press ~C-g~.
+5. Press ~g e~ (non-modal: ~M->~) to go to the end. Press ~C-r~ and type =k=.
+   The search goes backward and stops at =kiwi=. Press ~C-g~, then ~C-s~ and
+   ~M-p~: the pattern you used before comes back. Press ~C-g~.
+#+end_try
+
+#+table: commands regex-search-forward regex-search-backward literal-search-forward literal-search-backward search-repeat-forward search-repeat-backward search-toggle-regex search-insert-symbol search-exit search-abort search-next-match search-previous-match search-toggle-highlight regex-search-forward-thorough regex-search-backward-thorough
+
+#+table: settings *show-completion-count* *typing-pause*
+
+#+table: faces :match :search-current :search-other :search-outside-scope
+
+When a region is active, a search stays inside it, and the text outside is
+faded (=:search-outside-scope=) so that you can see the limit. A pattern that
+begins with =%= searches the whole buffer instead.
+
+** Replacing
+
+Replacing uses the same prompt as searching. In NORMAL state press ~r r~. The
+prompt reads =Regex replace on this line:=. Type the pattern, then ~RET~, which
+types the =/= for you, then the new text, then ~RET~. You can also type it all
+on one line as =pattern/new text=.
+
+What gets changed depends on what is selected. With nothing selected, only
+the line the cursor is on, and only the first match on it. With a selection,
+the selected lines. A =%= in front of the pattern, as in =%tui/Tui=, means every
+match in the whole buffer. A replacement is a single change, so one ~u~
+(non-modal: ~C-/~) takes the whole thing back, however many places it changed.
+
+While you type, Tuatara shows what will happen. Each match that is going away
+is lit as =:replace-going=, and the new text stands beside it in
+=:replace-coming=, before you press ~RET~. Look before you press it.
+Afterwards the echo area says how much was done, for instance =Replaced 3
+occurrences on 3 lines=.
+
+Typed at the C-s prompt, a pattern with a =/= in it also replaces, the way it
+does in the Vim editor. A word after the last slash gives flags: =g= replaces
+every match on a line, =c= asks at each match, =n= only counts what would be
+replaced, and =i= or =I= ignores or keeps case.
+
+*** What goes in the new text
+
+| Write      | To get                                          |
+|------------+-------------------------------------------------|
+| =&=, =\0=  | The whole text that matched                     |
+| =\1= to =\9= | What the matching bracket group found         |
+| =\n=, =\t= | A line break, a tab                             |
+| =\u=, =\l= | The next letter in capitals, in small letters   |
+| =\U=, =\L= | Everything up to =\E= in capitals, in small letters |
+| =\/=       | A real slash (also in the pattern)              |
+
+If the pattern has no capital letters, the replacement follows the case of
+each match: a match in capitals is replaced in capitals, and one that starts
+with a capital gets a capital. So =%tui/kokako= turns Tui into Kokako.
+
+*** Replacing with questions
+
+~r q~ (non-modal: ~C-M-%~) replaces a regular expression and asks about each
+match, with =Query replacing ... with ...:= and the keys =y n ! . q=:
+
+| Modal | Non-modal | Does                                     |
+|-------+-----------+------------------------------------------|
+| none  | ~y~       | Replace this one and go to the next      |
+| none  | ~n~       | Leave this one and go to the next        |
+| none  | ~!~       | Replace this one and all the rest        |
+| none  | ~.~       | Replace this one and stop                |
+| none  | ~q~       | Stop                                     |
+
+~M-%~ is the same for plain text, with no special characters to think about.
+~C-M-%~ is another key for ~r q~, and it works in every state.
+
+When you want to be sure of each change, use the question form. When a
+change is plain and mechanical, use ~r r~ and look at the preview.
+
+If the text you replace can run over many lines, use the thorough forms of
+the commands. They are described under searching, above.
+
+#+begin_try Try it, with a letter
+1. Open =~/letter.txt= and type this text: =Dear Hana,=, a line break,
+   =We met the tui at Akaroa. The tui sings at dawn. Tui are rare.=, a line
+   break, =Yours, Aroha=. Press ~C-g~ and ~g g~.
+2. Press ~j~ (non-modal: ~C-n~) to move to the second line, then ~r r~ and type
+   =tui/kea=, then ~RET~. Only the first match on this line changes. Press ~u~
+   (non-modal: ~C-/~) to take it back.
+3. Press ~r r~ and type =%tui/kea=, ~RET~. Every tui of the whole letter
+   changes, and the third one keeps its capital: =Kea are rare=. The echo area
+   says =Replaced 3 occurrences on 1 line=. Press ~u~.
+4. Press ~r q~ (non-modal: ~C-M-%~), type =%tui/kea=, ~RET~. Press ~y~ at the
+   first, ~n~ at the second and ~!~ at the third. Only the first and the last
+   were changed. Press ~u~.
+5. Press ~r r~ and type =%(\w+) at (\w+)/\2 at \1=, ~RET~. Look at what
+   =\1= and =\2= did: the two words either side of "at" swap places, as in
+   =Akaroa at tui=. Press ~u~.
+#+end_try
+
+#+table: commands replace-regexp query-replace query-replace-regexp replace-regexp-thorough query-replace-regexp-thorough
+
+#+table: faces :replace-coming :replace-going
+
+** Narrowing a list to its matches
+
+A list is any buffer made of lines you choose among: the buffer list from
+~C-x C-b~, the list of jobs, the packages, the keys. Each such list can be cut
+down to the lines that match a pattern, and each file of records, such as a
+log or a table of values, can be cut down in the same way. This is called a
+search filter. The filter hides lines. Nothing is deleted, and the file on
+disk does not change.
+
+Press ~C-x / s~ in a list and type a pattern. The list shrinks as you type, and
+the count before the prompt says how many lines are left, for example
+=1/5    Regex filter: dr=. ~RET~ keeps the filter. ~C-g~ drops the one you were
+typing and keeps the earlier ones. Press ~C-x / s~ again and a second filter
+narrows what the first left. Above the list a line (=:list-filters=) says by
+what it is narrowed and how many entries are left.
+
+~C-x / l~ lists your filters in a buffer of their own, each with the number of
+entries it leaves. There, ~d~ takes the filter on the line away, and ~D~
+(non-modal: ~C-k~) takes them all away. ~C-x / r~ takes them all away too, from
+the narrowed list itself, and the whole list is shown again.
+
+The same filter works on files whose lines are records, such as a log or a
+CSV. The modes that count are named in =*line-record-modes*=. In these, the
+first line of a CSV is a header and is always shown. ~C-x / f~ shows only the
+records whose one column matches a pattern, and ~C-x / h~ hides them. These ask
+which column first. The lists and the data chapters describe columns in
+full.
+
+Two keys delete instead of hide. ~C-x / k~ keeps the records that match and
+deletes the others. ~C-x / d~ deletes the ones that match. Both can be undone
+with ~u~ (non-modal: ~C-/~). ~C-x / t~ makes the first line of a file of records
+its header, or a record like the rest, and ~C-x / L~ keeps the header at the top
+of the window as the rest scrolls.
+
+You can still type in the lines you see. A change that would reach a hidden
+line is refused with a message, so a filter never changes what you cannot
+see. Press ~C-x / r~ to see everything again.
+
+#+begin_try Try it, with the buffer list
+1. Press ~C-x C-b~ to list your buffers. If you did the earlier chapters it
+   holds =shopping.txt=, =pancakes.txt=, =birds.txt= and =letter.txt=.
+2. Press ~C-x / s~ and type =txt=. Lines that do not hold those letters go
+   away, such as the starred buffers. The count in front of the prompt
+   follows what you type. Press ~RET~.
+3. Press ~C-x / s~ again, type =pan= and press ~RET~. This narrows the list
+   to what the first filter left, so only =pancakes.txt= remains. Look at
+   the line above the list.
+4. Press ~C-x / l~. The two filters are listed with how many entries each
+   leaves. Move to the first line, press ~d~ to take it away, then ~q~.
+5. Press ~C-x / r~. Every buffer is back.
+#+end_try
+
+#+table: commands search-filter-regex search-filter-list search-filter-remove search-filter-remove-all search-filter-show-records search-filter-hide-records list-keep-records list-delete-records list-toggle-header list-toggle-header-lock
+
+#+table: settings *line-record-modes* *csv-header*
+
+#+table: faces :list-filters
+
+** Searching many files
+
+~M-s g~ finds text in many files at once. It looks in the project that holds
+your file. A project is the folder above your file that holds a =.git= or
+=.project= entry (see =*project-root-markers*=). If there is no such folder,
+it looks in the folder of the file. In a directory listing it searches that
+directory, and with a prefix argument (~C-u~ first) it asks for a directory.
+
+Type words and Tuatara lists every line that holds all of them, in any order,
+each as =path:line: text=. Nothing is listed before the third character
+(=*search-files-min-input*=). The files are read in the background while you
+type, and Tuatara skips hidden files, backups, binary files and whatever the
+project's =.gitignore= leaves out. Each word is a regex, as for ~C-s~, and ~M-r~
+switches to plain text, where the whole line you typed is found as it stands,
+spaces and all. At most =*search-files-lines-limit*= lines are listed. If the
+search stops there, the first line of the list says so.
+
+Move down the list with ~C-n~ (modal: ~j~) and ~RET~ opens the file at that
+line. With =*preview-file-search*= set to true, the file of the selected line is
+shown meanwhile in your window, so you can read around a match without leaving
+the search. After the search, ~M-g n~ and ~M-g p~ go to the next and previous
+place in the list, the way they go through the errors of a compile.
+
+A search of your files with formatted names, the ones that carry a date and
+keywords in their name, is ~C-x n g~ (=search-in-formatted=), and works the
+same way, with =*preview-formatted-search*= as its preview setting.
+
+*** Changing the lines a search found
+
+While the question is open, ~C-c C-l~ turns the lines found so far into a
+buffer of their own. ~C-x C-q~ there makes the text after =path:line:=
+changeable. You can edit the lines as in any text, but you cannot change a
+path or a line number or split a line. ~C-c C-c~ writes the changed lines back
+into their files. It runs in the background, and a line is written only when
+the file still has the text that was found. A file that is open in a buffer is
+changed there, as a step you can undo. Other files are saved and closed again,
+unless =*search-results-save-files*= is nil, in which case each stays changed
+and unsaved for you to look at. ~C-c C-k~ throws the changes away and leaves
+the files as they were.
+
+Files that you opened safely, files you may not write and read-only buffers are
+never written. The message log says why.
+
+*** Keeping folders read
+
+A big folder takes a while to read. Name the folders you search often in
+=*indexed-directories*= in your init file, for example
+=(setf *indexed-directories* (list "~/notes/"))=. Tuatara then keeps their file
+names and text in memory. It reads them in the background when it starts, and
+again when something changes on disk. After that ~M-s g~ in them answers at
+once, and so does the search of your files with formatted names. While a folder
+is being read the mode line shows =U= after the =P= sign, and while a kept
+folder is searched it shows =S=. They stand always in the same place and are
+faint when idle (=*indexing-indicator*=, =*searching-indicator*=).
+
+By default what was read is also kept on disk between sessions
+(=*indexes-kept-on-disk*=), so that at the next start only the files that
+changed are read again. Set it to nil for a folder whose text must not be
+copied anywhere. =*search-files-limit*= is the most text Tuatara keeps for
+one search or one kept folder, 128 MB as standard. Files past it are searched
+from the disk, more slowly.
+
+#+begin_try Try it, with a folder of notes
+1. Make a folder called =notes= in your home folder, with your file manager
+   or with =mkdir ~/notes= in a terminal. Open =~/notes/akaroa.txt= with
+   ~C-x C-f~ and type =Tui and kereru near the harbour=. Save it with
+   ~C-x C-s~. Make a second file, =~/notes/kaikoura.txt=, with =Fantail and
+   tui by the stream= and save it.
+2. With =kaikoura.txt= showing, press ~M-s g~ and type =tui=. Nothing is listed
+   before the third letter. Then both lines are, each as =path:line: text=.
+3. Press ~RET~. =akaroa.txt= opens at its line. Press ~M-g n~ to go on to the
+   next match, in =kaikoura.txt=. (~C-n~ before ~RET~ would take you to the
+   second line of the list instead.)
+4. Press ~M-s g~ and type =tui harbour=. Only the =akaroa.txt= line is listed,
+   because it holds both words. Press ~C-c C-l~ to put the lines in a buffer,
+   ~C-x C-q~ to change them, replace =harbour= with =bay= on the line, then
+   ~C-c C-c~ to write it back. Look at =akaroa.txt=: it says =bay=.
+5. To keep the folder read, add =(setf *indexed-directories* (list
+   "~/notes/"))= to your init file and restart. The =U= in the mode
+   line lights up while it is read, and is faint again when it is done.
+#+end_try
+
+#+table: commands search-in-files search-in-formatted search-files-list search-results-edit search-results-finish search-results-cancel next-place previous-place
+
+#+table: settings *project-root-markers* *default-directory* *search-files-min-input* *search-files-lines-limit* *search-files-limit* *search-results-save-files* *preview-file-search* *preview-formatted-search* *indexed-directories* *indexes-kept-on-disk* *indexing-indicator* *searching-indicator*
+
+** The outline of a buffer
+
+~M-g o~ lists the headings of the buffer you are in and goes to the one you
+choose. In an Org file they are the headings. In Lisp they are the comments
+that start with three semicolons and the top-level forms. In a language that
+Tuatara has a grammar for, they are its definitions, such as functions and
+types, and in Markdown its headings. Each is shown as its line, after the
+line's number, in the order of the text.
+
+Type a few letters of a name and the list narrows to the headings that hold
+them. The window behind follows the first one (=:outline-preview=), and ~RET~
+goes there. ~C-g~ takes you back to where you were. Start with a digit and a
+space to see only the outer headings: =2 = then the words shows the headings
+two levels deep or less.
+
+When a language server is running for the file and =*lsp-outline*= is true,
+the list uses the names the server knows, including fields and methods inside
+types. Otherwise it uses the headings Tuatara finds itself.
+
+#+begin_try Try it, with a long Org file
+1. Open any Org file with several headings, for instance one you made in the
+   earlier chapters, or press ~C-x C-f~ and make =~/trip.org= with
+   =* Akaroa=, =** Harbour=, =* Kaikoura=, =** Whale watching= and
+   =** Crayfish= on separate lines.
+2. Press ~M-g o~. Every heading is listed with its line number.
+3. Type =whale=. Only the matching heading is left, and the window behind
+   shows it. Press ~RET~ to go there.
+4. Press ~M-g o~ again, type =1 = and a space, and see only the top headings.
+   Press ~C-g~ to go back.
+#+end_try
+
+#+table: commands buffer-outline
+
+#+table: settings *lsp-outline*
+
+#+table: faces :outline-preview

@@ -57,7 +57,8 @@ file of test/org/, the same nodes, positions and properties as tools/org-oracle.
 
 (defun org-plist-difference (ours theirs)
   "The keys whose values differ between the plists OURS and THEIRS, with both values."
-  (let ((keys (remove-duplicates (append (loop for k in ours by #'cddr collect k) (loop for k in theirs by #'cddr collect k)))))
+  (let ((keys (remove-duplicates (append (loop for k in ours by #'cddr collect k)
+                                         (loop for k in theirs by #'cddr collect k)))))
     (loop for key in keys
           unless (equal (getf ours key) (getf theirs key))
             collect (list key :ours (getf ours key) :emacs (getf theirs key)))))
@@ -66,7 +67,12 @@ file of test/org/, the same nodes, positions and properties as tools/org-oracle.
   "The first place where the trees OURS and THEIRS differ, as a description, or NIL."
   (let ((path (append path (list (first theirs)))))
     (cond ((not (equal (first ours) (first theirs)))
-           (list :at path :type :ours (first ours) :emacs (first theirs) :ours-plist (second ours) :emacs-plist (second theirs)))
+           (list :at path
+                 :type :ours
+                 (first ours)
+                 :emacs (first theirs)
+                 :ours-plist (second ours)
+                 :emacs-plist (second theirs)))
           ((org-plist-difference (second ours) (second theirs))
            (list :at path :plist (org-plist-difference (second ours) (second theirs)) :emacs-plist (second theirs)))
           (t (loop for a in (cddr ours)
@@ -80,8 +86,10 @@ file of test/org/, the same nodes, positions and properties as tools/org-oracle.
 (defun org-corpus-difference (name &optional (directory (asdf:system-relative-pathname :tuatara "test/org/")))
   "Where Tuatara's parse of NAME.org in DIRECTORY (test/org/) differs from Emacs's, or NIL."
   (let* (
-         (text (alexandria:read-file-into-string (merge-pathnames (format nil "~a.org" name) directory) :external-format :utf-8))
-         (expected (with-open-file (in (merge-pathnames (format nil "~a.expected" name) directory) :external-format :utf-8)
+         (text (alexandria:read-file-into-string (merge-pathnames (format nil "~a.org" name) directory)
+                                                 :external-format :utf-8))
+         (expected (with-open-file (in (merge-pathnames (format nil "~a.expected" name) directory)
+                                       :external-format :utf-8)
                      (let ((*package* (find-package :tuatara.tests)) (*read-default-float-format* 'double-float))
                        (read in)))))
     (org-tree-difference (org-oracle-form (tuatara.defaults::org-parse text)) (org-expected-form expected))))
@@ -95,8 +103,9 @@ file of test/org/, the same nodes, positions and properties as tools/org-oracle.
   ;; so that a parser looking through the rest of the text at each line, as one did, fails here
   (let* ((directory (asdf:system-relative-pathname :tuatara "test/org/"))
          (one (apply #'concatenate 'string
-                     (mapcar (lambda (name) (alexandria:read-file-into-string (merge-pathnames (format nil "~a.org" name) directory)
-                                                                              :external-format :utf-8))
+                     (mapcar (lambda (name)
+                               (alexandria:read-file-into-string (merge-pathnames (format nil "~a.org" name) directory)
+                                                                 :external-format :utf-8))
                              '("headlines" "blocks" "lists" "tables" "objects" "edge" "found"))))
          (text (with-output-to-string (out) (loop repeat (ceiling 600000 (length one)) do (write-string one out)))))
     (tuatara.defaults::org-parse text)
@@ -108,9 +117,16 @@ file of test/org/, the same nodes, positions and properties as tools/org-oracle.
 
 (define-test (org deep-nesting-read-as-text)
   ;; text made of nesting alone: parsed at once, what lies too deep read as plain text, the stack never exhausted
-  (dolist (text (list (format nil "~{~a~}a~{~a~}" (make-list 5000 :initial-element "*/") (make-list 5000 :initial-element "/*"))
-                      (format nil "~{~a~}x~{~a~}" (make-list 3000 :initial-element "[fn::") (make-list 3000 :initial-element "]"))
-                      (format nil "~{#+begin_a~d~%~}x~%~{#+end_a~d~%~}" (loop for i below 3000 collect i) (loop for i from 2999 downto 0 collect i))))
+  (dolist (text (list (format nil "~{~a~}a~{~a~}"
+                              (make-list 5000 :initial-element "*/")
+                              (make-list 5000 :initial-element "/*"))
+                      (format nil "~{~a~}x~{~a~}"
+                              (make-list 3000 :initial-element "[fn::")
+                              (make-list 3000 :initial-element "]"))
+                      (format nil
+                              "~{#+begin_a~d~%~}x~%~{#+end_a~d~%~}"
+                              (loop for i below 3000 collect i)
+                              (loop for i from 2999 downto 0 collect i))))
     (true (tuatara.defaults::org-parse text)))
   ;; a long paragraph of opening marks that no mark closes: read in time growing with its length alone
   (let ((text (with-output-to-string (s) (loop repeat 40000 do (write-string "*a /b " s))))
@@ -161,7 +177,9 @@ file of test/org/, the same nodes, positions and properties as tools/org-oracle.
   ;; drawn again once the rules of the block's language are compiled, which the first time is done in
   ;; the background (source-blocks-coloured-when-ready)
   (let* ((lisp (tuatara.defaults::org-src-language "lisp"))
-         (f (let ((tuatara-user:*org-bullets* nil) (tuatara-user:*org-checkbox-signs* nil) (tuatara-user:*org-list-bullets* nil)
+         (f (let ((tuatara-user:*org-bullets* nil)
+                  (tuatara-user:*org-checkbox-signs* nil)
+                  (tuatara-user:*org-list-bullets* nil)
                   (tuatara-user:*org-startup-indented* nil))
               (run-keys (list "M-x o r g - m o d e RET"
                               (lambda ()
@@ -220,8 +238,10 @@ signs, not indented, drawers open."
             (format nil "* DONE Fix the gate~%- State \"DONE\"       from \"WAIT\"       [2026-10-01 Thu 18:00] \\\\~%  parts came~%:LOGBOOK:~%- State \"WAIT\"       from \"TODO\"       [2026-09-30 Wed 09:00]~%CLOCK: [2026-10-01 Thu 09:00]--[2026-10-01 Thu 10:00] =>  1:00~%:END:~%- Bought on [2026-10-01 Thu]~%"))))
     (flet ((log-note-row-p (row)
              (let ((spans (remove-if (lambda (span) (string= "" (string-trim " " (first span)))) (org-row-faces f row))))
-               (and spans (every (lambda (span) (let ((face (second span))) (eq :org-log-note (if (listp face) (first face) face))))
-                                 spans)))))
+               (and spans
+                    (every (lambda (span)
+                             (let ((face (second span))) (eq :org-log-note (if (listp face) (first face) face))))
+                           spans)))))
       (true (search "State \"DONE\"" (tuatara.frontend.fake:fake-screen-line f 1)))
       (true (search "State \"WAIT\"" (tuatara.frontend.fake:fake-screen-line f 4)))
       (true (log-note-row-p 1) "~s" (org-row-faces f 1))
@@ -274,7 +294,9 @@ seconds; the editor draws after it as it does when woken."
   ;; sparse style's levels (1 headlines and comments, 2 keywords, tags and emphasis, 3 dates)
   (let ((rules tuatara.defaults::*colouring-rules*))
     (flet ((coloured (&optional (keys ""))
-             (let ((tuatara-user:*org-bullets* nil) (tuatara-user:*org-checkbox-signs* nil) (tuatara-user:*org-list-bullets* nil)
+             (let ((tuatara-user:*org-bullets* nil)
+                   (tuatara-user:*org-checkbox-signs* nil)
+                   (tuatara-user:*org-list-bullets* nil)
                    (tuatara-user:*org-startup-indented* nil))
                (run-keys (format nil "M-x o r g - m o d e RET ~a" keys) :text *org-coloured* :width 80 :height 16))))
       (unwind-protect
@@ -362,7 +384,9 @@ seconds; the editor draws after it as it does when woken."
                      ;; the editor redrawn as it is when woken, nothing typed into the block
                      (tuatara.frontend.fake:fake-queue-keys f "C-l"))))
         (tuatara.frontend.fake:fake-queue-action f #'wait))
-      (tuatara.command:run-editor f :setup #'tuatara.defaults:install-defaults :buffer (tuatara.buffer:find-buffer "*scratch*")))
+      (tuatara.command:run-editor f
+                                  :setup #'tuatara.defaults:install-defaults
+                                  :buffer (tuatara.buffer:find-buffer "*scratch*")))
     (true (tuatara.defaults::rules-ready-p language))
     (true (org-row-coloured-p f 3 "def"))))
 
@@ -410,7 +434,10 @@ seconds; the editor draws after it as it does when woken."
 
 (defun org-screen (keys &key (text *org-folding*) (height 12))
   "The lines an Org session typing KEYS on TEXT shows, trailing blanks off, and the editor."
-  (multiple-value-bind (f editor) (run-keys (format nil "M-x o r g - m o d e RET ~a" keys) :text text :width 60 :height height)
+  (multiple-value-bind (f editor) (run-keys (format nil "M-x o r g - m o d e RET ~a" keys)
+                                            :text text
+                                            :width 60
+                                            :height height)
     (values (loop for i below (- height 2) collect (string-right-trim " " (tuatara.frontend.fake:fake-screen-line f i)))
             editor)))
 
@@ -437,7 +464,11 @@ seconds; the editor draws after it as it does when woken."
          (digits (lambda (n) (format nil "~{~c~^ ~}" (coerce (princ-to-string n) 'list))))
          (moves (format nil "~@[C-u ~a j ~]~@[C-u ~a l ~]"
                         (and (plusp line) (funcall digits line)) (and (plusp column) (funcall digits column))))
-         (editor (nth-value 1 (run-keys (format nil "M-x o r g - m o d e RET ~a~a" moves keys) :text text :width 60 :height 12)))
+         (editor (nth-value 1
+                            (run-keys (format nil "M-x o r g - m o d e RET ~a~a" moves keys)
+                                      :text text
+                                      :width 60
+                                      :height 12)))
          (buffer (tuatara.display:window-buffer (tuatara.command:editor-window editor)))
          (point (tuatara.text:byte->char (tuatara.buffer:buffer-text buffer) (tuatara.buffer:buffer-point buffer)))
          (after (session-text editor)))
@@ -460,7 +491,8 @@ seconds; the editor draws after it as it does when woken."
         (text (with-output-to-string (out)
                 (format out "* Heading~%")
                 (dotimes (i 20000) (format out "Some body text ~d with [[https://x.org][a link]].~%" i)))))
-    (flet ((parsers () (count "tuatara org parse" (sb-thread:list-all-threads) :key #'sb-thread:thread-name :test #'equal)))
+    (flet ((parsers ()
+             (count "tuatara org parse" (sb-thread:list-all-threads) :key #'sb-thread:thread-name :test #'equal)))
       (dotimes (i 12)
         (tuatara.frontend.fake:fake-queue-keys f (if (zerop i) "i x" "x"))
         (tuatara.frontend.fake:fake-queue-action f (lambda () (setf most (max most (parsers))))))
@@ -505,7 +537,11 @@ seconds; the editor draws after it as it does when woken."
             (is eq same (string= text plain) "~a changes the text" keys)
             (is string= (crlf plain) crlf "~a" keys)))))
     ;; coloured as with LF alone, links shown as their labels
-    (let ((plain (run-keys-in-turns '("C-g") :text *org-coloured* :width 80 :height 16 :mode 'tuatara.defaults::org-mode))
+    (let ((plain (run-keys-in-turns '("C-g")
+                                    :text *org-coloured*
+                                    :width 80
+                                    :height 16
+                                    :mode 'tuatara.defaults::org-mode))
           (crlf (run-keys-in-turns '("C-g") :text (crlf *org-coloured*) :width 80 :height 16 :crlf t
                                                   :mode 'tuatara.defaults::org-mode)))
       (dotimes (row 10)
@@ -514,12 +550,16 @@ seconds; the editor draws after it as it does when woken."
 (define-test (org big-file-parse-awaited)
   ;; a structure command on a file past *org-parse-at-once* waits for the parse made in the
   ;; background, the editor reading keys meanwhile, rather than parsing at once in the command
-  (let ((text (with-output-to-string (o) (dotimes (i 4000) (format o "* Headline ~d~%some text under it, line ~d~%" i i)))))
+  (let ((text (with-output-to-string (o)
+                (dotimes (i 4000) (format o "* Headline ~d~%some text under it, line ~d~%" i i)))))
     (true (> (length text) tuatara.defaults::*org-parse-at-once*))
     (true (search (format nil "* TODO Headline 0~%") (org-text-after "C-c C-t" text)))
     ;; the headline index, made of the parse (awaited by C-c C-t): the indented view's prefix stands after an edit too
     (let ((tuatara-user:*org-startup-indented* t))
-      (multiple-value-bind (f editor) (run-keys "M-x o r g - m o d e RET C-c C-t j i x C-g" :text text :width 60 :height 8)
+      (multiple-value-bind (f editor) (run-keys "M-x o r g - m o d e RET C-c C-t j i x C-g"
+                                                :text text
+                                                :width 60
+                                                :height 8)
         (declare (ignore editor))
         (true (search "  xsome text under it" (tuatara.frontend.fake:fake-screen-line f 1)))))))
 
@@ -541,7 +581,9 @@ seconds; the editor draws after it as it does when woken."
 
 (define-test (org macro-text-shown-green)
   (let ((f (run-keys "M-x o r g - m o d e RET"
-                     :text (format nil "Subject {{{redact(John Otago)}}} met {{{protect(Ann)}}}.~%") :width 80 :height 6)))
+                     :text (format nil "Subject {{{redact(John Otago)}}} met {{{protect(Ann)}}}.~%")
+                     :width 80
+                     :height 6)))
     (true (org-faces-include f 0 "John Otago" :org-macro-text))
     (true (org-faces-include f 0 "Ann" :org-macro-text))
     ;; the braces around them hidden, as a link's brackets are
@@ -558,7 +600,9 @@ seconds; the editor draws after it as it does when woken."
 (define-test (org macro-calls-shown-as-their-text)
   ;; any macro call with arguments shows as them, as redact and protect do; one without stays as written
   (let ((f (run-keys "M-x o r g - m o d e RET"
-                     :text (format nil "Press {{{kbd(C-x C-s)}}} in {{{title}}}.~%| {{{kbd(a)}}} | b |~%| ccc | d |~%") :width 80 :height 6)))
+                     :text (format nil "Press {{{kbd(C-x C-s)}}} in {{{title}}}.~%| {{{kbd(a)}}} | b |~%| ccc | d |~%")
+                     :width 80
+                     :height 6)))
     (true (uiop:string-prefix-p "Press C-x C-s in {{{title}}}." (tuatara.frontend.fake:fake-screen-line f 0))))
   (flet ((lines (&rest lines) (format nil "~{~a~^~%~}" lines)))
     (is string= (lines "| {{{kbd(a)}}}   | b |" "| ccc | d |")
@@ -574,30 +618,50 @@ seconds; the editor draws after it as it does when woken."
   ;; C-c m: the selection or the word at point wrapped in a macro chosen from a list: R, P, those the note declares
   (flet ((after (keys text)
            (let ((tuatara.export::*org-last-macro* "R"))
-             (multiple-value-bind (f editor) (run-keys (format nil "M-x o r g - m o d e RET ~a" keys) :text text :width 100 :height 8)
+             (multiple-value-bind (f editor) (run-keys (format nil "M-x o r g - m o d e RET ~a" keys)
+                                                       :text text
+                                                       :width 100
+                                                       :height 8)
                (declare (ignore f))
                (session-text editor)))))
-    (is string= (format nil "Met {{{R(John)}}} today.~%") (after "g g l l l l C-c m RET" (format nil "Met John today.~%")))
-    (is string= (format nil "From {{{R(90.233.1.40)}}}.~%") (after "g g l l l l l l C-c m R RET" (format nil "From 90.233.1.40.~%")))
-    (is string= (format nil "Met {{{P(John Otago)}}} today.~%") (after "g g l l l l v l l l l l l l l l l C-c m P RET" (format nil "Met John Otago today.~%")))
+    (is string=
+        (format nil "Met {{{R(John)}}} today.~%")
+        (after "g g l l l l C-c m RET" (format nil "Met John today.~%")))
+    (is string=
+        (format nil "From {{{R(90.233.1.40)}}}.~%")
+        (after "g g l l l l l l C-c m R RET" (format nil "From 90.233.1.40.~%")))
+    (is string=
+        (format nil "Met {{{P(John Otago)}}} today.~%")
+        (after "g g l l l l v l l l l l l l l l l C-c m P RET" (format nil "Met John Otago today.~%")))
     ;; a macro the note declares, by its name
     (is string= (format nil "#+macro: kbd @@latex:\\texttt{$1}@@~%Press {{{kbd(C-x)}}} now.~%")
         (after "j l l l l l l C-c m k b d RET" (format nil "#+macro: kbd @@latex:\\texttt{$1}@@~%Press C-x now.~%")))
     ;; in a call: another macro, or none, the text alone again
-    (is string= (format nil "Met {{{P(John)}}} today.~%") (after "g g l l l l l l l l C-c m P RET" (format nil "Met {{{R(John)}}} today.~%")))
-    (is string= (format nil "Met John today.~%") (after "g g l l l l l l l l C-c m n o n e RET" (format nil "Met {{{redact(John)}}} today.~%")))
+    (is string=
+        (format nil "Met {{{P(John)}}} today.~%")
+        (after "g g l l l l l l l l C-c m P RET" (format nil "Met {{{R(John)}}} today.~%")))
+    (is string=
+        (format nil "Met John today.~%")
+        (after "g g l l l l l l l l C-c m n o n e RET" (format nil "Met {{{redact(John)}}} today.~%")))
     ;; C-c M: the call point is in taken away, any macro's
-    (is string= (format nil "Met John Otago and C-x.~%") (after "g g l l l l l l l l C-c M" (format nil "Met {{{R(John Otago)}}} and C-x.~%")))
-    (is string= (format nil "Press C-x now.~%") (after "g g l l l l l l l l l C-c M" (format nil "Press {{{kbd(C-x)}}} now.~%")))))
+    (is string=
+        (format nil "Met John Otago and C-x.~%")
+        (after "g g l l l l l l l l C-c M" (format nil "Met {{{R(John Otago)}}} and C-x.~%")))
+    (is string=
+        (format nil "Press C-x now.~%")
+        (after "g g l l l l l l l l l C-c M" (format nil "Press {{{kbd(C-x)}}} now.~%")))))
 
 (define-test (org todo-keyword-after-any-spaces)
   ;; spaces or tabs after the stars, more than one: the keyword is changed where it is, the title kept
   (true (uiop:string-prefix-p (format nil "*   WAIT Task~%") (org-text-after "C-c C-t" (format nil "*   TODO Task~%"))))
-  (true (uiop:string-prefix-p (format nil "**~cTODO Task~%" #\Tab) (org-text-after "C-c C-t" (format nil "**~cTask~%" #\Tab))))
-  (true (uiop:string-prefix-p (format nil "*  Task~%") (org-text-after "C-c C-t C-c C-t C-c C-t C-c C-t" (format nil "*  Task~%"))))
+  (true (uiop:string-prefix-p (format nil "**~cTODO Task~%" #\Tab)
+                              (org-text-after "C-c C-t" (format nil "**~cTask~%" #\Tab))))
+  (true (uiop:string-prefix-p (format nil "*  Task~%")
+                              (org-text-after "C-c C-t C-c C-t C-c C-t C-c C-t" (format nil "*  Task~%"))))
   ;; a task that repeats, marked done: its keyword the first again, where it was
   (true (uiop:string-prefix-p (format nil "*   TODO Task~%SCHEDULED: <2026-")
-                              (org-text-after "C-c C-t C-c C-t" (format nil "*   TODO Task~%SCHEDULED: <2026-09-28 Mon +1w>~%")))))
+                              (org-text-after "C-c C-t C-c C-t"
+                                              (format nil "*   TODO Task~%SCHEDULED: <2026-09-28 Mon +1w>~%")))))
 
 (define-test (org keys-wait-for-no-parse-on-plain-lines)
   ;; RET and TAB on a line that can hold no link, table or checkbox: the file is not parsed for them
@@ -620,8 +684,12 @@ seconds; the editor draws after it as it does when woken."
 
 (define-test (org largest-file-opens-as-text)
   ;; an Org file larger than Org's readers take opens in text mode: no whole-buffer parse of gigabytes
-  (is eq 'tuatara.defaults::org-mode (tuatara.modes:mode-for-size 'tuatara.defaults::org-mode tuatara.defaults::*org-file-read-limit*))
-  (is eq 'tuatara.defaults::text-mode (tuatara.modes:mode-for-size 'tuatara.defaults::org-mode (1+ tuatara.defaults::*org-file-read-limit*)))
+  (is eq
+      'tuatara.defaults::org-mode
+      (tuatara.modes:mode-for-size 'tuatara.defaults::org-mode tuatara.defaults::*org-file-read-limit*))
+  (is eq
+      'tuatara.defaults::text-mode
+      (tuatara.modes:mode-for-size 'tuatara.defaults::org-mode (1+ tuatara.defaults::*org-file-read-limit*)))
   (with-test-directory (dir)
     (let ((path (namestring (merge-pathnames "big.org" dir))))
       (alexandria:write-string-into-file (format nil "* A~%~a~%" (make-string 500 :initial-element #\x)) path)
@@ -672,12 +740,14 @@ seconds; the editor draws after it as it does when woken."
                (run-keys (list (format nil "M-x o r g - m o d e RET ~a" keys)
                                (lambda ()
                                  (let ((at (search gone text)))
-                                   (tuatara.buffer:buffer-delete (tuatara.buffer:find-buffer "*scratch*") at (+ at (length gone)))))
+                                   (tuatara.buffer:buffer-delete (tuatara.buffer:find-buffer "*scratch*") at
+                                                                 (+ at (length gone)))))
                                answer)
                          :text text :width 80 :height 12)
              (values (session-text editor) f))))
     ;; the headline whose tags are asked for
-    (multiple-value-bind (text f) (after (format nil "* A~%a~%* B~%b~%") "C-c C-q" (format nil "* A~%a~%") "w o r k RET")
+    (multiple-value-bind (text f) (after (format nil "* A~%a~%* B~%b~%") "C-c C-q"
+                                         (format nil "* A~%a~%") "w o r k RET")
       (is string= (format nil "* B~%b~%") text)
       (true (tuatara.frontend.fake:fake-frame-showing f "The headline is no longer there")))
     ;; the link being edited, another right after it

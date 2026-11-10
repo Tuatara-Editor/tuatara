@@ -70,7 +70,9 @@ PLACE-BUFFERS call, made after the defaults."
     (is equal '((19 20 :vertical-border) (20 21 :cursor-inactive)) (aref (tuatara.frontend.fake:fake-spans f) 0))
     ;; each window's mode line in its face, the sign of work, P, faint in each
     (is equal '((0 12 :mode-line) (12 14 (:mode-line-sign-idle :mode-line)) (14 20 :mode-line)
-                (20 32 :mode-line-inactive) (32 34 (:mode-line-sign-idle :mode-line-inactive)) (34 40 :mode-line-inactive))
+                (20 32 :mode-line-inactive)
+                (32 34 (:mode-line-sign-idle :mode-line-inactive))
+                (34 40 :mode-line-inactive))
         (aref (tuatara.frontend.fake:fake-spans f) 6))
     (is string= " TUATARA[N] PD [-] * TUATARA[N] PD [-] *" (tuatara.frontend.fake:fake-screen-line f 6))))
 
@@ -144,7 +146,8 @@ PLACE-BUFFERS call, made after the defaults."
     (declare (ignore f))
     (is equal '("*scratch*" "other") (window-buffers editor))
     (is = 1 (selected-index editor))
-    (is string= "other" (tuatara.buffer:buffer-name (tuatara.display:window-buffer (tuatara.command:editor-window editor)))))
+    (is string= "other"
+        (tuatara.buffer:buffer-name (tuatara.display:window-buffer (tuatara.command:editor-window editor)))))
   (multiple-value-bind (f editor) (run-keys "C-x 3 C-x b o t h e r C-j SPC w l SPC w h" :width 40 :height 8)
     (declare (ignore f))
     (is equal '("other" "*scratch*") (window-buffers editor))
@@ -169,7 +172,9 @@ PLACE-BUFFERS call, made after the defaults."
   (let ((tuatara.defaults::*modal-editing* nil))
     (dolist (case '(("n" 2 t) ("y" 1 nil)))
       (destructuring-bind (answer windows kept) case
-        (multiple-value-bind (f editor) (run-keys (format nil "C-x 2 C-x b z z k RET a C-x 4 0 ~a RET" answer) :width 40 :height 12)
+        (multiple-value-bind (f editor) (run-keys (format nil "C-x 2 C-x b z z k RET a C-x 4 0 ~a RET" answer)
+                                                  :width 40
+                                                  :height 12)
           (true (tuatara.frontend.fake:fake-frame-showing f "Buffer zzk modified; kill anyway?"))
           (is = windows (length (tuatara.command:editor-windows editor)) "~a" answer)
           (is eq kept (and (tuatara.buffer:find-buffer "zzk") t) "~a" answer)
@@ -216,6 +221,19 @@ PLACE-BUFFERS call, made after the defaults."
     (declare (ignore f))
     (is = 1 (selected-index editor))))
 
+(define-test (windows sizing-says-the-shares)
+  ;; each window of the split, in per cent, adding up to 100; no room is said as before
+  (dolist (case '(("C-x 3 C-x }" "Widths, left to right: 52%, 48%. Repeat with {, }, ^, v, <, >, +, -")
+                  ("C-x 3 C-x {" "Widths, left to right: 48%, 52%. Repeat with {, }, ^, v, <, >, +, -")
+                  ("C-x 2 C-x ^" "Heights, top to bottom: 64%, 36%. Repeat with {, }, ^, v, <, >, +, -")
+                  ("C-x 3 C-x 3 C-x }" "Widths, left to right: 28%, 24%, 48%. Repeat with {, }, ^, v, <, >, +, -")
+                  ("C-x 3 C-x { {" "Widths, left to right: 45%, 55%. Repeat with {, }, ^, v, <, >, +, -")
+                  ("C-x ^" "The window cannot be made larger")))
+    (destructuring-bind (keys words) case
+      (multiple-value-bind (f editor) (run-keys keys :width 40 :height 12)
+        (declare (ignore f))
+        (is string= words (tuatara.command:editor-message editor) "~a" keys)))))
+
 (define-test (windows sizes)
   (dolist (case '(("C-x 2 C-x ^" ((0 0 40 7) (0 7 40 4)))
                   ;; the lower window has no more than its four rows to give
@@ -231,7 +249,10 @@ PLACE-BUFFERS call, made after the defaults."
         (declare (ignore f))
         (is equal boxes (window-boxes editor) "~a" keys))))
   ;; as short as the buffer's lines need (seven and the mode line), but never under four rows
-  (multiple-value-bind (f editor) (run-keys "C-x 2 C-x o C-x -" :text (format nil "a~%b~%c~%d~%e~%f~%g") :width 40 :height 20)
+  (multiple-value-bind (f editor) (run-keys "C-x 2 C-x o C-x -"
+                                            :text (format nil "a~%b~%c~%d~%e~%f~%g")
+                                            :width 40
+                                            :height 20)
     (declare (ignore f))
     (is equal '((0 0 40 11) (0 11 40 8)) (window-boxes editor)))
   (multiple-value-bind (f editor) (run-keys "C-x 2 C-x -" :text (format nil "a~%b") :width 40 :height 20)
@@ -342,7 +363,9 @@ PLACE-BUFFERS call, made after the defaults."
   ;; C-x 4 f: a file in another window
   (with-test-directory (directory)
     (let ((path (put-file (merge-pathnames "other-window.txt" directory) (format nil "from the file~%"))))
-      (multiple-value-bind (f editor) (run-keys (format nil "C-x 4 f ~a RET" (key-string (namestring path))) :width 80 :height 20)
+      (multiple-value-bind (f editor) (run-keys (format nil "C-x 4 f ~a RET" (key-string (namestring path)))
+                                                :width 80
+                                                :height 20)
         (is equal '("*scratch*" "other-window.txt") (window-buffers editor))
         (is = 1 (selected-index editor))
         (is string= "from the file" (tuatara.frontend.fake:fake-screen-line f 10))
@@ -358,7 +381,8 @@ PLACE-BUFFERS call, made after the defaults."
     (flet ((top-below (keys)
              (tuatara.frontend.fake:fake-screen-line (run-keys keys :text text :width 80 :height 30) 15)))
       (is string= "line 34" (top-below "C-x 2 C-M-v C-M-v C-M-v"))
-      (is string= "line 23" (top-below "C-x 2 C-M-v C-M-v C-M-v M-x s c r o l l - o t h e r - w i n d o w - d o w n RET"))
+      (is string= "line 23"
+          (top-below "C-x 2 C-M-v C-M-v C-M-v M-x s c r o l l - o t h e r - w i n d o w - d o w n RET"))
       ;; C-M-S-v scrolls it back, as the keyboard gives it: C-M-V
       (is string= "line 23" (top-below "C-x 2 C-M-v C-M-v C-M-v C-M-S-v"))
       (is string= "line 23" (top-below "C-x 2 C-M-v C-M-v C-M-v C-M-V"))
@@ -367,8 +391,10 @@ PLACE-BUFFERS call, made after the defaults."
       (is string= "line 15" (top-below "C-x 2 C-M-v C-u 3 C-M-v"))
       (is string= "line 9" (top-below "C-x 2 C-M-v C-u - 3 C-M-v"))
       (is string= "line 10" (top-below "C-x 2 C-M-v C-u 2 C-M-S-v")))
-    (is string= "line 4" (tuatara.frontend.fake:fake-screen-line (run-keys "C-u 3 C-v" :text text :width 80 :height 30) 0))
-    (is string= "line 2" (tuatara.frontend.fake:fake-screen-line (run-keys "C-u 3 C-v C-u 2 M-v" :text text :width 80 :height 30) 0))))
+    (is string= "line 4"
+        (tuatara.frontend.fake:fake-screen-line (run-keys "C-u 3 C-v" :text text :width 80 :height 30) 0))
+    (is string= "line 2"
+        (tuatara.frontend.fake:fake-screen-line (run-keys "C-u 3 C-v C-u 2 M-v" :text text :width 80 :height 30) 0))))
 
 (define-test (windows history)
   ;; a buffer shown again in a window comes back from the same line, not from its top
@@ -437,7 +463,7 @@ PLACE-BUFFERS call, made after the defaults."
   (multiple-value-bind (f editor) (run-keys "C-x 2 SPC w + + +" :width 40 :height 20)
     (declare (ignore f))
     (is equal '((0 0 40 13) (0 13 40 6)) (window-boxes editor)))
-  (multiple-value-bind (f editor) (run-keys "C-x 3 C-x {" :width 40 :height 12)
+  (multiple-value-bind (f editor) (run-keys "C-x 3 C-x {" :width 80 :height 12)
     (declare (ignore editor))
     (true (tuatara.frontend.fake:fake-frame-showing f "Repeat with {, }, ^, v"))))
 
@@ -451,13 +477,17 @@ PLACE-BUFFERS call, made after the defaults."
   ;; F in a support buffer, as in NORMAL state: its window alone on the screen
   (multiple-value-bind (f editor) (run-keys "C-x 2 C-h e F" :text *twenty-lines* :width 40 :height 20)
     (declare (ignore f))
-    (is string= "*Messages*" (tuatara.buffer:buffer-name (tuatara.display:window-buffer (tuatara.command:editor-window editor))))
+    (is string= "*Messages*"
+        (tuatara.buffer:buffer-name (tuatara.display:window-buffer (tuatara.command:editor-window editor))))
     (is = 1 (length (tuatara.command:editor-windows editor)))))
 
 (define-test (windows centred-text)
   ;; the text in a column of *centred-text-width* columns in the middle of the window, blank either side
   (let ((tuatara-user:*centred-text-width* 20))
-    (multiple-value-bind (f editor) (run-keys "M-x c e n t r e d - t e x t - m o d e RET" :text (format nil "hello world~%second line~%") :width 60 :height 8)
+    (multiple-value-bind (f editor) (run-keys "M-x c e n t r e d - t e x t - m o d e RET"
+                                              :text (format nil "hello world~%second line~%")
+                                              :width 60
+                                              :height 8)
       (declare (ignore editor))
       ;; 60 columns less the column's 20 and the one between the margin and the text: 19 each side
       (is string= (make-string 20 :initial-element #\Space) (subseq (tuatara.frontend.fake:fake-screen-line f 0) 0 20))
@@ -469,19 +499,40 @@ PLACE-BUFFERS call, made after the defaults."
     ;; a long line is cut at the column's edge, and wraps there with soft wrap
     (let ((long (format nil "~a~%" (make-string 50 :initial-element #\x))))
       (let ((f (run-keys "M-x c e n t r e d - t e x t - m o d e RET" :text long :width 60 :height 8)))
-        (is string= (make-string 20 :initial-element #\x) (string-trim " " (tuatara.frontend.fake:fake-screen-line f 0))))
-      (let ((f (run-keys "M-x c e n t r e d - t e x t - m o d e RET M-x s o f t - w r a p - m o d e RET" :text long :width 60 :height 8)))
-        (is string= (make-string 20 :initial-element #\x) (string-trim " " (tuatara.frontend.fake:fake-screen-line f 0)))
-        (is string= (make-string 20 :initial-element #\x) (string-trim " ↪" (tuatara.frontend.fake:fake-screen-line f 1)))
-        (is string= (make-string 10 :initial-element #\x) (string-trim " ↪" (tuatara.frontend.fake:fake-screen-line f 2)))))
+        (is string=
+            (make-string 20 :initial-element #\x)
+            (string-trim " " (tuatara.frontend.fake:fake-screen-line f 0))))
+      (let ((f (run-keys "M-x c e n t r e d - t e x t - m o d e RET M-x s o f t - w r a p - m o d e RET"
+                         :text long
+                         :width 60
+                         :height 8)))
+        (is string=
+            (make-string 20 :initial-element #\x)
+            (string-trim " " (tuatara.frontend.fake:fake-screen-line f 0)))
+        (is string=
+            (make-string 20 :initial-element #\x)
+            (string-trim " ↪" (tuatara.frontend.fake:fake-screen-line f 1)))
+        (is string=
+            (make-string 10 :initial-element #\x)
+            (string-trim " ↪" (tuatara.frontend.fake:fake-screen-line f 2)))))
     ;; point at the end of a long line scrolls the column sideways, not the whole window away
-    (let ((f (run-keys "M-x c e n t r e d - t e x t - m o d e RET C-e" :text (format nil "~a~%next~%" (make-string 50 :initial-element #\x)) :width 60 :height 8)))
+    (let ((f (run-keys "M-x c e n t r e d - t e x t - m o d e RET C-e"
+                       :text (format nil "~a~%next~%" (make-string 50 :initial-element #\x))
+                       :width 60
+                       :height 8)))
       (is = 0 (car (tuatara.frontend.fake:fake-cursor f)))
       (true (< (cdr (tuatara.frontend.fake:fake-cursor f)) 41)))
     ;; the mouse: a click in the column lands on its character
-    (is = 5 (session-point (nth-value 1 (run-events '("M-x c e n t r e d - t e x t - m o d e RET" (:down-mouse-1 25 0)) :width 60 :height 8))))
+    (is = 5
+        (session-point (nth-value 1
+                                  (run-events '("M-x c e n t r e d - t e x t - m o d e RET" (:down-mouse-1 25 0))
+                                              :width 60
+                                              :height 8))))
     ;; off again; and on by major mode; never in a window too narrow for the column
-    (let ((f (run-keys "M-x c e n t r e d - t e x t - m o d e RET M-x c e n t r e d - t e x t - m o d e RET" :text "hello" :width 60 :height 8)))
+    (let ((f (run-keys "M-x c e n t r e d - t e x t - m o d e RET M-x c e n t r e d - t e x t - m o d e RET"
+                       :text "hello"
+                       :width 60
+                       :height 8)))
       (is string= "hello" (string-right-trim " " (tuatara.frontend.fake:fake-screen-line f 0)))
       (true (tuatara.frontend.fake:fake-frame-showing f "Centred text off")))
     (let ((tuatara-user:*centred-text-modes* '((tuatara.defaults::text-mode . t))))
@@ -489,7 +540,6 @@ PLACE-BUFFERS call, made after the defaults."
         (is string= "hello" (string-right-trim " " (subseq (tuatara.frontend.fake:fake-screen-line f 0) 20))))
       (let ((f (run-keys "M-x t e x t - m o d e RET" :text "hello" :width 18 :height 8)))
         (is string= "hello" (string-right-trim " " (tuatara.frontend.fake:fake-screen-line f 0)))))))
-
 
 (define-test (windows font-refused-unless-fixed-width)
   ;; a family whose letters are not all as wide is refused, though the window could show it
@@ -514,12 +564,16 @@ PLACE-BUFFERS call, made after the defaults."
                                                   :buffer (tuatara.buffer:find-buffer "*scratch*"))
                     (values asked (tuatara.frontend.fake:fake-screen-line f 7)))
                (sb-int:unencapsulate 'tuatara.frontend:frontend-set-font 'any-family)))))
-    (multiple-value-bind (asked echo) (chosen (format nil "M-x s e t - f r a m e - f o n t RET ~a RET" (key-string "DejaVu Serif 12")))
+    (multiple-value-bind (asked echo) (chosen (format nil
+                                                      "M-x s e t - f r a m e - f o n t RET ~a RET"
+                                                      (key-string "DejaVu Serif 12")))
       (is equal '() asked)
       (true (search "DejaVu Serif is no fixed-width font" echo)))
     (is equal '("dejavu sans mono 12")
         (chosen (format nil "M-x s e t - f r a m e - f o n t RET ~a RET" (key-string "dejavu sans mono 12"))))
-    (multiple-value-bind (asked echo) (chosen (format nil "M-x s e t - f r a m e - f o n t RET ~a RET" (key-string "DejaVu Sans Monolith 12")))
+    (multiple-value-bind (asked echo) (chosen (format nil
+                                                      "M-x s e t - f r a m e - f o n t RET ~a RET"
+                                                      (key-string "DejaVu Sans Monolith 12")))
       (is equal '() asked)
       (true (search "No font family DejaVu Sans Monolith is installed" echo)))))
 

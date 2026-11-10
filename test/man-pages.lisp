@@ -89,6 +89,48 @@ there is none."
     (dolist (class '("Kept" "Remembered" "Rebuilt"))
       (true (search (format nil ".SS ~a~%" class) page))))))
 
+(defparameter *options-without-a-choice*
+  '("+LINE[:COLUMN]" "--diff" "--merge" "--tutor" "--help" "--version" "--" "--daemon-socket[=NAME]"
+    "--receive-file" "--remove-desktop")
+  "The first flag of each option of *OPTION-HELP* that has nothing to choose: it stays a line.")
+
+(defparameter *settings-with-a-choice*
+  '(tuatara-user:*auto-save-idle* tuatara-user:*kill-ring-max* tuatara-user:*lsp-wait* tuatara-user:*remote-seconds*
+    tuatara-user:*split-limit* tuatara-user:*tui-colours*)
+  "Settings whose documentation says why to change them and what follows.")
+
+(defun man-pages-flat (text)
+  "TEXT with every run of white space, a line break included, a single space."
+  (cl-ppcre:regex-replace-all "\\s+" text " "))
+
+(define-test (man-pages choices-explained)
+  ;; an option or variable that can be tweaked has its reasons on the page, not only its meaning
+  (with-man-pages (folder)
+   (let ((page (man-pages-flat (man-pages-text folder "tuatara.1")))
+         (init (man-pages-flat (man-pages-text folder "tuatara-init.5"))))
+    (dolist (entry tuatara.terminal:*option-help*)
+      (let ((flag (first (first (getf entry :flags)))))
+        (if (member flag *options-without-a-choice* :test #'string=)
+            (false (getf entry :why) "~a has nothing to choose" flag)
+            (true (getf entry :why) "~a says why to take it" flag))
+        (when (getf entry :why)
+          (let ((why (getf entry :why)))
+            (true (search (tuatara.terminal::roff-text (format nil "~{~a~^ ~}" (subseq why 0 (position "" why :test #'string=))))
+                          page)
+                  "~a is explained in tuatara(1)" flag)))))
+    (dolist (entry tuatara.terminal:*environment-help*)
+      (true (search (tuatara.terminal::roff-text (format nil "~{~a~^ ~}" (getf entry :text))) page)
+            "~{~a~} is in tuatara(1)" (getf entry :names)))
+    ;; the heap says what raising it overcomes, what lowering it is for, and how it fails
+    (true (search "Raise it for work held in memory" page))
+    (true (search "Lower it on a small or shared machine" page))
+    (true (search "runs out" page))
+    (dolist (symbol *settings-with-a-choice*)
+      (let ((first-paragraph (tuatara.terminal::documentation-paragraph (documentation symbol 'variable))))
+        (true (search (man-pages-flat (tuatara.terminal::roff-fill first-paragraph)) init)
+              "~a is in tuatara-init(5) in full" symbol)
+        (true (> (count #\. first-paragraph) 1) "~a says more than what it is" symbol))))))
+
 (define-test (man-pages roff-text)
   (is string= "a\\e b\\-c" (tuatara.terminal::roff-text "a\\ b-c"))
   (is string= (format nil "\\&.x~%\\&'y") (tuatara.terminal::roff-text (format nil ".x~%'y")))

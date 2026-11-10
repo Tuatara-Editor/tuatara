@@ -83,11 +83,12 @@ STRINGS, as a list of numbers, NIL when it wants none."
 
 (defun elf-program-needs (fd size name)
   "What the machine program NAME, open as FD and SIZE octets long, needs to
-run, read from its header and never run, as a plist: :MACHINE, its code in
-*PROGRAM-MACHINES*; :LOADER, the program that starts it, or NIL for one that
-starts by itself; :LIBRARIES, the names of those it needs; :GLIBC, the version
-of glibc it wants as a list of numbers, or NIL. Refused with words saying why
-for anything but a 64-bit little-endian program, and for a script."
+run, read from its header and never run, as a plist. :MACHINE is its code in
+*PROGRAM-MACHINES*. :LOADER is the program that starts it, or NIL for one that
+starts by itself. :LIBRARIES are the names of those it needs. :GLIBC is the
+version of glibc it wants as a list of numbers, or NIL. It is refused with
+words saying why for anything but a 64-bit little-endian program, and for a
+script."
   (let ((head (tuatara.io:read-fd-exactly fd (min size 64) 0)))
     (flet ((u (at bytes) (tuatara.io:octets-integer head at bytes)))
       (cond ((or (null head) (< (length head) 64))
@@ -161,7 +162,9 @@ be reached, is a kind not known or says no number for the account."
       (values machine
               (parse-integer (second lines))
               (let ((version (third lines)))
-                (and version (cl-ppcre:scan "^glibc \\d+\\.\\d+$" version) (tuatara.io:version-numbers version "^glibc ")))))))
+                (and version
+                     (cl-ppcre:scan "^glibc \\d+\\.\\d+$" version)
+                     (tuatara.io:version-numbers version "^glibc ")))))))
 
 (defun refuse-unless-it-fits (needs name host machine glibc)
   "Refuse, saying why, when the program NAME, needing NEEDS (ELF-PROGRAM-NEEDS),
@@ -264,7 +267,8 @@ there would not use what is in it."
 
 ;;; The job
 
-(defstruct (server-program-job (:include tuatara.runtime:job) (:constructor make-server-program-job (buffer host program path))
+(defstruct (server-program-job (:include tuatara.runtime:job)
+                               (:constructor make-server-program-job (buffer host program path))
                                (:copier nil))
   "A language server taken to a trusted server or away from it: HOST, PROGRAM
 its name, PATH its full name here, NIL when it is being taken away; DOING
@@ -310,10 +314,10 @@ not brought is not ours."
 
 (defun bring-language-server (job)
   "The work of JOB: send its program, when it fits the server and nothing of
-the same name but what was brought is there; written in the server's folder,
-listed, renamed into place by the SFTP client and its sum taken there and
-compared before that: what does not match, or whose sum cannot be taken, never
-takes the name, and the list of what was brought is put back."
+the same name but what was brought is there. It is written in the server's
+folder, listed, and renamed into place by the SFTP client. Before that, its
+sum is taken there and compared. What does not match, or whose sum cannot be
+taken, never takes the name. The list of what was brought is put back."
   (let* ((host (server-program-job-host job))
          (name (server-program-job-program job))
          (local (server-program-job-path job))

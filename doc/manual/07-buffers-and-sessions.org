@@ -1,0 +1,399 @@
+#+title: Buffers and sessions
+#+language: en
+
+* Buffers and sessions
+
+Keeping track of what is open, and getting it back after you leave.
+
+Chapter 1 explained that a buffer is a piece of text Tuatara holds in memory,
+and that a window is a view of one. After an afternoon of work you may have a
+dozen buffers open: a letter, a shopping list, some notes, a folder listing,
+the help. This chapter is about managing them. It shows the list of all
+buffers, how to get rid of the ones you are done with, how to find a file you
+had open yesterday, and how to leave a place marked so that you can come back
+to it. It also explains what Tuatara does so that a crash or a closed
+terminal does not cost you your work: it can remember what was open, and it
+keeps a copy of changes you have not saved. The last part shows how to look
+at just one part of a buffer.
+
+Before you start, one reminder about the state keys. ~i~ starts INSERT state,
+and ~C-g~ or ~ESC~ returns to NORMAL state. Every key in this chapter is
+pressed in NORMAL state unless it starts with ~C-x~, which works in both.
+
+** The buffer list
+
+~C-x C-b~ shows every buffer in a buffer of its own called =*Buffers*=. The
+one you used last is at the top. You use the list when you have lost track
+of what is open, when you want to close several buffers at once, or when you
+want to save several files in one go.
+
+Figure 7.1 shows a list for someone who has a folder of letters under version
+control, a few loose notes, and the log of what the echo area said.
+
+#+caption: Figure 7.1. The buffer list, a line for each buffer.
+#+name: fig-buffer-list
+#+begin_example
+ ▾ letters (3)
+   >*  council.txt        412  Text    ~/letters/council.txt
+       thanks.txt         190  Text    ~/letters/thanks.txt
+   D   old-draft.txt        0  Text    ~/letters/old-draft.txt
+ ▾ No project (3)
+       shopping.txt        34  Text    ~/shopping.txt
+       notes.org         2,061 Org     ~/notes.org
+       *Messages*        1,210 Text
+#+end_example
+
+Each buffer has one line. The line gives the buffer's marks, its name, its
+size, its major mode (the kind of text it is, such as Text or Org) and the
+file it visits. The marks come first. A =>= means you marked the buffer for
+a command to act on. A =D= means you marked it for deletion. A =*= means it
+has changes that are not saved, and a =%= means it is read-only. In the figure,
+=council.txt= is marked and has unsaved changes, and =old-draft.txt= is
+marked for deletion.
+
+The names of buffers that Tuatara made itself, such as =*Messages*=, are set
+apart in their own colour, as are read-only buffers, help buffers and marked
+names. The last line of the list adds up how many buffers there are and how
+much text they hold.
+
+*** Sections
+
+The list is divided into sections, one for each project. A project is a
+folder that holds a =.git= or a =.project= file, with every file in it and
+every folder below it. In the figure, =letters= is a project because
+=~/letters/= is under version control. Buffers that belong to no project are
+in a section called No project. The section of the project you came from is
+first. Each heading says the project's folder name and how many buffers the
+section holds.
+
+A heading starts with =▾= when its section is open and =▸= when it is folded.
+The setting =*project-root-markers*= holds the file names that make a folder a
+project. If you keep your own projects in folders marked some other way, add
+the name of the marker file there.
+
+*** Folding
+
+A long list is easier to read with the sections you do not need folded away.
+A folded section shows only its heading. ~TAB~ folds the section the cursor is
+in, or opens it again if it was folded. ~S-TAB~ folds every section, or opens
+them all if every one is folded. On a heading, ~l~ and ~RET~ open the section,
+and ~h~ folds it. On any other line ~h~ does nothing, so a stray press does
+not close the list; ~q~ does that.
+
+*** Marks
+
+The list works on one buffer at a time, or on several if you mark them.
+Marking is how you say "these ones". ~m~ puts a =>= on the buffer the cursor
+is on and moves down a line, so you can mark a run of buffers by pressing ~m~
+over and over. A number before the key marks that many lines. ~u~ takes a mark
+off the line and moves down, and ~U~ takes every mark off. ~t~ swaps the two
+states: what was marked becomes unmarked and the other way round. That is a
+quick way to say "everything except these".
+
+~d~ puts a =D= on a buffer instead. It means "kill this one". Nothing is killed
+until you press ~x~, which kills every buffer marked with =D=. It is the same
+two-step as in a folder listing: first mark, then do it. Buffers with unsaved
+changes are asked about first, so a mark does not lose your work.
+
+There are two commands that act on the buffers marked with =>=. ~s~ saves the
+marked buffers that have a file. ~D~, with a capital, kills the marked buffers
+after asking. If you have marked nothing, both act on the buffer the cursor is
+on. On a section's heading, ~D~ kills every buffer of that project.
+
+*** Opening, and keeping the list current
+
+~RET~ and ~l~ show the buffer on the cursor's line in the window you came
+from. ~o~ shows it in another window and leaves the list open beside it. ~n~
+and ~p~ move to the next and the previous buffer, skipping the headings, and
+~j~ and ~k~ (non-modal: ~C-n~, ~C-p~) move a line at a time. ~r~ makes the list
+again. You rarely need that, because the list updates itself while it is on the
+screen, and your marks stay.
+
+When Tuatara runs in the background, serving several windows of its own (a
+daemon, described in chapter 18), each of those windows is a client and the
+list has a section for each client instead. ~K~ on a client's section makes
+that client the one that stays when its last buffer is closed. The setting
+=*client-kept-without-buffers*= says which one stays when you do not choose.
+You can skip this until chapter 18.
+
+#+begin_try Try it, with a letter and a shopping list
+1. Press ~C-x C-f~, type =~/letter.txt= and press ~RET~. Press ~i~ and type
+   =Dear Aroha,=. Press ~C-g~ and then ~C-x C-s~ to save.
+2. Open =~/shopping.txt= the same way and type =eggs=, ~RET~, =bread=. Press
+   ~C-g~ and save with ~C-x C-s~.
+3. Press ~C-x C-b~. The two files are listed, the shopping list at the top
+   because you used it last. The cursor is on the buffer you came from.
+4. Press ~j~ (non-modal: ~C-n~) to move to the letter. Press ~m~. A =>= shows
+   before its name and the cursor moves down a line. Press ~k~ (non-modal:
+   ~C-p~) and ~u~ to take the mark off, then ~k~ and ~m~ to put it back.
+5. Move to the shopping list with ~k k~ and press ~d~. A =D= shows.
+   Press ~x~. =shopping.txt= is gone from the list.
+6. Press ~o~ on the letter. It opens in another window and the list stays.
+   Press ~C-x o~ to go back to the list, then ~q~ to close it.
+#+end_try
+
+*** Commands for the buffer list
+
+#+table: commands buffers buffers-save buffers-keep-client list-visit list-visit-other list-next-entry list-previous-entry list-mark-entry list-mark-for-deletion list-unmark-entry list-unmark-all list-toggle-marks list-execute list-delete-marked list-toggle-fold list-toggle-all-folds
+
+*** Settings and faces
+
+#+table: settings *project-root-markers* *client-kept-without-buffers*
+
+#+table: faces :list-marked :list-deletion :list-dim :list-special
+
+** Scratch buffers
+
+Sometimes you want somewhere to type that is not a file: a number to add up,
+a phone number to keep in front of you for a minute, a few lines you may
+throw away. Tuatara has two buffers for this. They have no file, so they
+are never saved, and Tuatara has no file to ask about when you quit.
+
+=*lisp-scratch*= is a buffer for Lisp, the language Tuatara is written in.
+You can use it as plain text too. Type a Lisp expression, such as =(+ 2 3)=,
+and press ~C-x C-e~ with the cursor after it, and Tuatara runs it. ~C-j~ puts
+the answer on the lines after the expression. That makes it a calculator that
+shows its working. =*org-scratch*= is the same idea for notes in Org, the
+outline format described in chapter 14.
+
+When Tuatara starts without a file, it shows one of them, chosen by
+=*startup-buffer*=. It also makes both scratch buffers for you, a list that
+=*auto-scratch-buffers*= holds, and makes them again when you kill your last
+buffer so that you are never left with an empty screen. If you have killed one
+and want it back, run =lisp-scratch= or =org-scratch= with ~M-x~; they make a
+new one when none is there.
+
+#+table: commands lisp-scratch org-scratch
+
+#+table: settings *startup-buffer* *auto-scratch-buffers*
+
+A file name typed in a scratch buffer is taken from the folder in
+=*default-directory*=, which is your home folder unless you say otherwise.
+Saving a scratch buffer with ~C-x C-s~ asks where to put it, as for any new
+file.
+
+** Saving and killing buffers
+
+Killing a buffer removes it from memory. If it visited a file, the file stays
+where it is. The usual way is ~C-x k~, which kills the buffer you are in. If it
+has changes you have not saved, Tuatara asks first. Chapter 1 mentioned ~C-x 4
+0~, which does the same and closes the window too.
+
+When you have finished with a whole piece of work, ~C-x p k~ kills every
+buffer of the project the current buffer is in: its files, its folder
+listings and the buffers standing in them. It says how many have unsaved
+changes and asks about each of those. It is the quick way to tidy up after
+you have finished the letters and want to start on something else. The same
+thing is done by pressing ~D~ on the heading of the project in the buffer
+list.
+
+~C-x s~ goes the other way. It saves every file buffer with unsaved changes,
+after asking once. It is handy after a rename that touched many files. Leaving
+Tuatara with ~C-x C-c~ asks first when any buffer visiting a file has changes
+that are not saved.
+
+#+table: commands kill-buffer kill-project-buffers save-some-buffers save-buffers-kill-editor
+
+** Recent files and places
+
+Most days you work on the same few files. You do not have to type their names
+each time. Tuatara keeps a list of the files you have opened, the latest
+first, and ~C-x C-r~ asks you to pick from it. Each file is listed with its
+permissions, its size and when it last changed, which helps when two files
+have similar names. The list is kept between sessions, so on Monday morning
+it still holds Friday's files.
+
+The list keeps =*recent-files-limit*= files. A file that no longer exists is
+taken out when Tuatara starts. If you want to keep such files in the list,
+shown as not found, set =*recent-files-auto-cleanup*= to =nil=. To keep no
+list at all, set =*remember-recent-files*= to =nil=.
+
+Tuatara also remembers where the cursor was in each file you leave. When you
+open the file again, the cursor is back at that line, even in a later session.
+That is the setting =*save-place-mode*=, and =*save-place-limit*= sets how
+many files it remembers. It is useful for a long document you read a little
+at a time.
+
+#+begin_try Try it, with a letter and some notes
+1. Press ~C-x C-f~ and open =~/letter.txt=, then use ~j~ to go down a few
+   lines. If the file is short, type a few lines first and save.
+2. Open =~/notes.txt= the same way. If it is a new file, type a word in it
+   and save it, as a file that was never written is not remembered. Press
+   ~C-x k~ to kill the notes buffer, then ~C-x k~ again for the letter.
+3. Press ~C-x C-r~. Both files are listed, =notes.txt= first.
+4. Pick the letter and press ~RET~. It opens with the cursor at the line
+   where you left it.
+#+end_try
+
+#+table: commands find-recent-file
+
+#+table: settings *remember-recent-files* *recent-files-limit* *recent-files-auto-cleanup* *save-place-mode* *save-place-limit*
+
+** Bookmarks
+
+A bookmark is a named place that Tuatara keeps for good. It is like a recent
+file, but you choose it and give it a name. You would use one for the place in
+a long letter where you stopped, or for the section of your notes that you
+open every day. A bookmark remembers the file and the place in it, and it
+finds the place again even when you have added text above it.
+
+~C-x m m~ sets a bookmark where the cursor is. It asks for a name, and
+offers the file's name. It then asks which categories the bookmark is in. A
+category is a word of your own, such as =letters= or =house=; you may type
+several, apart by commas, and the ones you used before are offered. ~C-x m b~
+asks for a name and goes to the place. ~C-x m d~ forgets a bookmark.
+
+~C-x m l~ opens the bookmark manager, a list that works like the buffer list.
+It has a section for each category, with a heading saying how many bookmarks
+the section holds, and one for the bookmarks in no category. A bookmark in two
+categories appears in both. Folding, marking and the ~RET~, ~l~ and ~o~ keys
+work as described for the buffer list. In the manager, ~r~ gives the bookmark
+under the cursor another name and ~c~ changes its categories. A bookmark
+whose file has gone is shown faint.
+
+A bookmark on a folder listing keeps the folder and the entry the cursor is
+on, so you can bookmark a folder you visit often.
+
+#+begin_try Try it, with some notes
+1. Open =~/notes.txt= and type a few lines, such as =Plumber: Wanaka Plumbing=,
+   =Dentist: 9 May=, =Car service: Taupo Motors=, each ended with ~RET~. Save.
+2. Move to the =Dentist= line. Press ~C-x m m~, type =dentist= and ~RET~. At the
+   question about categories, type =house= and ~RET~. The question comes
+   again, for one more category: press ~RET~ on the empty answer to finish.
+3. Press ~C-x C-r~ and open some other file, so that the notes are out of
+   sight. Press ~C-x m b~, type =dent= and ~RET~. You are back on the line.
+4. Press ~C-x m l~. The bookmark is in a section called =house=. Press ~q~ to
+   close the list.
+#+end_try
+
+#+table: commands bookmark-set bookmark-jump bookmark-delete bookmark-manager bookmark-rename bookmark-set-categories
+
+#+table: settings *bookmark-set-asks-categories* *bookmarks-kept*
+
+** Registers
+
+A register is a place to keep text, a number or a position under a single
+character, for as long as Tuatara runs. A register that keeps a position is a
+short-term bookmark. Registers are described in chapter 4, with the kill ring
+that they sit beside. Bookmarks are the choice when you want the place next
+week.
+
+** The session kept
+
+When you close Tuatara with ~C-x C-c~, everything that was open is gone
+from the screen. The session is the name for what was open: the files and the
+folder listings, and how the windows were split. If you turn on
+=*keep-session*=, Tuatara writes the session down as it stops, and
+opens it again the next time it starts without a file named. You see your
+windows as they were, each on its file, at the place where the cursor was.
+It is off until you turn it on.
+
+Put this line in your init file, the file described in chapter 8:
+
+#+begin_example
+(setf *keep-session* t)
+#+end_example
+
+The session is also written now and then while Tuatara runs, as often as
+=*keep-session-interval*= seconds when something has changed. If Tuatara
+crashes, you lose at most that long. The file that holds it is in Tuatara's
+state folder and only you can read it. A file you opened with care, because
+you do not trust it, is opened with the same care next time. A file that is
+no longer there is left out.
+
+If you start Tuatara with a file name, as in =tuatara letter.txt=, you get that
+file, and the session's files are opened behind it. The session is not
+replaced by that start.
+
+#+begin_try Try it, with a letter and a shopping list
+1. Add =(setf *keep-session* t)= to your init file and restart Tuatara.
+2. Open =~/letter.txt=. Press ~C-x 3~ to split the window, then ~C-x o~ to go
+   to the new window and open =~/shopping.txt= there.
+3. Press ~C-x C-c~. Tuatara leaves.
+4. Start Tuatara again with no file name. Both windows are there, each on its
+   own file. The echo area says the session was opened again.
+#+end_try
+
+#+table: settings *keep-session* *keep-session-interval*
+
+** Auto-save and getting changes back
+
+Saving is your decision. Tuatara never writes your file until you press
+~C-x C-s~. But it does not leave your unsaved typing exposed to a crash or a
+slip. When a buffer that visits a file has changes you have not saved, Tuatara
+writes them to a copy of their own, in a folder of its own, a few seconds
+after you stop typing. If you keep typing without a pause, it still writes
+one every minute. The file you are editing is never touched. When you save,
+or kill the buffer with nothing to save, the copy is deleted.
+
+If Tuatara stops without your saving, whether because of a crash, a power cut or
+a quit without saving, the copy stays. When you open the file again, Tuatara
+tells you it holds changes that are newer than the file. ~M-x recover-file~
+takes them into the buffer, after asking. They arrive as one edit. ~C-/~ (modal:
+~u~) takes it back if you change your mind, and ~C-x C-s~ writes it to the file
+if you do not.
+
+You can also see every copy that is waiting with ~M-x list-auto-saves~. The
+list shows when each copy was written, how big it is and which file it
+belongs to, with the newest first. It marks and acts as the buffer list
+does: ~RET~ recovers the copy on the line, after asking, and ~x~ and ~D~ delete
+copies.
+
+Auto-save is on as standard. A buffer larger than =*auto-save-size-limit*=
+octets is not copied, because each copy is written whole. Files opened with
+care are never copied. =*auto-save-directory*= says where the copies go, and
+you can point it at a folder on another drive. =*auto-save-idle*= and
+=*auto-save-interval*= set the two waits.
+
+#+begin_try Try it, with a letter
+1. Open =~/letter.txt=. Press ~i~, type =P.S. Thank you for the plums.= and
+   press ~C-g~. Do not save. Wait ten seconds.
+2. Press ~C-x C-c~. Tuatara asks about the unsaved file. Leave without
+   saving it.
+3. Start Tuatara again and open the letter. The echo area says it holds
+   changes newer than the file.
+4. Press ~M-x~, type =recover-file= and press ~RET~. Answer yes. The postscript
+   is back. Press ~C-x C-s~ to save it.
+#+end_try
+
+#+table: commands list-auto-saves recover-file
+
+#+table: settings *auto-save* *auto-save-directory* *auto-save-idle* *auto-save-interval* *auto-save-size-limit*
+
+** Narrowing to a part of a buffer
+
+A long file can be a distraction. If you want to rewrite one paragraph of a
+letter, you do not want a search to wander off into another part of the file,
+or a replacement to change the other places by mistake. Narrowing shows only a
+part of the buffer and keeps every command inside it. Moving, searching,
+replacing, editing and selecting all stop at the edges of the part. The rest
+of the buffer is out of sight and out of reach until you widen it again.
+
+While a buffer is narrowed, the mode line says Narrow in a warning colour, so
+you cannot forget it. Nothing is lost. Saving still writes the whole file, and
+the line numbers stay those of the whole file.
+
+~C-x x n~ narrows to the text you have selected. ~C-x x s~ narrows to the
+section the cursor is in. In an Org file that is the heading it is under, with
+everything below it. In a program it is the function. ~C-x x w~ shows all of
+the buffer again.
+
+Going to a place outside the part, with a bookmark for example, widens the
+buffer and says so. A command that would change text outside the part is
+refused, and the echo area says so.
+
+#+begin_try Try it, with a shopping list
+1. Open =~/shopping.txt= and make it eight lines long: =eggs=, =bread=,
+   =milk=, =butter=, =apples=, =tea=, =rice= and =honey=, one per line. Save.
+2. Press ~M-<~ (modal: ~g g~) to go to the top, then ~j j~ to reach the line
+   =milk=. Press ~V~ and ~J J~ to select =milk=, =butter= and =apples=.
+3. Press ~C-x x n~. Only those three lines are left on the screen, and Narrow
+   shows in the mode line.
+4. Press ~C-s~, type =rice= and ~RET~. It is not found, because it is out of
+   reach.
+5. Press ~C-x x w~. All eight lines are back, and Narrow is gone.
+#+end_try
+
+#+table: commands narrow-to-region narrow-to-section widen
+
+#+table: faces :mode-line-narrowed

@@ -101,7 +101,8 @@ summing their counts; unknown counts in any child make the branch's unknown."
           do (incf bytes (node-bytes c))
              (if (and (>= chars 0) (node-indexed-p c))
                  (progn (incf chars (node-chars c)) (incf utf16 (node-utf16 c)) (incf lines (node-lines c))
-                        (incf invalid (node-invalid c)) (incf returns (node-returns c)) (incf newlines (node-newlines c)))
+                        (incf invalid
+                              (node-invalid c)) (incf returns (node-returns c)) (incf newlines (node-newlines c)))
                  (setf chars -1 utf16 -1 lines -1 invalid -1 returns -1 newlines -1)))
     (%make-branch children (1+ (node-height (aref children 0))) bytes chars utf16 lines invalid returns newlines)))
 
@@ -110,10 +111,11 @@ summing their counts; unknown counts in any child make the branch's unknown."
 (declaim (inline span-sap))
 (defun span-sap (span start end)
   "The pointer to SPAN's mapped octets, which START below END of its content
-are read through at the span's offset (SPAN-OFFSET) on, its mapping checked
-still mapped (CHECK-MAPPING) and the reading noted (NOTE-READ), unless,
-outside a pass, it lies where a window reads or was asked about last, as
-nearly every read for the screen does: that costs a few comparisons."
+are read through at the span's offset (SPAN-OFFSET) on. Its mapping is checked
+still mapped (CHECK-MAPPING) and the reading noted (NOTE-READ). The exception
+is, outside a pass, a read that lies where a window reads or was asked about
+last, as nearly every read for the screen does: that costs a few
+comparisons."
   (declare (type fixnum start end))
   (let* ((mapping (span-mapping span))
          (start (+ (span-offset span) start))
@@ -212,7 +214,8 @@ left passed at once."
             (progn
               (loop while (<= (+ i 16) end)
                     do (let ((count (logcount (logior (word-octets-of (sb-sys:sap-ref-64 sap i) +newlines+)
-                                                      (ash (word-octets-of (sb-sys:sap-ref-64 sap (+ i 8)) +newlines+) -1)))))
+                                                      (ash (word-octets-of (sb-sys:sap-ref-64 sap (+ i 8))
+                                                                           +newlines+) -1)))))
                          (declare (type fixnum count))
                          (when (>= count remaining) (return))
                          (decf remaining count)
@@ -347,7 +350,8 @@ O(END - START)."
     (leaf (make-leaf (leaf-octets node) (+ (leaf-start node) start) (+ (leaf-start node) end)))
     (span (if (node-indexed-p node)
               (multiple-value-bind (chars utf16 lines invalid returns newlines) (piece-summarise node start end)
-                (%make-span (span-mapping node) (+ (span-offset node) start) (- end start) chars utf16 lines invalid returns newlines))
+                (%make-span (span-mapping node) (+ (span-offset node)
+                                                   start) (- end start) chars utf16 lines invalid returns newlines))
               (%make-span (span-mapping node) (+ (span-offset node) start) (- end start) -1 -1 -1 -1 -1 -1)))))
 
 (defun rope-pieces (rope start end)
@@ -389,10 +393,10 @@ start of a sequence that the first octet of RIGHT continues, or with a
 carriage return that a newline beginning RIGHT follows. Two spans of one
 mapping, RIGHT going on where LEFT ends there, join as the file does: cut
 where a character starts, as every edit cuts, and cut again by the count
-where the file was not counted yet; so they are taken as they are without
+where the file was not counted yet. So they are taken as they are without
 reading them when neither is counted, or LEFT is and holds no carriage
-return, which its counts tell, and slicing or editing a large file reads
-none of it."
+return, which its counts tell. Slicing or editing a large file reads none of
+it."
   (or (zerop (node-bytes left)) (zerop (node-bytes right))
       (and (span-p left) (span-p right) (eq (span-mapping left) (span-mapping right))
            (= (span-offset right) (+ (span-offset left) (node-bytes left)))
@@ -792,7 +796,8 @@ O(leaves + the octets of the pieces read)."
                                                                 :cancelled
                                                                 (let* ((from (progn
                                                                                ;; noted before the cuts are read
-                                                                               (note-read mapping a (min length (+ b 4)))
+                                                                               (note-read mapping a (min length
+                                                                                                         (+ b 4)))
                                                                                (if (= a start)
                                                                                    a
                                                                                    (min end (piece-boundary-at sap a length)))))
@@ -801,7 +806,8 @@ O(leaves + the octets of the pieces read)."
                                                                   (when tally
                                                                     (tally-note tally segment (+ from base) (+ to base)
                                                                                 (loop for span in spans sum (node-lines span))))
-                                                                  (when progress (sb-ext:atomic-incf (car progress) (- b a)))
+                                                                  (when progress
+                                                                    (sb-ext:atomic-incf (car progress) (- b a)))
                                                                   spans)))
                                                           tasks)
                                       (vector-push-extend index placement)
@@ -840,7 +846,8 @@ O(leaves + the octets of the pieces read)."
 boundaries, counted by reading them (a raw byte is one, as the index counts),
 for a rope not indexed yet: 64 KB at a time. Complexity: O(END - START)."
   (declare (type fixnum start end))
-  (let ((count 0) (block (make-octets (+ (min 65536 (max 0 (- end start))) 4))) (pos start) (total (rope-octet-length rope)))
+  (let ((count 0) (block (make-octets (+ (min 65536 (max 0 (- end start))) 4))) (pos start)
+        (total (rope-octet-length rope)))
     (declare (type fixnum count pos total))
     (loop while (< pos end)
           do (let* ((stop (min end (+ pos 65536)))
@@ -1083,14 +1090,14 @@ which offsets in ROPE are offsets in the file. Complexity: O(log n)."
 
 (defun read-ahead (rope start end)
   "Have the octets of ROPE about to be shown read in from the disk ahead of
-time, those from START below END being shown now: once the shown octets come
+time, those from START below END being shown now. Once the shown octets come
 within a window's worth of an edge of the stretch read in last, with more of
-the file past it, the next stretch, from a window's worth behind them to four
-windows' worth ahead (at least 256 KB) in the direction they last moved, all
-of it from the file the first shown octet comes from. Only a large mapped
-file (*LARGE-MAPPING-OCTETS*) is read so, on a thread of its own (WANT-READ):
-the editor never waits for the disk to show the next rows. Complexity:
-O(log n)."
+the file past it, the next stretch is read. It runs from a window's worth
+behind them to four windows' worth ahead (at least 256 KB) in the direction
+they last moved, all of it from the file the first shown octet comes from.
+Only a large mapped file (*LARGE-MAPPING-OCTETS*) is read so, on a thread of
+its own (WANT-READ): the editor never waits for the disk to show the next
+rows. Complexity: O(log n)."
   (declare (type fixnum start end))
   (when (>= (rope-octet-length rope) *large-mapping-octets*)
     (let ((node nil) (offset 0))
@@ -1129,7 +1136,8 @@ uses it to let the kernel copy what comes from files."
                          (declare (type fixnum s e))
                          (etypecase node
                            (leaf (flush)
-                                 (funcall function :memory (leaf-octets node) (+ (leaf-start node) s) (+ (leaf-start node) e)))
+                                 (funcall function :memory (leaf-octets node) (+ (leaf-start node)
+                                                                                 s) (+ (leaf-start node) e)))
                            (span (let ((mapping (span-mapping node)) (offset (+ (span-offset node) s)))
                                    (if (and pending (eq (first pending) mapping)
                                             (= (+ (second pending) (third pending)) offset))
@@ -1232,11 +1240,11 @@ is cut into clusters of that many, so that stepping over one costs no more.")
 
 (defun cluster-joins-p (before after regional)
   "True when the characters of codes BEFORE and AFTER, the one following the
-other, belong to one grapheme cluster: AFTER a mark, a joiner or a skin tone,
-BEFORE a prefixed sign, jamo making one Hangul syllable, an emoji after a
-joiner (U+200D), or the second regional indicator of a flag, REGIONAL being
-how many run up to BEFORE, BEFORE among them. A control character, a line's
-end and a raw byte join nothing. Complexity: O(1)."
+other, belong to one grapheme cluster. That is AFTER a mark, a joiner or a
+skin tone. It is BEFORE a prefixed sign, jamo making one Hangul syllable, an
+emoji after a joiner (U+200D), or the second regional indicator of a flag,
+REGIONAL being how many run up to BEFORE, BEFORE among them. A control
+character, a line's end and a raw byte join nothing. Complexity: O(1)."
   (declare (type fixnum before after regional))
   (if (and (< before #x300) (< after #x300))
       nil
@@ -1398,9 +1406,9 @@ or before an octet that ends a line or, with carriage return and line feed
 (defun rope-line-text-end (rope start end crlf)
   "Where the text of a line of ROPE ends, the line ending at octet END (the
 octet that ends it, LINE-END-OCTET-P, or the end of the text) and starting at
-START or before: with carriage return and line feed (CRLF), at the carriage
-return just before END when END is a newline and the carriage return is after
-START; else at END. As LINE-TEXT-END has it for octets."
+START or before. With carriage return and line feed (CRLF), it is at the
+carriage return just before END when END is a newline and the carriage return
+is after START. Else it is at END. As LINE-TEXT-END has it for octets."
   (declare (type fixnum start end))
   (if (and crlf (> end start) (< end (rope-octet-length rope))
            (= 10 (rope-octet rope end)) (= 13 (rope-octet rope (1- end))))
@@ -1654,10 +1662,10 @@ and a carriage return.")
 
 (defun rope-skip-octets (rope position octets &key backward (bound (if backward 0 (rope-octet-length rope))))
   "POSITION of ROPE moved over the octets in OCTETS, a list of them (such as
-*BLANK-OCTETS*): forward to the first octet at or after it that is not one of
-them, or BOUND (the end of ROPE) when there is none before it; with BACKWARD,
-back to just after the last octet before it that is not one of them, or BOUND
-\(0). Complexity: O(log n + distance moved)."
+*BLANK-OCTETS*). It moves forward to the first octet at or after it that is
+not one of them, or BOUND (the end of ROPE) when there is none before it. With
+BACKWARD, it moves back to just after the last octet before it that is not one
+of them, or BOUND (0). Complexity: O(log n + distance moved)."
   (declare (type fixnum position bound))
   (check-byte-offset rope position)
   (let ((skipped (make-array 256 :element-type 'bit :initial-element 0)))
@@ -1687,29 +1695,31 @@ back to just after the last octet before it that is not one of them, or BOUND
 
 (defun map-line-slices (function rope start end left right &key crlf octets width block)
   "Call FUNCTION for each line of ROPE that starts at a byte offset in [START,
-END), START being a line start, with the line's start, the byte offsets of its
-LEFT-th and RIGHT-th characters (its end, where it is shorter), the columns
-those stand at (the line's length in characters, where it is shorter), and the
-line's end: the octet that ends it (LINE-END-OCTET-P), with carriage return
-and line feed (CRLF) the carriage return before a newline, or the text's end.
-With OCTETS, three more: the block of octets read, where in the text it starts
-and where it ends; a line shorter than a block is in it whole, its line end
-too. Columns count characters, as TUATARA.BUFFER:BUFFER-COLUMN does: a raw
-byte is one. With WIDTH, they are columns on the screen instead: a printable
-ASCII character takes one, any other what WIDTH says, a function of its code,
-the column it stands at and what it gave as its second value for the character
-before (that character's code for a printable ASCII one, 0 at the line's
-start) returning the columns and that second value, so that a tab can reach
-its stop and a grapheme cluster take the columns of its first character; a tab
-across LEFT or RIGHT is in the slice (its start or end column then outside
-them), another character across one out of it, and a character of no width (a
-combining mark) goes with the one before it. The text is read once, a block at
-a time: as large as the lines asked for, from 4 KB to a megabyte, never more
-than the text left, into BLOCK when given octets as large, else into one kept
-for reading into (WITH-OCTET-BLOCK), so that nothing is made for it. FUNCTION
-must not keep the block. An ASCII octet is a character by itself, so most
-lines cost a look at each octet. Complexity: O(END - START + the length of the
-last line)."
+END), START being a line start. It is called with the line's start, the byte
+offsets of its LEFT-th and RIGHT-th characters (its end, where it is shorter),
+the columns those stand at (the line's length in characters, where it is
+shorter), and the line's end. The line's end is the octet that ends it
+\(LINE-END-OCTET-P), with carriage return and line feed (CRLF) the carriage
+return before a newline, or the text's end.
+With OCTETS, three more are given: the block of octets read, where in the text
+it starts and where it ends. A line shorter than a block is in it whole, its
+line end too.
+Columns count characters, as TUATARA.BUFFER:BUFFER-COLUMN does: a raw byte is
+one. With WIDTH, they are columns on the screen instead. A printable ASCII
+character takes one, any other what WIDTH says. WIDTH is a function of its
+code, the column it stands at and what it gave as its second value for the
+character before (that character's code for a printable ASCII one, 0 at the
+line's start). It returns the columns and that second value, so that a tab can
+reach its stop and a grapheme cluster take the columns of its first
+character. A tab across LEFT or RIGHT is in the slice (its start or end column
+then outside them), another character across one is out of it, and a
+character of no width (a combining mark) goes with the one before it.
+The text is read once, a block at a time. A block is as large as the lines
+asked for, from 4 KB to a megabyte, never more than the text left. It is read
+into BLOCK when given octets as large, else into one kept for reading into
+\(WITH-OCTET-BLOCK), so that nothing is made for it. FUNCTION must not keep the
+block. An ASCII octet is a character by itself, so most lines cost a look at
+each octet. Complexity: O(END - START + the length of the last line)."
   (declare (type function function) (type fixnum start end left right)
            (optimize speed))
   (let* ((total (rope-octet-length rope))
@@ -1781,7 +1791,9 @@ last line)."
                            (multiple-value-bind (w len next)
                                (if (< 31 b 127)
                                    (values 1 1 b)
-                                   (multiple-value-bind (code length) (if (< b 128) (values b 1) (octets-decode block i avail))
+                                   (multiple-value-bind (code length) (if (< b 128)
+                                                                          (values b 1)
+                                                                          (octets-decode block i avail))
                                      (multiple-value-bind (w next) (funcall (the function width) code column before)
                                        (values w length next))))
                              (declare (type fixnum w len next))
@@ -1805,7 +1817,8 @@ last line)."
                                          (let ((hit (loop with avail of-type fixnum = (- block-end block-start)
                                                           for k of-type fixnum from (- from block-start) below avail
                                                           do (let ((b (aref block k)))
-                                                               (when (and (or (= b 10) (= b 13)) (ends-line-p k avail nil))
+                                                               (when (and (or (= b 10) (= b 13))
+                                                                          (ends-line-p k avail nil))
                                                                  (return k))))))
                                            (when hit (return (+ block-start (the fixnum hit))))
                                            (when (>= block-end total) (return total))
@@ -1996,7 +2009,11 @@ parting a carriage return from the newline after it."
                        (unless (and (= (node-chars node) c) (= (node-utf16 node) u) (= (node-lines node) l)
                                     (= (node-invalid node) v) (= (node-returns node) r) (= (node-newlines node) n))
                          (error "Leaf counts ~a/~a/~a/~a/~a/~a disagree with rescan ~a/~a/~a/~a/~a/~a."
-                                (node-chars node) (node-utf16 node) (node-lines node) (node-invalid node) (node-returns node)
+                                (node-chars node)
+                                (node-utf16 node)
+                                (node-lines node)
+                                (node-invalid node)
+                                (node-returns node)
                                 (node-newlines node) c u l v r n))))))))
     (check (rope-root rope) (node-height (rope-root rope)))
     ;; every indexed leaf starts where a character of the whole text starts, and

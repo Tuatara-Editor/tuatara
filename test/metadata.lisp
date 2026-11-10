@@ -23,16 +23,27 @@ access time is left alone.")
         (integer (vector-push-extend part out))
         (vector (loop for o across part do (vector-push-extend o out)))))))
 
-(defun le-octets (n count) "N as COUNT octets, least significant first." (tuatara.io:octets-put-integer (make-array count :element-type '(unsigned-byte 8)) n count :at 0))
-(defun be-octets (n count) "N as COUNT octets, most significant first." (tuatara.io:octets-put-integer (make-array count :element-type '(unsigned-byte 8)) n count :at 0 :big-endian t))
+(defun le-octets (n count)
+  "N as COUNT octets, least significant first."
+  (tuatara.io:octets-put-integer (make-array count :element-type '(unsigned-byte 8)) n count :at 0))
+(defun be-octets (n count)
+  "N as COUNT octets, most significant first."
+  (tuatara.io:octets-put-integer (make-array count :element-type '(unsigned-byte 8)) n count :at 0 :big-endian t))
 
 (defun tiff-test-octets (image exif gps thumbnail)
   "A little-endian TIFF structure (EXIF) of the IMAGE, EXIF, GPS and THUMBNAIL
 parts, each a list of (TAG TYPE VALUE): VALUE a string (ASCII), a list of
 integers (SHORT, LONG) or of fractions (N . D) (RATIONAL), or octets."
   (let* ((image (append image (and exif '((#x8769 4 (:exif)))) (and gps '((#x8825 4 (:gps))))))
-         (parts (remove nil (list (cons :image image) (and exif (cons :exif exif)) (and gps (cons :gps gps)) (and thumbnail (cons :thumbnail thumbnail)))))
-         (places (let ((at 8)) (loop for (name . entries) in parts collect (cons name at) do (incf at (+ 2 (* 12 (length entries)) 4)))))
+         (parts (remove nil
+                        (list (cons :image image)
+                              (and exif (cons :exif exif))
+                              (and gps (cons :gps gps))
+                              (and thumbnail (cons :thumbnail thumbnail)))))
+         (places (let ((at 8))
+                   (loop for (name . entries) in parts collect (cons name at) do (incf at
+                                                                                       (+ 2 (* 12
+                                                                                               (length entries)) 4)))))
          (data-at (+ 8 (loop for (nil . entries) in parts sum (+ 2 (* 12 (length entries)) 4))))
          (head (octets-of "II" 42 0 (le-octets 8 4)))
          (ifds (make-array 0 :element-type '(unsigned-byte 8) :adjustable t :fill-pointer 0))
@@ -41,31 +52,52 @@ integers (SHORT, LONG) or of fractions (N . D) (RATIONAL), or octets."
              (case type
                (2 (octets-of value 0))
                (3 (apply #'octets-of (mapcar (lambda (v) (le-octets v 2)) value)))
-               (4 (apply #'octets-of (mapcar (lambda (v) (le-octets (if (keywordp v) (cdr (assoc v places)) v) 4)) value)))
-               (5 (apply #'octets-of (mapcar (lambda (r) (octets-of (le-octets (car r) 4) (le-octets (cdr r) 4))) value)))
+               (4
+                (apply #'octets-of
+                       (mapcar (lambda (v) (le-octets (if (keywordp v) (cdr (assoc v places)) v) 4)) value)))
+               (5
+                (apply #'octets-of (mapcar (lambda (r) (octets-of (le-octets (car r) 4) (le-octets (cdr r) 4))) value)))
                (t (coerce value '(vector (unsigned-byte 8)))))))
       (loop for (name . entries) in parts
             do (loop for o across (le-octets (length entries) 2) do (vector-push-extend o ifds))
                (dolist (entry entries)
                  (destructuring-bind (tag type value) entry
                    (let* ((octets (value-octets type value))
-                          (number (case type (2 (length octets)) (3 (/ (length octets) 2)) (4 (/ (length octets) 4)) (5 (/ (length octets) 8)) (t (length octets)))))
-                     (loop for o across (octets-of (le-octets tag 2) (le-octets type 2) (le-octets number 4)) do (vector-push-extend o ifds))
+                          (number (case type
+                                    (2 (length octets))
+                                    (3 (/ (length octets) 2))
+                                    (4 (/ (length octets) 4))
+                                    (5 (/ (length octets) 8))
+                                    (t (length octets)))))
+                     (loop for o across (octets-of (le-octets tag 2)
+                                                   (le-octets type 2)
+                                                   (le-octets number 4)) do (vector-push-extend o ifds))
                      (if (<= (length octets) 4)
                          (loop for i below 4 do (vector-push-extend (if (< i (length octets)) (aref octets i) 0) ifds))
-                         (progn (loop for o across (le-octets (+ data-at (length data)) 4) do (vector-push-extend o ifds))
-                                (loop for o across octets do (vector-push-extend o data)))))))
+                         (progn
+                           (loop for o across (le-octets (+ data-at (length data)) 4) do (vector-push-extend o ifds))
+                           (loop for o across octets do (vector-push-extend o data)))))))
                ;; the picture's own part leads to its thumbnail's
-               (loop for o across (le-octets (if (and (eq name :image) (assoc :thumbnail places)) (cdr (assoc :thumbnail places)) 0) 4)
+               (loop for o across (le-octets (if (and (eq name :image)
+                                                      (assoc :thumbnail places)) (cdr (assoc :thumbnail places)) 0) 4)
                      do (vector-push-extend o ifds))))
     (octets-of head ifds data)))
 
 (defparameter *exif-test-tiff*
-  (tiff-test-octets '((#x010F 2 "Kea Cameras") (#x0110 2 "K1") (#x0131 2 "Darkroom 4.2") (#x0132 2 "2026:03:02 10:00:00")
+  (tiff-test-octets '((#x010F 2 "Kea Cameras")
+                      (#x0110 2 "K1")
+                      (#x0131 2 "Darkroom 4.2")
+                      (#x0132 2 "2026:03:02 10:00:00")
                       (#x9C9C 1 #(72 0 105 0 0 0)))
                     '((#x9003 2 "2026:03:01 09:30:00") (#x829A 5 ((1 . 125))) (#x829D 5 ((28 . 10))) (#x8827 3 (200))
-                      (#x9286 7 #(65 83 67 73 73 0 0 0 79 110 32 116 104 101 32 114 105 100 103 101)) (#x927C 7 #(1 2 3 4 5 6 7 8 9)))
-                    '((1 2 "S") (2 5 ((41 . 1) (17 . 1) (12 . 1))) (3 2 "E") (4 5 ((174 . 1) (46 . 1) (30 . 1))) (5 1 #(0)) (6 5 ((123 . 10))))
+                      (#x9286 7 #(65 83 67 73 73 0 0 0 79 110 32 116 104 101 32 114 105 100 103 101))
+                      (#x927C 7 #(1 2 3 4 5 6 7 8 9)))
+                    '((1 2 "S")
+                      (2 5 ((41 . 1) (17 . 1) (12 . 1)))
+                      (3 2 "E")
+                      (4 5 ((174 . 1) (46 . 1) (30 . 1)))
+                      (5 1 #(0))
+                      (6 5 ((123 . 10))))
                     '((#x0201 4 (0)) (#x0202 4 (4321))))
   "The EXIF of a photograph made for the tests: its camera, times, settings, a GPS position in Wellington, a thumbnail.")
 
@@ -165,8 +197,12 @@ integers (SHORT, LONG) or of fractions (N . D) (RATIONAL), or octets."
     ;; WebP and TIFF
     (let ((webp (write-test-octets-file (merge-pathnames "kea.webp" dir)
                                         (let ((exif (octets-of "Exif" 0 0 *exif-test-tiff*)))
-                                          (octets-of "RIFF" (le-octets (+ 4 8 (length exif) (mod (length exif) 2)) 4) "WEBP"
-                                                     "EXIF" (le-octets (length exif) 4) exif (if (oddp (length exif)) (octets-of 0) #())))))
+                                          (octets-of "RIFF"
+                                                     (le-octets (+ 4 8 (length exif) (mod (length exif) 2)) 4)
+                                                     "WEBP"
+                                                     "EXIF" (le-octets (length exif) 4) exif (if (oddp (length exif))
+                                                                                                 (octets-of 0)
+                                                                                               #())))))
           (tiff (write-test-octets-file (merge-pathnames "kea.tif" dir) *exif-test-tiff*)))
       (note-has (metadata-of webp) "- Model :: K1")
       (note-has (metadata-of tiff) "* EXIF (its own tags)")
@@ -181,7 +217,11 @@ integers (SHORT, LONG) or of fractions (N . D) (RATIONAL), or octets."
            (meta-size (+ 8 4 (length hdlr) (length iinf) iloc-size))
            (data-at (+ (length ftyp) meta-size))
            (iloc (box "iloc" 0 0 0 0 #x44 #x00 (be-octets 1 2)
-                      (be-octets 2 2) (be-octets 0 2) (be-octets 1 2) (be-octets data-at 4) (be-octets (length exif-data) 4)))
+                      (be-octets 2 2)
+                      (be-octets 0 2)
+                      (be-octets 1 2)
+                      (be-octets data-at 4)
+                      (be-octets (length exif-data) 4)))
            (meta (box "meta" 0 0 0 0 hdlr iinf iloc))
            (heic (write-test-octets-file (merge-pathnames "kea.heic" dir) (octets-of ftyp meta exif-data))))
       (is = meta-size (length meta))
@@ -243,8 +283,11 @@ integers (SHORT, LONG) or of fractions (N . D) (RATIONAL), or octets."
   ;; a PDF whose information names a great many objects it does not have, among many object
   ;; streams that are none: read in a moment, every object looked for once, a bounded number of them
   (let* ((octets (octets-of "%PDF-1.7" 10
-                            (format nil "3 0 obj << /Title (Kept) ~{/K~d ~:*~d 0 R ~}>> endobj" (loop for i from 100 below 1100 collect i)) 10
-                            (with-output-to-string (out) (loop repeat 400 do (format out "9 0 obj << /Type /ObjStm /N 1 /First 4 >> endobj~%")))
+                            (format nil
+                                    "3 0 obj << /Title (Kept) ~{/K~d ~:*~d 0 R ~}>> endobj"
+                                    (loop for i from 100 below 1100 collect i)) 10
+                            (with-output-to-string (out)
+                              (loop repeat 400 do (format out "9 0 obj << /Type /ObjStm /N 1 /First 4 >> endobj~%")))
                             (make-string (* 4 1024 1024) :initial-element #\Space)
                             "trailer << /Info 3 0 R >>" 10 "%%EOF" 10))
          (start (get-internal-real-time))
@@ -532,7 +575,8 @@ endobj"))))
     (true (tuatara.defaults::pdf-dictionary-p dictionary))
     (is string= "/Page" (tuatara.defaults::pdf-get dictionary "/Type"))
     (is = 3 (tuatara.defaults::pdf-ref-p (tuatara.defaults::pdf-get dictionary "/Parent")))
-    (is equal '((:ref 1 0) (:ref 2 0)) (tuatara.defaults::pdf-array-items (tuatara.defaults::pdf-get dictionary "/Kids")))
+    (is equal '((:ref 1 0) (:ref 2 0))
+        (tuatara.defaults::pdf-array-items (tuatara.defaults::pdf-get dictionary "/Kids")))
     (is equal '("/Page") (tuatara.defaults::pdf-array-items "/Page"))
     (false (tuatara.defaults::pdf-get '(1 2) "/Type")))
   ;; an object as written: its stream as long as /Length says, else as far as endstream
@@ -547,7 +591,8 @@ endobj"))))
     (is equalp (octets-of "world")
         (subseq octets (tuatara:pdf-indirect-get five :stream-start) (tuatara:pdf-indirect-get five :stream-end)))
     (is = (length octets) (tuatara:pdf-indirect-get five :end))
-    (is equal (list five-at 5 0) (multiple-value-list (tuatara.defaults::pdf-object-header-before octets (+ five-at 4))))
+    (is equal (list five-at 5 0)
+        (multiple-value-list (tuatara.defaults::pdf-object-header-before octets (+ five-at 4))))
     (false (tuatara.defaults::pdf-indirect-object-at octets 0)))
   ;; streams decoded: each filter, filters in a row, PNG's predictor, a picture's data left as it is, the limit kept
   (is equalp (octets-of "Hello") (tuatara.defaults::pdf-ascii-hex-decoded (octets-of "48 65 6C6c6F>") 100))
@@ -555,9 +600,11 @@ endobj"))))
   (is equalp (octets-of "abcxxx") (tuatara.defaults::pdf-run-length-decoded (octets-of 2 "abc" 254 "x" 128) 100))
   (is equalp (octets-of 45 45 45 45 45 65 45 45 45 66)
       (tuatara.defaults::pdf-lzw-decoded (octets-of #x80 #x0B #x60 #x50 #x22 #x0C #x0C #x85 #x01) 100 1))
-  (is equalp (octets-of "abcxxx") (tuatara.defaults::pdf-stream-octets '(("/Filter" "/AHx" "/RL")) (octets-of "02616263FE7880>")))
+  (is equalp (octets-of "abcxxx")
+      (tuatara.defaults::pdf-stream-octets '(("/Filter" "/AHx" "/RL")) (octets-of "02616263FE7880>")))
   (is equalp (octets-of 1 2 2 3)
-      (tuatara.defaults::pdf-stream-octets '(("/Filter" . "/FlateDecode") ("/DecodeParms" ("/Predictor" . 12) ("/Columns" . 2)))
+      (tuatara.defaults::pdf-stream-octets '(("/Filter" . "/FlateDecode")
+                                             ("/DecodeParms" ("/Predictor" . 12) ("/Columns" . 2)))
                                            (zlib-stored-octets (octets-of 2 1 2 2 1 1))))
   (is equalp '(#(255 216) "/DCTDecode")
       (multiple-value-list (tuatara.defaults::pdf-stream-octets '(("/Filter" . "/DCTDecode")) (octets-of 255 216))))
@@ -582,7 +629,8 @@ endobj"))))
   (false (tuatara.io:pdf-header-at (octets-of "say %PDF- here")))
   (false (tuatara.io:pdf-header-at (octets-of (make-string 1100 :initial-element #\x) "%PDF-1.4")))
   (is eq :pdf (nth-value 1 (tuatara.io:octets-kind (octets-of "MIME junk" 10 "%PDF-1.4" 10 "%" 0 226 10))))
-  (is string= "PDF document, version 1.4" (tuatara.io:octets-kind (octets-of "MIME junk" 10 "%PDF-1.4" 10 "%" 0 226 10)))
+  (is string= "PDF document, version 1.4"
+      (tuatara.io:octets-kind (octets-of "MIME junk" 10 "%PDF-1.4" 10 "%" 0 226 10)))
   (false (eq :pdf (nth-value 1 (tuatara.io:octets-kind (octets-of "Notes: a PDF begins %PDF-1.7 as a rule" 10))))))
 
 (defun two-saves-pdf ()
@@ -694,8 +742,12 @@ OPERANDS FROM END), and how many it counted, as two values."
              (mp3 (write-test-octets-file
                    (merge-pathnames "kea.mp3" dir)
                    (octets-of "ID3" 3 0 0 (ldb (byte 7 21) size) (ldb (byte 7 14) size) (ldb (byte 7 7) size) (ldb (byte 7 0) size)
-                              frames #xFF #xFB #x90 0 (make-array 200 :element-type '(unsigned-byte 8) :initial-element 0)
-                              "TAG" (octets-of "Old title" (make-array 21 :element-type '(unsigned-byte 8) :initial-element 0))
+                              frames #xFF #xFB #x90 0 (make-array 200
+                                                                  :element-type '(unsigned-byte 8)
+                                                                  :initial-element 0)
+                              "TAG"
+                              (octets-of "Old title"
+                                         (make-array 21 :element-type '(unsigned-byte 8) :initial-element 0))
                               (make-array 95 :element-type '(unsigned-byte 8) :initial-element 0))))
              (note (metadata-of mp3)))
         (note-has note "* ID3 tags")
@@ -706,9 +758,16 @@ OPERANDS FROM END), and how many it counted, as two values."
         (note-has note "- Picture :: 17 octets of a picture kept inside it")
         (note-has note "- Title (ID3v1) :: Old title")))
     ;; FLAC: its length and comments
-    (let* ((comments (octets-of (le-octets 7 4) "Kea rec" (le-octets 2 4) (le-octets 10 4) "TITLE=Dawn" (le-octets 13 4) "ARTIST=Ana W."))
+    (let* ((comments (octets-of (le-octets 7 4)
+                                "Kea rec"
+                                (le-octets 2 4)
+                                (le-octets 10 4)
+                                "TITLE=Dawn"
+                                (le-octets 13 4)
+                                "ARTIST=Ana W."))
            (info (octets-of (be-octets 0 4) (be-octets 0 3) (be-octets 0 3)
-                            (be-octets (logior (ash 44100 44) (ash 1 41) (ash 15 36) 441000) 8) (make-array 16 :element-type '(unsigned-byte 8) :initial-element 0)))
+                            (be-octets (logior (ash 44100 44) (ash 1 41) (ash 15 36) 441000) 8)
+                            (make-array 16 :element-type '(unsigned-byte 8) :initial-element 0)))
            (flac (write-test-octets-file (merge-pathnames "kea.flac" dir)
                                          (octets-of "fLaC" 0 (be-octets (length info) 3) info #x84 (be-octets (length comments) 3) comments)))
            (note (metadata-of flac)))
@@ -726,7 +785,8 @@ OPERANDS FROM END), and how many it counted, as two values."
            (ilst (box "ilst" (box (be-octets 2 4) (box "data" (be-octets 1 4) (be-octets 0 4) "Kea Phone 9"))))
            (meta (box "meta" (box "hdlr" 0 0 0 0 (be-octets 0 4) "mdta" (be-octets 0 12) 0) keys ilst))
            (mov (write-test-octets-file (merge-pathnames "kea.mov" dir)
-                                        (octets-of (box "ftyp" "qt  " (be-octets 0 4) "qt  ") (box "moov" mvhd udta meta))))
+                                        (octets-of (box "ftyp" "qt  " (be-octets 0 4) "qt  ")
+                                                   (box "moov" mvhd udta meta))))
            (note (metadata-of mov)))
       (note-has note "* What the video or sound says of itself")
       (note-has note "- Brand :: qt")
@@ -775,13 +835,18 @@ OPERANDS FROM END), and how many it counted, as two values."
         ;; a PDF whose information names itself, and whose strings never close
         (note-has (note-of "self.pdf" (octets-of "%PDF-1.4" 10 "3 0 obj 3 0 R endobj trailer << /Info 3 0 R >> %%EOF"))
              "- PDF version :: 1.4")
-        (note-has (note-of "open.pdf" (octets-of "%PDF-1.4" 10 "3 0 obj << /Title (((((never closed" 10 "trailer << /Info 3 0 R >>"))
+        (note-has (note-of "open.pdf"
+                    (octets-of "%PDF-1.4" 10 "3 0 obj << /Title (((((never closed" 10 "trailer << /Info 3 0 R >>"))
              "* What the PDF says of itself")
         ;; boxes of no size, of sizes past the end; an ID3 tag longer than the file
-        (note-has (note-of "boxes.mp4" (octets-of (box "ftyp" "isom" (be-octets 0 4)) (be-octets 0 4) "moov" (be-octets 999999 4) "mvhd")) "- Brand :: isom")
-        (note-has (note-of "tag.mp3" (octets-of "ID3" 4 0 0 127 127 127 127 "TIT2" (be-octets 999999 4) 0 0 0 "x")) "* The file")
+        (note-has (note-of "boxes.mp4"
+                    (octets-of (box "ftyp" "isom" (be-octets 0 4)) (be-octets 0 4) "moov" (be-octets 999999 4) "mvhd"))
+                  "- Brand :: isom")
+        (note-has (note-of "tag.mp3" (octets-of "ID3" 4 0 0 127 127 127 127 "TIT2" (be-octets 999999 4) 0 0 0 "x"))
+                  "* The file")
         ;; a PNG whose chunk says it is larger than the file
-        (note-has (note-of "big.png" (octets-of #x89 "PNG" 13 10 26 10 (be-octets #x7FFFFFFF 4) "tEXt" "x")) "* The file"))
+        (note-has (note-of "big.png" (octets-of #x89 "PNG" 13 10 26 10 (be-octets #x7FFFFFFF 4) "tEXt" "x"))
+                  "* The file"))
       (true (< (- (get-internal-real-time) start) (* 20 internal-time-units-per-second))))))
 
 (define-test (metadata exif-fields-bounded)
@@ -790,7 +855,9 @@ OPERANDS FROM END), and how many it counted, as two values."
          (octets (make-array size :element-type '(unsigned-byte 8) :initial-element 65)))
     (replace octets (octets-of "II" 42 0 (le-octets 8 4) (le-octets 1000 2)))
     (dotimes (i 1000)
-      (replace octets (octets-of (le-octets #x9286 2) (le-octets 7 2) (le-octets (- size 16) 4) (le-octets 0 4)) :start1 (+ 10 (* 12 i))))
+      (replace octets
+               (octets-of (le-octets #x9286 2) (le-octets 7 2) (le-octets (- size 16) 4) (le-octets 0 4))
+               :start1 (+ 10 (* 12 i))))
     (let ((fields (tuatara.defaults::exif-read octets 0)))
       (is = 1000 (length fields))
       (true (every (lambda (field) (<= (length (third field)) 4096)) fields)))))
@@ -805,7 +872,8 @@ OPERANDS FROM END), and how many it counted, as two values."
   (with-test-directory (dir)
     (let* ((zeros (make-array 8 :element-type '(unsigned-byte 8) :initial-element 0))
            (salt (make-array 16 :element-type '(unsigned-byte 8) :initial-element 7))
-           (fingerprint (octets-of (be-octets #xA1B2C3D4E5F60718 8) (make-array 24 :element-type '(unsigned-byte 8) :initial-element 9)))
+           (fingerprint (octets-of (be-octets #xA1B2C3D4E5F60718 8)
+                                   (make-array 24 :element-type '(unsigned-byte 8) :initial-element 9)))
            (packets (octets-of
                      ;; to an RSA key, the old form of header; to a key its sender left out; to a version 6 key
                      (octets-of #x84 13 3 (be-octets #x0123456789ABCDEF 8) 1 0 8 #xAB)
@@ -841,14 +909,16 @@ OPERANDS FROM END), and how many it counted, as two values."
       (note-has (metadata-of (write-test-octets-file (merge-pathnames "cut.gpg" dir) (subseq packets 0 20)))
                 "- Modification check :: not reached")
       (let ((old (write-test-octets-file (merge-pathnames "old.gpg" dir)
-                                         (octets-of (openpgp-test-packet 3 (octets-of 4 3 0 1)) (openpgp-test-packet 9 (octets-of 1 2 3))))))
+                                         (octets-of (openpgp-test-packet 3 (octets-of 4 3 0 1))
+                                                    (openpgp-test-packet 9 (octets-of 1 2 3))))))
         (note-has (metadata-of old) "the passphrase made a key by MD5 of the passphrase alone, no salt: weak")
         (note-has (metadata-of old) "- Modification check :: none: an old form")
         ;; nothing asked of a file that names no key
         (let ((tuatara-user:*metadata-look-up-key-owners* :ask))
           (false (tuatara.defaults::look-up-key-owners-p old))))
       ;; armour with nothing after its first line
-      (note-has (metadata-of (write-test-octets-file (merge-pathnames "bare.asc" dir) (octets-of "-----BEGIN PGP MESSAGE-----")))
+      (note-has (metadata-of (write-test-octets-file (merge-pathnames "bare.asc" dir)
+                                                     (octets-of "-----BEGIN PGP MESSAGE-----")))
                 "- Modification check :: not reached")
       ;; other files are not taken for one
       (false (eq :openpgp (nth-value 1 (tuatara.io:octets-kind (octets-of #x84 2 9 9))))))))

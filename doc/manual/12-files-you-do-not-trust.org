@@ -1,0 +1,567 @@
+#+title: Files you do not trust
+#+language: en
+
+* Files you do not trust
+
+Looking at a file without letting anything in it happen, and keeping private
+text private.
+
+Most files you open come from you. Some do not: an attachment from an email you
+were not expecting, a folder a client sent, a download, a disk someone handed
+you. You want to read these, and you do not want to find out what they do. This
+chapter is about reading a file without running or changing anything. It starts
+with the safe way to open one file. It goes on to folders whose files are always
+opened that way, to the programs that decode pictures and PDFs behind a wall,
+and to git repositories you only look at. The last part is about the opposite
+problem: a file that you trust but that nobody else should read, which you keep
+encrypted.
+
+Be modest about what this gives you. The safeguards stop Tuatara itself from
+acting on a file and from changing it. They do not make a file harmless to the
+rest of your computer. If you copy a program out of a folder and run it in a
+terminal, no safeguard of an editor helps you. Each section below says what it
+covers and what it leaves out.
+
+** Opening one file safely
+
+An ordinary open does some work for you. Tuatara guesses the kind of text
+(letter, code, notes) and chooses a major mode, which colours the text and
+changes some keys. It reads any settings the file gives for itself. It looks for
+a git repository around the file. It keeps a copy of your unsaved changes. All
+of that is help when the file is yours. For a file from a stranger it is also a
+lot of ways for the file to take part.
+
+Opening a file safely turns that work off. The file is shown as plain text and
+it is read-only. No major mode and no hook runs on it. Version control is not
+looked up. No auto-save copy is made (chapter 7), and the folder is left as it
+was. The access time of a file of your own is left as it was too. The system
+lets only a file's owner read it without setting its access time, so reading
+another person's file still sets it. Mount such a drive read-only if that
+matters. The mode line says =Safe= just before the buffer's name.
+
+Characters that draw nothing, such as a zero-width space, a soft hyphen or a
+mark that turns text right to left, are shown by their codes. Control characters
+and terminal escape sequences are shown as text, such as =^[=, and do nothing.
+That does not close every way of hiding text. Variation selectors, the blank
+Hangul and Braille characters and spaces such as the no-break space are drawn as
+they are, and a letter of another alphabet that looks like a Latin one is not
+marked.
+
+There are four ways to open a file safely.
+
+- ~C-u C-x C-f~, a count before the ordinary command, asks for a file and opens
+  it safely. ~M-x find-file-safely~ does the same.
+- ~tuatara --safe FILE~ from a terminal, or ~-R~ for short, opens every file
+  named on the line that way. A file piped in with ~ls | tuatara -~ is a safe
+  buffer too.
+- The setting =*safe-directories*= lists folders whose files always open safely,
+  however you open them. An example is ="~/Downloads/"=.
+- A file that looks like a program's data and not text opens safely by itself.
+  The test is a null byte in its first 64 KB. Compiled programs, most archives
+  and disk images have one, and so does text in UTF-16. A file with no null byte
+  there, such as a script, or one whose first null byte comes later, opens the
+  usual way. The setting =*open-binary-files-safely*= turns this off. Files you
+  drop on the window open the usual way unless =*open-dropped-files-safely*= is
+  true.
+
+Files you opened safely are remembered. In the list of recent files (chapter 7)
+they carry a mark, and ~C-x C-r~ opens them safely again.
+
+Safe does not mean fixed. ~C-x C-q~ makes a safe buffer editable, for the case
+where you really do want to write in it. It is still never auto-saved.
+~M-x end-safe-visit~ opens the file as usual: it gets its mode, its colours and
+version control, and it is editable if you may write the file. Your cursor
+position, your unsaved changes and your undo history stay as they are. A file
+that is evidence (next section), or was when you opened it, refuses this, and
+says that it stays safe. So does a buffer whose file name now leads to another
+file than the one it read, as when a link was changed in the meantime.
+
+Two more settings decide what a safe buffer shows.
+=*invisible-characters-when-safe*= is true as it comes, and shows the characters
+that draw nothing. And =*text-direction-when-safe*= is false, so that text
+written right to left (Arabic, Hebrew) is shown in the order it is stored and
+not the order it is read. The stored order is the one that tells you what is in
+the file.
+
+*** What is never run
+
+A safe buffer is for looking. A Lisp file opened safely has no Lisp mode, so
+~C-x C-e~ and ~C-M-x~ are not defined there, and ~M-x~ does not offer
+~eval-region~ or ~eval-buffer~. If you turn on ~M-x lisp-mode~ yourself, those
+keys refuse, even after ~C-x C-q~, and the echo area says that the buffer is
+opened safely and that nothing was evaluated. A list of a folder in rimu
+(chapter 10) opened safely refuses to pack, unpack, wipe, rename, move or delete
+the file on the line.
+
+*** Why a file's own settings are not taken
+
+Some files carry instructions for the editor in the file itself. A first line
+such as =-*- mode: org; fill-column: 72 -*-=, or a block near the end that
+begins =Local Variables:=, can choose the mode, the tab width, whether tabs or
+spaces are used, the fill column and the spaces between sentences. These are
+convenient in your own files.
+Tuatara takes only those few settings. It never runs anything a file says: a
+line that asks for an evaluation is left alone, and Tuatara says so. A package
+can ask to take more settings, and it is given the plain text of each, never
+anything to run.
+
+A file opened safely is not read for these settings at all. For a file you do
+not trust, the less it can say to the editor the better. The setting
+=*file-local-variables*= is true as it comes. Set it to false and no file is
+read for them, safe or not.
+
+#+begin_try Try it, with an attachment you were not expecting
+1. In a terminal, make a note with a character in it that draws nothing:
+   =printf 'From the council.\nMeet at the gate\342\200\213 at noon.\n' > ~/attachment.txt=.
+2. Start Tuatara and press ~C-x C-f~. Type =~/attachment.txt= and press ~RET~.
+   Look between =gate= and =at=. There is nothing to see. Press ~C-x k~ to close
+   the buffer.
+3. Press ~C-u C-x C-f~, type =~/attachment.txt= and press ~RET~. The line now
+   reads =Meet at the gate<200B> at noon.= and the mode line says =Safe=.
+4. Press ~i~ and type a letter. The echo area says the buffer is read-only.
+   Press ~C-g~.
+5. Press ~M-x end-safe-visit~ and ~RET~. The file opens as usual and can be
+   edited. Close it again with ~C-x k~.
+6. Press ~C-x C-r~. The list marks =attachment.txt= as one you opened safely.
+   Press ~C-g~ to leave it.
+#+end_try
+
+*** Commands for opening safely
+
+#+table: commands find-file-safely end-safe-visit read-only-mode open-dropped-files
+
+*** Settings and faces
+
+#+table: settings *safe-directories* *open-binary-files-safely* *open-dropped-files-safely* *invisible-characters-when-safe* *text-direction-when-safe* *file-local-variables*
+
+#+table: faces :completion-safe
+
+** Evidence folders
+
+Sometimes one safe look is not enough. If you work with files that may be
+evidence, such as a case folder from a client, nothing of yours must ever be
+written among them. A stray backup file, an auto-save copy or a changed access
+time can be a problem later. An evidence folder is a folder that you tell
+Tuatara about, and from then on it does two things. Every file in it opens
+safely, however it is opened. And nothing is written in it or below it by
+anything Tuatara does.
+
+The setting is =*evidence-folders*= and it is empty as it comes, so no folder is
+evidence until you say so. Put it in your init file (chapter 20). A good plan is
+one folder for each case, with the evidence in one and your own work in another
+beside it:
+
+#+caption: Figure 12.1. A case folder. The evidence and your work sit side by side.
+#+name: fig-case-folder
+#+begin_example
+~/cases/
+├── 2026-0001/
+│   ├── evidence/        everything here is evidence
+│   │   ├── report.pdf
+│   │   └── letters.zip
+│   └── work/            your notes and copies, saved as usual
+│       └── timeline.org
+└── 2026-0002/
+    ├── evidence/
+    └── work/
+#+end_example
+
+Never put your work folder inside the evidence folder. Everything below an
+evidence folder is evidence, so a note kept there could not be saved.
+
+*** Naming the folders
+
+The setting is a list. Each entry is written in one of three ways, and the list
+may mix them.
+
+| Entry                                         | What it names                        |
+|-----------------------------------------------+--------------------------------------|
+| ="~/cases/*/evidence/"=                       | A path. =*= stands for the name of any one folder, =**= for any folders at all, none too. |
+| =(:name "evidence" :within "~/cases/")=       | Every folder called =evidence= inside =~/cases/=. Without =:within=, anywhere. |
+| =(:regex "^[0-9]{4}-[0-9]{4}$" :within "~/cases/" :then "evidence")= | In every folder of =~/cases/= whose whole name matches, the folder named by =:then=. Without =:then=, the matching folder itself. |
+
+For the layout in Figure 12.1, the first entry is enough:
+
+#+begin_src lisp
+(setf *evidence-folders* '("~/cases/*/evidence/"))
+#+end_src
+
+Capital letters do not count in the comparison. A file is evidence by where it
+really is, with every link followed. A link in your work folder that leads into
+evidence does not make a loophole: the file behind the link is evidence. An
+entry that cannot be read is left out and reported in =*Messages*= and by
+~M-x check-health~. The other entries still count. Give =:name= and =:regex=
+entries a =:within=. Without it, Tuatara cannot tell from the setting alone
+which repositories hold evidence and has to search for it.
+
+*** What happens to a file of evidence
+
+A file in an evidence folder is opened safely whatever way you open it, whether
+by ~C-x C-f~, from a folder list, from a link, or on the command line. The mode
+line adds the word =Evidence= before =Safe=, lit in the colour of errors, so
+that you see at once where you are. ~M-x end-safe-visit~ refuses.
+
+Nothing is written there. This covers saving, ~C-x C-w~, an export to PDF or
+Word, and Tuatara's own backup, auto-save and lock files. It also covers making,
+renaming, moving or deleting anything in the folder or below it. A refusal says
+what could not be done, and ends with the folder and the entry of
+=*evidence-folders*= that made it evidence. A question that asks where to write,
+such as ~C-x C-w~ or where to export to, does not start in an evidence folder.
+It starts in the last folder you chose that is not one, or in your home folder.
+
+A terminal that you open from a file of evidence starts in your home folder.
+Then the shell's prompt and helpers do not read what the folder holds, such as a
+=.git= folder or an =.envrc= file.
+
+*** Asking, and copying out
+
+~M-x describe-evidence~ tells you whether the file or folder here is evidence.
+It looks at the entry on the line of a folder list, at a path written at the
+cursor, or at the file of the buffer. It names the entry of the setting that
+made it so. A link is evidence when what it leads to is. For a file with
+another name that may be in an evidence folder, it says maybe. With the setting
+empty, it says that no folder is named.
+
+To work on a file, copy it out. ~M-x copy-from-evidence~ asks for a folder,
+which must exist and may not be evidence, and copies the files marked in a
+folder list, or the one on the line, or the file at the cursor, or the file of
+the buffer. It works in the background. Whether a file is evidence is decided
+again by the file it opens to copy, so a link changed in the meantime to lead
+out of evidence copies nothing. Each copy is checked against its original by its
+SHA-256 sum (a number worked out from the contents, so that a single changed
+byte shows). A copy that differs is taken away. Nothing is written over a file
+that is already there. Next to the copies is a log,
+=copied-from-evidence-DATE-TIME.log=, readable by you alone. It says for each
+file what it was, where it came from, its size, both sums and the time. A folder
+is not copied: mark the files in it.
+
+Saving a file of evidence under a new name in your work folder with ~C-x C-w~ is
+also a copy. The buffer then visits the copy. It is still opened safely, because
+the text is the evidence's, but the word =Evidence= is gone and you can edit it.
+Use ~M-x end-safe-visit~ when you decide it is safe to open as usual.
+
+*** What the guard does not cover
+
+The guard is Tuatara's own. Be clear about its edges.
+
+- A file with several names (a hard link) may have another name in an evidence
+  folder. While evidence folders are named, Tuatara does not write such a file
+  in place. It saves a new file and says so, and the other names keep what they
+  held. Their link count and change time do change. If saving a new file is not
+  possible, the save is refused. Such a file opens safely, ~M-x end-safe-visit~
+  refuses, and ~M-x describe-evidence~ says maybe, but the mode line does not
+  show =Evidence=.
+- The access time of a file that is not yours cannot be kept (see Opening one
+  file safely). Git itself sets the access time of folders it reads, so
+  ~C-x g~ in a repository of evidence can change those. Mount evidence read-only
+  if access times must stay. To tell whether a path is evidence, Tuatara
+  follows its links one at a time and stops at the first evidence folder, so it
+  never reads a link inside one, which would change that link's access time. A
+  folder list of evidence does read the links it shows.
+- A folder list shows a preview of the file on the line. For a picture or a PDF
+  in an evidence folder, that decodes a copy in the sandbox (next section).
+- Tuatara looks at where a folder really is just before it writes. A link or a
+  drive changed in that moment is not seen until the next look.
+- Programs you run yourself write wherever they like. ~M-x compile~ and a shell
+  in a terminal are not guarded.
+- A file opened in a background daemon (chapter 18) stays open there for as long
+  as the daemon holds the buffer, even after the window that opened it is gone,
+  and the drive it lives on cannot be unmounted. Do case work in plain
+  =tuatara=.
+
+A second guard is the system's own. Make the evidence read-only for everyone
+with =chmod -R a-w evidence/=. Tuatara's guard does not replace it.
+
+#+begin_try Try it, with a folder of case files
+1. In a terminal, make a case:
+   =mkdir -p ~/cases/2026-0001/evidence ~/cases/2026-0001/work/more= and
+   =printf 'The report, as it was given.\n' > ~/cases/2026-0001/evidence/report.txt=.
+2. Open your init file with ~C-x C-f ~/.config/tuatara/init.lisp RET~ and add
+   =(setf *evidence-folders* '("~/cases/*/evidence/"))=. Save, and start Tuatara
+   again.
+3. Open =~/cases/2026-0001/evidence/report.txt= with ~C-x C-f~, not the safe
+   way. The mode line shows =Evidence= and =Safe=.
+4. Press ~M-x describe-evidence~ and ~RET~. It says yes, and names the entry.
+5. Press ~C-x C-q~, ~i~, type a letter, ~C-g~, then ~C-x C-s~. Tuatara asks
+   whether to save a write-protected file. Press ~y~ and ~RET~. The save is
+   refused and the message ends with =and nothing is written in it=.
+6. Press ~C-x C-w~ and type =~/cases/2026-0001/work/report.txt= and ~RET~. The
+   copy is written. The buffer is now the copy: =Evidence= is gone.
+7. Open the original again, and press ~M-x copy-from-evidence~. Give
+   =~/cases/2026-0001/work/more/= as the folder. Look in it with ~C-x d~ for the
+   copy and the log.
+#+end_try
+
+*** Commands, settings and faces
+
+#+table: commands describe-evidence copy-from-evidence
+
+#+table: settings *evidence-folders*
+
+#+table: faces :mode-line-evidence
+
+** The sandbox around decoders
+
+Pictures, PDFs and office files are not text. Showing one means decoding it, and
+decoders have bugs: a crafted file has been known to take over the program that
+reads it. Tuatara does not decode these files itself. It starts a separate
+program of the system for each job, inside a sandbox, and takes back only the
+result. A sandbox is a closed room: what happens inside does not reach the rest
+of the machine. Tuatara uses a program called bubblewrap, whose name on the
+command line is =bwrap=.
+
+#+caption: Figure 12.2. What a decoder sees when it runs in the sandbox.
+#+name: fig-sandbox
+#+begin_example
+  your files, your network, your terminal, other programs
+  ──────────────────────────  wall  ───────────────────────
+                      ┌────────────────────────────────────┐
+  copy of the file ──▶│  decoder (a system program)        │──▶ pixels or text
+  (in memory)         │  sees: /usr, read only             │    back to Tuatara
+                      │  has: its own empty /tmp           │
+                      │  no home, no network, no other     │
+                      │  process, no way into the terminal │
+                      │  ends after 10 seconds or 1 GB     │
+                      └────────────────────────────────────┘
+#+end_example
+
+The decoder reads the file from a copy held in memory. It is given no name for
+the file, so it cannot reach the other files beside it and cannot write to the
+original. Beyond =/usr= it sees only a few files of =/etc=: the linker's cache,
+the alternatives and the font settings. Its time, its memory and the size of
+what it may write are limited. On top of that the kernel refuses it system calls
+that no decoder needs, such as making new rooms, loading kernel modules or
+opening network sockets other than local ones. When the decoder finishes, when
+you press ~C-g~ in its buffer, when you kill the buffer or when you leave
+Tuatara, it is ended with everything it started. While a picture is drawn or the
+text of a PDF is taken out, the work is a job: ~C-x j~ lists it and the mode
+line lights =P=.
+
+Where this helps: a PDF or picture that carries an attack against the decoder
+finds a room with nothing in it to steal and no way out to send it. Where it
+does not: it does not stop you from being misled by what the file says, and it
+does not protect a program you start yourself. Some commands leave the sandbox
+on purpose, such as ~M-x open-externally~, which hands the file to the desktop's
+own program. That command asks first, as long as =*open-externally-ask*= is
+true.
+
+Several programs use the same room. Code formatters (chapter 13) run inside it
+with the project folder visible read-only, and no network. LaTeX that makes a
+PDF sees the document's folder, the TeX installation and your own fonts, all
+read-only, and writes only in its own working folder.
+Language grammars run in it too, where a sandbox exists. Without a sandbox, the
+setting =*syntax-helper-unconfined*= decides whether the grammars of projects
+you trust run on their own without one.
+
+Press ~M-x check-health~ to see whether =bwrap= was found and which version. If
+it was not, or if you set =*sandbox-program*= to nothing, Tuatara does not
+decode: pictures and PDFs are shown as bytes and text. Your files are not at
+risk for that reason. Exports to PDF still work, and say that LaTeX ran without
+a wall.
+
+The limits are settings. A decoder gets 10 seconds (=*sandbox-seconds*=) and 1
+GB of memory (=*sandbox-memory*=). All the decoders working on one file may use
+2 GB together (=*sandbox-total-memory*=), where your system can hold them to it.
+A file larger than 1 GB is not decoded (=*sandbox-input-limit*=). It opens as
+bytes, and the echo area says why. A PDF that grew past the limit after it was
+opened says so in its view when it is read again. =*sandbox-seccomp*= is the
+kernel's refusal of unneeded calls, on x86-64 and AArch64. Keep it true unless a
+decoder of yours fails because of it.
+
+#+begin_try Try it, with a PDF from a stranger
+1. Open any PDF with ~C-x C-f~. It is decoded in the sandbox and shown as pages
+   (chapter 16).
+2. While it loads, press ~C-g~. In a shell, run
+   =ps -eo pid,args | grep [b]wrap | grep -v syntax-helper=. Nothing of
+   Tuatara's is listed: ~C-g~ ended the decoder. The buffer says it was
+   stopped, and ~M-x revert-buffer~ reads it again. The syntax helpers you
+   filtered out stay running, each in a sandbox of its own.
+3. Press ~M-x check-health~ and look for the line called Sandbox. It names
+   =bwrap= and its version, and says whether the decoders are held to a total
+   amount of memory.
+4. Press ~M-: *sandbox-seconds* RET~. The echo area shows the number of seconds.
+#+end_try
+
+*** Commands and settings
+
+#+table: commands check-health
+
+#+table: settings *sandbox-program* *sandbox-seconds* *sandbox-memory* *sandbox-total-memory* *sandbox-input-limit* *sandbox-seccomp* *format-in-sandbox* *syntax-helper-unconfined*
+
+** Repositories you only look at
+
+A git repository can run programs. Its hooks run when you commit. Its filters
+and helpers run when you check out or compare files. A language server for its
+code runs the project's build scripts. A repository you downloaded may have set
+these up for you. So Tuatara does not run any of it for a project you have not
+said you trust.
+
+The first time you open ~C-x g~ (the git status, chapter 15), start a language
+server with ~C-c L~, or compile in a project, Tuatara asks. The question says
+everything a yes would allow. There are three answers.
+
+| Modal | Non-modal | What it does                                                          |
+|-------+-----------+-----------------------------------------------------------------------|
+| none  | ~y~       | Trust the project. Its programs may run. You are then asked once more, ~y~ and ~RET~, because trusting cannot be taken back after programs ran. |
+| none  | ~l~       | Look only. Git reads the project and nothing it names is run. The answer is remembered. |
+| none  | ~n~       | Not now. Nothing runs, and you are asked again next time.             |
+
+In a look-only repository the git status works and shows branches, commits and
+changes. Git reads the working files and a private copy of the repository's
+settings and index. The repository's own settings, hooks and filters never reach
+git, and nothing in the repository is written, not even its index. Git does set
+the access time of the folders it reads. The mode line of every git buffer says
+=Look only= in the colour of warnings, and the first line of the status says
+why. Commands that would change the repository are refused.
+
+~M-x trust-project~ asks again, whatever you answered before. Use it to move a
+project from look-only to trusted once you have read what is in it, or the other
+way. A project can also be trusted in your init file. The setting
+=*lsp-trusted-projects*= lists folders whose projects run their own programs
+without asking. A link from a trusted folder to another does not give the other
+any trust: a project is known by where it really is.
+
+A repository that is, is inside, or holds an evidence folder is never trusted,
+and it is never asked about. It is look-only for as long as the evidence is
+there, even if it is in =*lsp-trusted-projects*=.
+
+What this does not cover: it is a decision about Tuatara's own work. If you open
+a terminal inside the repository and run its build script, you have trusted it.
+
+#+begin_try Try it, with a repository you were sent
+1. In a terminal, make a small repository to stand for a stranger's:
+   =mkdir ~/sent && cd ~/sent && git init && printf 'hello\n' > note.txt &&
+   git add note.txt && git commit -m first=.
+2. In Tuatara, open =~/sent/note.txt= and press ~C-x g~. The question about
+   trusting the project appears. Press ~l~.
+3. The status opens. The mode line says =Look only=, and the first line of the
+   status says why and that git only reads.
+4. Press ~M-x trust-project~ and ~RET~. The same question appears. Press ~n~ to
+   take the answer back. The status is look-only until you decide.
+#+end_try
+
+*** Command, setting and faces
+
+#+table: commands trust-project
+
+#+table: settings *lsp-trusted-projects*
+
+#+table: faces :mode-line-look-only :git-look-only
+
+** Encrypted files
+
+Everything above is about protecting you from a file. This part is about
+protecting a file from other people. Tuatara uses GnuPG (the program =gpg=) to
+encrypt and sign. Encrypting turns text into something that only a key or a
+passphrase can turn back. Signing adds a mark that shows who wrote a file and
+that it has not been changed since.
+
+*** A file that ends in .gpg
+
+A file whose name ends in =.gpg= opens decrypted. The text on disk stays
+encrypted. The decrypted text lives in memory only. It is never auto-saved, and
+it is not placed on the system clipboard unless you ask for that. Each save
+encrypts it again. If the file is encrypted to a passphrase and not to a key,
+gpg-agent's prompt asks at once. When the minibuffer is what asks (next
+section), the buffer waits until you press ~RET~ first.
+~M-x gpg-decrypt-with-passphrase~ is the same.
+
+Whom a file is encrypted to is a choice for each save.
+~M-x gpg-choose-encryption-keys~ chooses again, between keys and a passphrase,
+and the next save uses the new choice. ~M-x gpg-lock~ makes gpg-agent forget
+every passphrase it keeps, so the next file you open asks again. It does not
+close buffers you already have open: kill those too, if you want their text gone
+from memory.
+
+*** The passphrase prompt
+
+Who asks for the passphrase is the setting =*gpg-passphrase-from*=. As it comes
+(=:auto=), gpg-agent's own window asks on a desktop, its prompt in the terminal
+asks if Tuatara runs in one, and the minibuffer asks last. Either of the first
+two keeps the passphrase out of Tuatara altogether. The minibuffer is the
+fallback. It shows stars as you type, and the passphrase then passes through the
+editor. Each character is wiped from memory as it is typed or deleted, and at
+once if you give up with ~C-g~. Still, the editor's memory is not locked, a
+look-alike program could ask in its place, and the garbage collector may have
+copied text before it was wiped. So when the minibuffer asks, a window above it
+says what that risks. =*gpg-loopback-warning*= is true as it comes. Turn it off
+only when you know the risks by heart.
+
+Which gpg runs is not left to chance. Tuatara runs the program found in the
+system's own folders (=/usr/local/bin=, =/usr/bin=, =/bin=), never one that a
+folder on your =PATH= might hold. =*gpg-program*= names a different one, by a
+full path from the root. Before each run Tuatara also checks that the folder gpg
+takes its keys and options from (=~/.gnupg=, or the folder =GNUPGHOME= names) is
+yours, is not a link, and cannot be written by others. If the check fails, gpg
+is not run, and the message says which folder is wrong and why.
+
+*** Encrypting and decrypting
+
+~M-x gpg-encrypt-file~ encrypts the file shown, or the one on the line of a
+folder list, into =FILE.gpg=. It asks whom to encrypt to in the minibuffer: your
+keys, or a passphrase, with commas between several. It then offers to wipe the
+original. Say no if you are not sure, since a wiped file cannot be recovered and
+a solid state disk may keep old copies anyway. ~M-x wipe-file~ does that wipe by
+itself. ~M-x gpg-decrypt-file~ writes a decrypted copy to a file you name, after
+warning you that its text is then on disk. To read an encrypted file, open the
+=.gpg= file instead.
+
+You can also encrypt part of a buffer. Select some text and use
+~M-x gpg-encrypt-region~. The text becomes a block that starts with
+=-----BEGIN PGP MESSAGE-----=. This is useful for one paragraph of a note that
+you still want to share as plain text. ~M-x gpg-decrypt-region~ turns the block
+under the cursor, or the nearest one, back into text in place. The buffer is
+then kept from the disk as an encrypted file is: no auto-save, no clipboard. A
+save asks before writing the decrypted text unencrypted, so a habit of pressing
+~C-x C-s~ does not leave it on the disk.
+
+~M-x gpg-copy-to-clipboard~ is the one way out. It puts the text you copied last
+on the system clipboard, even if it came from an encrypted file. Other programs,
+and clipboard managers, can read it and keep it.
+
+*** Signing and checking
+
+~M-x gpg-sign-file~ signs a file with your key. It asks which kind: a detached
+signature, =FILE.sig=, which leaves the file as it is; clear-signed text,
+=FILE.asc=; or a signed file, =FILE.gpg=. ~M-x gpg-sign-region~ clear-signs the
+selected text in place. ~M-x gpg-verify-file~ and ~M-x gpg-verify-region~ check
+a signature. They say who signed, when, and how far that key is trusted.
+
+Read the answer for what it says. A good signature tells you the text has not
+changed since that key signed it. It does not tell you the text is safe, and it
+tells you who signed only as far as you trust the key.
+
+*** Keys
+
+~M-x gpg-list-keys~ opens a list of your keys and those you have of others. The
+list fills in as gpg answers. ~M-x gpg-keys-details~ shows one key's
+fingerprint, names and expiry. ~M-x gpg-import-keys~ and
+~M-x gpg-import-keys-region~ add keys from a file or from selected text.
+~M-x gpg-keys-export~ writes the public part of marked keys to a file, and
+~M-x gpg-keys-insert~ puts it at the cursor in the buffer the list was opened
+from. The folder list (chapter 10) has keys for the same jobs on files.
+
+#+begin_try Try it, with an encrypted note
+1. In a terminal, make a note:
+   =printf 'The alarm code is 4411.\n' > ~/code.txt=.
+2. Open it with ~C-x C-f~. Press ~M-x gpg-encrypt-file~ and ~RET~. Choose a
+   passphrase, press ~RET~ for no more, and give a passphrase twice. When it
+   asks about wiping the original, answer =n=.
+3. Open =~/code.txt.gpg= with ~C-x C-f~. Give the passphrase if asked; gpg-agent
+   may still hold it. The text appears. No auto-save copy of it is made.
+4. Press ~i~, add a line, press ~C-g~ and ~C-x C-s~. Give the passphrase twice.
+   The file on disk is encrypted again. In a terminal, =cat ~/code.txt.gpg=
+   shows nothing readable.
+5. Press ~M-x gpg-lock~, kill the buffer with ~C-x k~ and open the file again.
+   You are asked for the passphrase once more.
+6. Open =~/code.txt= and select its line. Press ~M-x gpg-encrypt-region~, choose
+   a passphrase and give it twice. The line becomes a block. Put the cursor in
+   it and press ~M-x gpg-decrypt-region~. Press ~C-x C-s~: Tuatara asks whether
+   to save the text decrypted. Answer =n= and press ~RET~.
+#+end_try
+
+*** Commands and settings
+
+#+table: commands gpg-encrypt-file gpg-decrypt-file gpg-encrypt-region gpg-decrypt-region gpg-decrypt-with-passphrase gpg-choose-encryption-keys gpg-copy-to-clipboard gpg-lock wipe-file gpg-sign-file gpg-sign-region gpg-verify-file gpg-verify-region gpg-import-keys gpg-import-keys-region gpg-list-keys gpg-keys-details gpg-keys-export gpg-keys-insert
+
+#+table: settings *gpg-program* *gpg-passphrase-from* *gpg-loopback-warning*

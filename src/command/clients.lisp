@@ -85,12 +85,12 @@ own, who is offered every buffer."
 
 (defun add-client (editor frontend &key directory environment (buffer (constantly nil)) start)
   "Make a client of EDITOR on FRONTEND, a remote frontend, started in
-DIRECTORY with ENVIRONMENT (CLIENT), numbered from 1 after the others, with a frame
-on FRONTEND showing what BUFFER, a function of the client, gives (by default
-the buffer used last); the frame EDITOR keeps with no screen gives way to it
-\(KEEP-IDLE-FRAME), and what waited to be done there is done in it. START, a
-function of none, is done in that frame as soon as the editor is free.
-Returns the client."
+DIRECTORY with ENVIRONMENT (CLIENT), numbered from 1 after the others. It has
+a frame on FRONTEND showing what BUFFER, a function of the client, gives (by
+default the buffer used last). The frame EDITOR keeps with no screen gives way
+to it (KEEP-IDLE-FRAME), and what waited to be done there is done in it.
+START, a function of none, is done in that frame as soon as the editor is
+free. Returns the client."
   (let* ((client (make-client :frontend frontend :directory directory :environment environment
                               :number (1+ (loop for other in (editor-clients editor)
                                                 when (client-remote other) maximize (client-number other)))))

@@ -69,7 +69,8 @@ from_address() {
   mkdir -p "$licences/$1" "$cache"
   if ! echo "$4  $cache/$4" | sha256sum -c --status 2>/dev/null; then
     curl -fsSL --max-time 60 --retry 3 -o "$cache/$4.part" "$3" || missing "$1" "$3"
-    echo "$4  $cache/$4.part" | sha256sum -c --status || { rm -f "$cache/$4.part"; missing "$1" "$3 is not the file expected"; }
+    echo "$4  $cache/$4.part" | sha256sum -c --status ||
+      { rm -f "$cache/$4.part"; missing "$1" "$3 is not the file expected"; }
     mv "$cache/$4.part" "$cache/$4"
   fi
   cp "$cache/$4" "$licences/$1/$2"
@@ -78,7 +79,8 @@ from_address() {
 # notice of the part of it taken from PyTorch, from its own text
 simdutf_version=9.0.0
 simdutf_h="$sources/pkg/simdutf/vendor/simdutf.h"
-grep -q "^#define SIMDUTF_VERSION \"$simdutf_version\"" "$simdutf_h" || missing simdutf "simdutf.h is not version $simdutf_version"
+grep -q "^#define SIMDUTF_VERSION \"$simdutf_version\"" "$simdutf_h" ||
+  missing simdutf "simdutf.h is not version $simdutf_version"
 from_address simdutf LICENSE-MIT "https://raw.githubusercontent.com/simdutf/simdutf/v$simdutf_version/LICENSE-MIT" \
   fc8dbc04e03ad4efc08a647ffe7f995b811a95bc04c0e85a56d5277c6593fa5f
 from_address simdutf LICENSE-APACHE "https://raw.githubusercontent.com/simdutf/simdutf/v$simdutf_version/LICENSE-APACHE" \
@@ -94,7 +96,8 @@ done
 from_package uucode "$(zon_hash build.zig.zon uucode)" LICENSE.md
 # the licences uucode's own names, which its package leaves out
 uucode_commit=1fb73433bba5d93366c57f23ff2e9d7939746500
-grep -q "uucode-$uucode_commit\.tar\.gz" "$sources/build.zig.zon" || missing uucode "build.zig.zon names no uucode $uucode_commit"
+grep -q "uucode-$uucode_commit\.tar\.gz" "$sources/build.zig.zon" ||
+  missing uucode "build.zig.zon names no uucode $uucode_commit"
 from_address uucode LICENSE_unicode "https://raw.githubusercontent.com/jacobsandlund/uucode/$uucode_commit/licenses/LICENSE_unicode" \
   1eda5a3b026870c737b22e8bcd4954338612c790db688242e003f41a4fa95175
 from_address uucode LICENSE_Bjoern_Hoehrmann "https://raw.githubusercontent.com/jacobsandlund/uucode/$uucode_commit/licenses/LICENSE_Bjoern_Hoehrmann" \

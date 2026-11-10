@@ -1,0 +1,899 @@
+#+title: Writing code
+#+language: en
+
+* Writing code
+
+Colours, indentation, comments, brackets, finding your way and running the
+program.
+
+You can write code in Tuatara with nothing set up. A Python or shell script
+opens coloured, a new line starts at the right depth, and a few keys move you
+over whole functions. If you install a language server for your language, you
+get more: errors marked as you type, a jump to where a name is defined, a
+rename that changes only the real uses. This chapter goes through all of it in
+the order you meet it when you start a small program: what Tuatara knows about
+the language, how lines are laid out, how to comment code in and out, how to
+move over brackets and definitions, how to find where something is defined, how
+to run the program and read its errors, and how to settle a merge conflict in
+a file of code.
+
+The last part is about Lisp. Tuatara is written in Common Lisp, and the Lisp
+you type can run inside the editor. If you do not write Lisp you can skip it,
+though it is the quickest way to try a small idea.
+
+Two reminders from earlier chapters. ~i~ starts INSERT state, and ~C-g~ or
+~ESC~ returns to NORMAL state. Every key in this chapter is pressed in NORMAL
+state unless it starts with ~C-x~, ~C-c~, ~C-M-~ or ~M-~, which work in both.
+The ~C-c~ keys for code work in the buffers of programming languages. In a
+text file or an Org file they are free for other things.
+
+** What Tuatara knows about code
+
+When you open a source file, Tuatara picks the language from the file's name,
+or from its first line when the name says nothing (a line such as
+=#!/bin/sh=). The language gives the buffer its major mode, such as
+=python-mode= or =bash-mode=, and the mode decides how the buffer behaves.
+
+Two helpers then look at the code. Figure 13.1 shows which does what.
+
+#+caption: Figure 13.1. The two helpers that read code.
+#+name: fig-two-helpers
+#+begin_example
+                 your file: sum.py
+                        |
+          +-------------+--------------+
+          |                            |
+  built in: the grammar        a program you install:
+  (tree-sitter)                the language server
+          |                            |
+  reads this file only         reads the whole project
+          |                            |
+   colours                      errors and warnings
+   indentation                  go to a definition
+   pieces to select             every use of a name
+   definitions, outline         rename everywhere
+                                completion, hover, fixes
+#+end_example
+
+The first helper is built in. A /grammar/ is a description of how a language is
+put together. Tuatara has one for about three hundred languages and reads your
+text with it as you type, building a /syntax tree/: the function holds a
+statement, the statement holds a call, the call holds its arguments. The tree
+is what tells a keyword from a name and a string from a comment, so it gives
+the colours. It also gives the indentation, the pieces that can be selected,
+and where each definition starts and ends. All of this works with no setup and
+with no other program installed.
+
+The second helper is a /language server/, a separate program for each
+language, such as rust-analyzer for Rust or pylsp for Python. It knows the
+whole project and not only the file you are in, so it can answer questions the
+grammar cannot. It is optional. The sections on language servers and on finding
+definitions say how to start one.
+
+A grammar is code someone else wrote, and a file you were sent can be made to
+confuse it. So Tuatara never runs a grammar inside the editor. A small program
+of its own does it, shut in a sandbox with its memory held and no network. If a
+grammar fails on a file, only that buffer loses its colours, and the echo area
+says so. The grammars of the common languages are on from the start. For one
+you use less, Tuatara asks the first time whether to turn it on. The setting
+=*grammars-on*= lists the languages that are on without asking.
+
+Files you do not trust, such as evidence, are opened a different way, and
+chapter 12 describes it. A file opened that way is not coloured by a grammar
+and is never given to a language server.
+
+*** How much colour
+
+Colour comes in three styles. /Rich/ colours everything the language's rules
+name, and it is the standard. /Sparse/ colours only some kinds of thing, which
+suits a reader who finds a full palette tiring. /None/ shows plain text. ~M-x
+rotate-colouring~ moves the buffer's language to the next style, in the order
+rich, sparse, none, and rich again. Every buffer in that language changes with
+it.
+
+To start a language in another style, put a line in your init file (chapter 20
+describes it): =(set-colouring 'python :sparse)=. Sparse has four levels. Level
+1 colours comments and strings. Level 2 adds keywords and functions. Level 3,
+the standard, adds types and constants. Level 4 colours everything. Give the
+level with =:level=, as in =(set-colouring 'python :sparse :level 2)=. The
+language can be named as =python=, as a mode such as =python-mode=, as
+=prog-mode= for every programming language, or as =t= for every buffer.
+
+*** Seeing what a language has
+
+~M-x check-health~ shows a table with a line for each language: whether its
+grammar, colours, indentation, selections and definitions work, which formatter
+and language server it knows, and a tick after each one that is installed on
+your machine. Use it when something does not work, to see whether the language
+is missing a piece or you are missing a program.
+
+*** Commands, settings and faces
+
+#+table: commands check-health rotate-colouring
+
+#+table: settings *grammars-on* *syntax-helper-unconfined*
+
+The colours themselves come from the theme. These are the faces the syntax
+colours use most.
+
+#+table: faces :variable :punctuation :comment :string :keyword :function :type :constant :number :operator :variable.parameter :punctuation.bracket :builtin :preprocessor
+
+** Indentation and tabs
+
+/Indenting/ a line means putting blanks before it, so that the shape of the
+code shows its structure. Tuatara indents a line by the language's own rules,
+read from the syntax tree. A Python line after =def f():= goes in one level, a
+closing =}= in C lines up with the line that opened it, and the lines of a long
+Lisp call line up under its first argument.
+
+You do not have to type the blanks yourself. A new line you make with ~RET~,
+or in NORMAL state with ~o~ and ~O~, begins at the indentation the language
+wants. If you leave such a line empty, the blanks are taken away again when you
+press ~C-g~.
+
+~TAB~ indents the line the cursor is on. The cursor can be anywhere in the
+line. When the line is already right, ~TAB~ does something else: it completes
+the name before the cursor, as the section on language servers describes. The
+setting =*tab-always-indent*= says what ~TAB~ does. Its standard value,
+=:complete=, indents and then completes. With =t= it only indents. With =nil=
+it indents only while the cursor is in the blanks at the start of the line, and
+anywhere else it moves on to the next tab stop.
+
+To lay out more than one line, select them and press ~C-M-\~
+(=indent-region=). In NORMAL state ~>~ (=indent-selection-or-line=) does the
+same for the selected lines, or for the current line when nothing is selected.
+~M-m~ (=back-to-indentation=) moves the cursor to the first character of the
+line that is not a blank.
+
+Lines inside a comment or a string that began on an earlier line are left as
+they are, because their blanks are part of the text.
+
+*** Tabs and spaces
+
+A /tab stop/ is a column that a tab character moves to. Tuatara puts them 4
+columns apart. =*tab-width*= changes that. Indentation is made of spaces unless
+you say otherwise, which keeps a file looking the same in every program. Some
+projects, a Makefile or a C project with its own style, use tab characters. For
+those, ~M-x indent-tabs-mode~ switches the buffer between tabs and spaces, and
+=*indent-tabs-mode*= sets the starting choice. ~M-x insert-tab~ puts in one tab
+character whatever the settings say, and ~M-i~ (=tab-to-tab-stop=) moves on to
+the next tab stop with spaces or a tab as the buffer wants.
+
+The init file has forms for one language at a time:
+
+#+begin_example
+(set-indentation 'c 2)            ; two columns a level in C
+(set-tab-width 'c-mode 8)         ; tab stops 8 apart in C files
+(set-indent-tabs-mode 'bash t)    ; tabs in shell scripts
+#+end_example
+
+=set-indentation= takes 1 to 16 columns for a language whose rules indent by
+levels. =set-tab-width= takes 1 to 64, and =prog-mode= in place of a language
+means every programming language. A file can also say its own settings in its
+first line or in a block of =Local Variables:= at its end, and Tuatara reads
+them while =*file-local-variables*= is =t=.
+
+Whole files are laid out by a /formatter/, a program that sets the code out as
+the language's community expects, such as rustfmt for Rust, ruff for Python and
+shfmt for shell scripts. The section on language servers covers it.
+
+#+begin_try Try it, with a shell script
+1. Press ~C-x C-f~, type =~/code-practice/count.sh= and press ~RET~. Tuatara
+   asks to make the folder when you save, if it is not there. Press ~i~ and
+   type these seven lines, pressing ~RET~ at the end of each. Do not type any
+   blanks in front. If Tuatara has already put some in, leave them.
+
+   #+begin_example
+   sum_up() {
+   for n in "$@"; do
+   total=$((total + n))
+   done
+   echo "$total"
+   }
+   sum_up 3 4 5
+   #+end_example
+
+   Press ~C-g~.
+2. Press ~%~ to select the whole buffer, then ~C-M-\~. The lines inside the
+   function move in, the line inside the loop moves in again, =done= lines up
+   with =for=, and the last line is at the left edge.
+3. Press ~C-g~ and ~C-x C-s~ to save. Press ~M-x~, type =compile= and press
+   ~RET~. Press ~C-a~ and ~C-k~ to clear the command offered, type =sh
+   count.sh= and press ~RET~. If Tuatara asks whether you trust the folder, it
+   is your own, so type ~y~, and at the second question type ~y~ and press
+   ~RET~ (the section on running a build explains why it asks).
+4. A window opens under the script with the name =*compile*=. The output is
+   =12=, and the last line says the command finished with exit code 0.
+5. Press ~g g~ and ~j~ (non-modal: ~M-<~, ~C-n~) to reach the =for= line. Press
+   ~I~, type four blanks and press ~C-g~. The line sits too far in. Press ~>~.
+   It moves back to where the language wants it. Press ~u~ (non-modal: ~C-/~) to
+   undo that.
+6. Try the tab setting. Press ~M-x~, type =indent-tabs-mode= and press ~RET~.
+   Press ~g g~, ~j j~ to reach the =total= line, ~I~, type four blanks and
+   press ~C-g~. Press ~>~, then ~M-m~. The mode line says =C1=: the
+   indentation is one tab character. With spaces it says =C4=. Run the command
+   again to switch back. Lines already in the right column are left as they
+   are, which is why you spoil one first.
+#+end_try
+
+*** Commands and settings
+
+#+table: commands indent-for-tab-command indent-region indent-selection-or-line back-to-indentation tab-to-tab-stop insert-tab indent-tabs-mode
+
+#+table: settings *tab-always-indent* *indent-new-lines* *tab-width* *indent-tabs-mode* *file-local-variables*
+
+** Comments
+
+You comment out a line to stop the program running it without losing it, and
+you write a comment to say something to the next reader, which may be you in
+six months. Both are a single key.
+
+~C-x C-;~ (=toggle-comment-lines=) comments the current line. In NORMAL state
+the single key ~C~ does the same. If you have selected lines, it comments every
+line the selection touches. If the lines are all commented already, it takes
+the comment marks away instead, so the same key switches the comment on and
+off. The marker is the language's own: =#= in Python and shell scripts, =//= in
+Rust and C, =;;= in Lisp. It goes at the indentation of the least indented
+line, so the block stays tidy, and the cursor stays where it was.
+
+If you like the cursor to move down to the next line afterwards, so that you
+can press the key again and again to comment a run of lines, use
+=toggle-comment-lines-ret=. It has no key. Give it one in your init file:
+
+#+begin_example
+(bind-key "C-x C-;" 'toggle-comment-lines-ret)
+(bind-key "C" 'toggle-comment-lines-ret :map :normal)
+#+end_example
+
+~M-;~ (=comment-dwim=, "do what I mean") does the sensible thing for where you
+are. With lines selected it comments them as ~C-x C-;~ (modal: ~C~) does. On a
+line with no comment it starts one at the end of the code, with the marker and a
+space, and leaves you in INSERT state ready to type the words. On a line that
+has a comment already it moves you into it. In Python it writes
+=# adds the numbers= after the code, in Rust =// adds the numbers=.
+
+The comment is also something you can select: ~m c~ selects the comment around
+the cursor, and ~m C~ the comment with the comment lines right before and after
+it.
+
+*** Commands
+
+#+table: commands toggle-comment-lines toggle-comment-lines-ret comment-dwim select-comment select-comment-inside
+
+** Brackets and pairs
+
+Code is full of brackets, and a missing one is a common reason a program does
+not run. Tuatara helps in three ways.
+
+/Showing the partner./ When the cursor is on a bracket, or just after a closing
+one, the bracket that pairs with it is lit in the =:paren-match= colour. A
+bracket with no partner, or the wrong kind, is lit in =:paren-mismatch=. It is
+on as standard, and ~M-x show-paren-mode~ turns it off and on in every buffer.
+When you type a closing bracket whose partner is out of sight, the echo area
+tells you what it matches (=*blink-matching-paren*= controls that).
+
+/Closing them as you type./ ~M-x electric-pair-mode~ makes an opening bracket
+write its closing half too, with the cursor between. Typing the closing half
+when it is already there steps over it, and ~DEL~ between an empty pair takes
+both away. It is off as standard. To turn it on for every session, put
+=(setf *electric-pair-mode* t)= in your init file. It does not pair everything,
+because some characters are usually plain text: the apostrophe in "don't", for
+example. =*electric-pair-typing*= says which are paired. Its standard value,
+=:safe=, pairs the delimiters of =*pair-delimiters*= except those in
+=*electric-pair-safe-exclusions*=. =:all= pairs every one.
+
+/Putting a pair round something./ Select some text and press ~M-(~
+(=insert-pair=) to put brackets round it. With nothing selected it writes an
+empty pair with the cursor inside. On text that has the pair already, it takes
+it off. ~M-x delete-pair~ takes away the pair round the expression after the
+cursor and keeps what was inside.
+
+Selecting is just as direct. In NORMAL state ~m a~ selects a pair with what is
+in it, and ~m i~ selects only what is inside. For bracketed expressions of code,
+~m A~ selects the whole expression and ~m I~ only its inside. These are the
+same selection keys as in chapter 5, with the pair as the thing selected.
+
+#+begin_try Try it, with a Python script
+1. Press ~C-x C-f~, type =~/code-practice/sum.py= and press ~RET~.
+2. Press ~i~ and type this one line, then ~C-g~:
+
+   #+begin_example
+   print(add_up([3, 4, 5]))
+   #+end_example
+
+Press ~g g~ (non-modal: ~M-<~) then ~O~ to open a line above it. Type
+=def add_up(numbers):=, press ~RET~ and type =return sum(numbers)=. Press ~C-g~.
+The second line is indented one level.
+3. Put the cursor on the first =(= after =print=, with ~g g~, ~j j~ and ~l~
+   if you need to move. The matching =)= at the end of the line is lit.
+4. Press ~m i~. The text inside the brackets is selected, and ~M-o~ makes the
+   selection one piece larger. ~C-g~ lets go.
+5. Press ~M-x~, type =electric-pair-mode= and press ~RET~. On a new line type
+   =[=. You get =[]= with the cursor between. Type =1= and then =]=. The
+   closing bracket is stepped over and you have =[1]=. Press ~u~ (non-modal:
+   ~C-/~) until the line is gone, and run the command again to switch pairing
+   off.
+6. Press ~C-x C-s~ to save.
+#+end_try
+
+*** Commands and settings
+
+#+table: commands show-paren-mode electric-pair-mode insert-pair delete-pair select-pair select-inside-pair select-sexp select-sexp-inside
+
+#+table: settings *show-paren-mode* *blink-matching-paren* *electric-pair-mode* *electric-pair-typing* *electric-pair-safe-exclusions* *pair-delimiters*
+
+#+table: faces :paren-match :paren-mismatch
+
+** Moving by definitions and lists
+
+Moving a character or a word at a time is slow in code. Code has a shape, and
+Tuatara can move by the shape. A /balanced expression/ is a word, a string or a
+bracketed group taken whole. A /definition/ is a function or a type: in Lisp a
+bracket at the start of a line, and in Rust, C, Python and shell scripts
+whatever the language's grammar calls one. The keys use Control and Alt
+together, written =C-M-=, and they come from Emacs. Figure 13.2 shows what some
+of them do on a Lisp function, because Lisp, being nothing but brackets, shows
+it most plainly.
+
+#+caption: Figure 13.2. Where C-M-f, C-M-d and C-M-u take the cursor.
+#+name: fig-sexp-moves
+#+begin_example
+  (defun average (numbers)
+  ^       ^       ^
+  |       |       C-M-f from here goes over (numbers)
+  |       C-M-f from here goes over the name, then the list
+  C-M-d here goes in, just after the bracket
+
+  (defun average (numbers)
+    (/ (sum numbers) (length numbers)))
+        ^
+        C-M-u here goes out, back to the bracket before (/
+        C-M-f here goes over (sum numbers)
+#+end_example
+
+~C-M-f~ and ~C-M-b~ (=forward-sexp=, =backward-sexp=) move over the next or the
+last balanced expression. ~C-M-n~ and ~C-M-p~ (=forward-list=, =backward-list=)
+do the same for bracketed groups only. ~C-M-d~ goes into the next group,
+just after its opening bracket, and ~C-M-u~ goes back out of the group the
+cursor is in, to its opening bracket. ~M-x up-list~ goes out past the closing
+bracket instead. In NORMAL state ~W~ and ~B~ do the work of ~C-M-f~ and ~C-M-b~.
+
+For whole definitions, ~C-M-a~ goes to the start of the one the cursor is in
+(=beginning-of-defun=) and ~C-M-e~ to its end (=end-of-defun=). A count first
+goes that many. ~M-x mark-defun~ selects the whole definition with the comments
+above it. Press it again to add the next one.
+
+Some commands change the code by its pieces. ~C-M-SPC~ or ~C-M-@~ (=mark-sexp=)
+selects the next expression. ~M-x kill-sexp~ cuts the expression after the
+cursor and ~C-M-DEL~ cuts the one before it, and ~C-M-t~ (=transpose-sexps=)
+swaps the two either side of the cursor, which is a quick way to put two
+arguments in the other order.
+
+*** Selecting by the code
+
+In NORMAL state the syntax tree grows and shrinks a selection for you. ~M-o~
+(=expand-selection=) selects the smallest piece around the cursor, and each
+press after that selects the next larger one: the word, the call, the
+statement, the function, the file. ~M-i~ (=shrink-selection=) goes back a step.
+~M-n~ and ~M-p~ move the selection to the piece beside it, the next argument or
+the next statement. A count before ~M-o~ grows several steps at once.
+
+The ~m~ keys name a piece directly. ~m f~ selects the body of the function
+around the cursor and ~m F~ the whole function. ~m t~ and ~m T~ do the same for
+a type, ~m r~ and ~m R~ for a parameter, and ~m y~ and ~m Y~ for a test. Which
+pieces a language has depends on its grammar. Where the language has none of
+the piece, the echo area says so.
+
+*** An outline of the file
+
+~M-g o~ (=buffer-outline=) lists the definitions of the file, each with its
+line number, in the order of the text. Type a few letters to narrow the list and
+press ~RET~ to go there. In Lisp the list holds the top-level forms. Where a
+language server runs, the list is its list of names, with functions, types and
+fields nested.
+
+#+begin_try Try it, with the shell script again
+1. Open =~/code-practice/count.sh= from the earlier box, and press ~g g~.
+2. Press ~C-M-e~. The cursor goes to the end of the function, past the =}=.
+   Press ~C-M-a~. It returns to the start of =sum_up=.
+3. Press ~j~ (non-modal: ~C-n~) to go into the body, then ~m f~. The body of the
+   function is selected. Press ~C-g~.
+4. Put the cursor on the word =total= in the loop, with ~j~ and ~l~. Press
+   ~M-o~ a few times and watch the selection grow: first a small piece, then
+   the loop, then the whole function. Press ~M-i~ to shrink it step by step.
+5. Press ~M-g o~. The list shows the definition. Press ~C-g~ to close it.
+#+end_try
+
+*** Commands
+
+#+table: commands forward-sexp backward-sexp forward-list backward-list up-list backward-up-list down-list beginning-of-defun end-of-defun mark-defun mark-sexp kill-sexp backward-kill-sexp transpose-sexps expand-selection shrink-selection select-next-sibling select-previous-sibling select-function select-function-inside select-type select-type-inside select-parameter select-parameter-inside select-test select-test-inside buffer-outline
+
+** Finding definitions
+
+Reading code is mostly going from a name to where it is defined, and from a
+definition to every place that uses it. Tuatara has a few ways, from the cheap
+to the thorough.
+
+~M-.~ and ~C-c d~ (=xref-find-definitions=) go to where the name under the
+cursor is defined. With a count, or where there is no name under the cursor, it
+asks for one. When a name has several definitions they are listed in a buffer
+called =*xref*=, and ~RET~ on one goes there. ~M-,~ or ~C-c D~
+(=xref-go-back=) takes you back to where you were, and pressing it again goes
+further back. ~C-M-,~ (=xref-go-forward=) goes forward again.
+
+In Lisp files this works with no setup, because the running Lisp knows its own
+definitions. For other languages it needs a language server, as the next section
+describes.
+
+With a server, you can also ask more of the project:
+
+- ~C-c r~ (=lsp-find-references=) lists every place the name is used, in
+  =*xref*=.
+- ~C-c g~ (=lsp-find-symbol=) asks for a name and goes to a function or type of
+  the project by it, with the name at the cursor offered.
+- ~C-c T~ goes to the definition of the type of the thing at the cursor, and
+  ~C-c I~ to the implementations of a trait or an interface.
+- ~C-c c~ lists the places that call the function at the cursor and ~C-c C~ the
+  functions it calls.
+
+In an =*xref*= list, ~n~ and ~p~ show the next and the previous place in the
+window you came from and leave the list where it is. ~RET~ or ~l~ goes to the
+place. ~o~ shows it in the other window, and ~h~ or ~q~ closes the list.
+
+For what no server knows, such as a word in a comment or a message in a string,
+~M-s g~ (=search-in-files=) searches the text of every file in the project as
+you type. The lines it finds can be gone through with ~M-g n~ and ~M-g p~, the
+same keys as for a build's errors, described below.
+
+*** Commands
+
+#+table: commands xref-find-definitions xref-go-back xref-go-forward lsp-find-references lsp-find-symbol lsp-find-type-definition lsp-find-implementations lsp-incoming-calls lsp-outgoing-calls search-in-files
+
+** Language servers
+
+A language server takes some time to start, and it runs in the background, so
+you can go on typing while it starts. While it reads the project, a =P= shows
+at the front of the mode line.
+
+*** Starting one, and trust
+
+Tuatara knows the usual server for most languages and uses the ones it finds on
+your =PATH=. Install one with your system's packages or the language's own
+tool, such as rust-analyzer for Rust or python3-lsp-server for Python, and open
+a file of that language again. ~M-x check-health~ says which are installed.
+
+A server runs the project's own code: build scripts, macros, plugins. For that
+reason nothing starts until you say you trust the project. ~C-c L~ (=lsp=)
+starts the servers for the buffer's language and asks, the first time, whether
+you trust the project. There are three answers.
+
+- ~y~ trusts it. Its servers start by themselves whenever one of its files is
+  opened, in later sessions too. Its build commands (=M-x compile=) run, and
+  so do the programs git runs for it.
+- ~l~ looks only. Nothing of the project runs: no server, no build, and git
+  only reads the repository. The answer is kept.
+- ~n~ leaves the question for now, and you are asked again next time.
+
+~M-x trust-project~ asks again for the project of the current buffer, whatever
+was said before. ~M-x lsp-forget-project~ takes the trust back and ends its
+servers. To trust a whole folder of your own projects without being asked, put
+it in =*lsp-trusted-projects*= in the init file, but never the folder where
+files others send you are kept.
+
+A /project/ is the folder that holds the language's own mark, such as
+=Cargo.toml= for Rust, or else the nearest folder above holding =.git= or
+=.project=. An empty =.project= file makes a folder a project.
+
+If a language has no server installed, the commands that need one say so. For
+example, ~C-c d~ says there is no way to find definitions in buffers of that
+language, and nothing is broken. ~M-x lsp-restart~ ends a stuck server and
+starts it again, ~M-x lsp-shutdown~ ends it, and ~M-x lsp-events~ lists the
+last messages sent to and from it, which is the place to look when a server
+does not do what you expect.
+
+*** What the server tells you as you type
+
+When the cursor rests in code, after =*lsp-idle-delay*= seconds, the echo area
+shows the parameters of the call you are in, or else what the name under the
+cursor is. A name and its other uses in the file are lit, and the mode line
+counts the problems found after the mode's name. A line with a problem has an
+=E= (an error) or a =W= (a warning) beside it, and the faulty text is
+underlined. A box under the cursor says what is wrong where it rests.
+
+Some of these can be turned off. =*lsp-signature-help*= is the parameters,
+=*lsp-hover-echo*= is what the name is, and =*lsp-highlight-symbol*= is the
+lighting of a name's other uses. =*lsp-diagnostics-display*= says how a problem
+is said: =:box= under the cursor, =:echo= in the echo area, or =nil= not at all.
+=*lsp-diagnostics-style*= is the underline: =:wave=, =:dotted=, =:line= or
+=:background=.
+
+The keys that go through the problems are ~C-c n~ and ~C-c p~, which go to the
+next and the previous one and say what it is, and ~C-c l~, which lists all of
+them in a window across the bottom. In that list ~RET~ opens the file at the
+place.
+
+~C-c h~ (=lsp-describe-thing-at-point=) shows what the server knows of the thing
+under the cursor, its type and its documentation, in the help window.
+
+*** Completion
+
+~C-M-i~ or ~M-TAB~ (=completion-at-point=) opens a list beside the cursor of
+the names that fit what you have typed, each with what it is, and the chosen
+one's documentation beside the list. Typing narrows the list. ~C-n~ and ~C-p~
+choose, ~TAB~ or ~RET~ puts the chosen name in, and ~C-g~ closes the list. In
+Lisp it offers the names of Lisp, and elsewhere what the server offers. Because
+=*tab-always-indent*= is =:complete=, ~TAB~ also completes when the line is
+already indented right.
+
+Without a server you can still complete from the words you already have. ~M-/~
+(=expand-word=) replaces the start of a word with the nearest word that begins
+the same, from this buffer and then from others. Press it again for the next
+nearest. ~C-M-/~ (=complete-word=) shows those words as a list. Terminals send
+that key as something else, and ~C-M-i~ lists the same words in a language with
+no completion of its own.
+
+*** Rename, fixes and tidying
+
+Renaming a function by searching for its name and replacing it is a classic way
+to break a program. The same letters may be in a string or a comment, and you
+miss the files you did not open. ~C-c R~ (=lsp-rename=) asks the server instead.
+It asks for the new name, then changes only the real uses, in every file of the
+project. Each file's changes are one step for ~u~ (non-modal: ~C-/~) to take
+back, and nothing is saved until you save (~C-x s~ saves them all).
+
+~C-c a~ (=lsp-code-actions=) offers the server's own fixes and changes for the
+selection or the cursor, with those for what is wrong there first: fill in a
+type, add an import, apply the suggestion for an error. ~C-c o~
+(=lsp-organise-imports=) puts the file's imports in order and, where the server
+does it, takes out the unused ones.
+
+~C-c z~ (=lsp-fold=) hides the body of the block the cursor is in under its
+first line, and shows it again when pressed on that line. ~C-c Z~
+(=lsp-fold-all=) hides every outermost block of the file, or shows them all
+again when some are hidden.
+
+Three more things can be shown within the code, each switched on and off by its
+key. ~C-c i~ shows /inlay hints/: the types of variables and the names of the
+parameters a call fills in, written faint. ~C-c S~ colours each name by what the
+server says it is, a parameter, a field, a macro, over the usual colours. ~C-c
+K~ shows /code lenses/, short notes such as =3 references= or =Run test= at the
+end of a line, and ~C-c k~ runs the one on the current line. Their settings are
+=*lsp-inlay-hints*=, =*lsp-semantic-tokens*= and =*lsp-code-lenses*=, which say
+whether each is on as a file opens.
+
+*** Formatting
+
+A /formatter/ is a program that sets code out as the language's community has
+agreed, so that every file of a project looks alike and a change shows only
+what changed. ~C-c f~ (=format-buffer=) runs the language's formatter in the
+background. It is shut in the sandbox, which lets it read the project and change
+nothing else. It runs from the project's folder, so a settings file of the
+formatter's own is found. If no formatter is installed the language server lays
+the code out, and if neither is there Tuatara indents each line by its own
+rules. The whole change is one step: ~u~ (non-modal: ~C-/~) takes all of it
+back. ~C-c F~ (=format-region=) does the same for the selected lines.
+
+To choose another formatter for a language, set =*language-formatters*= in the
+init file. =*format-on-save*= names the languages formatted before each save, or
+=t= for every language with a formatter installed. A formatter that takes longer
+than =*format-seconds*= is stopped and nothing changes. =*format-in-sandbox*=
+turns off the sandbox for a formatter that cannot work shut in.
+
+*** Settings of your own
+
+=*lsp-languages*= lists the languages whose servers are used.
+=*language-servers*= names a server of your own choice for a language in place
+of the usual one. =*lsp-wait*= is the seconds a command waits for an answer it
+needs at once, and a key press stops the wait sooner. =*lsp-watch-files*= tells
+servers about files other programs changed, and =*lsp-watch-skipped*= names the
+folders it never watches, such as =target= and =node_modules=. =*lsp-outline*=
+makes ~M-g o~ list the server's names.
+
+#+begin_try Try it, with the Python script
+This needs a language server for Python, such as pylsp, ty or ruff. Without one,
+the steps still show what Tuatara says.
+
+1. Open =~/code-practice/sum.py=. Put the cursor on =add_up= in the =print=
+   line.
+2. Press ~M-x~, type =lsp= and press ~RET~. If Tuatara asks whether you trust
+   the folder, it is your own, so type ~y~ and press ~RET~. The echo area says
+   the server is starting and then that it is ready.
+3. Press ~C-c d~. The cursor jumps to the =def= line. Press ~C-c D~ to go back.
+4. Press ~C-c h~. The window shows what the server knows of the function. Press
+   ~C-x 1~ (modal: ~F~) when you have read it.
+5. Press ~C-c R~, type =total_of= and press ~RET~. The name changes in both
+   places. Press ~u~ (non-modal: ~C-/~) to undo both at once.
+6. In the =return= line, press ~A~ and type =x=, then ~C-g~, to make a
+   mistake. After a moment an =E= shows beside the line and the mode line counts
+   =1=. Press ~C-c l~ to list it, ~RET~ to go there, and ~u~ to take the mistake
+   away.
+7. Press ~C-c f~. With a formatter installed, the file is laid out by it. The
+   echo area names the formatter, or says why none could be used. Press ~M-x~,
+   type =lsp-shutdown= and press ~RET~ when you are done.
+#+end_try
+
+*** Commands
+
+#+table: commands lsp trust-project lsp-forget-project lsp-restart lsp-shutdown lsp-events lsp-diagnostics lsp-next-diagnostic lsp-previous-diagnostic lsp-describe-thing-at-point completion-at-point expand-word complete-word lsp-rename lsp-code-actions lsp-organise-imports lsp-fold lsp-fold-all lsp-inlay-hints-mode lsp-semantic-tokens-mode lsp-code-lenses-mode lsp-code-lens format-buffer format-region
+
+*** Settings and faces
+
+#+table: settings *lsp-trusted-projects* *lsp-languages* *language-servers* *lsp-idle-delay* *lsp-signature-help* *lsp-hover-echo* *lsp-highlight-symbol* *lsp-diagnostics-display* *lsp-diagnostics-style* *lsp-inlay-hints* *lsp-semantic-tokens* *lsp-semantic-faces* *lsp-code-lenses* *lsp-outline* *lsp-wait* *lsp-watch-files* *lsp-watch-skipped* *language-formatters* *format-on-save* *format-in-sandbox* *format-seconds* *word-completion-keep-case*
+
+#+table: faces :diagnostic-error :diagnostic-warning :diagnostic-info :diagnostic-hint :diagnostic-error-ground :diagnostic-warning-ground :diagnostic-info-ground :diagnostic-hint-ground :symbol-highlight :inlay-hint :code-lens :fold-ellipsis
+
+** Snippets
+
+A /snippet/ is a piece of text with places to fill in, which you put in by
+typing a short key and pressing ~TAB~. It saves typing the same few lines every
+time, such as the top of a script. Nothing in a snippet is ever run.
+
+Your snippets are files in =~/.config/tuatara/snippets/=, in a folder named
+after the major mode: =python-mode/=, =prog-mode/= for every programming
+language, or =fundamental-mode/= for every buffer. A snippet file starts with
+lines that name it and give its key, then a line of two dashes, then the text:
+
+#+begin_example
+# name: Script header
+# key: hdr
+# --
+# ${1:What this file does}
+# Written on $CURRENT_YEAR-$CURRENT_MONTH-$CURRENT_DATE
+$0
+#+end_example
+
+In the text, =$1=, =$2= and so on are the places to fill in, in order.
+=${1:words}= is a place that starts with some words, which your typing replaces.
+=${1|a,b|}= offers a choice. =$0= is where the cursor ends up. A name with a
+dollar stands for a value: =$CURRENT_YEAR=, =$CURRENT_MONTH= and =$CURRENT_DATE=
+for today, =$TM_FILENAME= for the file, =$AUTHOR= for the name in
+=*user-full-name*=.
+
+Type the key and press ~TAB~, and the text goes in with the cursor in the first
+place. ~TAB~ moves on to the next place and ~S-TAB~ back to the one before.
+After the last place the cursor goes to =$0=. ~C-c y~ (=insert-snippet=) chooses
+a snippet from a list by name, each with its key, and with text selected the
+selection goes where the snippet has =$TM_SELECTED_TEXT=. ~M-x copy-snippet~
+copies one of Tuatara's own into your folder so that you can change it, and
+yours takes the place of Tuatara's.
+
+#+begin_try Try it, with a Python script header
+1. In a terminal, make the snippet. Type this as one command.
+
+   #+begin_example
+   mkdir -p ~/.config/tuatara/snippets/python-mode && printf '# name: Script header\n# key: hdr\n# --\n# ${1:What this file does}\n# Written on $CURRENT_YEAR-$CURRENT_MONTH-$CURRENT_DATE\n$0\n' > ~/.config/tuatara/snippets/python-mode/header
+   #+end_example
+
+2. Open =~/code-practice/sum.py=. Press ~g g~ and ~O~ to open a line above the
+   first. Type =hdr= and press ~TAB~.
+3. Two comment lines appear. The first has =What this file does= ready to be
+   typed over. Type =Adds up some numbers=, and press ~TAB~. The cursor is on
+   the line after, which is where =$0= was.
+4. Press ~C-g~ and ~u~ (non-modal: ~C-/~) until the lines are gone. Delete the
+   snippet file if you do not want to keep it.
+#+end_try
+
+*** Commands and settings
+
+#+table: commands insert-snippet copy-snippet snippet-next-field snippet-previous-field
+
+#+table: settings *snippet-directories* *snippet-tab* *user-full-name*
+
+** Running a build or the tests
+
+Writing code is a loop. You change something, run it, read what went wrong, go
+to each place, fix it, and run it again. ~M-x compile~ runs the build or the
+tests from inside the editor and turns every error in the output into a place
+you can jump to, so the loop never leaves the keyboard.
+
+~M-x compile~ asks for a command. Type anything you would type in a shell: =make
+-k=, =cargo build=, =python3 -m unittest= or =sh count.sh=. Tuatara runs it with
+your shell from the root of the project the current file is in, or from the
+file's own folder when the file is in no project. The first time it offers =make
+-k= (the setting =*compile-command*=), and after that the command you used last.
+~M-p~ goes back through earlier ones. The command runs with no terminal, so a
+program that asks for a password, such as =sudo= or =ssh=, cannot reach your
+screen. Chapter 17 is for those.
+
+A build runs the project's own code, so in a project you have not trusted
+Tuatara asks first, the same question the language servers ask. Answer ~n~ or
+~l~ and nothing runs.
+
+The output appears in a buffer called =*compile*= as it comes, and you go on
+working meanwhile. Read the first error and start fixing it while the rest is
+still being built. When the command ends, a last line says how it ended and how
+long it took. Only one compile runs at a time. If you start a second, Tuatara
+asks and starts it when the first has finished. ~C-c C-k~ in =*compile*= stops a
+command that is still running, ~r~ there runs it again, and ~q~ closes the
+window. The output kept is capped at =*compile-output-limit*= octets.
+
+Lines in the output that name a file and a line are /places/. Tuatara knows the
+form of the errors of GCC and Clang, of rustc and cargo, of Python, and the
+=file:line:= of =grep -n= and =make=. Errors are in the =:compile-error= colour,
+warnings in =:compile-warning= and notes in =:compile-note=. ~M-g n~
+(=next-place=) goes to the next place and ~M-g p~ (=previous-place=) to the one
+before, from any buffer. At the end of the list the echo area says there are no
+more. Tuatara counts columns from 0, while compilers usually count from 1, so a
+compiler's column 5 shows as column 4 in the mode line.
+
+The same two keys go through any list of places made last: the lines found by a
+search of files (~M-s g~) or the problems a language server found in a buffer.
+In =*compile*=, ~RET~ on a line opens that place.
+
+#+begin_try Try it, with a mistake in the Python script
+1. Open =~/code-practice/sum.py=. Press ~g g~, then ~j j~ to reach the =print=
+   line, then ~A~, type =x= and press ~C-g~. The line now reads
+   =print(add_up([3, 4, 5]))x=, which is not valid Python.
+2. Press ~C-x C-s~. Press ~M-x~, type =compile= and press ~RET~. Press ~C-a~ and
+   ~C-k~, type =python3 sum.py= and press ~RET~. If asked to trust the folder,
+   type ~y~, then ~y~ and ~RET~.
+3. =*compile*= opens under the file. It shows Python's own words, a line
+   beginning =File= with the file's name and =line 3=, then the line itself and
+   =SyntaxError=. The last line says the command failed with a non-zero exit
+   code.
+4. Press ~M-g n~. The cursor goes to line 3 of =sum.py=, and the echo area shows
+   the line from the output.
+5. Press ~u~ (non-modal: ~C-/~) to take the =x= away, ~C-x C-s~, then ~M-x~,
+   ~compile~ and ~RET~, and ~RET~ again to run the command offered. The output
+   is =12=.
+#+end_try
+
+*** Commands and settings
+
+#+table: commands compile compile-stop next-place previous-place
+
+#+table: settings *compile-command* *compile-output-limit*
+
+#+table: faces :compile-error :compile-warning :compile-note
+
+** Merge conflicts
+
+When two people change the same lines, or you change them on two branches, Git
+cannot choose which to keep. It writes both versions into the file between
+marker lines and stops, and you decide. The file then holds this:
+
+#+begin_example
+<<<<<<< HEAD
+name = "Aroha"
+=======
+name = "Hemi"
+>>>>>>> other-branch
+#+end_example
+
+The first version, after =<<<<<<<=, is yours in a merge. In a rebase it is the
+branch the commits are being made again onto. The second version, after =======,
+is the other one. When Git is set to show it, a third part after =|||||||= has
+the lines as they were before either change, which is called the /base/.
+
+Putting this right by hand means deleting marker lines with care, and a marker
+left behind breaks the build. Tuatara looks through each file you open for
+conflicts. It colours the first side, the second side, the base and the marker
+lines, and the mode line says how many there are. The keys under ~C-c ^~ settle
+each one in a single step, and each step goes on to the next conflict.
+
+| Modal | Non-modal | What it does                                           |
+|-------+-----------+--------------------------------------------------------|
+| none  | ~C-c ^ n~ | Go to the next conflict.                               |
+| none  | ~C-c ^ p~ | Go to the one before.                                  |
+| none  | ~C-c ^ u~ | Keep the first side, the upper one.                    |
+| none  | ~C-c ^ l~ | Keep the second side, the lower one.                   |
+| none  | ~C-c ^ a~ | Keep both sides, first then second.                    |
+| none  | ~C-c ^ b~ | Keep the base, the lines from before either change.    |
+| none  | ~C-c ^ =~ | Show how the two sides differ, in a buffer of its own. |
+
+Every choice is one step for ~u~ (non-modal: ~C-/~), so a wrong choice is easy
+to take back.
+
+How the merge began, which branch is which, and how to finish it afterwards, is
+in chapter 15. This chapter only covers the file.
+
+#+begin_try Try it, with a small conflict
+1. In a terminal, make a file with a conflict in it. Type this as one command.
+
+   #+begin_example
+   printf 'greeting = "hello"\n<<<<<<< HEAD\nname = "Aroha"\n=======\nname = "Hemi"\n>>>>>>> other-branch\nprint(greeting, name)\n' > ~/code-practice/greet.py
+   #+end_example
+
+2. Open =~/code-practice/greet.py=. The two sides and the marker lines are
+   coloured, and the mode line says there is a conflict.
+3. Press ~g g~ (non-modal: ~M-<~) and then ~C-c ^ n~. The cursor goes to the
+   line with the =<<<<<<<= marker, and the echo area says which conflict it is
+   and how many there are.
+4. Press ~C-c ^ =~. A buffer shows the lines only one side has. Press ~q~ to
+   close it.
+5. Press ~C-c ^ l~. The marker lines and the first side are gone, and
+   =name = "Hemi"= stays. Press ~u~ (non-modal: ~C-/~) and the conflict is back.
+   Press ~C-c ^ a~ to keep both lines instead, and ~u~ again.
+#+end_try
+
+*** Commands and faces
+
+#+table: commands conflict-markers-mode conflict-next conflict-previous conflict-keep-first-side conflict-keep-second-side conflict-keep-both-sides conflict-keep-base conflict-show-sides-diff
+
+#+table: faces :conflict-first :conflict-second :conflict-base :conflict-marker
+
+** Lisp development
+
+The Lisp you type runs in the editor itself. That is how the init file works,
+and it is a quick way to try a small function or to look at a value. A file
+ending in =.lisp= opens in Lisp mode, which has keys for running what you have
+written. No language server is needed: the running Lisp knows its own
+definitions, so ~M-.~ goes to them.
+
+The keys that run text work only in Lisp buffers: a =.lisp= file, the scratch
+buffer =*lisp-scratch*= (~M-x lisp-scratch~) and your init file.
+
+- ~C-x C-e~ (=eval-last-expression=) runs the expression just before the cursor
+  and shows its value in the echo area. A whole number is also shown in octal
+  and hexadecimal.
+- ~C-M-x~ (=eval-top-level-form=) runs the whole top-level form the cursor is
+  in, that is, the one whose bracket is at the start of a line. A =defvar= in it
+  takes its new value even when the variable already had one.
+- ~M-x eval-region~ runs every form in the selection, and ~M-x eval-buffer~
+  every form of the buffer, one after another, as a file's forms are run when it
+  is loaded.
+- ~C-j~ (=eval-print-last-expression=) in =*lisp-scratch*= runs the expression
+  and writes its value into the buffer.
+- ~M-:~ (=eval-expression=) works anywhere. It asks for an expression, shows its
+  value, and runs only what you typed.
+- ~C-c C-m~ (=pp-macroexpand-last-expression=) shows a macro call expanded once,
+  laid out in a window of its own.
+
+A file opened safely (chapter 12) runs nothing: the keys say so and do nothing.
+
+~M-x ielm~ opens =*ielm*=, a prompt where you type Lisp and read the answer at
+once. The modal keys are off there, so you type without pressing ~i~. ~RET~ runs
+the input when it is a whole expression, and otherwise starts a new line of it.
+~C-j~ runs it as it is. ~M-p~ and ~M-n~ go back and forward through what you
+typed before, ~C-c C-u~ clears the input, and ~TAB~ completes a name. ~C-c C-b~
+chooses the buffer that the Lisp you type sees as current, so that =(insert
+"x")= puts text there.
+
+When something fails, ~M-x toggle-debug-on-error~ makes the next error show the
+calls that were running when it happened, innermost first, in =*Backtrace*=.
+The setting =*debug-on-error*= makes that the standard.
+
+#+begin_try Try it, with a Lisp function that adds numbers
+1. Open =~/code-practice/sum.lisp=, press ~i~ and type these lines. ~RET~
+   indents each line for you.
+
+   #+begin_example
+   (defun add-up (numbers)
+     (reduce #'+ numbers))
+
+   (add-up '(3 4 5))
+   #+end_example
+
+   Press ~C-g~.
+2. Put the cursor inside the =defun= (~g g~) and press ~C-M-x~. The echo area
+   shows the form and then =ADD-UP=. The function now exists in the editor.
+3. Go to the last line with ~g e~ (non-modal: ~M->~), move to its end and press
+   ~C-x C-e~. The echo area shows the value, =12=, and then the number in octal
+   and hexadecimal.
+4. Put the cursor on =add-up= in the last line, with ~C-a~ (modal: ~g h~) and
+   ~l l~, and press ~M-.~. It goes to the =defun=. Press ~M-,~ to come back.
+5. Press ~M-x~, type =ielm= and press ~RET~. After the prompt type
+   =(add-up '(10 20))= and press ~RET~. The answer is =30=. Press ~M-p~ and the
+   same input comes back.
+6. Press ~M-x~, type =lisp-scratch= and press ~RET~ for a buffer of your own to
+   try things in. Press ~g e~ and ~i~, type =(+ 1 2)= and press ~C-j~. The
+   value is written on the next line.
+#+end_try
+
+*** Commands
+
+#+table: commands eval-last-expression eval-top-level-form eval-region eval-buffer eval-print-last-expression eval-expression pp-macroexpand-last-expression lisp-scratch ielm ielm-send-input ielm-return ielm-previous-input ielm-next-input ielm-kill-input ielm-change-working-buffer ielm-tab toggle-debug-on-error
+
+*** Settings
+
+#+table: settings *debug-on-error*
+
+** The commands of each language
+
+Each language has a command that switches the current buffer to its major mode,
+for the rare time Tuatara guesses wrongly or you open a file with an unusual
+name. Type ~M-x~ and the language's name followed by =-mode=, for example
+=M-x rust-mode=. They are all listed here. Chapter 8 explains how to find a
+command by its name.
+
+#+table: commands ada-mode adl-mode agda2-mode alloy-mode amber-mode asm-mode astro-mode awk-mode bash-mode basic-mode bass-mode bazel-starlark-mode bicep-mode bitbake-mode blade-mode blueprint-mode c++-mode c-mode c3-mode caddyfile-mode cairo-mode capnp-mode cel-mode chuck-mode circom-mode clarity-mode clojure-mode cmake-mode concerto-mode conf-javaprop-mode containerfile-mode cpon-mode crystal-mode csharp-mode css-mode cue-mode cylc-mode cython-mode d-mode dart-mode dbml-mode debian-control-mode dhall-mode docker-compose-mode dotenv-mode doxyfile-mode dtd-mode dts-mode dune-mode dunstrc-mode earthfile-mode ebnf-mode eex-mode eiffel-mode ejs-mode elixir-mode elm-mode elvish-mode emacs-lisp-mode erb-mode erlang-mode esdl-mode feature-mode fennel-mode fga-mode fidl-mode fish-mode flatbuffers-mode forth-mode fortran-mode freebasic-mode fsharp-mode gdscript-mode gitattributes-mode gitconfig-mode github-action-mode gitignore-mode gitlab-ci-mode gleam-mode glimmer-js-mode glimmer-mode glimmer-ts-mode glsl-mode gn-mode gnuplot-mode go-mod-mode go-mode go-template-mode go-work-mode godot-resource-mode gpr-mode graphql-mode graphviz-dot-mode gren-mode groovy-mode hare-mode haskell-mode haxe-mode hcl-mode hdl-mode heex-mode hocon-mode hoon-mode html-mode hurl-mode hy-mode hyprlang-mode ini-mode ink-mode inko-mode janet-mode java-mode jinja2-mode jq-mode js-jsx-mode js-mode json-mode json5-mode jsonc-mode jsonl-mode jsonnet-mode julia-mode just-mode kcl-mode kconfig-mode kdl-mode koka-mode kotlin-mode koto-mode ld-script-mode lean4-mode less-css-mode lisp-interaction-mode lisp-mode literate-haskell-mode llvm-mode lpf-mode lua-mode luau-mode makefile-mode matlab-mode mermaid-mode meson-mode mojo-mode move-mode nasm-mode nearley-mode nestedtext-mode nginx-mode nickel-mode nim-mode nix-mode nushell-mode ocaml-interface-mode ocaml-mode odin-mode ohm-mode pascal-mode penrose-mode perl-mode pest-mode php-mode picat-mode pip-requirements-mode pkl-mode ponylang-mode powershell-mode prisma-mode prolog-mode protobuf-mode proverif-mode prql-mode ptx-mode pug-mode purescript-mode python-mode ql-mode qml-mode quint-mode r-mode racket-mode rego-mode rescript-mode ripple-mode robot-mode ron-mode rpm-spec-mode ruby-mode rust-mode sage-mode scad-mode scala-mode scfg-mode scheme-mode sclang-mode scss-mode shellcheckrc-mode slang-mode slint-mode slisp-mode smali-mode smithy-mode sml-mode snakemake-mode solidity-mode sourcepawn-mode spade-mode spicedb-mode sql-mode ssh-config-mode strictdoc-mode styx-mode svelte-mode sway-mode swift-mode systemd-mode systemverilog-mode t32-mode tablegen-mode tact-mode tcl-mode teal-mode templ-mode tera-mode textproto-mode thrift-mode tla-mode tolk-mode toml-mode tql-mode tsx-mode twig-mode typescript-mode typespec-mode typst-mode ungrammar-mode unison-mode uxntal-mode v-mode vala-mode vento-mode verilog-mode vhdl-mode vhs-mode vimrc-mode vue-mode wast-mode wat-mode werk-mode wesl-mode wgsl-mode wit-mode woodpecker-ci-mode wren-mode xml-mode xtc-mode yaml-mode yara-mode yuck-mode zig-mode

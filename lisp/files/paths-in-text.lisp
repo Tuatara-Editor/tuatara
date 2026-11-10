@@ -94,7 +94,8 @@ folder on another machine: only a question for a file reads one there."
                (not (buffer-read-only-p buffer))
                (not (tuatara.display:hex-view-p buffer))
                (complete-paths-p buffer))
-      (multiple-value-bind (start name-start name-end directory) (path-at-point buffer (tuatara.buffer:buffer-point buffer))
+      (multiple-value-bind (start name-start name-end directory)
+          (path-at-point buffer (tuatara.buffer:buffer-point buffer))
         (declare (ignore name-start name-end))
         (let ((expanded (and start (not (remote-name-p directory))
                              ;; a path not from the root or ~ is in the buffer's folder, maybe there

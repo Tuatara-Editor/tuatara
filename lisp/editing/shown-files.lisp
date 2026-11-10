@@ -21,7 +21,8 @@ one."
   version rope result)
 
 (setf (documentation 'shown-text-job-p 'function) "True when OBJECT is a SHOWN-TEXT-JOB, of any kind."
-      (documentation 'shown-text-job-version 'function) "The version of its buffer's text a look in the background was started on."
+      (documentation 'shown-text-job-version 'function)
+      "The version of its buffer's text a look in the background was started on."
       (documentation 'shown-text-job-rope 'function) "The text a look in the background reads."
       (documentation 'shown-text-job-result 'function) "What a look in the background found, once done.")
 

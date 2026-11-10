@@ -350,7 +350,9 @@ and the suggested ones apart, each found or missing with what to install."
                                (tuatara.syntax:syntax-helper-program) (count-if-not #'null grammars) (length grammars)))
       (fact "" (substitute-command-keys
                 (format nil "~d of them on (*grammars-on*); a file in a language whose grammar is off asks to turn it on, \\[turn-on-grammar] and \\[turn-off-grammar] change it"
-                        (loop for language in languages for grammar in grammars count (and grammar (grammar-on-p language))))))
+                        (loop for language in languages
+                              for grammar in grammars
+                              count (and grammar (grammar-on-p language))))))
       (fact "Parsing" (cond ((eq :ready (first (health-check-sandbox check)))
                              (format nil "grammars run shut in, in a program for the projects you trust and one for each other file or buffer, ~:[each held to its memory in its own address space only (no systemd-run scope here)~;each held to its memory with all it starts (a systemd-run scope)~]"
                                      (tuatara.io:sandbox-memory-scope-p)))
@@ -358,7 +360,8 @@ and the suggested ones apart, each found or missing with what to install."
                              "no sandbox (see above): grammars run, not shut in, for the projects you trust only; nothing else is parsed")
                             (t "no sandbox (see above): no text is parsed or coloured")))
       (unless tuatara-user:*package-check-signatures*
-        (fact "Packages" "signatures are not checked (*package-check-signatures*): every version of every source is taken"
+        (fact "Packages"
+              "signatures are not checked (*package-check-signatures*): every version of every source is taken"
               :list-bad))
       (loop for (label . text) in (and frontend (tuatara.frontend:frontend-health frontend))
             do (fact label text))
@@ -386,7 +389,8 @@ and the suggested ones apart, each found or missing with what to install."
     ;; the languages
     (health-heading "Languages")
     (let ((widths (list* 14 7 (append (loop for (kind heading) in *health-rules*
-                                            collect (max (length heading) (if (eq kind :colours) 10 (if (eq kind :definitions) 8 4))))
+                                            collect (max (length heading)
+                                                         (if (eq kind :colours) 10 (if (eq kind :definitions) 8 4))))
                                       (list 15 6)))))
       (loop for heading in (list* "Language" "Grammar" (append (mapcar #'second *health-rules*) (list "Formatter")))
             for width in widths

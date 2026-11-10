@@ -4,7 +4,8 @@
 (in-package #:tuatara.defaults)
 
 (define-face :tutor-key "Keys in the tutor." :inherit :key-hint-key)
-(define-face :tutor-state "The names of the modal states in the tutor: NORMAL, INSERT, SUPPORT, TUATARA[N]." :inherit :keyword)
+(define-face :tutor-state "The names of the modal states in the tutor: NORMAL, INSERT, SUPPORT, TUATARA[N]."
+  :inherit :keyword)
 (define-face :tutor-arrow "The arrow before each line to practise on in the tutor." :inherit :builtin)
 
 (defparameter *tuatara-tutor-text*

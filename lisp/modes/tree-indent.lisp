@@ -68,14 +68,15 @@ its text moves to and the octets of blanks it begins with now."
 
 (defun extended-nodes (syntax rope position target chain captures)
   "The nodes that reach on to line TARGET, whose text begins at octet POSITION
-of ROPE, by the indentation rules' CAPTURES marking them @extend: the node
-ending before POSITION inside the innermost node of CHAIN (the nodes holding
-POSITION, innermost first) and those around it up to that innermost node,
-from the one marked @extend that reaches, outwards; NIL when none reaches. It
-reaches when its text ends on the line before TARGET that was just typed after
-(*TYPED-LINE*), or when that line, else line TARGET, is indented deeper than
-the node's first line; a node marked @extend.prevent-once passed on the way
-up stops the next one reaching (a block does not go on after its return)."
+of ROPE, by the indentation rules' CAPTURES marking them @extend. They are the
+node ending before POSITION inside the innermost node of CHAIN (the nodes
+holding POSITION, innermost first) and those around it up to that innermost
+node, from the one marked @extend that reaches, outwards. NIL when none
+reaches. It reaches when its text ends on the line before TARGET that was just
+typed after (*TYPED-LINE*), or when that line, else line TARGET, is indented
+deeper than the node's first line; a node marked @extend.prevent-once passed on
+the way up stops the next one reaching (a block does not go on after its
+return)."
   (let* ((inner (first chain))
          (tree (tuatara.syntax:syntax-tree syntax))
          (before (and inner
@@ -121,10 +122,10 @@ comment, a string's text."
 (defun tree-line-column (syntax rope position target captures unit moved)
   "The column the line whose text begins at octet POSITION of ROPE, line
 TARGET, goes to by the indentation rules' CAPTURES in SYNTAX's tree, one level
-being UNIT columns; NIL to leave the line as it is, inside a node whose lines
-keep their blanks, or inside a comment or string begun on a line before, whose
-blanks are its text. MOVED is the table of lines indented before it in the
-same pass."
+being UNIT columns. It is NIL to leave the line as it is: inside a node whose
+lines keep their blanks, or inside a comment or string begun on a line before,
+whose blanks are its text. MOVED is the table of lines indented before it in
+the same pass."
   (let* ((levels 0) (always 0) (outdents 0) (outdents-always 0)
          (align nil) (counted '())
          (line-start (tuatara.text:rope-line-start rope position))

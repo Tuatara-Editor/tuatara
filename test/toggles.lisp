@@ -4,7 +4,12 @@
 (in-package #:tuatara.tests)
 
 (define-test toggles
-  :description "Soft wrap, the line at the fill column, centred text, the highlighted line and column, line numbers and the characters that draw nothing shown as their codes: a command for the buffer and one for every buffer, one message form, the list by major mode through the modes made from it, the setting for every buffer, the buffer's own choice first, the mode line's word; and the one lookup of settings by major mode.")
+  :description "Soft wrap, the line at the fill column, centred text, the highlighted line
+and column, line numbers and the characters that draw nothing shown as their
+codes. A command for the buffer and one for every buffer, one message form,
+the list by major mode through the modes made from it, the setting for every
+buffer, the buffer's own choice first, the mode line's word. And the one
+lookup of settings by major mode.")
 
 (defparameter *toggle-cases*
   '((tuatara.defaults::soft-wrap "soft-wrap-mode" "Soft wrap" "Wrap" t)
@@ -31,7 +36,10 @@ the buffer shown at the end."
   (let ((toggle (tuatara.defaults::find-display-toggle name)))
     (progv (list (tuatara.defaults::display-toggle-global toggle) (tuatara.defaults::display-toggle-modes toggle))
         (list global modes)
-      (multiple-value-bind (f editor) (run-keys keys :text (format nil "one two three four five six seven~%x~%") :width 60 :height 8)
+      (multiple-value-bind (f editor) (run-keys keys
+                                                :text (format nil "one two three four five six seven~%x~%")
+                                                :width 60
+                                                :height 8)
         (values f editor (funcall (tuatara.defaults::display-toggle-lookup toggle) (session-buffer editor)))))))
 
 (defun mode-line-row (frontend)
@@ -60,13 +68,16 @@ the buffer shown at the end."
         do (multiple-value-bind (f editor value) (toggle-session name (typed command))
              (is eq on value "~a on" command)
              (true (tuatara.frontend.fake:fake-frame-showing
-                    f (format nil "~a ~a" label (tuatara.defaults::display-toggle-words (tuatara.defaults::find-display-toggle name)
-                                                                                       on (session-buffer editor))))))
+                    f
+                    (format nil "~a ~a" label
+                            (tuatara.defaults::display-toggle-words (tuatara.defaults::find-display-toggle name)
+                                                                   on (session-buffer editor))))))
            (multiple-value-bind (f editor value) (toggle-session name (typed command command))
              (declare (ignore editor))
              (false value "~a twice" command)
              (true (tuatara.frontend.fake:fake-frame-showing f (format nil "~a off" label))))
-           (is eq on (nth-value 2 (toggle-session name (format nil "C-u 1 ~a C-u 1 ~a" (typed command) (typed command)))))
+           (is eq on
+               (nth-value 2 (toggle-session name (format nil "C-u 1 ~a C-u 1 ~a" (typed command) (typed command)))))
            (false (nth-value 2 (toggle-session name (format nil "C-u 0 ~a" (typed command)) :global on)))))
 
 (define-test (toggles switched-in-every-buffer)
@@ -98,7 +109,8 @@ the buffer shown at the end."
            ;; the buffer's own choice before it, and before the list by major mode
            (false (nth-value 2 (toggle-session name (typed command) :global on)))
            (false (nth-value 2 (toggle-session name (typed command) :global on
-                                                                :modes (list (cons (intern "FUNDAMENTAL-MODE" :tuatara-user) on)))))
+                                                                :modes (list (cons (intern "FUNDAMENTAL-MODE"
+                                                                                           :tuatara-user) on)))))
            (is eq on (nth-value 2 (toggle-session name (typed command) :modes '((fundamental-mode . nil)))))))
 
 (define-test (toggles by-major-mode)
@@ -109,10 +121,22 @@ the buffer shown at the end."
                 (tuatara.modes:mode-precedence (make-instance 'tuatara.defaults::org-mode))))
   (let ((*package* (find-package :tuatara-user)))
     (loop for (name nil nil nil on) in *toggle-cases*
-          do (is eq on (nth-value 2 (toggle-session name (typed "org-mode") :modes (read-from-string (format nil "((text-mode . ~s))" on))))
+          do (is eq on
+                 (nth-value 2
+                            (toggle-session name
+                                            (typed "org-mode")
+                                            :modes (read-from-string (format nil "((text-mode . ~s))" on))))
                  "~a by a mode Org is made from" name)
-             (is eq on (nth-value 2 (toggle-session name (typed "org-mode") :modes (read-from-string (format nil "((text . ~s))" on)))))
-             (false (nth-value 2 (toggle-session name (typed "org-mode") :global on :modes (read-from-string "((org-mode . nil))"))))
+             (is eq on
+                 (nth-value 2
+                            (toggle-session name
+                                            (typed "org-mode")
+                                            :modes (read-from-string (format nil "((text . ~s))" on)))))
+             (false (nth-value 2
+                               (toggle-session name
+                                               (typed "org-mode")
+                                               :global on
+                                               :modes (read-from-string "((org-mode . nil))"))))
              (false (nth-value 2 (toggle-session name (typed "org-mode")
                                                   :modes (read-from-string (format nil "((text-mode . ~s) (org-mode . nil))" on)))))
              ;; a mode the buffer is not in says nothing
@@ -140,7 +164,11 @@ the buffer shown at the end."
     (said (typed "display-relative-line-numbers-mode" "display-relative-line-numbers-mode") "Line numbers off")
     (said (typed "toggle-line-numbers" "toggle-line-numbers" "toggle-line-numbers")
           "Line numbers absolute" "Line numbers relative" "Line numbers off"))
-  (is eq :absolute (nth-value 2 (toggle-session 'tuatara.defaults::line-numbers (typed "display-line-numbers-mode") :global :relative)))
+  (is eq
+      :absolute (nth-value 2
+                           (toggle-session 'tuatara.defaults::line-numbers
+                                           (typed "display-line-numbers-mode")
+                                           :global :relative)))
   (is eq :relative (nth-value 2 (toggle-session 'tuatara.defaults::line-numbers (typed "org-mode")
                                                 :modes (list (cons (intern "TEXT-MODE" :tuatara-user) :relative)))))
   (let ((f (toggle-session 'tuatara.defaults::line-numbers "" :modes '((tuatara.modes:fundamental-mode . :absolute)))))
@@ -165,7 +193,9 @@ the buffer shown at the end."
     (false (tuatara.modes:names-mode-p nil 'tuatara.defaults::org-mode))
     (false (tuatara.modes:names-mode-p t 'tuatara.defaults::org-mode))
     (is equal '(5 t) (multiple-value-list (tuatara.modes:mode-setting org '((prog-mode . 3) (text-mode . 5)))))
-    (is equal '(nil t) (multiple-value-list (tuatara.modes:mode-setting org '((text-mode . 5) ("org-mode")  (org-mode . nil)))))
+    (is equal
+        '(nil t)
+        (multiple-value-list (tuatara.modes:mode-setting org '((text-mode . 5) ("org-mode")  (org-mode . nil)))))
     (is equal '(t t) (multiple-value-list (tuatara.modes:mode-setting org '(prog-mode text))))
     (is equal '(nil nil) (multiple-value-list (tuatara.modes:mode-setting org '(prog-mode))))
     (is equal '(nil nil) (multiple-value-list (tuatara.modes:mode-setting nil '(text-mode))))
@@ -175,7 +205,9 @@ the buffer shown at the end."
     ;; set-colouring's rules are read by it too: the nearest mode, else every buffer
     (let ((tuatara.defaults::*colouring-rules* '((tuatara.defaults::text-mode :sparse 2) (t :none nil))))
       (is equal '(:sparse 2) (multiple-value-list (tuatara.defaults::colouring-rule org)))
-      (is equal '(:none nil) (multiple-value-list (tuatara.defaults::colouring-rule (make-instance 'tuatara.defaults::prog-mode))))
+      (is equal
+          '(:none nil)
+          (multiple-value-list (tuatara.defaults::colouring-rule (make-instance 'tuatara.defaults::prog-mode))))
       (is equal '(:none nil) (multiple-value-list (tuatara.defaults::colouring-rule nil))))))
 
 (define-test (toggles counts-on-hand-made-switches)
@@ -237,20 +269,29 @@ others, to every character from START below END."
   ;; a file opened safely shows them unless it chose otherwise, or the setting says not to
   (with-test-directory (dir)
     (let ((file (namestring (merge-pathnames "evidence.txt" dir))))
-      (alexandria:write-string-into-file (format nil "~cname~cx~%" (code-char #xFEFF) (code-char #x200D)) file :external-format :utf-8)
-      (multiple-value-bind (f editor) (run-keys (format nil "C-u C-x C-f C-a C-k ~a RET" (key-string file)) :width 60 :height 6)
+      (alexandria:write-string-into-file (format nil "~cname~cx~%" (code-char #xFEFF) (code-char #x200D)) file
+                                         :external-format :utf-8)
+      (multiple-value-bind (f editor) (run-keys (format nil "C-u C-x C-f C-a C-k ~a RET" (key-string file))
+                                                :width 60
+                                                :height 6)
         (true (tuatara.io:safe-visit-p (session-buffer editor)))
         (true (tuatara.defaults::invisible-characters-p (session-buffer editor)))
         (true (tuatara.frontend.fake:fake-frame-showing f "<FEFF>name<200D>x")))
-      (multiple-value-bind (f editor) (run-keys (format nil "C-u C-x C-f C-a C-k ~a RET SPC t i" (key-string file)) :width 60 :height 6)
+      (multiple-value-bind (f editor) (run-keys (format nil "C-u C-x C-f C-a C-k ~a RET SPC t i" (key-string file))
+                                                :width 60
+                                                :height 6)
         (declare (ignore f))
         (false (tuatara.defaults::invisible-characters-p (session-buffer editor))))
       (let ((tuatara-user:*invisible-characters-when-safe* nil))
-        (multiple-value-bind (f editor) (run-keys (format nil "C-u C-x C-f C-a C-k ~a RET" (key-string file)) :width 60 :height 6)
+        (multiple-value-bind (f editor) (run-keys (format nil "C-u C-x C-f C-a C-k ~a RET" (key-string file))
+                                                  :width 60
+                                                  :height 6)
           (declare (ignore f))
           (false (tuatara.defaults::invisible-characters-p (session-buffer editor)))))
       ;; another opened as any file (one opened safely opens so again): off
-      (multiple-value-bind (f editor) (run-keys "" :file (put-file (merge-pathnames "plain.txt" dir) (format nil "~cx~%" (code-char #xFEFF)))
+      (multiple-value-bind (f editor) (run-keys ""
+                                                :file (put-file (merge-pathnames "plain.txt" dir)
+                                                                (format nil "~cx~%" (code-char #xFEFF)))
                                                    :width 60 :height 6)
         (declare (ignore f))
         (false (tuatara.io:safe-visit-p (session-buffer editor)))
@@ -272,7 +313,8 @@ others, to every character from START below END."
                (true (boundp symbol))
                (is equal "TOGGLETEST" (get symbol 'tuatara.packages::package-setting))
                (is eq symbol (find-symbol name package))))
-           (multiple-value-bind (f editor value) (toggle-session (find-symbol "TOGGLETEST-RULER" package) (typed "toggletest-ruler-mode"))
+           (multiple-value-bind (f editor value) (toggle-session (find-symbol "TOGGLETEST-RULER" package)
+                                                                 (typed "toggletest-ruler-mode"))
              (declare (ignore editor))
              (true value)
              (true (tuatara.frontend.fake:fake-frame-showing f "Ruler on"))))
@@ -321,7 +363,10 @@ others, to every character from START below END."
   ;; the rows a long Org list item wraps into line up after its bullet and checkbox, as far in as its text
   (let ((tuatara-user:*fill-column* 20))
     (flet ((rows (text &optional (width 40))
-             (let ((f (run-keys "M-x o r g - m o d e RET M-x s o f t - w r a p - m o d e RET" :text text :width width :height 8)))
+             (let ((f (run-keys "M-x o r g - m o d e RET M-x s o f t - w r a p - m o d e RET"
+                                :text text
+                                :width width
+                                :height 8)))
                (loop for row below 6 collect (tuatara.frontend.fake:fake-screen-line f row)))))
       (let ((rows (rows (format nil "- [ ] aaa bbb ccc ddd eee fff ggg~%- aaa bbb ccc ddd eee fff~%  1. [X] aaa bbb ccc ddd eee~%"))))
         (is string= "↪       ddd eee fff" (string-right-trim " " (second rows)))

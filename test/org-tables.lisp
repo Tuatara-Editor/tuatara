@@ -8,14 +8,23 @@
     ;; C-c C-c aligns: numbers to the right, |- a rule, short rows filled, the first row's indentation
     (is string= (lines "  |   a | bb   |       |" "  |-----+------+-------|" "  |   1 | 22.5 |       |"
                        "  | 333 | x    | extra |" "  |     |      |       |" "")
-        (remove #\@ (org-table-after "C-c C-c" (lines "  | a@ | bb |" "|-" "| 1 | 22.5 |" "| 333 |  x  |  extra |" "|  |" ""))))
+        (remove #\@
+                (org-table-after "C-c C-c"
+                                 (lines "  | a@ | bb |" "|-" "| 1 | 22.5 |" "| 333 |  x  |  extra |" "|  |" ""))))
     (is string= (lines "| name  |   n |" "| alpha |   1 |" "| b     | 200 |" "| c     |     |" "| ddd   |   x |@")
         (org-table-after "i C-c C-c" (lines "| name | n |" "| alpha | 1 |" "| b | 200 |" "| c |  |" "| ddd | x |@")))
     (is string= (lines "|  <c>   |    <r> | <l> |" "|   a    |      b | c   |" "| longer | longer | 1   |")
-        (remove #\@ (org-table-after "C-c C-c" (lines "| <c> | <r> | <l> |" "| a | b | c |" "| l@onger | longer | 1 |"))))
-    (is string= (lines "| 日本 | a  |" "| x    | bb |") (remove #\@ (org-table-after "C-c C-c" (lines "| 日本 | a@ |" "| x | bb |"))))
-    (is string= (lines "| a |   | c |" "| b |   |   |") (remove #\@ (org-table-after "C-c C-c" (lines "| a |  | c |" "| b@ | |"))))
-    (is string= (lines "| 1 | 2 |" "#+TBLFM: $2=$1*2") (remove #\@ (org-table-after "C-c C-c" (lines "| 1 | 2@ |" "#+TBLFM: $2=$1*2"))))
+        (remove #\@
+                (org-table-after "C-c C-c" (lines "| <c> | <r> | <l> |" "| a | b | c |" "| l@onger | longer | 1 |"))))
+    (is string=
+        (lines "| 日本 | a  |" "| x    | bb |")
+        (remove #\@ (org-table-after "C-c C-c" (lines "| 日本 | a@ |" "| x | bb |"))))
+    (is string=
+        (lines "| a |   | c |" "| b |   |   |")
+        (remove #\@ (org-table-after "C-c C-c" (lines "| a |  | c |" "| b@ | |"))))
+    (is string=
+        (lines "| 1 | 2 |" "#+TBLFM: $2=$1*2")
+        (remove #\@ (org-table-after "C-c C-c" (lines "| 1 | 2@ |" "#+TBLFM: $2=$1*2"))))
     ;; a call of redact or protect counts as its text alone, the braces hidden on screen
     (is string= (lines "| User | Host |" "| {{{R(a1)}}}   | {{{P(w)}}}    |")
         (remove #\@ (org-table-after "C-c C-c" (lines "| User@ | Host |" "| {{{R(a1)}}} | {{{P(w)}}} |"))))
@@ -23,38 +32,64 @@
     (is string= (lines "| User | @Host |" "| {{{R(a1)}}}   | {{{P(w)}}}    |")
         (org-table-after "TAB" (lines "| User@ | Host |" "| {{{R(a1)}}} | {{{P(w)}}} |")))
     ;; point stays on its character
-    (is string= (lines "| abc | d   |" "| e   | fg@h |") (org-table-after "C-c C-c" (lines "| abc | d |" "| e | fg@h |")))
+    (is string=
+        (lines "| abc | d   |" "| e   | fg@h |")
+        (org-table-after "C-c C-c" (lines "| abc | d |" "| e | fg@h |")))
     ;; TAB: the next field, over rules, a new row after the last (before a closing rule)
-    (is string= (lines "| a | @b |" "|---+---|" "| c | d |") (org-table-after "TAB" (lines "| a@ | b |" "|---+---|" "| c | d |")))
-    (is string= (lines "| a | b |" "|---+---|" "| @c | d |") (org-table-after "TAB" (lines "| a | @b |" "|---+---|" "| c | d |")))
-    (is string= (lines "| a | b |" "| c | d |" "| @  |   |" "after") (org-table-after "TAB" (lines "| a | b |" "| c | @d |" "after")))
+    (is string=
+        (lines "| a | @b |" "|---+---|" "| c | d |")
+        (org-table-after "TAB" (lines "| a@ | b |" "|---+---|" "| c | d |")))
+    (is string=
+        (lines "| a | b |" "|---+---|" "| @c | d |")
+        (org-table-after "TAB" (lines "| a | @b |" "|---+---|" "| c | d |")))
+    (is string=
+        (lines "| a | b |" "| c | d |" "| @  |   |" "after")
+        (org-table-after "TAB" (lines "| a | b |" "| c | @d |" "after")))
     (is string= (lines "| a | b |" "| c | d |" "| @  |   |" "|---+---|" "after")
         (org-table-after "TAB" (lines "| a | b |" "| c | @d |" "|---+---|" "after")))
     (is string= (lines "| a | b |" "| @  |   |" "") (org-table-after "i TAB" (lines "| a | b@" "")))
-    (is string= (lines "| a | bb |" "|---+----|" "| @  |    |" "") (org-table-after "i TAB" (lines "| a | bb |" "|-@" "")))
-    (is string= (lines "| a | bb |" "|---+----|" "| @c | d  |" "") (org-table-after "TAB" (lines "| a | bb |" "|@-" "| c | d |" "")))
+    (is string=
+        (lines "| a | bb |" "|---+----|" "| @  |    |" "")
+        (org-table-after "i TAB" (lines "| a | bb |" "|-@" "")))
+    (is string=
+        (lines "| a | bb |" "|---+----|" "| @c | d  |" "")
+        (org-table-after "TAB" (lines "| a | bb |" "|@-" "| c | d |" "")))
     (is string= (lines "  | a   |" "  | @bbb |") (org-table-after "TAB" (lines "  | a@ |" "  | bbb |")))
     ;; in a column of numbers, aligned right, TAB goes to the field's start, before the spaces, as Org goes
     (is string= (lines "| a | @  1 |" "| b | 200 |") (org-table-after "TAB" (lines "| a@ | 1 |" "| b | 200 |")))
-    (is string= (lines "| 1 | 2 |" "| 3 | 4 |" "| @  |   |" "") (org-table-after "TAB" (lines "| 1 | 2 |" "| 3 | 4@ |" "")))
+    (is string=
+        (lines "| 1 | 2 |" "| 3 | 4 |" "| @  |   |" "")
+        (org-table-after "TAB" (lines "| 1 | 2 |" "| 3 | 4@ |" "")))
     (is string= (lines "|   1 | x |" "| @200 | y |") (org-table-after "i RET" (lines "| 1@ | x |" "| 200 | y |")))
     ;; S-TAB back a field
     (is string= (lines "| a | @b |" "| c | d |") (org-table-after "S-TAB" (lines "| a | b |" "| @c | d |")))
     ;; RET: the row below, a new one at the end or before a rule
     (is string= (lines "| a | b |" "| @c | d |") (org-table-after "i RET" (lines "| a@ | b |" "| c | d |")))
     (is string= (lines "| a | b |" "|   | @  |" "after") (org-table-after "i RET" (lines "| a | b@ |" "after")))
-    (is string= (lines "| a | b |" "|   | @  |" "|---+---|" "| c | d |") (org-table-after "i RET" (lines "| a | b@ |" "|---+---|" "| c | d |")))
+    (is string=
+        (lines "| a | b |" "|   | @  |" "|---+---|" "| c | d |")
+        (org-table-after "i RET" (lines "| a | b@ |" "|---+---|" "| c | d |")))
     ;; C-c - a rule below
     (is string= (lines "| a | b@ |" "|---+---|" "| c | d |") (org-table-after "C-c -" (lines "| a | b@ |" "| c | d |")))
     ;; M-j M-k rows, M-h M-l columns, M-H M-L delete and insert columns, M-S-up M-S-down rows
-    (is string= (lines "| c | d |" "| a@ | b |" "| e | f |") (org-table-after "M-j" (lines "| a@ | b |" "| c | d |" "| e | f |")))
+    (is string=
+        (lines "| c | d |" "| a@ | b |" "| e | f |")
+        (org-table-after "M-j" (lines "| a@ | b |" "| c | d |" "| e | f |")))
     (is string= (lines "| c | d@ |" "| a | b |" "") (org-table-after "M-k" (lines "| a | b |" "| c | d@ |" "")))
     (is string= (lines "| bb | @a |" "| d  | c |" "") (org-table-after "M-l" (lines "| a@ | bb |" "| c | d |" "")))
     (is string= (lines "| @bb | a |" "| d  | c |" "") (org-table-after "M-h" (lines "| a | b@b |" "| c | d |" "")))
-    (is string= (lines "| a | @c |" "|---+---|" "| c | e |") (org-table-after "M-H" (lines "| a | b@b | c |" "|---+---+---|" "| c | d | e |")))
-    (is string= (lines "| a | @  | bb |" "|---+---+----|" "| c |   | d  |" "") (org-table-after "M-L" (lines "| a | b@b |" "|---+---|" "| c | d |" "")))
-    (is string= (lines "| a | b |" "| e@ | f |") (org-table-after "M-S-<up>" (lines "| a | b |" "| c@ | d |" "| e | f |")))
-    (is string= (lines "| a | b  |" "| @  |    |" "| c | dd |") (org-table-after "M-S-<down>" (lines "| a | b |" "| c@ | dd |")))
+    (is string=
+        (lines "| a | @c |" "|---+---|" "| c | e |")
+        (org-table-after "M-H" (lines "| a | b@b | c |" "|---+---+---|" "| c | d | e |")))
+    (is string=
+        (lines "| a | @  | bb |" "|---+---+----|" "| c |   | d  |" "")
+        (org-table-after "M-L" (lines "| a | b@b |" "|---+---|" "| c | d |" "")))
+    (is string=
+        (lines "| a | b |" "| e@ | f |")
+        (org-table-after "M-S-<up>" (lines "| a | b |" "| c@ | d |" "| e | f |")))
+    (is string=
+        (lines "| a | b  |" "| @  |    |" "| c | dd |")
+        (org-table-after "M-S-<down>" (lines "| a | b |" "| c@ | dd |")))
     ;; at the edge, nothing moves
     (is string= (lines "| a@ | b |" "| c | d |") (org-table-after "M-k" (lines "| a@ | b |" "| c | d |")))
     ;; outside a table, M-j still moves subtrees, TAB still folds
@@ -64,7 +99,8 @@
 
 (define-test (org table-formulas)
   ;; C-c * works the formulas out as Org (and its Calc) does: every case of test/org/formulas.sexp
-  (let ((cases (with-open-file (in (asdf:system-relative-pathname :tuatara "test/org/formulas.sexp") :external-format :utf-8)
+  (let ((cases (with-open-file (in (asdf:system-relative-pathname :tuatara "test/org/formulas.sexp")
+                                   :external-format :utf-8)
                  (let ((*read-eval* nil)) (loop for form = (read in nil in) until (eq form in) collect form)))))
     (dolist (case cases)
       (destructuring-bind (name table expected) case
@@ -87,7 +123,10 @@
     (is string= (lines "| 1 | |" "#+TBLFM: $2=@-1$1") (org-text-after "C-c *" (lines "| 1 | |" "#+TBLFM: $2=@-1$1")))
     ;; formulas in Emacs Lisp are never run; the others still are
     (multiple-value-bind (f editor)
-        (run-keys "M-x o r g - m o d e RET C-c *" :text (lines "| 1 | | |" "#+TBLFM: $2='(+ 1 $1)::$3=$1+1") :width 120 :height 12)
+        (run-keys "M-x o r g - m o d e RET C-c *"
+                  :text (lines "| 1 | | |" "#+TBLFM: $2='(+ 1 $1)::$3=$1+1")
+                  :width 120
+                  :height 12)
       (true (tuatara.frontend.fake:fake-frame-showing f "not run"))
       (is string= (lines "| 1 |   | 2 |" "#+TBLFM: $2='(+ 1 $1)::$3=$1+1") (session-text editor)))
     ;; one u undoes it all
@@ -95,14 +134,20 @@
     ;; numbers too large to work out, from a file not trusted: #ERROR at once, never a hang
     (dolist (table (list (lines "| 1e30000000 | |" "#+TBLFM: $2=$1+1") (lines "| 2 | |" "#+TBLFM: $2=$1^999999999")
                          (lines "| 1 | |" "#+TBLFM: $2=$1;%999999999d") (lines "| 1 | |" "#+TBLFM: $2=$1;%.9999999f")
-                         (lines "| 1.5 | |" "#+TBLFM: $2=round($1,99999999)") (lines "| 1.5 | |" "#+TBLFM: $2=$1;f99999999")
+                         (lines "| 1.5 | |" "#+TBLFM: $2=round($1,99999999)")
+                         (lines "| 1.5 | |" "#+TBLFM: $2=$1;f99999999")
                          ;; past what the machine's numbers hold
-                         (lines "| 1000 | |" "#+TBLFM: $2=exp($1)") (lines (format nil "| ~a | |" (make-string 400 :initial-element #\9)) "#+TBLFM: $2=sqrt($1)")))
+                         (lines "| 1000 | |" "#+TBLFM: $2=exp($1)")
+                         (lines (format nil "| ~a | |" (make-string 400 :initial-element #\9)) "#+TBLFM: $2=sqrt($1)")))
       (let ((start (thread-cpu-time)))
         (true (search "#ERROR" (org-text-after "C-c *" table)) "~s" table)
         (true (< (- (thread-cpu-time) start) (* 2 internal-time-units-per-second)) "~s at once" table)))
     ;; a formula nested past reason: refused in words, never the stack exhausted
-    (let ((text (org-text-after "C-c *" (lines "| 1 | |" (format nil "#+TBLFM: $2=~a$1~a" (make-string 20000 :initial-element #\() (make-string 20000 :initial-element #\)))))))
+    (let ((text (org-text-after "C-c *"
+                                (lines "| 1 | |"
+                                       (format nil "#+TBLFM: $2=~a$1~a"
+                                               (make-string 20000 :initial-element #\()
+                                               (make-string 20000 :initial-element #\)))))))
       (false (search "| 1 | 1 |" text))))
   ;; a table of 20,000 rows is worked out at once, not in time growing faster than its rows
   (let* ((rows (append (list (list "a" "b" "c") :rule)
@@ -181,7 +226,10 @@ echo commented
   (with-test-directory (dir)
     (let ((org (merge-pathnames "t.org" dir)))
       (alexandria:write-string-into-file *org-tangled* org)
-      (flet ((session (keys) (run-keys (format nil "C-x C-f C-a C-k ~a RET ~a" (rimu-typed (namestring org)) keys) :width 120 :height 20))
+      (flet ((session (keys)
+               (run-keys (format nil "C-x C-f C-a C-k ~a RET ~a" (rimu-typed (namestring org)) keys)
+                         :width 120
+                         :height 20))
              (file (name) (let ((path (merge-pathnames name dir)))
                             (and (probe-file path) (alexandria:read-file-into-string path))))
              (mode (name) (logand #o777 (sb-posix:stat-mode (sb-posix:stat (namestring (merge-pathnames name dir)))))))
@@ -211,8 +259,10 @@ echo commented
         (true (tuatara.frontend.fake:fake-frame-showing (session "C-c C-v t") "Nothing to write"))
         ;; outside the Org file's folder, said
         (let ((open (tuatara.buffer:find-buffer "t.org"))) (when open (tuatara.buffer:kill-buffer open)))
-        (alexandria:write-string-into-file (format nil "#+begin_src sh :tangle ../outside-~a.sh~%echo~%#+end_src~%" (random 1000000)) org
-                                           :if-exists :supersede)
+        (alexandria:write-string-into-file (format nil
+                                                   "#+begin_src sh :tangle ../outside-~a.sh~%echo~%#+end_src~%"
+                                                   (random 1000000)) org
+                                                   :if-exists :supersede)
         (let ((f (session "C-c C-v t n RET")))
           (true (tuatara.frontend.fake:fake-frame-showing f "outside the Org file's folder"))
           (true (tuatara.frontend.fake:fake-frame-showing f "(1 outside the Org file's folder)")))
@@ -226,21 +276,28 @@ echo commented
           (alexandria:write-string-into-file
            (format nil "#+begin_src sh :tangle linked.sh~%echo~%#+end_src~%#+begin_src sh :tangle setuid.sh :tangle-mode o4777~%echo~%#+end_src~%#+name: a~%#+begin_src sh :tangle loop.sh :noweb yes~%<<a>>~%<<a>>~%#+end_src~%")
            org :if-exists :supersede)
-          (let ((f (run-keys (format nil "C-x C-f C-a C-k ~a RET C-c C-v t n RET" (rimu-typed (namestring org))) :width 400 :height 20)))
+          (let ((f (run-keys (format nil "C-x C-f C-a C-k ~a RET C-c C-v t n RET" (rimu-typed (namestring org)))
+                             :width 400
+                             :height 20)))
             (true (tuatara.frontend.fake:fake-frame-showing f "linked.sh" "→" "/rc" "outside the Org file's folder"))
             (true (tuatara.frontend.fake:fake-frame-showing f "(1 outside the Org file's folder)")))
           ;; what was written, kept in *Messages*, says where a link led
           (let ((open (tuatara.buffer:find-buffer "t.org"))) (when open (tuatara.buffer:kill-buffer open)))
-          (let ((f (run-keys (format nil "C-x C-f C-a C-k ~a RET C-c C-v t y RET" (rimu-typed (namestring org))) :width 400 :height 20)))
+          (let ((f (run-keys (format nil "C-x C-f C-a C-k ~a RET C-c C-v t y RET" (rimu-typed (namestring org)))
+                             :width 400
+                             :height 20)))
             (true (tuatara.frontend.fake:fake-frame-showing f "Wrote 3 files:" "linked.sh → "))
             (true (search "linked.sh → " (tuatara.buffer:buffer-string (tuatara.buffer:find-buffer "*Messages*")))))
           (alexandria:write-string-into-file "mine" target :if-exists :supersede)
-          (let ((f (run-keys (format nil "C-x C-f C-a C-k ~a RET C-c C-v t n RET" (rimu-typed (namestring org))) :width 400 :height 20)))
+          (let ((f (run-keys (format nil "C-x C-f C-a C-k ~a RET C-c C-v t n RET" (rimu-typed (namestring org)))
+                             :width 400
+                             :height 20)))
             (true (tuatara.frontend.fake:fake-frame-showing f "setuid.sh"))
             (true (tuatara.frontend.fake:fake-frame-showing f "mode 777")))
           (let ((open (tuatara.buffer:find-buffer "t.org"))) (when open (tuatara.buffer:kill-buffer open)))
           (session "C-c C-v t y RET")
-          (is = #o777 (logand #o7777 (sb-posix:stat-mode (sb-posix:stat (namestring (merge-pathnames "setuid.sh" dir))))))
+          (is = #o777
+              (logand #o7777 (sb-posix:stat-mode (sb-posix:stat (namestring (merge-pathnames "setuid.sh" dir))))))
           (is string= (format nil "<<a>>~%<<a>>~%") (file "loop.sh"))
           (uiop:delete-directory-tree (uiop:pathname-directory-pathname (truename target)) :validate t))))
     (dolist (buffer (copy-list tuatara.buffer:*buffers*))
@@ -292,8 +349,11 @@ echo commented
                                 "refused for the test"
                                 (funcall function file))))
       (unwind-protect
-           (let ((f (run-keys (format nil "C-x C-f C-a C-k ~a RET C-c C-v t y RET" (rimu-typed (namestring org))) :width 200 :height 20)))
-             (true (tuatara.frontend.fake:fake-frame-showing f "Wrote 1 of 2 (" "x.sh); not written:" "x.sh.bak: refused for the test")))
+           (let ((f (run-keys (format nil "C-x C-f C-a C-k ~a RET C-c C-v t y RET" (rimu-typed (namestring org)))
+                              :width 200
+                              :height 20)))
+             (true (tuatara.frontend.fake:fake-frame-showing f "Wrote 1 of 2 (" "x.sh); not written:"
+                                                             "x.sh.bak: refused for the test")))
         (sb-int:unencapsulate 'tuatara.defaults::tangle-write-code-file 'refuse-bak)))))
 
 (define-test (org formula-kept-across-a-change-elsewhere)

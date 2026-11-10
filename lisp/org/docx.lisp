@@ -16,17 +16,17 @@
 (in-package #:tuatara.defaults)
 
 (defstruct (docx (:constructor make-docx ()) (:copier nil))
-  "What a Word document being written gathers besides its text: RELATIONS,
-each (ID TYPE TARGET EXTERNAL), the files and addresses its XML names; MEDIA,
-each (NAME . OCTETS), its pictures; LISTS, each (ID KIND START), the
-numbered and bulleted lists; FOOTNOTES, each (ID . XML); the counts of
-FIGURES and TABLES; NUMBERS, each headline's number by node; BOOKMARKS, a
-name by node; SECTION, the page's properties as XML, from which a section of
-columns takes its own; TEXT-WIDTH, the width the text has, in twentieths of
-a point; LIST-BASE, the first number its lists take, above a template's;
-MEDIA-PREFIX, what its pictures' names begin with; PICTURES, each (PATH NAME
-ID), the file each picture in MEDIA was taken from, its name there and its
-relation; DRAWINGS, how many pictures it shows."
+  "What a Word document being written gathers besides its text: RELATIONS, each
+\(ID TYPE TARGET EXTERNAL), the files and addresses its XML names; MEDIA, each
+\(NAME . OCTETS), its pictures; LISTS, each (ID KIND START), the numbered and
+bulleted lists; FOOTNOTES, each (ID . XML). The counts of FIGURES and TABLES.
+NUMBERS, each headline's number by node. BOOKMARKS, a name by node. SECTION, the
+page's properties as XML, from which a section of columns takes its own.
+TEXT-WIDTH, the width the text has, in twentieths of a point. LIST-BASE, the
+first number its lists take, above a template's. MEDIA-PREFIX, what its
+pictures' names begin with. PICTURES, each (PATH NAME ID), the file each picture
+in MEDIA was taken from, its name there and its relation. DRAWINGS, how many
+pictures it shows."
   (relations '()) (media '()) (pictures '()) (drawings 0) (lists '()) (footnotes '()) (figures 0) (tables 0)
   (numbers (make-hash-table :test 'eq)) (bookmarks (make-hash-table :test 'eq)) (next-bookmark 0)
   (section "") (text-width 8730) (list-base 3) (media-prefix "image"))
@@ -155,18 +155,23 @@ ten of its glyphs that width. NIL otherwise."
 
 (defun docx-run-properties (look)
   "The w:rPr of LOOK (*DOCX-RUN*), in the order Word reads them; an empty string for none."
-  (let ((parts (remove nil (list (and (getf look :style) (format nil "<w:rStyle w:val=\"~a\"/>" (xml-escape (getf look :style))))
-                                 (and (getf look :code) "<w:rStyle w:val=\"VerbatimChar\"/>")
-                                 (and (getf look :bold) "<w:b/>")
-                                 (and (getf look :italic) "<w:i/>")
-                                 (and (getf look :strike) "<w:strike/>")
-                                 (and (getf look :colour) (format nil "<w:color w:val=\"~a\"/>" (getf look :colour)))
-                                 (and (getf look :scale)
-                                      (let ((size (round (* *docx-base-size* (getf look :scale)))))
-                                        (format nil "<w:sz w:val=\"~d\"/><w:szCs w:val=\"~d\"/>" size size)))
-                                 (and (getf look :underline) "<w:u w:val=\"single\"/>")
-                                 (and (getf look :shade) (format nil "<w:shd w:val=\"clear\" w:color=\"auto\" w:fill=\"~a\"/>" (getf look :shade)))
-                                 (and (getf look :vert) (format nil "<w:vertAlign w:val=\"~a\"/>" (getf look :vert)))))))
+  (let ((parts (remove nil
+                       (list (and (getf look :style)
+                                  (format nil "<w:rStyle w:val=\"~a\"/>" (xml-escape (getf look :style))))
+                             (and (getf look :code) "<w:rStyle w:val=\"VerbatimChar\"/>")
+                             (and (getf look :bold) "<w:b/>")
+                             (and (getf look :italic) "<w:i/>")
+                             (and (getf look :strike) "<w:strike/>")
+                             (and (getf look :colour) (format nil "<w:color w:val=\"~a\"/>" (getf look :colour)))
+                             (and (getf look :scale)
+                                  (let ((size (round (* *docx-base-size* (getf look :scale)))))
+                                    (format nil "<w:sz w:val=\"~d\"/><w:szCs w:val=\"~d\"/>" size size)))
+                             (and (getf look :underline) "<w:u w:val=\"single\"/>")
+                             (and (getf look :shade)
+                                  (format nil
+                                          "<w:shd w:val=\"clear\" w:color=\"auto\" w:fill=\"~a\"/>"
+                                          (getf look :shade)))
+                             (and (getf look :vert) (format nil "<w:vertAlign w:val=\"~a\"/>" (getf look :vert)))))))
     (if parts (format nil "<w:rPr>~{~a~}</w:rPr>" parts) "")))
 
 (defun docx-run (text &optional (look *docx-run*))
@@ -224,7 +229,8 @@ it, as their own and the rest as text."
       (with-output-to-string (s)
         (docx-objects-between (org-node-children node) (org-node-contents-begin node)
                               (let ((end (org-node-contents-end node)))
-                                (if (and (> end (org-node-contents-begin node)) (char= #\Newline (char *org-latex-text* (1- end))))
+                                (if (and (> end (org-node-contents-begin node))
+                                         (char= #\Newline (char *org-latex-text* (1- end))))
                                     (1- end)
                                     end))
                               s))
@@ -259,7 +265,9 @@ the PDF measures its box, holding none of what it hides."
          (id (+ 2 (length (docx-footnotes *docx*)))))
     (when (org-latex-option "f" t)
       (push (cons id (if (and definition (search "<w:p" definition)) definition
-                         (format nil "<w:p><w:pPr><w:pStyle w:val=\"FootnoteText\"/></w:pPr>~a</w:p>" (or definition ""))))
+                         (format nil
+                                 "<w:p><w:pPr><w:pStyle w:val=\"FootnoteText\"/></w:pPr>~a</w:p>"
+                                 (or definition ""))))
             (docx-footnotes *docx*))
       (format out "<w:r><w:rPr><w:rStyle w:val=\"FootnoteReference\"/></w:rPr><w:footnoteReference w:id=\"~d\"/></w:r>" id))))
 
@@ -277,7 +285,9 @@ shows."
 and title, Table N or Figure N for a captioned element, else its own words."
   (case (org-node-type target)
     (headline (let ((number (gethash target (docx-numbers *docx*))))
-                (if (consp number) (format nil "section ~a" (first number)) (docx-plain-title (org-property target :raw-value)))))
+                (if (consp number)
+                    (format nil "section ~a" (first number))
+                    (docx-plain-title (org-property target :raw-value)))))
     (t (or (let ((number (gethash target (docx-numbers *docx*)))) (and (stringp number) number))
            (org-property target :value) (org-property target :name) ""))))
 
@@ -313,7 +323,8 @@ file as a hyperlink, a place in the note as a link to its bookmark."
       (italic (within :italic t))
       (underline (within :underline t))
       (strike-through (within :strike t))
-      ((code verbatim inline-src-block) (write-string (docx-run (org-property node :value) (list* :code t *docx-run*)) out))
+      ((code verbatim inline-src-block)
+       (write-string (docx-run (org-property node :value) (list* :code t *docx-run*)) out))
       (entity (let ((character (gethash (org-property node :name) *org-entities*)))
                 (write-string (if (and character (org-latex-option "e" t)) (docx-run character) (docx-as-written node)) out)))
       (line-break (write-string "<w:r><w:br/></w:r>" out))
@@ -367,22 +378,27 @@ next free: image1.png, image2.jpeg."
     (format nil "~a~d.~a" (docx-media-prefix *docx*) (1+ (length (docx-media *docx*))) (if (string= type "jpg") "jpeg" type))))
 
 (defun docx-picture (link attributes &key width height asked)
-  "A run showing the picture LINK leads to, in the document's media, as wide
-as the width setting or WIDTH (twentieths of a point) says, or as high as
-HEIGHT says, else its own width at 96 pixels an inch but never wider than
-the text; a note when it cannot be shown or is outside the folders an export
-may take files from (ORG-EXPORT-FILE-ALLOWED-P), and its name in its place.
-A picture your own template ASKED the note for ({{{logo:path}}}) shows from
-wherever the note names it, as the PDF export's does."
+  "A run showing the picture LINK leads to, in the document's media, as wide as
+the width setting or WIDTH (twentieths of a point) says, or as high as HEIGHT
+says, else its own width at 96 pixels an inch but never wider than the text. A
+note when it cannot be shown or is outside the folders an export may take files
+from (ORG-EXPORT-FILE-ALLOWED-P), and its name in its place. A picture your own
+template ASKED the note for ({{{logo:path}}}) shows from wherever the note names
+it, as the PDF export's does."
   (let* ((full (or (ignoring-errors-reported ("finding ~a" (org-property link :path))
                      (org-export-path (org-property link :path)))
                    (org-property link :path)))
-         (picture (multiple-value-bind (made why) (if (or asked (org-export-file-allowed-p full)) (latex-picture full) (values nil :outside))
-                    (cond ((and made (member (string-downcase (or (tuatara.io:native-file-type made) "")) '("png" "jpg" "jpeg") :test #'string=))
+         (picture (multiple-value-bind (made why)
+                      (if (or asked (org-export-file-allowed-p full)) (latex-picture full) (values nil :outside))
+                    (cond ((and made
+                                (member (string-downcase (or (tuatara.io:native-file-type made) ""))
+                                        '("png" "jpg" "jpeg")
+                                        :test #'string=))
                            made)
                           ((eq why :outside) nil)
                           (why (export-note "~a" why))
-                          (t (export-note "~a: a Word document takes PNG and JPEG pictures, not this one" (tuatara.io:native-file-name full)))))))
+                          (t (export-note "~a: a Word document takes PNG and JPEG pictures, not this one"
+                                          (tuatara.io:native-file-name full)))))))
     (if (null picture)
         (docx-run (tuatara.io:native-file-name full))
         (multiple-value-bind (pw ph) (docx-picture-size picture)
@@ -429,9 +445,18 @@ as far apart as *DOCX-LINE-SPACING* says."
                                        (and *docx-at-foot*
                                             (format nil "<w:framePr w:w=\"~d\" w:wrap=\"around\" w:vAnchor=\"margin\" w:hAnchor=\"margin\" w:yAlign=\"bottom\"/>"
                                                     (docx-text-width *docx*)))
-                                       (and numbering (format nil "<w:numPr><w:ilvl w:val=\"~d\"/><w:numId w:val=\"~d\"/></w:numPr>" (cdr numbering) (car numbering)))
-                                       (and *docx-line-spacing* (format nil "<w:spacing w:line=\"~d\" w:lineRule=\"auto\"/>" (round (* 240 *docx-line-spacing*))))
-                                       (and (plusp *docx-indent*) (not numbering) (format nil "<w:ind w:left=\"~d\"/>" *docx-indent*))
+                                       (and numbering
+                                            (format nil
+                                                    "<w:numPr><w:ilvl w:val=\"~d\"/><w:numId w:val=\"~d\"/></w:numPr>"
+                                                    (cdr numbering)
+                                                    (car numbering)))
+                                       (and *docx-line-spacing*
+                                            (format nil
+                                                    "<w:spacing w:line=\"~d\" w:lineRule=\"auto\"/>"
+                                                    (round (* 240 *docx-line-spacing*))))
+                                       (and (plusp *docx-indent*)
+                                            (not numbering)
+                                            (format nil "<w:ind w:left=\"~d\"/>" *docx-indent*))
                                        (and justify (format nil "<w:jc w:val=\"~a\"/>" justify))))))
     (format nil "<w:p>~:[~*~;<w:pPr>~{~a~}</w:pPr>~]~a</w:p>~%" properties properties runs)))
 
@@ -458,18 +483,21 @@ comes after it."
                         (setf (gethash node (docx-numbers *docx*))
                               (list (format nil "~{~a~^.~}"
                                             (let ((numbers (coerce (subseq counters 0 level) 'list)))
-                                              ;; in the annexes the first number a letter, A, A.1, B, as LaTeX letters them
+                                              ;; in the annexes the first number a letter, A, A.1, B, as LaTeX letters
+                                              ;; them
                                               (if (and annex (<= 1 (first numbers) 26))
                                                   (cons (code-char (+ 64 (first numbers))) (rest numbers))
                                                   numbers)))
                                     (eq (gethash node (docx-numbers *docx*)) :annex))))
                       (mapc #'walk (org-node-children node)))))
                  (table (when (getf (org-property node :affiliated) :caption)
-                          (setf (gethash node (docx-numbers *docx*)) (format nil "~a ~d" (export-language-word :table) (incf (docx-tables *docx*))))))
+                          (setf (gethash node (docx-numbers *docx*))
+                                (format nil "~a ~d" (export-language-word :table) (incf (docx-tables *docx*))))))
                  (paragraph (when (and (getf (org-property node :affiliated) :caption)
                                        (let ((children (org-node-children node)))
                                          (and (= 1 (length children)) (org-latex-image-link-p (first children)))))
-                              (setf (gethash node (docx-numbers *docx*)) (format nil "~a ~d" (export-language-word :figure) (incf (docx-figures *docx*))))))
+                              (setf (gethash node (docx-numbers *docx*))
+                                    (format nil "~a ~d" (export-language-word :figure) (incf (docx-figures *docx*))))))
                  (t (mapc #'walk (org-node-children node))))))
       (walk tree))))
 
@@ -480,7 +508,10 @@ JUSTIFY says (centred, or left over a table at the left margin); NIL when it has
   (let ((caption (getf (org-property node :affiliated) :caption)))
     (when caption
       (let ((label (gethash node (docx-numbers *docx*))))
-        (docx-paragraph (docx-bookmarked node (concatenate 'string (docx-run (format nil "~a: " label)) (docx-string caption)))
+        (docx-paragraph (docx-bookmarked node
+                                         (concatenate 'string
+                                                      (docx-run (format nil "~a: " label))
+                                                      (docx-string caption)))
                         :style "Caption" :justify justify :keep-next (eq kind :table))))))
 
 (defun docx-text-paragraph (node out)
@@ -536,7 +567,8 @@ from a page of their own), its bookmark on it for links and the contents
                     (docx-objects-between (org-property headline :title) (org-property headline :title-begin)
                                           (org-property headline :title-end) s))))
       (unless (export-setting-no-p headline "contents")
-        (push (list level number (docx-plain-title (org-property headline :raw-value)) (docx-bookmark headline)) *docx-contents*))
+        (push (list level number (docx-plain-title (org-property headline :raw-value)) (docx-bookmark headline))
+              *docx-contents*))
       (write-string (docx-paragraph (docx-bookmarked headline (concatenate 'string (if number (docx-run (format nil "~a  " number)) "") title))
                                     :style (format nil "Heading~d" level) :keep-next t :page-break annex)
                     out)
@@ -574,7 +606,8 @@ bold; what else an item holds set in under its words."
          (first-counter (org-property (first (org-node-children node)) :counter))
          (id (unless descriptive
                (let ((id (+ (docx-list-base *docx*) (length (docx-lists *docx*)))))
-                 (push (list id (docx-list-kind node) (if (integerp first-counter) first-counter 1) depth) (docx-lists *docx*))
+                 (push (list id (docx-list-kind node) (if (integerp first-counter) first-counter 1) depth)
+                       (docx-lists *docx*))
                  id))))
     (dolist (item (org-node-children node))
       (let* ((children (org-node-children item))
@@ -582,7 +615,9 @@ bold; what else an item holds set in under its words."
              (checkbox (case (org-property item :checkbox) (on "☒ ") (off "☐ ") (trans "☐ ")))
              (tag (org-property item :tag))
              (lead (concatenate 'string (if checkbox (docx-run checkbox) "")
-                                (if tag (concatenate 'string (let ((*docx-run* (list* :bold t *docx-run*))) (docx-string tag)) (docx-run " ")) ""))))
+                                (if tag (concatenate 'string
+                                                     (let ((*docx-run* (list* :bold t *docx-run*))) (docx-string tag))
+                                                     (docx-run " ")) ""))))
         (write-string (docx-paragraph (concatenate 'string lead (if first (docx-objects first) ""))
                                       :numbering (and id (cons id depth))
                                       :style (or *docx-paragraph-style* "ListParagraph"))
@@ -596,11 +631,11 @@ bold; what else an item holds set in under its words."
 (defun docx-table-widths (node columns special standard overhead text-width table-width)
   "The widths of the COLUMNS of the table NODE, in twentieths of a point, and
 the scale its type is set in, NIL for its own size: as its :EXPORT: drawer's
-widths say; else each as wide as its widest cell and OVERHEAD (its margins
-and a little to spare) when together they fit in TEXT-WIDTH, widened to it
-when the table is given TABLE-WIDTH; else the columns with words to wrap
-sharing what the others leave, as the PDF's do; still too wide, in smaller
-type. SPECIAL and STANDARD are as ORG-EXPORT-TABLE-SHAPE found them."
+widths say. Else each as wide as its widest cell and OVERHEAD (its margins and a
+little to spare) when together they fit in TEXT-WIDTH, widened to it when the
+table is given TABLE-WIDTH. Else the columns with words to wrap sharing what the
+others leave, as the PDF's do. Still too wide, in smaller type. SPECIAL and
+STANDARD are as ORG-EXPORT-TABLE-SHAPE found them."
   (multiple-value-bind (lengths widest wraps) (export-table-measure columns special standard)
     (declare (ignore widest))
     (let* ((widths (export-table-widths node columns))
@@ -622,7 +657,9 @@ type. SPECIAL and STANDARD are as ORG-EXPORT-TABLE-SHAPE found them."
                   (fixed (loop for w in natural for wrap in wraps unless wrap sum w))
                   (wrapping (- total fixed)))
              (when (and (> total text-width) (or (zerop wrapping) (>= fixed text-width)))
-               (setf scale (if (<= (+ (* overhead columns) (* (docx-character-width) 10/11 (reduce #'+ characters))) text-width) 10/11 9/11)
+               (setf scale
+                     (if (<= (+ (* overhead columns) (* (docx-character-width) 10/11 (reduce #'+ characters)))
+                             text-width) 10/11 9/11)
                      natural (mapcar (lambda (n) (+ overhead (round (* (docx-character-width) n scale)))) characters)
                      total (reduce #'+ natural)
                      fixed (loop for w in natural for wrap in wraps unless wrap sum w)
@@ -653,16 +690,17 @@ outer lines thicker, as the PDF's top and bottom rules are."
 (defun docx-table (node out)
   "Write the table NODE to OUT, its caption above it (Table N), its columns as
 wide as their text but no wider together than the page, or as the :EXPORT:
-drawer's widths say, or sharing the width it gives the table (full, margin
-to margin) as their text does; in the middle of the page, or against the
-margin its position names; each aligned as it says or as its numbers are; the
-rows above its first rule a header in bold, again at the top of each page
-unless the drawer says repeat header: no; the lines its lines setting
-prints (TABLE-LINES), as the PDF's are, above, under the header, between its
-parts and under it as standard; with the template's table style, the
-style's unless the drawer gives lines."
+drawer's widths say, or sharing the width it gives the table (full, margin to
+margin) as their text does. In the middle of the page, or against the margin its
+position names. Each aligned as it says or as its numbers are. The rows above
+its first rule a header in bold, again at the top of each page unless the drawer
+says repeat header: no. The lines its lines setting prints (TABLE-LINES), as the
+PDF's are, above, under the header, between its parts and under it as standard.
+With the template's table style, the style's unless the drawer gives lines."
   (if (not (eq (org-property node :type) 'org))
-      (docx-verbatim (subseq *org-latex-text* (org-node-post-affiliated node) (- (org-node-end node) (org-node-post-blank node))) out)
+      (docx-verbatim (subseq *org-latex-text*
+                             (org-node-post-affiliated node)
+                             (- (org-node-end node) (org-node-post-blank node))) out)
       (multiple-value-bind (rows special standard cookies columns) (org-export-table-shape node)
         (let* ((header (export-table-header rows))
                (repeat (not (export-setting-no-p node "repeat header")))
@@ -686,12 +724,13 @@ style's unless the drawer gives lines."
                ;; the lines asked for, over the template's table style's
                (own-lines (or (null table-style) (org-latex-setting node "lines")))
                (borders (and own-lines (docx-table-borders lines)))
-               (justify (loop for i below columns
-                              collect (ecase (export-column-alignment node i special standard cookies)
-                                        (:left "left") (:right "right") (:centre "center"))))
+               (justify (map 'list (lambda (side) (ecase side (:left "left") (:right "right") (:centre "center")))
+                             (export-column-alignments node columns special standard cookies)))
                (rule-after (loop for (row next) on rows
                                  for index from 0
-                                 when (and next (eq (org-property next :type) 'rule) (not (eq (org-property row :type) 'rule)))
+                                 when (and next
+                                           (eq (org-property next :type) 'rule)
+                                           (not (eq (org-property row :type) 'rule)))
                                    collect index)))
           (multiple-value-bind (twips scale)
               (docx-table-widths node columns special standard overhead (or table-width (docx-text-width *docx*)) table-width)
@@ -898,9 +937,11 @@ written already as part of another."
                      (when signature (write-string (docx-page-break) out))))
     (horizontal-rule (write-string "<w:p><w:pPr><w:pBdr><w:bottom w:val=\"single\" w:sz=\"6\" w:space=\"1\" w:color=\"000000\"/></w:pBdr></w:pPr></w:p>" out))
     (drawer (let ((drawers (org-latex-option "d" t)))
-              (unless (or (null drawers) (member (org-property node :drawer-name) '("LOGBOOK" "EXPORT") :test #'string-equal))
+              (unless (or (null drawers)
+                          (member (org-property node :drawer-name) '("LOGBOOK" "EXPORT") :test #'string-equal))
                 (docx-elements node out))))
-    ;; what is never written: properties, planning, clocks, comments, LaTeX of its own, footnotes' definitions (at their references)
+    ;; what is never written: properties, planning, clocks, comments, LaTeX of its own, footnotes' definitions (at their
+    ;; references)
     (t nil)))
 
 ;;; The document around the text
@@ -914,7 +955,9 @@ written already as part of another."
 level up to DEPTH, its number and title linked to it, the page it is on
 after a tab (a PAGEREF field, which Word and LibreOffice fill in)."
   (with-output-to-string (out)
-    (format out "<w:p><w:pPr><w:pStyle w:val=\"TOCHeading\"/></w:pPr>~a</w:p>~%" (docx-run (export-language-word :contents)))
+    (format out
+            "<w:p><w:pPr><w:pStyle w:val=\"TOCHeading\"/></w:pPr>~a</w:p>~%"
+            (docx-run (export-language-word :contents)))
     (dolist (entry (reverse *docx-contents*))
       (destructuring-bind (level number title bookmark) entry
         (when (<= level depth)
@@ -973,7 +1016,10 @@ language (DOCX-LANGUAGE)."
           (paragraph "Centred" "Centred" :ppr "<w:jc w:val=\"center\"/>")
           (paragraph "Verse" "Verse" :ppr "<w:ind w:left=\"720\"/>")
           (paragraph "Signature" "Signature" :ppr "<w:keepNext/><w:keepLines/><w:spacing w:before=\"720\" w:after=\"0\"/>")
-          (paragraph "FootnoteText" "footnote text" :ppr "<w:spacing w:after=\"0\"/>" :rpr "<w:sz w:val=\"18\"/><w:szCs w:val=\"18\"/>")
+          (paragraph "FootnoteText"
+                     "footnote text"
+                     :ppr "<w:spacing w:after=\"0\"/>"
+                     :rpr "<w:sz w:val=\"18\"/><w:szCs w:val=\"18\"/>")
           (paragraph "Footer" "footer" :ppr "<w:jc w:val=\"right\"/><w:spacing w:after=\"0\"/>")
           (character-style "VerbatimChar" "Verbatim Char" (font mono))
           (character-style "Hyperlink" "Hyperlink" "<w:color w:val=\"000000\"/>")
@@ -993,7 +1039,8 @@ numbers, counting anew from the list's start."
            (theirs (lambda (kind depth)
                      (case kind
                        (:bullet (and (member depth (getf design :bullet-levels)) (getf design :bullets)))
-                       ((:decimal :decimal-paren) (and (member depth (getf design :number-levels)) (getf design :numbers)))))))
+                       ((:decimal :decimal-paren)
+                        (and (member depth (getf design :number-levels)) (getf design :numbers)))))))
       (dolist (entry lists)
         (destructuring-bind (id kind start depth) entry
           (unless (funcall theirs kind depth)
@@ -1073,7 +1120,8 @@ your own is."
 <w:sectPr><w:footerReference w:type=\"default\" r:id=\"rId5\"/><w:pgSz w:w=\"11906\" w:h=\"16838\"/>~
 <w:pgMar w:top=\"1417\" w:right=\"1588\" w:bottom=\"1417\" w:left=\"1588\" w:header=\"709\" w:footer=\"709\" w:gutter=\"0\"/><w:cols w:space=\"720\"/></w:sectPr></w:body></w:document>"
                                        *docx-namespaces*
-                                       (kept "title" "Title") (kept "subtitle" "Subtitle") (kept "author" "Author") (kept "date" "Date")))
+                                       (kept "title" "Title") (kept "subtitle" "Subtitle") (kept "author" "Author")
+                                       (kept "date" "Date")))
                   (cons "word/styles.xml"
                         (docx-styles (chosen-fonts)))
                   (cons "word/settings.xml"
@@ -1137,6 +1185,6 @@ a third what else to say of it, a list of sentences."
         (when own
           (dolist (note (docx-pair-notes named own directory)) (export-note "~a" note)))
         (values (zip-octets (docx-template-package parts body))
-                (let ((tex (org-latex-output-name)))
+                (let ((tex (org-export-file-name original file)))
                   (and tex (replaced-type tex "docx")))
                 (reverse (org-latex-notes *org-latex*)))))))

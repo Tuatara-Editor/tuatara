@@ -12,7 +12,8 @@
                         (directory (merge-pathnames "test/org/toc/*.md" (asdf:system-source-directory :tuatara)))))
     (let* ((markdown (string-equal (pathname-type path) "md"))
            (text (alexandria:read-file-into-string path :external-format :utf-8))
-           (expected (alexandria:read-file-into-string (make-pathname :type "expected" :defaults path) :external-format :utf-8))
+           (expected (alexandria:read-file-into-string (make-pathname :type "expected" :defaults path)
+                                                       :external-format :utf-8))
            (made (multiple-value-bind (start end replacement) (tuatara.defaults::toc-change text :markdown markdown)
                    (if (integerp start) (concatenate 'string (subseq text 0 start) replacement (subseq text end)) text))))
       (is string= expected made "~a" (file-namestring path))
@@ -67,7 +68,9 @@
                                       :width 120 :height 20)))
              (point-line (editor)
                (let ((b (tuatara.display:window-buffer (tuatara.command:editor-window editor))))
-                 (tuatara.buffer:buffer-string b :start (tuatara.buffer:buffer-line-start b (tuatara.buffer:buffer-point b))
+                 (tuatara.buffer:buffer-string b
+                                               :start (tuatara.buffer:buffer-line-start b
+                                                                                        (tuatara.buffer:buffer-point b))
                                                  :end (tuatara.buffer:buffer-line-end b (tuatara.buffer:buffer-point b))))))
         ;; saving makes the table again, under the headline tagged :TOC:
         (alexandria:write-string-into-file (format nil "* Contents :TOC:~%~%* Same~%* Same~%** Child~%* Other [1/2]~%") file)
@@ -81,7 +84,8 @@
                                                      (session-point editor))))
         (is string= "* Other [1/2]" (point-line (in-file "j j j j l l l RET")))
         ;; the titles style, :TOC_2_org:, leads by the title as the table lists it
-        (alexandria:write-string-into-file (format nil "* Contents :TOC_2_org:~%~%* Other [1/2]~%") file :if-exists :supersede)
+        (alexandria:write-string-into-file (format nil "* Contents :TOC_2_org:~%~%* Other [1/2]~%") file
+                                           :if-exists :supersede)
         (in-file "g e O * SPC N e w ESC C-x C-s")
         (true (search "- [[Other][Other]]" (alexandria:read-file-into-string file)))
         (is string= "* Other [1/2]" (point-line (in-file "j l l l RET")))
@@ -115,18 +119,28 @@
     (true (directory (merge-pathnames "test/org/dblock/*.org" (asdf:system-source-directory :tuatara))))
     (dolist (path (directory (merge-pathnames "test/org/dblock/*.org" (asdf:system-source-directory :tuatara))))
       (let* ((text (alexandria:read-file-into-string path :external-format :utf-8))
-             (expected (alexandria:read-file-into-string (make-pathname :type "expected" :defaults path) :external-format :utf-8)))
-        (is string= (dblock-masked expected) (dblock-masked (org-text-after "M-x o r g - u p d a t e - a l l - d b l o c k s RET" text))
+             (expected (alexandria:read-file-into-string (make-pathname :type "expected" :defaults path)
+                                                         :external-format :utf-8)))
+        (is string=
+            (dblock-masked expected)
+            (dblock-masked (org-text-after "M-x o r g - u p d a t e - a l l - d b l o c k s RET" text))
             "~a" (file-namestring path))))))
 
 (define-test (org dblocks-step-needs-times)
   (let ((tuatara.defaults::*org-now* (encode-universal-time 0 40 15 2 10 2026))
         (text (format nil "* A~%:LOGBOOK:~%CLOCK: [2026-10-02 Fri 08:00]--[2026-10-02 Fri 09:00] =>  1:00~%:END:~%#+BEGIN: clocktable :step day~%old~%#+END:~%")))
     ;; a step with neither a block nor both times leaves the block as it was, and says so
-    (multiple-value-bind (f editor) (run-keys "M-x o r g - m o d e RET C-u 4 j C-c C-x C-u" :text text :width 100 :height 12)
+    (multiple-value-bind (f editor) (run-keys "M-x o r g - m o d e RET C-u 4 j C-c C-x C-u"
+                                              :text text
+                                              :width 100
+                                              :height 12)
       (is string= text (session-text editor))
       (true (tuatara.frontend.fake:fake-frame-showing f "needs a :block")))
-    (multiple-value-bind (f editor) (run-keys "M-x o r g - m o d e RET C-u 4 j C-c C-x C-u" :text (cl-ppcre:regex-replace ":step day" text ":step fortnight :block today") :width 100 :height 12)
+    (multiple-value-bind (f editor) (run-keys "M-x o r g - m o d e RET C-u 4 j C-c C-x C-u"
+                                              :text (cl-ppcre:regex-replace ":step day" text
+                                                                            ":step fortnight :block today")
+                                              :width 100
+                                              :height 12)
       (is string= (cl-ppcre:regex-replace ":step day" text ":step fortnight :block today") (session-text editor))
       (true (tuatara.frontend.fake:fake-frame-showing f "not one Org knows")))
     ;; (2 . ?t) and \\n read as Emacs reads them
@@ -147,19 +161,28 @@
       (true (< (- (thread-cpu-time) start) internal-time-units-per-second)))
     ;; a block's :scope names only agenda files or files beside its own: another is left out, and said
     (let ((text (format nil "* A~%:LOGBOOK:~%CLOCK: [2026-10-02 Fri 08:00]--[2026-10-02 Fri 09:00] =>  1:00~%:END:~%#+BEGIN: clocktable :scope (\"/dev/zero\" \"/etc/hostname\")~%#+END:~%")))
-      (multiple-value-bind (f editor) (run-keys "M-x o r g - m o d e RET C-u 4 j C-c C-c" :text text :width 120 :height 12)
+      (multiple-value-bind (f editor) (run-keys "M-x o r g - m o d e RET C-u 4 j C-c C-c"
+                                                :text text
+                                                :width 120
+                                                :height 12)
         (true (search "*Total time*" (session-text editor)))
         (false (search "*File time*" (session-text editor)))
         (true (tuatara.frontend.fake:fake-frame-showing f "/etc/hostname out"))))
     ;; a pattern in a block's :match is not run
     (let ((text (format nil "* A :work:~%:LOGBOOK:~%CLOCK: [2026-10-02 Fri 08:00]--[2026-10-02 Fri 09:00] =>  1:00~%:END:~%#+BEGIN: clocktable :match \"{(a*)*b}\"~%#+END:~%")))
-      (multiple-value-bind (f editor) (run-keys "M-x o r g - m o d e RET C-u 4 j C-c C-c" :text text :width 120 :height 12)
+      (multiple-value-bind (f editor) (run-keys "M-x o r g - m o d e RET C-u 4 j C-c C-c"
+                                                :text text
+                                                :width 120
+                                                :height 12)
         (true (search "| A " (session-text editor)))
         (true (search "1:00" (session-text editor)))
         (true (tuatara.frontend.fake:fake-frame-showing f "{pattern}"))))
     ;; steps that would go on for ever stop, and say so; a block Org does not know leaves the block as it is
     (let ((text (format nil "* A~%:LOGBOOK:~%CLOCK: [2026-10-02 Fri 08:00]--[2026-10-02 Fri 09:00] =>  1:00~%:END:~%#+BEGIN: clocktable :step day :tstart \"<1900-01-01 Mon>\" :tend \"<2030-01-01 Tue>\" :stepskip0 t~%#+END:~%")))
-      (multiple-value-bind (f editor) (run-keys "M-x o r g - m o d e RET C-u 4 j C-c C-c" :text text :width 120 :height 12)
+      (multiple-value-bind (f editor) (run-keys "M-x o r g - m o d e RET C-u 4 j C-c C-c"
+                                                :text text
+                                                :width 120
+                                                :height 12)
         (declare (ignore editor))
         (true (tuatara.frontend.fake:fake-frame-showing f "stops at 1000 steps"))))
     (let ((text (format nil "* A~%#+BEGIN: clocktable :block thiswek~%old~%#+END:~%")))
@@ -167,7 +190,9 @@
     (let ((text (format nil "* A~%#+BEGIN: clocktable :step week :wstart 7 :block thismonth~%old~%#+END:~%")))
       (true (search "Weekly report" (org-text-after "C-u 1 j C-c C-c" text))))
     ;; numbers and keywords of a size no file gives
-    (is equal (list :maxlevel "123456789012345678901234567890") (tuatara.defaults::dblock-read-params ":maxlevel 123456789012345678901234567890"))))
+    (is equal
+        (list :maxlevel "123456789012345678901234567890")
+        (tuatara.defaults::dblock-read-params ":maxlevel 123456789012345678901234567890"))))
 
 (define-test (org toc-tags-read-in-a-pass)
   (is equal '("TOC" "x") (tuatara.defaults::toc-line-tags "* Contents :TOC:x:"))
@@ -192,9 +217,13 @@
          (tuatara-user:*org-agenda-files* (list (concatenate 'string folder "multi/")))
          (a (concatenate 'string folder "multi/a.org")))
     ;; an agenda file's archive, found as Org finds it: NAME_archive beside it, or what #+ARCHIVE: names; beside it only
-    (is equal (list (concatenate 'string folder "multi/a.org_archive")) (tuatara.defaults::org-archive-files-of a "* x"))
+    (is equal
+        (list (concatenate 'string folder "multi/a.org_archive"))
+        (tuatara.defaults::org-archive-files-of a "* x"))
     (is equal '() (tuatara.defaults::org-archive-files-of a (format nil "#+ARCHIVE: /etc/hostname::~%* x~%")))
-    (is equal (list (concatenate 'string folder "multi/b.org")) (tuatara.defaults::org-archive-files-of a (format nil "#+ARCHIVE: b.org::* Done~%")))
+    (is equal
+        (list (concatenate 'string folder "multi/b.org"))
+        (tuatara.defaults::org-archive-files-of a (format nil "#+ARCHIVE: b.org::* Done~%")))
     ;; its time among the agenda's files
     (let ((new (org-text-after "SPC O b" (format nil "#+BEGIN: clocktable :scope agenda-with-archives :maxlevel 1 :fileskip0 t~%#+END:~%"))))
       (true (search "| a.org_archive " new))
@@ -202,17 +231,33 @@
       (true (search "0:40" new)))
     ;; a formatter of your own, and one that is not there
     (tuatara-user:define-clocktable-formatter "mine" (tables params)
-      (format nil "~d file~:p, ~d minutes, ~a~%" (length tables) (reduce #'+ tables :key #'second) (getf params :maxlevel)))
+      (format nil
+              "~d file~:p, ~d minutes, ~a~%"
+              (length tables)
+              (reduce #'+ tables :key #'second)
+              (getf params :maxlevel)))
     (let ((text (format nil "* A~%:LOGBOOK:~%CLOCK: [2026-10-02 Fri 08:00]--[2026-10-02 Fri 09:30] =>  1:30~%:END:~%#+BEGIN: clocktable :formatter \"mine\" :maxlevel 3~%#+END:~%")))
       (true (search (format nil "~%1 file, 90 minutes, 3~%") (org-text-after "SPC O b" text)))
-      (multiple-value-bind (f editor) (run-keys "M-x o r g - m o d e RET C-u 4 j C-c C-c" :text (cl-ppcre:regex-replace "mine" text "theirs") :width 100 :height 12)
+      (multiple-value-bind (f editor) (run-keys "M-x o r g - m o d e RET C-u 4 j C-c C-c"
+                                                :text (cl-ppcre:regex-replace "mine" text "theirs")
+                                                :width 100
+                                                :height 12)
         (true (search "*Total time*" (session-text editor)))
         (true (tuatara.frontend.fake:fake-frame-showing f "No clock table formatter is named theirs")))))
-  ;; the carriage returns found in the text itself, as the stripped text has them, a chunk's edge between a return and its newline too
-  (dolist (text (list (format nil "a~C~%b~C~%" #\Return #\Return) (format nil "é中~C~%x~Cy~%~C" #\Return #\Return #\Return)
+  ;; the carriage returns found in the text itself, as the stripped text has them, a chunk's edge between a return and
+  ;; its newline too
+  (dolist (text (list (format nil "a~C~%b~C~%" #\Return #\Return)
+                      (format nil "é中~C~%x~Cy~%~C" #\Return #\Return #\Return)
                       (format nil "~C~%~C~%" #\Return #\Return) "plain" (format nil "end~C" #\Return)
-                      (concatenate 'string (make-string 1048575 :initial-element #\a) (string #\Return) (string #\Newline) "b")
-                      (concatenate 'string (make-string 1048574 :initial-element #\é) (string #\Return) (string #\Return) (string #\Newline))))
+                      (concatenate 'string
+                                   (make-string 1048575 :initial-element #\a)
+                                   (string #\Return)
+                                   (string #\Newline) "b")
+                      (concatenate 'string
+                                   (make-string 1048574 :initial-element #\é)
+                                   (string #\Return)
+                                   (string #\Return)
+                                   (string #\Newline))))
     (is equalp (nth-value 1 (tuatara.defaults::org-strip-returns text))
         (tuatara.defaults::org-returns-in-rope (tuatara.text:string->rope text)))))
 
@@ -228,15 +273,26 @@
         (let ((new (session-text editor)))
           (is = 2 (count "| A            | 1:00   |" (cl-ppcre:split "\\n" new) :test #'string=))
           (is = (length new) (session-point editor))))
-      (is string= two (session-text (nth-value 1 (run-keys-in-turns '("M-x o r g - m o d e RET SPC O b" "u") :text two :width 60 :height 12)))))
+      (is string= two
+          (session-text (nth-value 1
+                                   (run-keys-in-turns '("M-x o r g - m o d e RET SPC O b" "u")
+                                                      :text two
+                                                      :width 60
+                                                      :height 12)))))
     ;; a writer of one's own, its parameters read as data
-    (tuatara-user:define-dblock-writer "hello" (params) (format nil "Hello, ~a ~s~%" (getf params :who) (getf params :n)))
+    (tuatara-user:define-dblock-writer "hello"
+        (params)
+      (format nil "Hello, ~a ~s~%" (getf params :who) (getf params :n)))
     (is string= (format nil "#+BEGIN: hello :who \"you\" :n 3~%Hello, you 3~%#+END:~%")
         (org-text-after "C-c C-c" (format nil "#+BEGIN: hello :who \"you\" :n 3~%#+END:~%")))
     ;; no writer of that name: said, the block left as it is
-    (is string= (format nil "#+BEGIN: nosuch~%old~%#+END:~%") (org-text-after "C-c C-c" (format nil "#+BEGIN: nosuch~%old~%#+END:~%")))
+    (is string=
+        (format nil "#+BEGIN: nosuch~%old~%#+END:~%")
+        (org-text-after "C-c C-c" (format nil "#+BEGIN: nosuch~%old~%#+END:~%")))
     ;; what a file writes after a block's name is never run: #. and (lisp forms) are words and lists
-    (is equal '(:a "#." ("error") :b ("x" 1) :c "file") (tuatara.defaults::dblock-read-params ":a #.(error) :b (\"x\" 1) :c file"))
+    (is equal
+        '(:a "#." ("error") :b ("x" 1) :c "file")
+        (tuatara.defaults::dblock-read-params ":a #.(error) :b (\"x\" 1) :c file"))
     (remhash "hello" tuatara.defaults::*dblock-writers*)))
 
 (defun formatted-notes-folder ()
@@ -248,13 +304,15 @@
   ;; them (tools/formatted-oracle.el), the notes there the notes directory
   (let ((tuatara-user:*org-tags-column* 0)
         (tuatara.defaults::*formatted-file-directory* (formatted-notes-folder))
-        (cases (directory (merge-pathnames "test/org/formatted/notes/*--case-*.org" (asdf:system-source-directory :tuatara)))))
+        (cases (directory (merge-pathnames "test/org/formatted/notes/*--case-*.org"
+                                           (asdf:system-source-directory :tuatara)))))
     (is = 6 (length cases))
     (unwind-protect
          (dolist (path cases)
            (let* ((name (second (cl-ppcre:split "--case-|__" (file-namestring path))))
                   (expected (alexandria:read-file-into-string
-                             (merge-pathnames (format nil "test/org/formatted/expected/~a.org" name) (asdf:system-source-directory :tuatara))
+                             (merge-pathnames (format nil "test/org/formatted/expected/~a.org" name)
+                                              (asdf:system-source-directory :tuatara))
                              :external-format :utf-8))
                   (editor (nth-value 1 (run-keys "SPC O b" :file (namestring path) :width 100 :height 20))))
              (is string= expected (session-text editor) "~a" name)
@@ -433,7 +491,8 @@
   ;; an edited file mapped from disk, larger than a dynamic block reads: not copied when a block is asked for
   (with-test-directory (dir)
     (let* ((path (namestring (merge-pathnames "big.csv" dir)))
-           (buffer (tuatara.buffer:make-buffer (tuatara.buffer:unique-buffer-name "big.csv") :text (make-string 5000 :initial-element #\x))))
+           (buffer (tuatara.buffer:make-buffer (tuatara.buffer:unique-buffer-name "big.csv")
+                                               :text (make-string 5000 :initial-element #\x))))
       (setf (tuatara.buffer:buffer-file buffer) path
             (tuatara.buffer:buffer-mapping buffer) :mapped)
       (tuatara.buffer:buffer-mark-saved buffer -1)

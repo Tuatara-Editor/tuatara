@@ -34,7 +34,9 @@ return the frontend and the editor."
 
 (defun echo-text (frontend)
   "What the echo area says in FRONTEND's last frame, without the blanks around it."
-  (string-trim " " (tuatara.frontend.fake:fake-screen-line frontend (1- (length (tuatara.frontend.fake:fake-screen frontend))))))
+  (string-trim " "
+               (tuatara.frontend.fake:fake-screen-line frontend
+                                                       (1- (length (tuatara.frontend.fake:fake-screen frontend))))))
 
 (defun session-mark (editor)
   "The mark of EDITOR's current buffer, and whether it is active."
@@ -84,8 +86,12 @@ a keyword, with where it stood: (NAME . POSITION)."
       (is equal '(0 "") (moved mode "(a) (b)" "C-u - 2 C-M-f" 7))
       (is equal '(7 "") (moved mode "(a) (b)" "C-u - 2 C-M-b"))
       ;; from inside a name, to its end
-      (is = 14 (first (moved mode (format nil "hide-ifdef-env ~a" (coerce (loop for c from 32 to 126 collect (code-char c)) 'string))
-                             "C-M-f" 4))))
+      (is = 14
+        (first (moved mode
+                      (format nil
+                              "hide-ifdef-env ~a"
+                              (coerce (loop for c from 32 to 126 collect (code-char c)) 'string))
+                      "C-M-f" 4))))
     ;; character literals are no brackets or quote marks to the grammar
     (is equal '(12 "") (moved :lisp-mode "(insert #\\;)" "C-M-f"))
     (is equal '(12 "") (moved :lisp-mode "(insert #\\\")" "C-M-f"))
@@ -258,7 +264,8 @@ a keyword, with where it stood: (NAME . POSITION)."
            ;; point and the mark after KEYS from marker FROM, as (POINT MARK) by marker name
            (multiple-value-bind (text places) (marked-text source)
              (multiple-value-bind (f editor) (session-in :lisp-mode text keys :point (cdr (assoc from places))
-                                                                               :mark (and mark (cdr (assoc mark places))))
+                                                                               :mark (and mark
+                                                                                          (cdr (assoc mark places))))
                (declare (ignore f))
                (list (session-point editor) (session-mark editor)))))
          (at (source &rest names)
@@ -375,7 +382,8 @@ struct S {
       (is equal '(17 0 "Mark set") (goes :rust-mode text "1" "C-u - 2 C-M-a"))
       (is equal '(16 0 "Mark set") (goes :rust-mode text "x: i32" "C-u - C-M-e"))
       ;; mark-defun marks the function around point, the blank line above it too
-      (multiple-value-bind (f editor) (session-in :rust-mode text "M-x m a r k - d e f u n RET" :point (search "let f" text))
+      (multiple-value-bind (f editor)
+        (session-in :rust-mode text "M-x m a r k - d e f u n RET" :point (search "let f" text))
         (declare (ignore f))
         (is equal '(9 0) (line-and-column text (session-point editor)))
         (is equal '(15 0) (line-and-column text (session-mark editor)))))
@@ -405,7 +413,9 @@ struct S {
       (is string= text (filled text "Third line" "M-q RET")))
     ;; keywords in the string are words like others; the code after it is left
     (is string= (format nil "~%(defun foo ()~%  \"Summary.~%Testing keywords: :one :two~%:three\"~%  (body))")
-        (filled (format nil "~%(defun foo ()~%  \"Summary.~%Testing keywords: :one :two :three\"~%  (body))") "Testing" "C-u 3 0 M-q"))
+        (filled (format nil "~%(defun foo ()~%  \"Summary.~%Testing keywords: :one :two :three\"~%  (body))")
+          "Testing"
+          "C-u 3 0 M-q"))
     ;; the first line alone, its words on from the start of the lines after
     (is string= (format nil "(defun foo ()~%  \"A summary line that goes on~%well past the fill column of~%thirty.~%and more\"~%  (body))")
         (filled (format nil "(defun foo ()~%  \"A summary line that goes on well past the fill column of thirty.~%and more\"~%  (body))")
@@ -429,7 +439,8 @@ struct S {
                                  (lambda (function &rest arguments) (incf read) (apply function arguments)))
              (unwind-protect
                   (let ((after (session-text (nth-value 1 (session-in :markdown-mode text "C-u 2 0 M-x f i l l - r e g i o n RET"
-                                                                      :point (search "```" text) :mark (length text))))))
+                                                                      :point (search "```" text)
+                                                                      :mark (length text))))))
                     (true (search "a fenced line that is long and stays as it is" after))
                     (false (search "longer than twenty" after)))
                (sb-int:unencapsulate 'tuatara.buffer:buffer-line-text 'counted))
@@ -493,7 +504,8 @@ struct S {
   (flet ((made (megabytes)
            (let* ((line (format nil "plain words on a line~%"))
                   (rope (tuatara.text:string->rope
-                         (with-output-to-string (o) (dotimes (i (floor (* megabytes 1024 1024) (length line))) (write-string line o)))))
+                         (with-output-to-string (o)
+                           (dotimes (i (floor (* megabytes 1024 1024) (length line))) (write-string line o)))))
                   (size (tuatara.text:rope-octet-length rope)))
              (is eq nil (tuatara.defaults::line-opener-after rope 0))
              (is eq nil (tuatara.defaults::line-opener-before rope size))

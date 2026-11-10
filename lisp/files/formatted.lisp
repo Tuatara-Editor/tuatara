@@ -1,4 +1,5 @@
-;;;; lisp/files/formatted.lisp --- Files with formatted names: find-file-formatted, open-file-formatted, new-file-formatted.
+;;;; lisp/files/formatted.lisp --- Files with formatted names: find-file-formatted, open-file-formatted,
+;;;; new-file-formatted.
 ;;;; Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
 ;;;;
 ;;;; A formatted name says what a file holds and when it was made:
@@ -233,10 +234,10 @@ octets, as it is made to; its zero octets keep its text from being read.")
 
 (defun encrypted-head-p (head)
   "True when HEAD, the first octets of a file (or its text, as characters),
-begins as an encrypted file does, namely a line of *ENCRYPTED-TEXT-HEADERS* (after
-blank space), or a key written as text with Proc-Type: 4,ENCRYPTED; one of
-*ENCRYPTED-SIGNATURES* where it belongs; or the first packet of a binary
-OpenPGP message, its tag and version as gpg writes them
+begins as an encrypted file does, namely a line of *ENCRYPTED-TEXT-HEADERS*
+\(after blank space), or a key written as text with Proc-Type: 4,ENCRYPTED; one
+of *ENCRYPTED-SIGNATURES* where it belongs. It is also true when HEAD is the
+first packet of a binary OpenPGP message, its tag and version as gpg writes them
 \(TUATARA.IO:OPENPGP-PACKET-P)."
   (flet ((octet (i) (and (< i (length head))
                          (let ((x (elt head i))) (if (characterp x) (char-code x) x)))))
@@ -246,7 +247,9 @@ OpenPGP message, its tag and version as gpg writes them
       (or (some (lambda (header) (uiop:string-prefix-p header text)) *encrypted-text-headers*)
           (and (uiop:string-prefix-p "-----BEGIN " text)
                (search "Proc-Type: 4,ENCRYPTED"
-                       (map 'string (lambda (x) (if (characterp x) x (code-char x))) (subseq head 0 (min (length head) 200)))))
+                       (map 'string
+                            (lambda (x) (if (characterp x) x (code-char x)))
+                            (subseq head 0 (min (length head) 200)))))
           (loop for (at . signature) in *encrypted-signatures*
                 thereis (let ((codes (if (stringp signature) (map 'list #'char-code signature) signature)))
                           (loop for code in codes
@@ -370,15 +373,15 @@ Org, 2026-09-27 in text, 2026-09-27T21:34:46+13:00 in Markdown."
 ;;; Reading a note's front matter
 
 (defun front-matter (head style)
-  "The title and the tags HEAD, the start of a note, gives in its front
-matter, the lines at its top before a blank line or the body, as two values:
-in Org (STYLE :org) its #+title: and #+filetags: lines among its keyword
-lines (comments among them too); in Markdown (:markdown) or text (:text) its title and tags lines (title = and
-tags = in Markdown's TOML), Markdown's
-between lines of --- or +++. A title in double quotes is read as written in
-them (\" a quote); the tags a list of words, as :a:b: in Org, [\"a\", \"b\"]
-in Markdown, a  b in text. NIL for a title it has not, or an empty one, and
-for no tags. Only the first 4096 characters of HEAD are looked at."
+  "The title and the tags HEAD, the start of a note, gives in its front matter,
+the lines at its top before a blank line or the body, as two values. In Org
+\(STYLE :org) they are its #+title: and #+filetags: lines among its keyword
+lines (comments among them too). In Markdown (:markdown) or text (:text) they
+are its title and tags lines (title = and tags = in Markdown's TOML). Markdown's
+front matter is between lines of --- or +++. A title in double quotes is read as
+written in them (\" a quote); the tags a list of words, as :a:b: in Org, [\"a\",
+\"b\"] in Markdown, a  b in text. NIL for a title it has not, or an empty one,
+and for no tags. Only the first 4096 characters of HEAD are looked at."
   (let ((lines (uiop:split-string (subseq head 0 (min (length head) 4096)) :separator '(#\Newline)))
         (title nil) (tags nil))
     (when (and lines (member (string-right-trim '(#\Return #\Space) (first lines)) '("---" "+++") :test #'string=))
@@ -397,7 +400,9 @@ for no tags. Only the first 4096 characters of HEAD are looked at."
                    (setf title (if (eq style :org) value (unquoted value))))
                   ((and key (string-equal key (if (eq style :org) "filetags" "tags")) (null tags))
                    (setf tags (tuatara.text:split-words (string-trim "[]" value)
-                                                        (if (eq style :org) '(#\: #\Space #\Tab) '(#\, #\" #\' #\Space #\Tab)))))
+                                                        (if (eq style :org)
+                                                            '(#\: #\Space #\Tab)
+                                                            '(#\, #\" #\' #\Space #\Tab)))))
                   (key)
                   ;; a comment among Org's keyword lines
                   ((and (eq style :org) (uiop:string-prefix-p "#" line)))
@@ -417,11 +422,11 @@ are kept in (*FORMATTED-FILE-TYPES*) or one that cannot be read."
 
 (defstruct (gathering (:constructor make-gathering ()) (:copier nil))
   "What a thread of its own finds while a question waits for it (a list of
-files, the text of files to search): FOUND, what it gave since it was last
-taken, the newest first; COUNT, how many it gave in all; DONE once it has
-finished; CANCEL, a cons whose car, turned true, stops it; LOCK, held while
-FOUND changes; WOKEN, when it last woke the editor; FINISHED, a semaphore
-signalled once it has finished (WAIT-FOR-GATHERING)."
+files, the text of files to search). FOUND is what it gave since it was last
+taken, the newest first. COUNT is how many it gave in all. DONE is true once it
+has finished. CANCEL is a cons whose car, turned true, stops it. LOCK is held
+while FOUND changes. WOKEN is when it last woke the editor. FINISHED is a
+semaphore signalled once it has finished (WAIT-FOR-GATHERING)."
   (lock (sb-thread:make-mutex :name "gathering"))
   (found '()) (count 0) (done nil) (cancel (list nil)) (woken 0)
   (finished (sb-thread:make-semaphore :name "gathering finished")))
@@ -512,7 +517,8 @@ at the right."
                     :group (formatted-file-group relative)
                     :columns (list (list (identifier-date identifier) :list-date)
                                    (list (or title "") nil)
-                                   (list (format nil "~@[=~a  ~]~{~a~^ ~}" signature keywords) :completion-formatted-keywords))
+                                   (list (format nil "~@[=~a  ~]~{~a~^ ~}" signature keywords)
+                                         :completion-formatted-keywords))
                     :annotation (and stamp
                                      (list (list (octets-words (tuatara.io:stamp-size stamp)) :list-size -8)
                                            (list (age-words (tuatara.io:stamp-mtime stamp) now) :list-date -12))))))
@@ -574,27 +580,29 @@ read)."
                         (gathering-source gathering
                                           (lambda (new)
                                             (when new
-                                              (setf entries (merge 'list (copy-list entries) (stable-sort new predicate :key key)
-                                                                   predicate :key key)))
+                                              (setf entries
+                                                    (merge 'list
+                                                           (copy-list entries)
+                                                           (stable-sort new predicate :key key)
+                                                           predicate :key key)))
                                             (length entries)))
                         (lambda () (values nil nil (length entries)))))
         (when gathering (stop-gathering gathering))))))
 
 (defun read-formatted-file (prompt &key (keep (constantly t)) (predicate #'>) (key #'second) none preview)
   "Ask PROMPT for one of your files with formatted names, those in
-*FORMATTED-FILE-DIRECTORY* and its subdirectories whose path from there KEEP
-is true of, chosen by any part of the name. They are listed under their
+*FORMATTED-FILE-DIRECTORY* and its subdirectories whose path from there KEEP is
+true of, chosen by any part of the name. They are listed under their
 subdirectory or their kind, in the order PREDICATE gives their KEY (the ones
-changed last first as standard; see CALL-WITH-FORMATTED-FILES), each as its
-date, its title and its keywords, with its size and when it changed at the
-right; listed in the background as you type, the list growing as they are
-found (at once, when the directory is one of *INDEXED-DIRECTORIES*), the
-prompt saying NONE (\"none in\" the directory as standard) when there are
-none. \\<minibuffer>\\[minibuffer-finish] takes the best match once all are
-listed, or at once the one you moved to. With PREVIEW and
-*PREVIEW-FORMATTED-FILES*, the file selected is shown meanwhile, opened
-safely. Returns the path of the one chosen from that directory, or NIL and
-what was typed when it is none of them."
+changed last first as standard; see CALL-WITH-FORMATTED-FILES). Each is shown as
+its date, its title and its keywords, with its size and when it changed at the
+right. They are listed in the background as you type, the list growing as they
+are found (at once, when the directory is one of *INDEXED-DIRECTORIES*). The
+prompt says NONE (\"none in\" the directory as standard) when there are none.
+\\<minibuffer>\\[minibuffer-finish] takes the best match once all are listed, or
+at once the one you moved to. With PREVIEW and *PREVIEW-FORMATTED-FILES*, the
+file selected is shown meanwhile, opened safely. Returns the path of the one
+chosen from that directory, or NIL and what was typed when it is none of them."
   (let ((root (directory-name *formatted-file-directory*)))
     (call-with-formatted-files
      (lambda (listed source)
@@ -649,7 +657,9 @@ selected: no keywords, or no more. Returns a list of strings."
                            :none "no keywords" :more "no more keywords"
                            :source (and gathering
                                         (gathering-source gathering
-                                                          (lambda (new) (dolist (keywords new) (offer keywords)) (hash-table-count seen)))))
+                                                          (lambda (new)
+                                                            (dolist (keywords new) (offer keywords))
+                                                            (hash-table-count seen)))))
           (when gathering (stop-gathering gathering)))))))
 
 (defun read-formatted-extension ()
@@ -717,20 +727,19 @@ says encrypted: that one is made when its buffer is saved."
   (subseq name 0 (- (length name) (length (name-extension name)))))
 
 (define-command find-file-formatted ()
-  "Visit a file, or make a new one with a formatted name. A name that exists
-is visited as find-file visits it. The directory typed, taken as it is (the
-line typed is selected while it ends in /), makes a new file there, asking its title, the end of its name
-(free text, *FORMATTED-FILE-EXTENSION* the default) and its keywords. A new name asks for a title (the
-name typed to begin with), the end of its name when it has none, and keywords,
-separated by commas
-(\\<minibuffer>\\[minibuffer-complete] completes the one being typed, on those in
-*FORMATTED-FILE-KEYWORDS* and in the names of your files), and the file is made in the
-directory typed, named from them and the time, with the end of the name typed:
-20260927T213446--my-notes-on-the-garden__garden_project.org.
-It begins with the header for its kind (*FORMATTED-FILE-TYPES*). A name is
-an identifier from the time, -- and the title in lower case with hyphens, __
-and the keywords joined by _. Nothing
-is written until the file is saved."
+  "Visit a file, or make a new one with a formatted name. A name that exists is
+visited as find-file visits it. The directory typed, taken as it is (the line
+typed is selected while it ends in /), makes a new file there, asking its title,
+the end of its name (free text, *FORMATTED-FILE-EXTENSION* the default) and its
+keywords. A new name asks for a title (the name typed to begin with), the end of
+its name when it has none, and keywords, separated by commas
+\(\\<minibuffer>\\[minibuffer-complete] completes the one being typed, on those
+in *FORMATTED-FILE-KEYWORDS* and in the names of your files). The file is made
+in the directory typed, named from them and the time, with the end of the name
+typed: 20260927T213446--my-notes-on-the-garden__garden_project.org. It begins
+with the header for its kind (*FORMATTED-FILE-TYPES*). A name is an identifier
+from the time, -- and the title in lower case with hyphens, __ and the keywords
+joined by _. Nothing is written until the file is saved."
   (multiple-value-bind (path new) (read-file-path "Find or create file: " :new-file t :note nil)
     (cond
       (new

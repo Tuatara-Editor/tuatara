@@ -27,11 +27,11 @@
 its progress in the mode line.")
 
 (defvar *reload-changed-files* nil
-  "True to have every buffer keep up with its file on disk by itself:
-what another program appends to the file is added to the buffer at once, even
-one with changes of its own, and with point at the end it stays at the end, as
-tail -f has it; a file rewritten is read again when the buffer has no changes
-of its own, point and the window staying on the same text, and one undo takes
+  "True to have every buffer keep up with its file on disk by itself. What
+another program appends to the file is added to the buffer at once, even one
+with changes of its own. With point at the end, it stays at the end, as tail
+-f has it. A file rewritten is read again when the buffer has no changes of
+its own, point and the window staying on the same text, and one undo takes
 that back. Off by default: the mode line and echo area say the file changed,
 and \\[revert-buffer] reads it again. \\[follow-file] chooses for one buffer.")
 
@@ -58,10 +58,10 @@ THEN): THEN, a function of the buffer, runs as the next command once JOB has
 saved it (SAVE-BUFFER-WITH-CARE's THEN).")
 
 (defmethod tuatara.runtime:job-take-in :after ((job tuatara.io:save-job))
-  "Say how the background save JOB ended; after a save, give a buffer saved as
+  "Say how the background save JOB ended. After a save, give a buffer saved as
 another file that file's name, and the major mode that name calls for when it
-calls for one (a scratch buffer saved as notes.org is in Org mode then; a
-buffer opened safely keeps showing its text as it is), run
+calls for one. A scratch buffer saved as notes.org is in Org mode then. A
+buffer opened safely keeps showing its text as it is. Then run
 *AFTER-SAVE-FUNCTIONS*, and go on with what was to follow the save
 \(*SAVE-CONTINUATIONS*)."
   (let ((buffer (tuatara.io:save-job-buffer job))
@@ -92,6 +92,8 @@ being the evidence's still, but may be changed now when you may write the
 new file; \\[end-safe-visit] opens it as usual. Said so."
   (when (shiftf (tuatara.buffer:buffer-local buffer :saved-from-evidence) nil)
     (when (and (tuatara.io:safe-visit-p buffer) (null (buffer-evidence buffer)))
+      ;; the evidence it opened safely for is no longer the file it visits
+      (setf (tuatara.io:safe-visit-p buffer) t)
       (setf (buffer-read-only-p buffer)
             (not (tuatara.io:writable-p (tuatara.buffer:buffer-file buffer))))
       (message "~a is a copy out of evidence: still opened safely, and may be changed; \\[end-safe-visit] opens it as usual"
@@ -176,10 +178,14 @@ changed on disk, write-protected, another file's name): the save is refused."
       ((and other (tuatara.buffer:buffer-modified-p other))
        (message "~a is open in ~a with changes not saved: not saved" called (tuatara.buffer:buffer-name other)))
       ((and other (not (and (kill-buffer-allowed-p other)
-                            (save-question quiet #'yes-or-no-p* (format nil "~a is open in ~a; write over it and kill that buffer?"
-                                                  called (tuatara.buffer:buffer-name other))))))
+                            (save-question quiet
+                                           #'yes-or-no-p*
+                                           (format nil "~a is open in ~a; write over it and kill that buffer?"
+                             called (tuatara.buffer:buffer-name other))))))
        (message "Not saved"))
-      ((and as existing (not other) (not (save-question quiet #'yes-or-no-p* (format nil "~a exists; overwrite it?" called))))
+      ((and as existing (not other) (not (save-question quiet
+                                                        #'yes-or-no-p*
+                                                        (format nil "~a exists; overwrite it?" called))))
        (message "Not saved"))
       ((and (null existing) (unencryptable-name-p (tuatara.io:native-file-name file)))
        (message "~a is not saved: only .gpg files can be encrypted, and its text would be there to read" called))
@@ -205,8 +211,11 @@ changed on disk, write-protected, another file's name): the save is refused."
                (and (tuatara.io:safe-visit-p buffer) (buffer-evidence buffer) t)))
        (let ((job (handler-case (tuatara.io:start-save buffer :path file :force as)
                     (tuatara.io:file-changed-on-disk ()
-                      (if (save-question quiet #'yes-or-no-p* (format nil "~a changed on disk since it was read; overwrite it with this buffer?"
-                                                called))
+                      (if (save-question quiet
+                                         #'yes-or-no-p*
+                                         (format nil
+                                                 "~a changed on disk since it was read; overwrite it with this buffer?"
+                           called))
                           (tuatara.io:start-save buffer :path file :force t)
                           (progn (message "Not saved") nil))))))
          (when job
@@ -253,7 +262,8 @@ left as it is (it has changes of its own, or the file is gone)."
            nil)
           ((tuatara.io:append-from-disk buffer) :appended)
           ((or (tuatara.buffer:buffer-modified-p buffer) (null (tuatara.io:path-stamp file :failure nil))) nil)
-          (t (handler-case (progn (reload-buffer buffer) (setf (tuatara.buffer:buffer-local buffer :disk-state-said) nil)
+          (t (handler-case (progn (reload-buffer buffer)
+                                  (setf (tuatara.buffer:buffer-local buffer :disk-state-said) nil)
                                   :reloaded)
                (tuatara.io:file-system-error () nil))))))
 
@@ -264,19 +274,26 @@ left as it is (it has changes of its own, or the file is gone)."
         (format nil "~{~a~^, ~} and ~d more" (subseq names 0 3) (- (length names) 3))
         (format nil "~{~a~#[~; and ~:;, ~]~}" names))))
 
-(defun react-to-disk (buffers)
+(defun react-to-disk (buffers &key visited)
   "Take in what the watcher found about BUFFERS, whose files changed on disk:
 bring those that follow their files up to date (CATCH-UP), and say in one
 message what became of them all, each state once. Growth taken in is not
-said: a log followed would say it every second."
+said: a log followed would say it every second. With VISITED, BUFFERS were
+just visited again: each is brought up to date as one that follows its file,
+unless \\[follow-file] stopped it following or it has changes of its own, which
+are never touched then; what became of it is said even when it was said
+before."
   (let ((read-again '()) (changed '()) (kept '()) (deleted '()) (stale '()))
     (dolist (buffer buffers)
-      (let* ((following (following-p buffer))
-             (done (and following (catch-up buffer)))
+      (let* ((following (or (following-p buffer)
+                            (and visited (not (eq (tuatara.buffer:buffer-local buffer :follow-file) :off)))))
+             (done (and following
+                        (not (and visited (tuatara.buffer:buffer-modified-p buffer)))
+                        (catch-up buffer)))
              (state (tuatara.io:file-disk-state buffer)))
         (cond ((eq done :reloaded) (push buffer read-again))
               ((eq done :appended))
-              ((eq state (tuatara.buffer:buffer-local buffer :disk-state-said)))
+              ((and (not visited) (eq state (tuatara.buffer:buffer-local buffer :disk-state-said))))
               (t (case state
                    ;; one that follows its file, left as it is: say why
                    (:changed (if (and following (tuatara.buffer:buffer-modified-p buffer))
@@ -287,7 +304,10 @@ said: a log followed would say it every second."
         (setf (tuatara.buffer:buffer-local buffer :disk-state-said) (tuatara.io:file-disk-state buffer))))
     (flet ((names (list) (buffer-names (reverse list))))
       (let ((parts (remove nil
-                           (list (and read-again (format nil "Read ~a again, changed on disk (undo takes it back)" (names read-again)))
+                           (list (and read-again
+                                      (format nil
+                                              "Read ~a again, changed on disk (undo takes it back)"
+                                              (names read-again)))
                                  (and kept (format nil (substitute-command-keys
                                                         "~a changed on disk but ~:[is~;are~] not read again, having changes of ~
                                                          ~:*~:[its~;their~] own: \\[revert-buffer] takes the disk's, ~
@@ -298,8 +318,10 @@ said: a log followed would say it every second."
                                                            "~a changed on disk; \\[revert-buffer] reads ~:[it~;each~] again"
                                                            :marks t :for-format t)
                                                       (names changed) (rest changed)))
-                                 (and deleted (format nil "~a ~:[was~;were~] deleted on disk; saving writes ~:*~:[it~;them~] again"
-                                                      (names deleted) (rest deleted)))
+                                 (and deleted
+                                      (format nil
+                                              "~a ~:[was~;were~] deleted on disk; saving writes ~:*~:[it~;them~] again"
+                                              (names deleted) (rest deleted)))
                                  (and stale (format nil (substitute-command-keys
                                                          "~a ~:[was~;were~] rewritten on disk while shown from ~:*~:[it~;them~]; read-only now, \\[revert-buffer] reads ~:*~:[it~;each~] again"
                                                          :marks t :for-format t)
@@ -324,14 +346,13 @@ about them (BUFFER-HELD-BY-QUESTION-P): what the change brings is taken in
 once it is answered.")
 
 (defun files-tick (editor)
-  "Tick function: take in the countings of lines, saves and snapshots that have
-ended (a large file's lines are counted in the background after it opens),
-keep the watcher told of the files visited, take in what it found
-(REACT-TO-DISK), but for buffers a waiting question is about, put off until
-it is answered (*DISK-NEWS-PUT-OFF*), and say what has become of the shown
-buffer's file. Asks to
-be called soon while work runs; otherwise the watcher wakes the editor when it
-has news."
+  "Tick function: take in the countings of lines, saves and snapshots that
+have ended (a large file's lines are counted in the background after it
+opens), and keep the watcher told of the files visited. Take in what it found
+\(REACT-TO-DISK), but for buffers a waiting question is about, put that off
+until it is answered (*DISK-NEWS-PUT-OFF*). Say what has become of the shown
+buffer's file. Asks to be called soon while work runs; otherwise the watcher
+wakes the editor when it has news."
   (let ((shown (tuatara.display:window-buffer (editor-window editor)))
         (counting (tuatara.io:finish-indexing)))
     (take-in-saves)
@@ -340,9 +361,11 @@ has news."
     (tuatara.io:watch-files tuatara.buffer:*buffers*)
     (multiple-value-bind (changed again) (tuatara.io:take-file-looks)
       (when (or changed again)
-        (tuatara.runtime:debug-report :file "~@[changed on disk: ~{~a (~(~a~))~^, ~}~]~:[~;; ~]~@[grown on disk: ~{~a~^, ~}~]"
+        (tuatara.runtime:debug-report :file
+                                      "~@[changed on disk: ~{~a (~(~a~))~^, ~}~]~:[~;; ~]~@[grown on disk: ~{~a~^, ~}~]"
                                       (loop for b in changed
-                                            collect (tuatara.buffer:buffer-name b) collect (tuatara.io:file-disk-state b))
+                                            collect (tuatara.buffer:buffer-name b)
+                                            collect (tuatara.io:file-disk-state b))
                                       (and changed again) (mapcar #'tuatara.buffer:buffer-name again)))
       (let* ((news (remove-duplicates (append (shiftf *disk-news-put-off* '())
                                               changed (remove-if-not #'following-p again))))
@@ -440,10 +463,10 @@ wrong on its text before is tried on it again, the text parsed afresh."
                    (message "Read ~a again~@[; ~a~]" (tuatara.buffer:buffer-name buffer) said)))))))
 
 (define-command follow-file ()
-  "Keep the current buffer up with its file on disk, or stop: what another
+  "Keep the current buffer up with its file on disk, or stop. What another
 program appends to the file is added at once, even with changes of your own in
-the buffer, and with point at the end it stays at the end, as tail -f has it;
-a file rewritten is read again when the buffer has no changes of its own,
+the buffer, and with point at the end it stays at the end, as tail -f has it.
+A file rewritten is read again when the buffer has no changes of its own,
 point staying on the same text. The mode line says Following.
 *RELOAD-CHANGED-FILES* does this for every buffer."
   (let* ((buffer (current-buffer)) (on (not (following-p buffer))))
@@ -455,15 +478,16 @@ point staying on the same text. The mode line says Following.
 
 (defun wait-for-counting (buffer &optional line)
   "Wait for the lines of BUFFER's text to be counted in the background, for a
-command that needs them (going to a line, say): all of them, or with LINE,
-from 0, only until the count has passed that line, which far into a large file
-on a slow drive is there as soon as the lines before it are counted, not the
-whole file. The echo area shows how far the count has got; \\`C-g' gives up
-the command, the counting going on; other keys wait their turn; a counting
-that failed gives an error saying why. With LINE, where that line starts;
-NIL when the lines are all counted by then, or there is no counting. Outside
-a command loop the lines are counted there and then (NIL with LINE). Refused,
-saying so, while the file is still arriving (BUFFER-ARRIVING-P)."
+command that needs them (going to a line, say). It waits for all of them, or
+with LINE, from 0, only until the count has passed that line. Far into a large
+file on a slow drive, that line is there as soon as the lines before it are
+counted, not the whole file. The echo area shows how far the count has got;
+\\`C-g' gives up the command, the counting going on; other keys wait their
+turn; a counting that failed gives an error saying why. With LINE, where that
+line starts; NIL when the lines are all counted by then, or there is no
+counting. Outside a command loop the lines are counted there and then (NIL
+with LINE). Refused, saying so, while the file is still arriving
+\(BUFFER-ARRIVING-P)."
   (when (tuatara.io:buffer-arriving-p buffer)
     (refuse "The lines of ~a are counted once the whole file has arrived" (tuatara.buffer:buffer-name buffer)))
   (let ((editor *editor*))

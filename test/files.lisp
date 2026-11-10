@@ -59,7 +59,8 @@ thread may take is multiplied by it."
 
 (defun forget-trusted-under (directory)
   "Take the projects within DIRECTORY out of those trusted when asked."
-  (let ((top (string-right-trim "/" (or (tuatara.defaults::real-folder (namestring directory)) (namestring directory)))))
+  (let ((top (string-right-trim "/"
+                                (or (tuatara.defaults::real-folder (namestring directory)) (namestring directory)))))
     (tuatara.defaults::state-list-drop
      tuatara.defaults::*lsp-trusted*
      (remove-if-not (lambda (entry) (and (stringp entry) (tuatara.io:path-within-p entry top)))
@@ -428,17 +429,20 @@ that BUFFER's mapping holds."
 how many times the file at PATH was opened meanwhile, as the system's file
 events say (opened, not only named or examined), and FUNCTION's value as a
 second value."
-  (let ((watch (sb-alien:alien-funcall (sb-alien:extern-alien "inotify_init1" (function sb-alien:int sb-alien:int)) #o4000)))
+  (let ((watch (sb-alien:alien-funcall (sb-alien:extern-alien "inotify_init1"
+                                                              (function sb-alien:int sb-alien:int)) #o4000)))
     (unwind-protect
          (progn
-           (sb-alien:alien-funcall (sb-alien:extern-alien "inotify_add_watch" (function sb-alien:int sb-alien:int sb-alien:c-string
-                                                                                        sb-alien:unsigned-int))
+           (sb-alien:alien-funcall (sb-alien:extern-alien "inotify_add_watch"
+                                                          (function sb-alien:int sb-alien:int sb-alien:c-string
+                                                                    sb-alien:unsigned-int))
                                    watch (namestring path) #x20) ; IN_OPEN
            (let* ((value (handler-case (funcall function) (error (e) e)))
                   (events (make-array 4096 :element-type '(unsigned-byte 8)))
                   (got (tuatara.io:with-octets-sap (sap events)
                          (sb-alien:alien-funcall (sb-alien:extern-alien "read" (function sb-alien:long sb-alien:int
-                                                                                         sb-sys:system-area-pointer sb-alien:unsigned-long))
+                                                                                         sb-sys:system-area-pointer
+                                                                                         sb-alien:unsigned-long))
                                                  watch sap 4096))))
              ;; an event on the watched file itself has no name: 16 octets each
              (values (if (plusp got) (floor got 16) 0) value)))
@@ -456,7 +460,10 @@ second value."
       (sb-posix:symlink fifo link)
       (sb-posix:symlink "/dev/null" null-link)
       ;; the count sees a real open
-      (is = 1 (count-opens fifo (lambda () (sb-posix:close (sb-posix:open fifo (logior sb-posix:o-rdonly sb-posix:o-nonblock))))))
+      (is = 1
+          (count-opens fifo
+                       (lambda ()
+                         (sb-posix:close (sb-posix:open fifo (logior sb-posix:o-rdonly sb-posix:o-nonblock))))))
       (dolist (try (list (lambda () (tuatara.io:visit-file link :safe t))
                          (lambda () (tuatara.io:visit-file link))
                          (lambda () (tuatara.io:open-for-reading link t))
@@ -479,7 +486,8 @@ second value."
         (is = 946681200 (sb-posix:stat-atime (sb-posix:stat file)))
         ;; a file larger than a limit: refused, or what TOO-LARGE gives
         (fail (tuatara.io:file-text file :limit 3) tuatara.io:file-system-error)
-        (is eq :large (tuatara.io:file-text file :limit 3 :too-large (lambda (name size) (declare (ignore name size)) :large)))
+        (is eq :large
+            (tuatara.io:file-text file :limit 3 :too-large (lambda (name size) (declare (ignore name size)) :large)))
         (is eq :none (tuatara.io:file-text (namestring (merge-pathnames "absent" dir)) :missing :none)))))
   ;; foreign memory: zeroed when asked, copied out by length or to its zero octet
   (tuatara.io:with-foreign-memory (sap 8 :zero t)
@@ -501,17 +509,21 @@ second value."
               (is eq :direct (tuatara.io:file-isolation b))
               (false (tuatara.io:snapshots))))
           (fail (tuatara.io:write-text-file (tuatara.text:string->rope "x")
-                                            (merge-pathnames "tuatara-test-file" (uiop:pathname-directory-pathname file)))
+                                            (merge-pathnames "tuatara-test-file"
+                                                             (uiop:pathname-directory-pathname file)))
                 tuatara.io:file-system-error)))))
 
 (define-test (visiting-and-saving arguments-handed-on-as-octets)
   ;; a program run again gets each argument as the system gets a name: a raw byte's
   ;; character as its octet, the rest as UTF-8
-  (let ((argv (tuatara.io::argument-vector (list "tuatara" (format nil "bad~cn~cme" (code-char #xDCFF) (code-char #xE9))))))
+  (let ((argv (tuatara.io::argument-vector (list "tuatara"
+                                                 (format nil "bad~cn~cme" (code-char #xDCFF) (code-char #xE9))))))
     (unwind-protect
          (progn
-           (is equalp (tuatara.text:string-octets "tuatara") (tuatara.io:sap-octets (sb-alien:alien-sap (sb-alien:deref argv 0))))
-           (is equalp #(98 97 100 255 110 195 169 109 101) (tuatara.io:sap-octets (sb-alien:alien-sap (sb-alien:deref argv 1))))
+           (is equalp (tuatara.text:string-octets "tuatara")
+               (tuatara.io:sap-octets (sb-alien:alien-sap (sb-alien:deref argv 0))))
+           (is equalp #(98 97 100 255 110 195 169 109 101)
+               (tuatara.io:sap-octets (sb-alien:alien-sap (sb-alien:deref argv 1))))
            (true (tuatara.io:null-pointer-p (sb-alien:alien-sap (sb-alien:deref argv 2)))))
       (tuatara.io::free-argument-vector argv))))
 
@@ -682,7 +694,8 @@ second value."
         (is string= (tuatara.io:path-join folder "report (2).eml") copy)
         (is string= "contents" (file-text copy))
         (is string= "already here" (file-text (merge-pathnames "report.eml" dir))))
-      (is string= (tuatara.io:path-join folder "report (3).eml") (tuatara.io:copy-to-free-name from folder "report.eml"))
+      (is string= (tuatara.io:path-join folder "report (3).eml")
+          (tuatara.io:copy-to-free-name from folder "report.eml"))
       ;; a link is a name taken too, never written through
       (sb-posix:symlink "/nonexistent/tuatara-test-target" (namestring (merge-pathnames "link.txt" dir)))
       (is string= (tuatara.io:path-join folder "link (2).txt") (tuatara.io:copy-to-free-name from folder "link.txt"))
@@ -889,14 +902,18 @@ second value."
         (tuatara.buffer:kill-buffer (session-buffer editor)))
       ;; another program replaced the file: saving asks; n keeps theirs
       (multiple-value-bind (f editor)
-          (run-keys "i Y C-g M-x t e s t - r e p l a c e - f i l e - o n - d i s k RET C-x C-s n RET" :file path :width 120)
+          (run-keys "i Y C-g M-x t e s t - r e p l a c e - f i l e - o n - d i s k RET C-x C-s n RET"
+                    :file path
+                    :width 120)
         (true (tuatara.frontend.fake:fake-frame-showing f "changed on disk since it was read"))
         (true (tuatara.frontend.fake:fake-frame-showing f "Not saved"))
         (is string= "theirs" (file-text path))
         (tuatara.buffer:kill-buffer (session-buffer editor)))
       ;; y overwrites it
       (multiple-value-bind (f editor)
-          (run-keys "i Y C-g M-x t e s t - r e p l a c e - f i l e - o n - d i s k RET C-x C-s y RET" :file path :width 120)
+          (run-keys "i Y C-g M-x t e s t - r e p l a c e - f i l e - o n - d i s k RET C-x C-s y RET"
+                    :file path
+                    :width 120)
         (declare (ignore f))
         (is string= "Ytheirs" (file-text path))
         (false (tuatara.buffer:buffer-modified-p (session-buffer editor)))
@@ -949,7 +966,8 @@ second value."
     (let* ((text (format nil "~{row ~d abc~%~}" (loop for i below 400 collect i)))
            (path (put-file (merge-pathnames "rows.txt" dir) text)))
       (with-background ()
-        (multiple-value-bind (f editor) (run-keys (format nil "r r % ~a RET" (key-string "abc/xyz")) :file path :width 120)
+        (multiple-value-bind (f editor)
+            (run-keys (format nil "r r % ~a RET" (key-string "abc/xyz")) :file path :width 120)
           (declare (ignore f))
           (let ((b (session-buffer editor)))
             (is string= (cl-ppcre:regex-replace-all "abc" text "xyz") (tuatara.buffer:buffer-string b))
@@ -986,18 +1004,22 @@ second value."
       ;; nor in a directory's: one called [Gmail] is listed, walked, searched and completed in
       (let ((odd (concatenate 'string (tuatara.io:native dir) "sub/[Gmail] *?")))
         (sb-posix:mkdir odd #o700)
-        (with-open-file (s (sb-ext:parse-native-namestring (concatenate 'string odd "/inbox [1].txt")) :direction :output)
+        (with-open-file (s (sb-ext:parse-native-namestring (concatenate 'string odd "/inbox [1].txt"))
+                           :direction :output)
           (write-line "a needle here" s))
         (is equal '("inbox [1].txt") (mapcar #'first (tuatara.io:directory-entries odd)))
         (is equal '("inbox [1].txt") (mapcar #'first (tuatara.io:directory-entries (concatenate 'string odd "/"))))
         (is string= (concatenate 'string odd "/inbox [1].txt")
             (tuatara.io:native (tuatara.io:expand-path "inbox [1].txt" :directory odd)))
         (is equal '("sub/[Gmail] *?/inbox [1].txt")
-            (remove-if-not (lambda (relative) (search "inbox" relative)) (mapcar #'cdr (tuatara.defaults::files-under dir))))
+            (remove-if-not (lambda (relative) (search "inbox" relative))
+                           (mapcar #'cdr (tuatara.defaults::files-under dir))))
         (is equal '("a needle here")
             (mapcar #'fourth (tuatara.defaults::corpus-lines (read-file-corpus dir) "needle")))
         (is equal '("inbox [1].txt")
-            (map 'list #'tuatara.command::candidate-string (tuatara.defaults::file-candidates (concatenate 'string odd "/"))))))))
+            (map 'list
+                 #'tuatara.command::candidate-string
+                 (tuatara.defaults::file-candidates (concatenate 'string odd "/"))))))))
 
 (define-test (visiting-and-saving default-directory)
   ;; a buffer with no file is in *default-directory*, ~/ unless set: a file
@@ -1039,7 +1061,8 @@ second value."
         (true (tuatara.frontend.fake:fake-frame-showing (saved "C-x C-s n o t e s / C-j") "is a folder: not saved"))
         (saved "C-x C-s n o t e s / g o n e . o r g C-g")
         (is equal '("new.org" "old.org")
-            (sort (mapcar (lambda (p) (file-namestring p)) (uiop:directory-files (merge-pathnames "notes/" dir))) #'string<))
+            (sort (mapcar (lambda (p) (file-namestring p))
+                          (uiop:directory-files (merge-pathnames "notes/" dir))) #'string<))
         ;; the scratch buffer saved is the file's buffer now: not left for the tests after
         (kill-buffers-visiting dir)))))
 
@@ -1097,7 +1120,10 @@ second value."
                (true (tuatara.frontend.fake:fake-frame-showing f "taken.txt is visited safely: its file is left as it is")))
              (kill-buffers-visiting dir)
              ;; a buffer with no file: saved under the name asked for
-             (run-keys "M-x r e n a m e - v i s i t e d - f i l e RET f r e s h . t x t RET" :text "words" :width 200 :height 20)
+             (run-keys "M-x r e n a m e - v i s i t e d - f i l e RET f r e s h . t x t RET"
+                       :text "words"
+                       :width 200
+                       :height 20)
              (is string= "words" (alexandria:read-file-into-string (merge-pathnames "fresh.txt" dir))))
         (kill-buffers-visiting dir)))))
 
@@ -1145,7 +1171,8 @@ second value."
       (put-file old (format nil "first~%"))
       (unwind-protect
            (progn
-             (multiple-value-bind (f editor) (run-keys "i X C-g C-x C-w n e w . t x t RET" :file (namestring old) :width 400 :height 20)
+             (multiple-value-bind (f editor)
+                 (run-keys "i X C-g C-x C-w n e w . t x t RET" :file (namestring old) :width 400 :height 20)
                (let ((b (tuatara.display:window-buffer (tuatara.command:editor-window editor))))
                  (true (tuatara.frontend.fake:fake-frame-showing f (concatenate 'string "Write file: " (tuatara.defaults::abbreviated-path dir))))
                  (is string= "new.txt" (tuatara.buffer:buffer-name b))
@@ -1156,7 +1183,8 @@ second value."
              (kill-buffers-visiting dir)
              ;; a folder alone: the file's own name in it
              (run-keys "C-x C-w c o p i e s / C-j" :file (namestring old) :width 160 :height 20)
-             (is string= (format nil "first~%") (alexandria:read-file-into-string (merge-pathnames "copies/old.txt" dir)))
+             (is string= (format nil "first~%")
+                 (alexandria:read-file-into-string (merge-pathnames "copies/old.txt" dir)))
              (kill-buffers-visiting dir)
              ;; a buffer with no file written to x.org (or saved so): in Org mode after
              (dolist (keys '("C-x C-w n o t e s . o r g RET" "C-x C-s m o r e . o r g RET"))
@@ -1164,7 +1192,11 @@ second value."
                  (is eq 'tuatara.defaults::org-mode
                      (type-of (tuatara.modes:buffer-major-mode (tuatara.display:window-buffer (tuatara.command:editor-window editor)))))))
              ;; a name calling for no mode keeps the buffer's
-             (let ((editor (nth-value 1 (run-keys "M-x o r g - m o d e RET C-x C-w p l a i n RET" :text "* Heading" :width 160 :height 20))))
+             (let ((editor (nth-value 1
+                                      (run-keys "M-x o r g - m o d e RET C-x C-w p l a i n RET"
+                                                :text "* Heading"
+                                                :width 160
+                                                :height 20))))
                (is eq 'tuatara.defaults::org-mode
                    (type-of (tuatara.modes:buffer-major-mode (tuatara.display:window-buffer (tuatara.command:editor-window editor))))))
              ;; a file opened safely, written as x.org: still shown as it is, in no mode, still safe
@@ -1232,7 +1264,10 @@ second value."
       (multiple-value-bind (f editor) (run-keys "C-u M-x s h o w - f i l e - n a m e RET" :file path :width 150)
         (declare (ignore f))
         (true (uiop:string-prefix-p path (session-text editor))))
-      (let ((b (find (tuatara.io:expand-path path) tuatara.buffer:*buffers* :key #'tuatara.buffer:buffer-file :test #'equal)))
+      (let ((b (find (tuatara.io:expand-path path)
+                     tuatara.buffer:*buffers*
+                     :key #'tuatara.buffer:buffer-file
+                     :test #'equal)))
         (when b (tuatara.buffer:kill-buffer b)))))
   ;; a buffer with no file: the directory it stands in
   (multiple-value-bind (f editor) (run-keys "M-x s h o w - f i l e - n a m e RET" :width 150)
@@ -1374,7 +1409,8 @@ serves it alone."
       (dolist (folder '("a/" "b/")) (sb-posix:chmod (namestring (merge-pathnames folder dir)) #o500))
       (unwind-protect
            (dolist (target (list a b))
-             (multiple-value-bind (fd path) (tuatara.io::backup-copy (namestring target) (tuatara.io:path-stamp (namestring target)))
+             (multiple-value-bind (fd path)
+                 (tuatara.io::backup-copy (namestring target) (tuatara.io:path-stamp (namestring target)))
                (push (cons fd path) kept)))
         (dolist (folder '("a/" "b/")) (sb-posix:chmod (namestring (merge-pathnames folder dir)) #o700)))
       (unwind-protect
@@ -1391,7 +1427,9 @@ serves it alone."
   (with-test-directory (dir)
     (let ((path (merge-pathnames "state" dir)) (calls '()))
       (sb-int:encapsulate 'tuatara.io::flush-fd 'counted (lambda (f &rest args) (push :file calls) (apply f args)))
-      (sb-int:encapsulate 'tuatara.io::sync-directory 'counted (lambda (f &rest args) (push :folder calls) (apply f args)))
+      (sb-int:encapsulate 'tuatara.io::sync-directory 'counted (lambda (f &rest args)
+                                                                 (push :folder calls)
+                                                                 (apply f args)))
       (unwind-protect (tuatara.io:write-private-file path "first")
         (sb-int:unencapsulate 'tuatara.io::flush-fd 'counted)
         (sb-int:unencapsulate 'tuatara.io::sync-directory 'counted))
@@ -1456,7 +1494,9 @@ serves it alone."
   (with-test-directory (dir)
     (flet ((made (octets)
              (let ((path (namestring (merge-pathnames (format nil "f~d" octets) dir))))
-               (alexandria:write-byte-vector-into-file (make-array octets :element-type '(unsigned-byte 8) :initial-element 65) path)
+               (alexandria:write-byte-vector-into-file (make-array octets
+                                                                   :element-type '(unsigned-byte 8)
+                                                                   :initial-element 65) path)
                (let ((fd (sb-posix:open path sb-posix:o-rdonly)))
                  (unwind-protect
                       (multiple-value-bind (read seconds consed)
@@ -1492,7 +1532,10 @@ serves it alone."
       (dolist (path (list (concatenate 'string top "/x.txt") (concatenate 'string top "/sub/")))
         (let ((given nil))
           (ensure-directories-exist (concatenate 'string top "/sub/"))
-          (tuatara.io::call-with-parent path (lambda (fd name) (declare (ignore fd)) (setf given (tuatara.text:octets-string name))))
+          (tuatara.io::call-with-parent path
+                                        (lambda (fd name)
+                                          (declare (ignore fd))
+                                          (setf given (tuatara.text:octets-string name))))
           (is string= (nth-value 1 (tuatara.io:path-folder-and-name (string-right-trim "/" path))) given)))
       (fail (tuatara.io::call-with-parent (concatenate 'string top "/..") (lambda (fd name) (list fd name)))))))
 
@@ -1592,6 +1635,37 @@ length, and a line inserted near the end. Returns the text it has then."
                   (sb-ext:symbol-global-value 'tuatara-user:*save-in-place*) in-place)))
         (tuatara.io:finish-leases)
         (is equal '("big.txt") (directory-names dir))))))
+
+;; a file system of a kind that can share blocks may not (an XFS made without reflink):
+;; it is tried, once, and there a save writes only the changes as on ext4
+(define-test (visiting-and-saving saved-in-place-where-cloning-is-refused)
+  (with-test-directory (dir)
+    (let ((tuatara.io::*block-sharing-file-systems* (list (directory-magic dir)))
+          (tuatara.io::*block-sharing-devices* (make-hash-table :synchronized t))
+          (tuatara.io:*memory-read-limit* 1024)
+          (tuatara-user:*save-in-place* t)
+          (tries 0))
+      (sb-int:encapsulate 'tuatara.io:clone-fd 'refused
+                          (lambda (function source dest)
+                            (declare (ignore function source dest))
+                            (incf tries)
+                            nil))
+      (unwind-protect
+           (let* ((path (put-file (merge-pathnames "big.txt" dir) *long-lines-text*))
+                  (inode (tuatara.io:stamp-ino (tuatara.io:path-stamp path))))
+             (false (tuatara.io::shares-blocks-p dir))
+             (is = 1 tries)
+             (is equal (tuatara.io:cache-directory) (tuatara.io:scratch-directory path))
+             (with-visited (b path)
+               (let ((new (edit-far-apart b)))
+                 (tuatara.io:save-buffer-file b)
+                 (is = inode (tuatara.io:stamp-ino (tuatara.io:path-stamp path)))
+                 (is string= new (file-text path))))
+             (tuatara.io:finish-leases)
+             ;; the answer is kept for the file system, and the try left nothing behind
+             (is = 1 tries)
+             (is equal '("big.txt") (directory-names dir)))
+        (sb-int:unencapsulate 'tuatara.io:clone-fd 'refused)))))
 
 (define-test (visiting-and-saving saved-whole-unless-saving-in-place-is-on)
   ;; saving in place is turned on in the init file: as standard, a save is a new file put in place
@@ -1695,8 +1769,9 @@ then cut short there, as by a crash. Returns the steps and the text saved."
           (edit-far-apart b)
           (let* ((cancel (list nil))
                  (tuatara.io::*saving-step* (lambda (step) (when (eq step :text-moved) (setf (car cancel) t)))))
-            (is eq :stopped (tuatara.io:write-text-file (tuatara.text:version-rope (tuatara.buffer:buffer-version b)) path
-                                                        :mappings (tuatara.io::protected-mappings b) :cancel cancel)))
+            (is eq :stopped
+                (tuatara.io:write-text-file (tuatara.text:version-rope (tuatara.buffer:buffer-version b)) path
+                                            :mappings (tuatara.io::protected-mappings b) :cancel cancel)))
           (is string= *long-lines-text* (file-text path))
           (false (journal-there-p path)))
         (tuatara.io:finish-leases)
@@ -2084,3 +2159,21 @@ the old one put back after."
       (is = 5 (tuatara.io:path-size file))
       (is = 0 (tuatara.io:path-size (merge-pathnames "none.txt" dir)))
       (is = 7 (tuatara.io:path-size (merge-pathnames "none.txt" dir) 7)))))
+
+(define-test (visiting-and-saving path-question-starts-again-on-slash)
+  ;; a ~/ or a / typed after a folder starts the path again: the line holds just that
+  (let ((f (run-keys "C-x C-f C-a C-k ~ / s r c / ~ /" :width 80 :height 12)))
+    (true (tuatara.frontend.fake:fake-frame-showing f "Find file"))
+    (false (tuatara.frontend.fake:fake-frame-showing f "~/src/~/"))
+    (false (tuatara.frontend.fake:fake-frame-showing f "~/~/")))
+  (let ((f (run-keys "C-x C-f C-a C-k / e t c / /" :width 80 :height 12)))
+    (false (tuatara.frontend.fake:fake-frame-showing f "/etc//"))))
+
+(define-test (visiting-and-saving path-question-deleting-keeps-the-line)
+  ;; only what is typed starts the path again: deleting back to a // leaves the line as it is
+  (let ((text nil))
+    (run-keys (list "C-k C-x C-f C-a C-y C-k"
+                    (lambda ()
+                      (setf text (copy-seq (tuatara.command:editor-minibuffer-text tuatara.command:*editor*)))))
+              :text "/a//" :width 80 :height 12)
+    (is string= "/a//" text)))

@@ -142,7 +142,8 @@ job, or :QUEUED when another job runs or waits in BUFFER."
                            (let ((least nil) (all t))
                              (map-piece-lines
                               (lambda (line line-end rope block block-start block-end)
-                                (multiple-value-bind (octets at) (line-octets rope line line-end block block-start block-end)
+                                (multiple-value-bind (octets at)
+                                    (line-octets rope line line-end block block-start block-end)
                                   (multiple-value-bind (indent marked)
                                       (comment-line-facts octets at (+ at (- line-end line)) marker-octets)
                                     (when indent
@@ -166,7 +167,9 @@ job, or :QUEUED when another job runs or waits in BUFFER."
                  (when indent
                    (if commenting
                        (let ((p (+ line column))) (funcall function p p nil insert-octets))
-                       (funcall function (+ line indent) (+ line (- (comment-marker-end octets (+ at indent) end marker) at))
+                       (funcall function
+                                (+ line indent)
+                                (+ line (- (comment-marker-end octets (+ at indent) end marker) at))
                                 nil none))))))))
        :doing "Commenting" :what "Commenting or uncommenting the lines"
        :verb "comment the lines" :leaves "the lines are as they were"
@@ -178,12 +181,12 @@ job, or :QUEUED when another job runs or waits in BUFFER."
 (defun comment-or-uncomment-lines (buffer start end)
   "Comment the whole lines of BUFFER from the one holding START to the one
 ending the range below END, or uncomment them when every line with text is
-commented: commenting puts the language's marker and a space at the smallest
-indentation among them, lining the markers up, and leaves blank lines alone;
-uncommenting takes away the run of marker characters and the space after it.
-A language whose comments have an end (HTML's <!-- -->) has each line so
-enclosed. One undoable edit. Returns :COMMENTED, :UNCOMMENTED, or NIL when the
-language has no comments."
+commented. Commenting puts the language's marker and a space at the smallest
+indentation among them, lining the markers up, and leaves blank lines alone.
+Uncommenting takes away the run of marker characters and the space after it. A
+language whose comments have an end (HTML's <!-- -->) has each line so enclosed.
+One undoable edit. Returns :COMMENTED, :UNCOMMENTED, or NIL when the language
+has no comments."
   (multiple-value-bind (marker insert) (mode-comment-syntax (buffer-major-mode buffer))
     (unless marker
       (multiple-value-bind (opener closer) (mode-block-comment-syntax (buffer-major-mode buffer))
@@ -212,7 +215,8 @@ language has no comments."
                   (dolist (entry texts)
                     (let* ((at (+ (car entry) (cdr entry)))
                            (octets (tuatara.text:rope-octets (tuatara.buffer:buffer-text buffer)
-                                                             :start at :end (tuatara.buffer:buffer-line-end buffer (car entry)))))
+                                                             :start at
+                                                             :end (tuatara.buffer:buffer-line-end buffer (car entry)))))
                       (push (tuatara.text:make-edit at (+ at (comment-marker-end octets 0 (length octets) marker))) edits)))
                   (tuatara.buffer:buffer-edit buffer (coerce (nreverse edits) 'simple-vector))
                   :uncommented)
@@ -297,7 +301,8 @@ the line's end, at *COMMENT-COLUMN*."
                  ;; into the comment there, after its marker and a space
                  (let* ((rest (tuatara.buffer:buffer-string b :start at :end line-end))
                         (skip (length (string-right-trim " " (subseq rest 0 (or (position-if-not (lambda (c) (find c start-marker)) rest) (length rest)))))))
-                   (goto (min line-end (+ at skip (if (and (< (+ at skip) line-end) (eql (char rest skip) #\Space)) 1 0))))))
+                   (goto (min line-end
+                              (+ at skip (if (and (< (+ at skip) line-end) (eql (char rest skip) #\Space)) 1 0))))))
                 (t
                  (check-writable b)
                  (let* ((blank (string= (string-trim " 	" line) ""))
@@ -306,7 +311,9 @@ the line's end, at *COMMENT-COLUMN*."
                         (column (tuatara.display:buffer-screen-column b code-end))
                         (gap (cond (blank "")
                                    ((< column *comment-column*)
-                                    (let ((tabs (buffer-indent-tabs-p b)) (width (buffer-tab-width b)) (col column) (out '()))
+                                    (let ((tabs (buffer-indent-tabs-p b)) (width (buffer-tab-width b))
+                                          (col column)
+                                          (out '()))
                                       (when tabs
                                         (loop while (<= (next-tab-stop col width) *comment-column*)
                                               do (push #\Tab out) (setf col (next-tab-stop col width))))

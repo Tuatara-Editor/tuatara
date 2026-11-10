@@ -84,7 +84,8 @@ trap 'rm -rf "$work"' EXIT
 # the newest version tag among the refs on standard input (v1.2.3, 1.2.3, ...),
 # after the prefix $1 when one is given (vt-1.2.3)
 newest_tag() {
-  sed -n 's|^[0-9a-f]*\trefs/tags/\([^^]*\)$|\1|p' | { grep -E "^${1:-}v?[0-9]+(\.[0-9]+)+$" || true; } | sort -V | tail -1
+  sed -n 's|^[0-9a-f]*\trefs/tags/\([^^]*\)$|\1|p' | { grep -E "^${1:-}v?[0-9]+(\.[0-9]+)+$" || true; } | sort -V |
+    tail -1
 }
 # the newest release named by its date (20251108) among the refs on standard input
 newest_date_tag() {
@@ -109,7 +110,8 @@ check_repository() {
 export -f check_repository newest_tag
 
 # the grammars and tree-sitter, eight at a time; one line per repository and commit
-grep -v '^#' "$root/syntax/grammars.tsv" | awk -F'\t' 'NF >= 4 && $1 != "tree-sitter-cli" && $3 ~ /^[0-9a-f]{40}$/ && !seen[$2 "\t" $3]++ { print $1 "\t" $2 "\t" $3 }' |
+grep -v '^#' "$root/syntax/grammars.tsv" |
+  awk -F'\t' 'NF >= 4 && $1 != "tree-sitter-cli" && $3 ~ /^[0-9a-f]{40}$/ && !seen[$2 "\t" $3]++ { print $1 "\t" $2 "\t" $3 }' |
   xargs -P 8 -d '\n' -n 1 bash -c 'IFS=$'"'"'\t'"'"' read -r n r c <<<"$1"; check_repository "$n" "$r" "$c"' _ |
   sort > "$work/grammars"
 
@@ -156,7 +158,8 @@ github_advisories() {
   all='[]'
   next="https://api.github.com/$path"
   while [ -n "$next" ]; do
-    got="$(curl -fsS --max-time 60 -D "$work/headers" -H 'Accept: application/vnd.github+json' "$next" 2>/dev/null)" || return 1
+    got="$(curl -fsS --max-time 60 -D "$work/headers" -H 'Accept: application/vnd.github+json' "$next" 2>/dev/null)" ||
+      return 1
     jq -e 'type == "array"' >/dev/null 2>&1 <<<"$got" || return 1
     all="$(jq -s 'add' <<<"$all $got")"
     next="$(tr -d '\r' < "$work/headers" | sed -n 's/^[Ll]ink:.*<\([^>]*\)>; rel="next".*/\1/p')"
@@ -236,7 +239,8 @@ done > "$work/images"
 # one line NAME<TAB>PINNED<TAB>NEWEST when NEWEST is a later version than PINNED
 version_line() {
   if [ -z "$3" ]; then printf '%s\t%s\t%s\n' "$1" "${2:-?}" "(not reachable)"
-  elif [ "${2#v}" != "${3#v}" ] && [ "$(printf '%s\n%s\n' "${2#v}" "${3#v}" | sort -V | tail -1)" = "${3#v}" ]; then printf '%s\t%s\t%s\n' "$1" "${2:-?}" "$3"; fi
+  elif [ "${2#v}" != "${3#v}" ] &&
+    [ "$(printf '%s\n%s\n' "${2#v}" "${3#v}" | sort -V | tail -1)" = "${3#v}" ]; then printf '%s\t%s\t%s\n' "$1" "${2:-?}" "$3"; fi
 }
 # the GitHub Actions the workflows use, a line as version_line writes for
 # each pinned to a tag that has moved or has a newer release, or to a commit
@@ -312,9 +316,11 @@ tools_newer="$(wc -l < "$work/tools")"
 advisories_open="$(awk -F'\t' '$3 == "not fixed"' "$work/advisories" | wc -l)"
 advisories_unchecked="$(awk -F'\t' '$3 == "not checked"' "$work/advisories" | wc -l)"
 message="$tools_newer libraries or programs and $grammars_newer grammars have newer versions"
-[ "$advisories_unchecked" -gt 0 ] && message="$advisories_unchecked Ghostty security advisories not checked against the pin; $message"
+[ "$advisories_unchecked" -gt 0 ] &&
+  message="$advisories_unchecked Ghostty security advisories not checked against the pin; $message"
 [ "$advisories_open" -gt 0 ] && message="$advisories_open Ghostty security advisories not fixed in the pin; $message"
 echo "$message; see $report"
-if [ "$changed" = 1 ] && [ $((tools_newer + grammars_newer + advisories_open + advisories_unchecked)) -gt 0 ] && command -v notify-send >/dev/null; then
+if [ "$changed" = 1 ] && [ $((tools_newer + grammars_newer + advisories_open + advisories_unchecked)) -gt 0 ] &&
+  command -v notify-send >/dev/null; then
   notify-send -a Tuatara "Tuatara: newer dependencies" "$message. See build/bumpcheck.org." || true
 fi

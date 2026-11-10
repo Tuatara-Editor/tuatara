@@ -1,0 +1,691 @@
+#+title: Data, pictures and PDFs
+#+language: en
+
+* Data, pictures and PDFs
+
+Looking at files that are more than plain text.
+
+Most of this manual is about text you write yourself. This chapter is about
+files that come from somewhere else: a table of figures saved from a
+spreadsheet, a photo from a camera, a form someone scanned and sent as a PDF, a
+Word document. Tuatara opens all of them with ~C-x C-f~, the same key as for
+any file, and shows each in the way that suits it. A table gets a colour for
+each column. A picture and a PDF are drawn. A file that is neither text nor
+anything Tuatara can draw is shown as the raw numbers it is made of, in the hex
+view.
+
+The chapter starts with tables of data, because those you can also change:
+filter, sort and tidy. Pictures, PDFs and Office documents are for looking at
+only. Nothing in this chapter writes to them.
+
+One reminder about the state keys. ~i~ starts INSERT state, and ~C-g~ or ~ESC~
+returns to NORMAL state. The single-letter keys in this chapter are pressed in
+NORMAL state. Keys that start with ~C-x~ or ~C-c~ work in both.
+
+** Delimited data: CSV and TSV
+
+A spreadsheet program can save a sheet as plain text. Each row becomes a line,
+and the cells of the row are written one after another with a comma between
+them. That is a CSV file, for comma-separated values. A TSV file is the same
+with a tab between the cells. Banks, shops, membership systems and nearly every
+program that holds a table can write one. The character between the cells is
+called the separator, a line is called a record, and a cell is called a field.
+
+Such a file is easy for a program to read and hard for a person. The fields
+are of different lengths, so the columns do not line up, and by the sixth comma
+of a long line you no longer know which column you are in. Tuatara helps in two
+ways. It gives each column its own colour, so that your eye can follow a column
+down the screen. And the mode line says which column the cursor is in.
+
+A file whose name ends in =.csv= opens in CSV mode. One that ends in =.tsv= or
+=.tab= opens in TSV mode, which is CSV mode with the tab as the separator. For
+a file with another ending, ~M-x csv-mode~ or ~M-x tsv-mode~ turns the mode on
+by hand. Lines in these modes are never wrapped, because a record cut in two
+would break the columns. A long record runs off the right edge of the window,
+and the window scrolls sideways as the cursor moves along it.
+
+*** Columns are counted from 0
+
+Figure 16.1 shows the membership list of a tramping club. The cursor is on
+=Taupo=, in the second column.
+
+#+caption: Figure 16.1. A CSV file, with the cursor's column in the mode line.
+#+name: fig-csv-columns
+#+begin_example
+ name,town,joined
+ Aroha Ngata,Wanaka,2019
+ Tama Parata,Taupo,2021
+ Mere Walker,Wanaka,2023
+ Hemi Tane,Napier,2020
+
+ column 0    column 1  column 2
+
+ TUATARA[N] [-] members.csv  L3 C12  CSV  col 1 town
+#+end_example
+
+The mode line says =CSV=, then =col= and the number of the column, then that
+column's name. The number starts at 0: the first column is col 0, the second
+is col 1. The name comes from the first line of the file, which Tuatara takes
+as the header. Wherever this chapter asks you for a column, you can answer with
+the name or with the number, and the number is the one the mode line shows.
+
+There are eight colours. In a table with more than eight columns, column 8 has
+the colour of column 0 again, column 9 that of column 1, and so on. If you find
+the colours too much, ~M-x rotate-colouring~ goes on to a plainer style that
+colours only the separators and the quoted fields, and then to no colour at
+all. Chapter 13 describes these styles. To choose one for every CSV file, put
+=(set-colouring 'csv-mode :sparse)= in your init file.
+
+A field may hold the separator itself. An address such as =12 Lake Road,
+Wanaka= has a comma in it. Programs write such a field between double quotes,
+and Tuatara reads it as one field. A quoted field may even run over several
+lines, and the mode line still names the right column on each of them.
+
+*** Moving in a table
+
+There are no special keys for moving in a table. The keys of chapter 2 work as
+in any text: ~h~ and ~l~ move along a record, ~j~ and ~k~ move from record to
+record, and a search with ~C-s~ goes to a value. What changes is that you
+always know where you are. Watch the mode line as you move along a line, and
+the column number and name change each time you pass a separator.
+
+To follow one column down a long table, turn on the highlight for the cursor's
+column with ~C-x T c~, described in chapter 1. It only helps where the fields
+above and below are about the same width.
+
+*** The separator
+
+Tuatara works out the separator from the first line of the file. It counts the
+commas, semicolons, tabs and pipes (=|=) there and takes the one there are most
+of. Semicolons are common in files from countries that write a decimal comma.
+You do not have to say anything for those files to work.
+
+Now and then the guess is wrong, or the file uses something else, such as a
+colon. ~C-c C-s~ asks for the separator of the buffer you are in. It offers
+comma, semicolon, tab, pipe, colon and space by name, and =detect=, which makes
+the guess again. Any other single character can be typed as itself. The echo
+area then says, for example, =Fields separated by semicolon=, and the colours
+change to match.
+
+If all your files use one separator, set =*csv-separator*= in your init file,
+for example to =#\;= for the semicolon. Tuatara then stops guessing.
+
+*** The header
+
+The first line of most CSV files names the columns. Tuatara treats it as the
+header: its names are shown in the mode line and offered when you are asked for
+a column, a filter never hides it, and a sort leaves it where it is.
+
+In a long table the header scrolls out of sight after the first screen.
+~C-x / L~ keeps it at the top of the window while the rest scrolls under it,
+in the same colours as the columns below. Press it again to let the header
+scroll away. To have every table open that way, set =*list-header-lock*= to
+=t=.
+
+Some files have no header. Their first line is a record like the others, and
+you do not want it left out of a sort. ~C-x / t~ tells Tuatara that the first
+line of this buffer is a record. The mode line then shows only the column
+number, and columns are offered by number. Press it again to make the first
+line the header once more. If none of your files has a header, set
+=*csv-header*= to =nil=.
+
+#+begin_try Try it, with a club's members
+1. Press ~C-x C-f~, type =~/members.csv= and press ~RET~. Press ~i~ and type
+   the five lines of figure 16.1, each ended with ~RET~. Press ~C-g~ and save
+   with ~C-x C-s~.
+2. The fields took their colours as soon as you typed the first comma. Press
+   ~M-<~ (modal: ~g g~) to go to the top. The mode line says =col 0 name=.
+3. Press ~j~ twice, then ~l~ until the cursor is on =Taupo=. The mode line
+   says =col 1 town=.
+4. Press ~C-c C-s~, type =semicolon= and press ~RET~. There are no semicolons
+   in the file, so each line is now one field and has one colour.
+5. Press ~C-c C-s~ again, type =detect= and press ~RET~. The echo area says
+   =Fields separated by comma= and the columns are back.
+6. Press ~C-x / t~. The echo area says the first line is a record like the
+   rest, and the mode line shows =col 1= with no name. Press ~C-x / t~ again
+   to make it the header.
+#+end_try
+
+*** Commands, settings and faces for tables
+
+#+table: commands csv-mode tsv-mode csv-define-separator list-toggle-header list-toggle-header-lock
+
+#+table: settings *csv-separator* *csv-header* *list-header-lock*
+
+#+table: faces :csv-column-0 :csv-column-1 :csv-column-2 :csv-column-3 :csv-column-4 :csv-column-5 :csv-column-6 :csv-column-7 :csv-separator
+
+** Showing only some records
+
+A table is most useful when you can ask it a question. Which members live in
+Wanaka? What did the shop sell in March? Chapter 6 introduced search filters,
+which narrow a list to the entries that match a pattern. In a table they do one
+thing more: they can look at a single column. A search for =2021= in the whole
+line would also find a phone number that happens to hold those digits. A filter
+on the =joined= column finds only the people who joined that year.
+
+~C-x / f~ shows only the records that match. It asks two questions. The first
+is the column, and each column is offered with the value it has in the first
+record beside it, so you can see what it holds. The second is the pattern to
+look for in that column. Records that do not match are hidden. They are still
+in the file, and saving writes all of them.
+
+You can name the column in several ways.
+
+| You type                    | The pattern is tried on                       |
+|-----------------------------+-----------------------------------------------|
+| a name, such as =town=      | The column the header gives that name.        |
+| =$1=                        | Column 1, the second one. =$0= is the first.  |
+| =$*= or nothing at all      | The whole record, as ~C-x / s~ does.          |
+
+The pattern follows the rules of search in chapter 6. Small letters match
+capitals too, unless you type a capital yourself. Quotes around a field are
+taken off before the pattern is tried, so you never have to type them.
+
+~C-x / h~ is the opposite. It hides the records that match and shows the rest.
+Use it to get things out of the way, such as the cancelled orders.
+
+While a filter is on, the mode line says by what the table is filtered and how
+many records are left, as in =Filtered by kiwi: 12 of 1,000 records=. A second
+filter narrows what the first left, so you can ask for Wanaka and then, of
+those, for 2023. ~C-x / l~ lists the filters, and ~d~ on a line there takes
+that one away. ~C-x / r~ takes them all away and shows the whole table. The
+header is shown whatever the filters say.
+
+You can edit the records you see. A change that would reach into a hidden
+record is refused, so a filter never changes what you cannot see.
+
+*** Deleting records for good
+
+Sometimes you want a smaller file, to send someone only their own town's
+members. ~C-x / k~ asks the same two questions and then deletes every record
+that does not match, keeping the ones that do. ~C-x / d~ deletes the ones that
+match. Both act on the whole table, or on the lines you have selected if there
+is a selection. The header always stays. Each is one step for ~C-/~ (modal: ~u~)
+to undo, and nothing reaches the file until you save.
+
+When you are not sure of a pattern, try it with ~C-x / f~ first. You see what
+would be kept, and nothing is lost if you got it wrong.
+
+The same keys work in other files that hold one record on each line, such as a
+log. The setting =*line-record-modes*= names the modes that count. A log has
+no header until ~C-x / t~ makes its first line one, and its columns are its
+words, apart by spaces.
+
+#+begin_try Try it, with the club's members again
+1. Open =~/members.csv= from the last Try it.
+2. Press ~C-x / f~. At the question about the column, type =town= and press
+   ~RET~. At the next question type =wanaka= and press ~RET~. Only Aroha and
+   Mere are left under the header, and the mode line says how many of the
+   four records are shown.
+3. Press ~C-x / f~ again, answer =joined= and then =2023=. Only Mere is left.
+4. Press ~C-x / l~. Both filters are listed. Press ~q~ to close the list.
+5. Press ~C-x / r~. All four members are back.
+6. Press ~C-x / h~, answer =$1= and then =napier=. Hemi is hidden and the
+   other three are shown. Press ~C-x / r~ again.
+#+end_try
+
+#+table: commands search-filter-show-records search-filter-hide-records search-filter-regex search-filter-list search-filter-remove search-filter-remove-all list-keep-records list-delete-records
+
+#+table: settings *line-record-modes*
+
+#+table: faces :list-filters
+
+** Sorting a table
+
+The sorting commands of chapter 3 know about tables. In a CSV or TSV file,
+~M-x sort-fields~ asks which column to sort by, in the same way a filter asks,
+and then puts the records in the order of that column. Each record moves
+whole, and the header stays first.
+
+=sort-fields= compares the values as text. That is right for names and towns.
+It is wrong for numbers, because as text =100= comes before =25=: the
+comparison looks at the first character and =1= is before =2=. For a column of
+prices, counts or years, use ~M-x sort-numeric-fields~, which reads the number
+at the start of each value. A value with no number counts as 0.
+
+Both sort from small to large. =sort-fields-reverse= and
+=sort-numeric-fields-reverse= sort from large to small, which is what you want
+for "the biggest sales first".
+
+Like every sorting command, these act on the lines you have selected and do
+nothing without a selection. To sort the whole table, select it all first with
+~C-x h~. A sort is refused while a filter hides some of the lines, so press
+~C-x / r~ before you sort. A sort is one step to undo with ~C-/~ (modal: ~u~).
+
+#+begin_try Try it, with a shop's sales
+1. Press ~C-x C-f~, type =~/sales.csv= and press ~RET~. Press ~i~ and type
+   these lines, each ended with ~RET~:
+   #+begin_example
+   date,item,town,price
+   2026-03-02,gumboots,Motueka,89
+   2026-03-02,rain jacket,Nelson,240
+   2026-03-05,wool socks,Motueka,24
+   2026-03-09,thermos,Takaka,55
+   2026-03-11,tent pegs,Nelson,9
+   #+end_example
+   Press ~C-g~ and save with ~C-x C-s~.
+2. Press ~C-x h~ to select everything. Press ~M-x~, type =sort-fields= and
+   press ~RET~. At the question about the column, type =price= and ~RET~.
+   The prices are now in the order 24, 240, 55, 89, 9. That is the order of
+   text.
+3. Press ~C-x h~ again and run ~M-x sort-numeric-fields~ on =price=. Now
+   the order is 9, 24, 55, 89, 240, and the header is still the first line.
+4. Press ~C-x h~ and run ~M-x sort-numeric-fields-reverse~ on =price=. The
+   rain jacket is at the top.
+5. Press ~C-x / f~, answer =town= and then =nelson=. The two sales in Nelson
+   are shown, the dearest first. Press ~C-x / r~ to see them all again.
+#+end_try
+
+#+table: commands sort-fields sort-fields-reverse sort-numeric-fields sort-numeric-fields-reverse
+
+Chapter 11 explains what happens when the table is very large. A filter or a
+sort of millions of records runs in the background, and you can go on working
+while it does.
+
+** The hex view
+
+Every file is a row of numbers, each from 0 to 255. Such a number is called an
+octet, or a byte. In a text file the numbers stand for letters: 97 is =a=. In
+a photo or a program they stand for something else, and shown as letters they
+are nonsense. The hex view shows the numbers themselves. Hex is short for
+hexadecimal, a way of writing numbers with sixteen digits, 0 to 9 and then a
+to f, so that every octet is exactly two digits: 97 is written =61=.
+
+Few people need the hex view every day. It is there for the times you want to
+know what is really in a file. Is this file that will not open really a
+picture, or something else with a picture's name? Why do two lines that look
+the same compare as different? Is there something invisible at the start of
+the file?
+
+~M-x hex-mode~ shows the buffer you are in as hex, and the same command shows
+it as text again. Figure 16.2 shows the start of the club's membership list.
+
+#+caption: Figure 16.2. The hex view: offset, sixteen octets, and their text.
+#+name: fig-hex-view
+#+begin_example
+ 00000000  6e 61 6d 65 2c 74 6f 77  6e 2c 6a 6f 69 6e 65 64  name,town,joined
+ 00000010  0a 41 72 6f 68 61 20 4e  67 61 74 61 2c 57 61 6e  .Aroha Ngata,Wan
+ 00000020  61 6b 61 2c 32 30 31 39  0a 54 61 6d 61 20 50 61  aka,2019.Tama Pa
+
+ offset    the octets in hex                                 the same as text
+#+end_example
+
+Each row shows sixteen octets. On the left is the offset: how far into the
+file the row starts, also in hex. In the middle are the sixteen octets. On the
+right are the characters they make. An octet that is not a letter, digit or
+sign you could print is shown as a dot. In the figure, the first octet of the
+second row is =0a=, the end of a line, and it shows as a dot on the right.
+
+The motion keys move by octets and rows: ~h~ and ~l~ one octet, ~j~ and ~k~ one
+row. The octet under the cursor is marked in both places at once, in the hex
+digits and in the text beside them, so you can see which character a number
+stands for. The mode line shows =Hex=, the offset of the cursor, and =digits=
+or =text= for the side the cursor is on. ~TAB~ moves the cursor from one side
+to the other. ~:~ (non-modal: ~M-g g~) asks for an offset and goes there. Type
+it in decimal, or with =0x= in front for hex.
+
+Only the rows on the screen are worked out, so the hex view of a very large
+file opens at once.
+
+*** Searching for octets
+
+A text search cannot find what cannot be typed. ~M-x hex-search-forward~ asks
+for octets in hex, with or without spaces between them, and goes to the next
+place after the cursor that holds them. =ff d8 ff= finds the start of a JPEG
+photo, for example, and =25 50 44 46= finds =%PDF=, the first four octets of a
+PDF. The echo area says where it was found, in hex and in decimal.
+~M-x hex-search-backward~ looks before the cursor.
+
+*** Changing octets
+
+The hex view can change a file, one octet over another. In INSERT state, with
+the cursor on the hex side, typing hex digits writes over the octets there.
+With the cursor on the text side, typing writes characters over them.
+~M-x hex-set-byte~ asks for one octet in hex and writes it at the cursor, then
+moves on.
+
+The size of the file never changes in the hex view. The keys that would add or
+remove text say so and do nothing, because one octet too many would shift
+everything after it. As always, nothing reaches the file until you save.
+
+A buffer that is narrowed (chapter 7) is not shown in hex. Widen it first with
+~C-x x w~.
+
+*** Files that open in hex by themselves
+
+Tuatara looks at the start of every file it opens. If it finds an octet with
+the value 0 in the first 64 KB, the file is not text. Programs, archives and
+disk images have such octets and text does not. A file like that opens in the
+hex view straight away, where showing it as text would fill the screen with
+rubbish. If you would sooner see such files as text, set
+=*hex-view-binary-files*= to =nil=.
+
+#+begin_try Try it, with the club's members once more
+1. Open =~/members.csv= and press ~M-<~ to go to the top. Press ~M-x~, type
+   =hex-mode= and press ~RET~. The echo area says =Hex view on=, and the
+   screen looks like figure 16.2.
+2. Press ~l~ four times. The cursor is on =2c=, and the comma on the right
+   is marked with it. The mode line shows the offset =0x00000004=.
+3. Press ~TAB~. The cursor is now on the comma in the text. Press ~TAB~
+   again to go back to the digits.
+4. Press ~M-x~, type =hex-search-forward= and press ~RET~. Type
+   =57 61 6e 61 6b 61=, which spells =Wanaka=, and press ~RET~. The echo
+   area says =Found at 0x1d (29)=.
+5. Press ~:~ (non-modal: ~M-g g~), type =0= and press ~RET~ to go back to the
+   start.
+6. Run ~M-x hex-mode~ again. The echo area says =Hex view off= and the table
+   is back in its colours.
+#+end_try
+
+#+table: commands hex-mode hex-switch-column hex-set-byte hex-search-forward hex-search-backward
+
+#+table: settings *hex-view-binary-files*
+
+#+table: faces :hex-offset :hex-mirror :hex-unprintable
+
+** Pictures
+
+Open a picture with ~C-x C-f~ and Tuatara draws it. It knows the common kinds,
+among them PNG, JPEG, GIF, WebP, BMP, TIFF, HEIF and AVIF, and the newer JPEG
+2000 and JPEG XL. It tells the kind from what is in the file. A photo that
+someone named =beach.txt= is still shown as a photo.
+
+The picture is drawn as large as the window allows and never larger than it
+really is. A line above it says what it is and how many pixels wide and high.
+The buffer is read-only and has nothing to save. ~q~ closes it.
+
+This is for a quick look: is this the photo I meant, what is on this scan,
+which of these twelve files is the one with the lake. For more than a look,
+~O~ hands the picture to the program your desktop uses for pictures, as
+chapter 9 describes. Chapter 10 shows how a folder listing can preview each
+picture as you move down the list, which is the fast way through a folder of
+photos.
+
+Drawing happens in the background. A large photo takes a moment, and in that
+moment you can go on to something else. The mode line shows that work is going
+on, and ~C-x j~ lists it as =Drawing= with the file's name. Killing the buffer
+stops the drawing.
+
+The program that turns the file into a picture runs shut in a sandbox, where
+it can reach neither the network nor your other files. A picture from a
+stranger can therefore be looked at without worry. Chapter 12 explains the
+sandbox.
+
+*** Pictures in a terminal
+
+In its own window Tuatara always shows pictures. In a terminal it depends on
+the terminal. Some terminals, such as kitty and Ghostty, can draw pictures, and
+Tuatara asks the terminal when it starts. The setting =*tui-pictures*= is
+=:auto= as standard, which means "show them where the terminal says it can".
+Set it to =t= if your terminal can draw but does not say so, or to =nil= to
+have no pictures. Inside tmux or screen, =:auto= shows none.
+
+Where pictures cannot be shown, a picture opens in the hex view, as the last
+section of this chapter describes.
+
+*** Very large pictures
+
+Before it draws anything, Tuatara reads the size the file claims to have and
+works out how much memory the drawing needs. A picture that needs more than
+=*picture-memory*= is not drawn, and the line above says how large it is and
+what it would take. The standard is 4 GB, enough for a photo of about 85
+million pixels. This guards against a small file that claims to be an enormous
+picture.
+
+#+begin_try Try it, with a holiday photo
+1. Find a photo on your computer, such as one from your phone. This example
+   calls it =~/Pictures/beach.jpg=.
+2. Press ~C-x C-f~, type the photo's name and press ~RET~. The photo is
+   drawn. The line above it says it is a JPEG image and gives its size.
+3. Press ~C-x 3~ to split the window. The photo is drawn in both windows, in
+   each as large as fits. Press ~C-x 1~ (modal: ~F~) to go back to one window.
+4. Press ~M-x~, type =show-file-metadata= and press ~RET~. A new buffer says
+   what the photo keeps of itself: the camera, the time it was taken and,
+   if the camera stored it, the place. Press ~q~ to close it.
+5. Press ~q~ to close the photo.
+#+end_try
+
+#+table: commands open-externally
+
+#+table: settings *tui-pictures* *picture-memory*
+
+** PDFs
+
+A PDF is a document fixed on its pages: a bank statement, a manual, a form
+from the council. Open one with ~C-x C-f~ and Tuatara shows its pages as they
+would print. You can turn the pages, make them larger, search the text, and
+copy from it. You cannot change a PDF or fill in a form in it. For that, ~O~
+opens it in your desktop's PDF program.
+
+The mode line says =PDF=, the page you are on and how many there are, and how
+the page is fitted, as in =Page 1 of 2, fit page=. Like pictures, the pages
+are drawn in the background by a program shut in the sandbox. The pages near
+the one you are reading are drawn ahead, so turning a page is quick. ~q~ closes
+the PDF. When you open the same PDF another day, it opens at the page and zoom
+where you left it.
+
+*** Turning pages
+
+~l~ goes to the next page and ~h~ to the one before, and so do ~PageDown~ and
+~PageUp~ (written ~<next>~ and ~<prior>~ in the tables). ~g h~ goes to the
+first page and ~g l~ to the last. ~g p~ asks for a page number and goes
+there, which is the quick way to page 212 of a manual.
+
+~j~ and ~k~ scroll down and up within a page. At the bottom of a page, ~j~
+goes on to the top of the next, so you can read a whole document with one key.
+When the whole page fits in the window there is nothing to scroll, and ~j~ and
+~k~ turn a page at a time. The mouse wheel does the same as ~j~ and ~k~.
+~g g~ shows the top of the page and ~g e~ its end.
+
+*** Zoom
+
+A PDF opens with each page fitted whole into the window. That is good for
+seeing the layout and often too small to read. ~w~ fits the width of the page
+to the window. The text is then as large as it can be without scrolling
+sideways, and you read down the page with ~j~. ~p~ fits the whole page again.
+
+~=~ or ~+~ makes the page larger, by a quarter each time, and ~-~ makes it
+smaller. The echo area says the zoom, such as =Zoom: 125%=. ~0~ goes back to
+the fit you chose with ~p~ or ~w~. When a page is wider than the window, ~H~
+and ~L~ scroll it left and right.
+
+~d~ shows the pages dark: the white of the paper becomes the background colour
+of your theme and the black of the text becomes its text colour. It is easier
+on the eyes at night. It holds for every PDF until you press ~d~ again or
+leave Tuatara. To have it always, set =*pdf-view-dark-pages*= to =t=.
+
+*** Searching, and the text of a PDF
+
+~C-s~ asks for text and searches the PDF from the page you are on. It turns to
+the page where the text is found, and the echo area shows the page number and
+the line. ~C-s~ and then ~RET~ with nothing typed finds the next place. As in
+every search, small letters match capitals too.
+
+~T~ switches from the pages to the text of the PDF, as plain text in the same
+buffer, with a line marking where each page starts. There the keys move as in
+any text. You can search it in every way chapter 6 describes, select a
+paragraph and copy it with the keys of chapter 4. ~T~ goes back to the pages,
+at the page the cursor was on. ~PageDown~, ~PageUp~ and ~g p~ go by pages in
+the text too.
+
+A scanned PDF is a special case. A scanner makes a photo of each page, and a
+photo of words holds no text. Such a PDF shows its pages like any other, but a
+search finds nothing and ~T~ shows a single line saying that there is no text
+in it.
+
+*** What the PDF says of itself, and files inside it
+
+~i~ shows what the PDF says of itself, in a help buffer: its title and author,
+the programs that made it, when it was made and changed, how many pages it has
+and their size, whether it is locked with a password, and whether it holds
+forms or scripts. This is useful when you wonder where a document came from.
+~q~ closes the help.
+
+A PDF can carry other files inside it, as an email carries attachments. An
+invoice may hold its own figures as a spreadsheet, for example. ~a~ lists the
+files embedded in the PDF in a buffer beside it. There, ~n~ and ~p~ move from
+one to the next, and ~RET~ or ~s~ saves the one on the line. Tuatara asks where
+to put it and writes it there as it is. It never opens or runs an embedded
+file. If the PDF has none, the echo area says so.
+
+To see the raw octets of a PDF, run ~M-x hex-mode~ in its pages.
+
+#+begin_try Try it, with a scanned form
+1. Find a PDF of a few pages. A form you scanned is a good one, such as an
+   enrolment form for a school in Timaru. This example calls it
+   =~/Documents/form.pdf=.
+2. Press ~C-x C-f~, type its name and press ~RET~. The first page is shown
+   whole, and the mode line ends with =Page 1 of= and the number of pages.
+3. Press ~l~ to go to page 2, then ~g p~, type =1= and press ~RET~ to go
+   back.
+4. Press ~w~. The page is now as wide as the window. Press ~j~ a few times
+   to read down it.
+5. Press ~=~ twice. The echo area says =Zoom: 125%= and then =Zoom: 156%=.
+   Press ~L~ and ~H~ to move across the page. Press ~0~ and then ~p~ to see
+   the whole page again.
+6. Press ~T~. If the form was scanned, a line says there is no text in it.
+   If it was made on a computer, you see its text. Press ~T~ to go back to
+   the pages.
+7. Press ~i~ to read what the PDF says of itself. A scan often names the
+   scanner as the program that made it. Press ~q~ to close the help.
+8. Press ~a~. Most forms have no embedded files, and the echo area says so.
+9. Press ~q~ to close the PDF.
+#+end_try
+
+*** Commands and settings for PDFs
+
+#+table: commands pdf-view-next-page pdf-view-previous-page pdf-view-next-page-anywhere pdf-view-previous-page-anywhere pdf-view-first-page pdf-view-last-page pdf-view-goto-page pdf-view-page-top pdf-view-page-end pdf-view-scroll-down pdf-view-scroll-up pdf-view-scroll-left pdf-view-scroll-right pdf-view-scroll-by-wheel
+
+#+table: commands pdf-view-fit-page pdf-view-fit-width pdf-view-zoom-in pdf-view-zoom-out pdf-view-zoom-reset pdf-view-toggle-dark
+
+#+table: commands pdf-view-search pdf-view-toggle-text pdf-view-facts pdf-view-attachments pdf-attachment-save
+
+#+table: settings *pdf-view-dark-pages*
+
+** Office documents
+
+Word documents, Excel workbooks and PowerPoint presentations open with
+~C-x C-f~ too, and so do the OpenDocument files that LibreOffice writes.
+Tuatara shows them in one of two ways.
+
+If LibreOffice is installed, Tuatara has it draw the pages of the document,
+shut in the sandbox, and shows them as it shows a PDF. Every key of the PDF
+section works: ~l~ and ~h~ turn pages, ~w~ fits the width, ~C-s~ searches.
+You see the document as it would print, with its fonts, tables and pictures.
+
+~T~ switches to the document read as text. Tuatara reads the file itself and
+writes what it finds as an outline: the headings of a Word document, the sheets
+and cells of a workbook, the slides of a presentation. That is the view for
+copying a paragraph out, or for searching a workbook for a number. It is
+read-only. ~T~ there goes back to the pages.
+
+Without LibreOffice, the document opens as text straight away, and the echo
+area says why. You can ask for that always by setting =*office-view-pages*=
+to =nil=, which also means LibreOffice is never run. The older kinds of Office
+file, from before 2007 (=.doc=, =.xls=, =.ppt=), can only be shown as pages.
+Without LibreOffice they open as raw octets.
+
+Either way, the document is never changed, and nothing in it is run. Macros
+stay asleep, and links to the internet are not followed. To edit the document,
+~O~ opens it in your desktop's program. If that program offers to run the
+document's macros, say no unless you trust where the file came from.
+
+Two settings keep a document read as text within bounds. A small Office file
+can stand for a great deal of text. Reading stops at =*office-note-size-limit*=
+characters and the text says that the rest is left out. A single cell or
+formula longer than =*office-value-length-limit*= characters is cut short and
+ends in =...=.
+
+#+table: commands office-view-pages
+
+#+table: settings *office-view-pages* *office-note-size-limit* *office-value-length-limit*
+
+** What a file says of itself
+
+Many files carry facts about themselves that you do not see when you look at
+them. A photo records the camera, the time and often the place where it was
+taken. A Word document records who wrote it and who saved it last. A PDF
+records the program that made it. These facts are called metadata.
+
+~M-x show-file-metadata~ shows them in a buffer of their own, which ~q~
+closes. It works on the file of the buffer you are in, and on the picture or
+PDF you are looking at. In a folder listing the key is ~g i~, and it reports
+on the file the cursor is on. With ~C-u~ before it, it asks for a file.
+
+The report has two parts. The first is what your computer knows about the
+file: where it is, what kind of file its contents say it is, its size, who
+owns it, when it was last changed, and its SHA-256 sum, a long number that is
+the same for two files only when they are the same octet for octet. The second
+part is what the file keeps inside itself. What is there depends on the kind
+of file:
+
+- a photo: the camera and its settings, the times, the place if it was
+  stored, and whether a small preview picture is kept inside;
+- a PDF: the title, the author, the programs that made it, the dates, and
+  how many times it was saved;
+- a Word, Excel or PowerPoint file: the author, the last person to save it,
+  and the dates;
+- a sound or video file: its tags, such as the title and artist, and its
+  times;
+- an encrypted file: which keys it was encrypted for.
+
+There are everyday reasons to look. Before you put a photo of your house on
+the internet, check whether it carries the place it was taken. Before you send
+a document to a customer, check whose name is in it as the author. When two
+dates disagree, the file's own record of when it was made is often the one to
+trust over the date in a folder listing, which changes each time the file is
+copied.
+
+The file is read in the background by Tuatara alone. Nothing in it is run, and
+the time your computer keeps for when the file was last read is left as it
+was.
+
+For an encrypted file, the report can also say whose the keys are, by looking
+them up in your own keyring. That runs the gpg program, so Tuatara asks first.
+The setting =*metadata-look-up-key-owners*= says whether it asks every time
+(=:ask=, the standard), always looks them up (=t=) or never does (=nil=). The
+file itself is never handed to gpg.
+
+#+begin_try Try it, with the holiday photo and the members
+1. Open =~/members.csv=. Press ~M-x~, type =show-file-metadata= and press
+   ~RET~. A buffer opens with the file's path, kind, size, owner and times.
+   A plain text file keeps nothing more of itself. Press ~q~.
+2. Press ~C-x C-f~, type =~/Pictures/= and press ~RET~ to list the folder
+   with your photo in it. Move to the photo with ~j~.
+3. Press ~g i~. The report now has a second part, with what the camera
+   wrote into the photo. Look for the time and for a position.
+4. Press ~q~ to close the report, and ~q~ again to close the folder.
+#+end_try
+
+#+table: commands show-file-metadata
+
+#+table: settings *metadata-look-up-key-owners*
+
+** When a file cannot be drawn
+
+Things go wrong with files. A download stops halfway and leaves half a
+picture. A file has the name of one kind and the contents of another. A
+terminal cannot draw pictures. In each case Tuatara tells you what happened in
+the echo area and shows you what it can.
+
+| What you opened                             | What you get                   |
+|---------------------------------------------+--------------------------------|
+| A picture that is damaged or too large      | Its octets in the hex view.    |
+| A picture, where pictures cannot be shown   | Its octets in the hex view.    |
+| A PDF whose pages cannot be drawn           | Its text.                      |
+| A PDF, where pictures cannot be shown       | Its text.                      |
+| An Office document, without LibreOffice     | Its text, or for the kinds from before 2007 its octets. |
+| Any other file that is not text             | Its octets in the hex view.    |
+
+When a file falls back to the hex view, it is opened safely, as chapter 12
+describes: read-only, with nothing in it acted on. The echo area gives the
+reason and ends with =its octets, opened safely=.
+
+The hex view is the right place to land, because it never fails. Every file
+can be shown as its octets, and the first few often tell you what the file
+really is. A file that starts with =%PDF= is a PDF whatever its name says. One
+that starts with =PK= is a zip archive, or a Word document, which is a zip
+archive inside. One whose first row is all zeros is probably a download that
+never finished. From there ~M-x show-file-metadata~ tells you what kind of
+file the contents say it is, and ~M-x hex-search-forward~ finds what you are
+looking for inside it.

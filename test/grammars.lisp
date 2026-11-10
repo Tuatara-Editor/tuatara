@@ -96,10 +96,12 @@ afterwards."
   (with-grammar-answers-forgotten ("awk")
     (multiple-value-bind (f editor) (run-keys "a b c" :text "abc")
       (declare (ignore f))
-      (false (member 'tuatara.defaults::ask-about-shown-grammar (tuatara.command:editor-post-command-functions editor))))
+      (false (member 'tuatara.defaults::ask-about-shown-grammar
+                     (tuatara.command:editor-post-command-functions editor))))
     (with-file-session ((f editor) "n a b" (format nil "BEGIN { print 1 }~%") "awk")
       (true (tuatara.frontend.fake:fake-frame-showing-across-rows f "Turn on the AWK grammar"))
-      (false (member 'tuatara.defaults::ask-about-shown-grammar (tuatara.command:editor-post-command-functions editor))))))
+      (false (member 'tuatara.defaults::ask-about-shown-grammar
+                     (tuatara.command:editor-post-command-functions editor))))))
 
 (defun typed-ahead-session (ahead after text extension)
   "Run on a file with EXTENSION holding TEXT the keys AHEAD, typed ahead
@@ -161,12 +163,19 @@ return the fake frontend."
 you add, with JSON's colouring rules beside it; true when it could."
   (let ((src (asdf:system-relative-pathname :tuatara "build/grammar-sources/json/src/")))
     (ensure-directories-exist (merge-pathnames "rules/" folder))
-    (uiop:copy-file (asdf:system-relative-pathname :tuatara "syntax/rules/json.scm") (merge-pathnames "rules/testjson.scm" folder))
-    (zerop (nth-value 2 (uiop:run-program (list "cc" "-O1" "-shared" "-fPIC" "-std=c11" "-Dtree_sitter_json=tree_sitter_testjson"
-                                                (format nil "-I~a" (uiop:native-namestring src))
-                                                (uiop:native-namestring (merge-pathnames "parser.c" src))
-                                                "-o" (uiop:native-namestring (merge-pathnames "testjson.so" folder)))
-                                          :ignore-error-status t :error-output nil)))))
+    (uiop:copy-file (asdf:system-relative-pathname :tuatara "syntax/rules/json.scm")
+                    (merge-pathnames "rules/testjson.scm" folder))
+    (zerop (nth-value 2
+                      (uiop:run-program (list "cc"
+                                              "-O1"
+                                              "-shared"
+                                              "-fPIC"
+                                              "-std=c11"
+                                              "-Dtree_sitter_json=tree_sitter_testjson"
+                                              (format nil "-I~a" (uiop:native-namestring src))
+                                              (uiop:native-namestring (merge-pathnames "parser.c" src))
+                                              "-o" (uiop:native-namestring (merge-pathnames "testjson.so" folder)))
+                                        :ignore-error-status t :error-output nil)))))
 
 (defmacro with-test-grammar-added ((folder) &body body)
   "Run BODY with FOLDER the folder of grammars you add, holding testjson.so
@@ -264,7 +273,8 @@ a new session would."
       (unwind-protect
            (progn
              (rename-file (merge-pathnames "testjson.so" folder) elsewhere)
-             (sb-posix:symlink (uiop:native-namestring elsewhere) (uiop:native-namestring (merge-pathnames "testjson.so" folder)))
+             (sb-posix:symlink (uiop:native-namestring elsewhere)
+                               (uiop:native-namestring (merge-pathnames "testjson.so" folder)))
              (new-session-for-grammars)
              (true (tuatara.syntax:user-grammar-p "testjson") "taken as yours")
              (false (tuatara.syntax:user-grammar-file "testjson") "no plain file")

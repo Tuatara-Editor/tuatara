@@ -91,7 +91,8 @@ or :HUNG, so that each of several sessions in a test says how it ended."
       (true (shown-now-p f " Narrow "))
       ;; the text itself is whole
       (is string= *narrowing-text* (session-text editor))))
-  (multiple-value-bind (f editor) (narrowing-keys (list *narrow-to-two-and-three* "C-x x w") :text *narrowing-text* :width 60)
+  (multiple-value-bind (f editor)
+      (narrowing-keys (list *narrow-to-two-and-three* "C-x x w") :text *narrowing-text* :width 60)
     (false (tuatara.buffer:buffer-narrowed-p (session-buffer editor)))
     (true (shown-now-p f "four"))
     (true (shown-now-p f "five"))
@@ -107,13 +108,17 @@ or :HUNG, so that each of several sessions in a test says how it ended."
     (multiple-value-bind (screen spans) (tuatara.frontend.fake:fake-frame-with f " Narrow ")
       (let* ((row (position-if (lambda (r) (search " Narrow " r)) screen))
              (at (search " Narrow " (aref screen row))))
-        (true (find-if (lambda (span) (and (= (first span) at) (member :mode-line-narrowed (alexandria:ensure-list (third span)))))
+        (true (find-if (lambda (span)
+                         (and (= (first span) at) (member :mode-line-narrowed (alexandria:ensure-list (third span)))))
                        (aref spans row)))
         (true (< at (search "*scratch*" (aref screen row))))))))
 
 (define-test (narrowing motion-stops-at-the-edges)
   (flet ((point-after (keys)
-           (session-point (nth-value 1 (narrowing-keys (list *narrow-to-two-and-three* keys) :text *narrowing-text* :width 60)))))
+           (session-point (nth-value 1
+                                     (narrowing-keys (list *narrow-to-two-and-three* keys)
+                                                     :text *narrowing-text*
+                                                     :width 60)))))
     ;; the ends of the buffer are those of the part shown
     (is = 4 (point-after "M-<"))
     (is = 14 (point-after "M->"))
@@ -132,19 +137,24 @@ or :HUNG, so that each of several sessions in a test says how it ended."
     (is = 14 (point-after "M-> C-a")))
   ;; narrowed inside lines: the line's ends are the edges
   (flet ((point-after (keys)
-           (session-point (nth-value 1 (narrowing-keys (list "C-f C-SPC C-n C-f C-x x n" keys) :text *narrowing-text* :width 60)))))
+           (session-point (nth-value 1
+                                     (narrowing-keys (list "C-f C-SPC C-n C-f C-x x n" keys)
+                                                     :text *narrowing-text*
+                                                     :width 60)))))
     (is = 1 (point-after "M-> C-a C-a C-p C-a"))
     (is = 6 (point-after "M-< C-e C-n C-e"))))
 
 (define-test (narrowing goto-line-counts-the-file)
   ;; line numbers are the file's, in the mode line and for goto-line; one outside widens, and says so
-  (multiple-value-bind (f editor) (narrowing-keys (list *narrow-to-two-and-three* "M-g g 3 RET") :text *narrowing-text* :width 60)
+  (multiple-value-bind (f editor)
+      (narrowing-keys (list *narrow-to-two-and-three* "M-g g 3 RET") :text *narrowing-text* :width 60)
     (is = 8 (session-point editor))
     (true (tuatara.buffer:buffer-narrowed-p (session-buffer editor)))
     (true (tuatara.frontend.fake:fake-frame-showing f "L3 C0")))
   (dolist (case '(("M-g g 5 RET" 19 "line 5") ("M-> M-g g 1 RET" 0 "line 1")))
     (destructuring-bind (keys point line) case
-      (multiple-value-bind (f editor) (narrowing-keys (list *narrow-to-two-and-three* keys) :text *narrowing-text* :width 60)
+      (multiple-value-bind (f editor)
+          (narrowing-keys (list *narrow-to-two-and-three* keys) :text *narrowing-text* :width 60)
         (is = point (session-point editor))
         (false (tuatara.buffer:buffer-narrowed-p (session-buffer editor)))
         (true (tuatara.frontend.fake:fake-frame-showing f (format nil "Widened *scratch* to show ~a" line)))))))
@@ -179,8 +189,9 @@ or :HUNG, so that each of several sessions in a test says how it ended."
       (is = 20 (session-point (nth-value 1 (narrowed "C-s t h . e e RET"))))
       (is = 11 (session-point (nth-value 1 (narrowed "C-s M-r n e e d l e RET"))))
       ;; widened again, it is found
-      (is = 6 (session-point (nth-value 1 (narrowing-keys (list "C-n C-SPC C-n C-n C-x x n C-x x w M-< C-s n e e d l e RET")
-                                                     :text text :width 60)))))))
+      (is = 6
+          (session-point (nth-value 1 (narrowing-keys (list "C-n C-SPC C-n C-n C-x x n C-x x w M-< C-s n e e d l e RET")
+                                                 :text text :width 60)))))))
 
 (define-test (narrowing replace-all-leaves-outside-alone)
   (let ((text (format nil "foo~%foo two~%foo three~%foo~%")))
@@ -209,7 +220,8 @@ or :HUNG, so that each of several sessions in a test says how it ended."
         (let ((b (after "C-n C-SPC C-n C-n C-x x n M-< r r % f o o / b a z RET")))
           (is string= (format nil "foo~%baz two~%baz three~%foo~%") (tuatara.buffer:buffer-string b)))
         (let ((b (after "r r % f o o / b a z RET"
-                        (lambda () (let ((b (tuatara.command:current-buffer))) (tuatara.buffer:narrow-buffer b 4 19))))))
+                        (lambda ()
+                          (let ((b (tuatara.command:current-buffer))) (tuatara.buffer:narrow-buffer b 4 19))))))
           (is string= (format nil "baz~%baz two~%baz three~%baz~%") (tuatara.buffer:buffer-string b))
           (true (tuatara.buffer:buffer-narrowed-p b))
           (true (<= (tuatara.buffer:buffer-start b) (tuatara.buffer:buffer-point b) (tuatara.buffer:buffer-end b))))))))
@@ -217,57 +229,77 @@ or :HUNG, so that each of several sessions in a test says how it ended."
 (define-test (narrowing records-kept-in-the-part-shown)
   ;; keeping a file's records without a selection filters those shown, the others left as they are
   (let ((editor (nth-value 1 (narrowing-keys (list "M-x c s v - m o d e RET"
-                                             (lambda () (tuatara.buffer:narrow-buffer (tuatara.command:current-buffer) 13 25))
+                                             (lambda ()
+                                               (tuatara.buffer:narrow-buffer (tuatara.command:current-buffer) 13 25))
                                              "C-x / k n a m e RET t u i RET")
                                        :text (format nil "name,n~%kea,1~%kea,2~%tui,3~%kea,4~%") :width 120))))
     (is string= (format nil "name,n~%kea,1~%tui,3~%kea,4~%") (session-text editor))))
 
 (define-test (narrowing counts-the-part-shown)
   ;; counting words without a selection counts what is shown
-  (let ((f (narrowing-keys (list *narrow-to-two-and-three* "M-x c o u n t - w o r d s RET") :text *narrowing-text* :width 120)))
+  (let ((f (narrowing-keys (list *narrow-to-two-and-three* "M-x c o u n t - w o r d s RET")
+                           :text *narrowing-text*
+                           :width 120)))
     (true (tuatara.frontend.fake:fake-frame-showing f "The part shown has 2 lines"))))
 
 (define-test (narrowing edits-at-the-edges-move-them)
   ;; typed at either edge it goes inside; the part shown grows and shrinks with what is edited
-  (let ((editor (nth-value 1 (narrowing-keys (list *narrow-to-two-and-three* "M-< i A C-g M-> i Z C-g") :text *narrowing-text* :width 60))))
+  (let ((editor (nth-value 1
+                           (narrowing-keys (list *narrow-to-two-and-three* "M-< i A C-g M-> i Z C-g")
+                                           :text *narrowing-text*
+                                           :width 60))))
     (let ((b (session-buffer editor)))
       ;; the part shown ends after the newline of three, where four begins
       (is string= (format nil "one~%Atwo~%three~%Zfour~%five~%") (session-text editor))
       (is = 4 (tuatara.buffer:buffer-start b))
       (is = 16 (tuatara.buffer:buffer-end b))))
-  (let ((editor (nth-value 1 (narrowing-keys (list *narrow-to-two-and-three* "M-< C-k C-k") :text *narrowing-text* :width 60))))
+  (let ((editor (nth-value 1
+                           (narrowing-keys (list *narrow-to-two-and-three* "M-< C-k C-k")
+                                           :text *narrowing-text*
+                                           :width 60))))
     (is string= (format nil "one~%three~%four~%five~%") (session-text editor))
     (is = 10 (tuatara.buffer:buffer-end (session-buffer editor))))
   ;; deleting back from the start, or on from the end, reaches nothing outside
-  (is string= *narrowing-text* (session-text (nth-value 1 (narrowing-keys (list *narrow-to-two-and-three* "M-< i DEL DEL C-g M-> C-d C-d")
-                                                                    :text *narrowing-text* :width 60))))
+  (is string= *narrowing-text*
+      (session-text (nth-value 1 (narrowing-keys (list *narrow-to-two-and-three* "M-< i DEL DEL C-g M-> C-d C-d")
+                                           :text *narrowing-text* :width 60))))
   ;; nor does deleting the whole buffer's trailing blanks or every line's
   (let ((text (format nil "a  ~%b  ~%c  ~%~%~%")))
     (is string= (format nil "a  ~%b~%c  ~%~%~%")
-        (session-text (nth-value 1 (narrowing-keys (list "C-n C-SPC C-n C-x x n" "M-x d e l e t e - t r a i l i n g - w h i t e s p a c e RET")
-                                             :text text :width 80)))))
+        (session-text (nth-value 1
+                                 (narrowing-keys (list "C-n C-SPC C-n C-x x n"
+                                                       "M-x d e l e t e - t r a i l i n g - w h i t e s p a c e RET")
+                                           :text text :width 80)))))
   ;; an edit reaching outside is refused, and said
   (let ((f (narrowing-keys (list *narrow-to-two-and-three* "M-> C-d") :text *narrowing-text* :width 120)))
     (true (tuatara.frontend.fake:fake-frame-showing-across-rows f "outside the part of *scratch* shown"))))
 
 (define-test (narrowing undo-across-narrow-and-widen)
   ;; a change made before narrowing, outside, is undone as any other; point stays inside
-  (multiple-value-bind (f editor) (narrowing-keys (list "M-> i e n d C-g M-<" *narrow-to-two-and-three* "u") :text *narrowing-text* :width 60)
+  (multiple-value-bind (f editor)
+      (narrowing-keys (list "M-> i e n d C-g M-<" *narrow-to-two-and-three* "u") :text *narrowing-text* :width 60)
     (is string= *narrowing-text* (session-text editor))
     (true (tuatara.frontend.fake:fake-frame-showing f "Undid a change outside the part shown"))
     (let ((b (session-buffer editor)))
       (true (tuatara.buffer:buffer-narrowed-p b))
       (true (<= (tuatara.buffer:buffer-start b) (session-point editor) (tuatara.buffer:buffer-end b)))))
   ;; a change made while narrowed is undone after widening, and redone
-  (let ((editor (nth-value 1 (narrowing-keys (list *narrow-to-two-and-three* "M-< i X C-g C-x x w u") :text *narrowing-text* :width 60))))
+  (let ((editor (nth-value 1
+                           (narrowing-keys (list *narrow-to-two-and-three* "M-< i X C-g C-x x w u")
+                                           :text *narrowing-text*
+                                           :width 60))))
     (is string= *narrowing-text* (session-text editor)))
-  (let ((editor (nth-value 1 (narrowing-keys (list *narrow-to-two-and-three* "M-< i X C-g C-x x w u U") :text *narrowing-text* :width 60))))
+  (let ((editor (nth-value 1
+                           (narrowing-keys (list *narrow-to-two-and-three* "M-< i X C-g C-x x w u U")
+                                           :text *narrowing-text*
+                                           :width 60))))
     (is string= (format nil "one~%Xtwo~%three~%four~%five~%") (session-text editor))))
 
 (define-test (narrowing saving-writes-the-whole-file)
   (with-test-directory (dir)
     (let ((path (put-file (merge-pathnames "kept.txt" dir) *narrowing-text*)))
-      (multiple-value-bind (f editor) (narrowing-keys (list *narrow-to-two-and-three* "M-< i X C-g C-x C-s") :file path :width 120)
+      (multiple-value-bind (f editor)
+          (narrowing-keys (list *narrow-to-two-and-three* "M-< i X C-g C-x C-s") :file path :width 120)
         (declare (ignore f))
         (true (tuatara.buffer:buffer-narrowed-p (session-buffer editor)))
         (is string= (format nil "one~%Xtwo~%three~%four~%five~%") (file-text path))))))
@@ -281,7 +313,9 @@ or :HUNG, so that each of several sessions in a test says how it ended."
         (let ((b (session-buffer editor)))
           (true (tuatara.buffer:buffer-narrowed-p b))
           (is string= (format nil "* Tūī~%** Song~%two voices~%")
-              (tuatara.buffer:buffer-string b :start (tuatara.buffer:buffer-start b) :end (tuatara.buffer:buffer-end b)))
+              (tuatara.buffer:buffer-string b
+                                            :start (tuatara.buffer:buffer-start b)
+                                            :end (tuatara.buffer:buffer-end b)))
           (false (shown-now-p f "Kea"))
           (false (shown-now-p f "Kerer"))))))
   ;; a Lisp definition, the one point is in
@@ -292,20 +326,26 @@ or :HUNG, so that each of several sessions in a test says how it ended."
         (let ((b (session-buffer editor)))
           (true (tuatara.buffer:buffer-narrowed-p b))
           (true (search (format nil "(defun weka ()~%  2)")
-                        (tuatara.buffer:buffer-string b :start (tuatara.buffer:buffer-start b) :end (tuatara.buffer:buffer-end b))))
+                        (tuatara.buffer:buffer-string b
+                                                      :start (tuatara.buffer:buffer-start b)
+                                                      :end (tuatara.buffer:buffer-end b))))
           (false (shown-now-p f "kiwi"))
           (false (shown-now-p f "takahe")))))))
 
 (define-test (narrowing selecting-all-selects-the-part-shown)
   ;; the whole buffer selected is the part shown
-  (let ((b (session-buffer (nth-value 1 (narrowing-keys (list *narrow-to-two-and-three* "C-x h") :text *narrowing-text* :width 60)))))
+  (let ((b (session-buffer (nth-value 1
+                                      (narrowing-keys (list *narrow-to-two-and-three* "C-x h")
+                                                      :text *narrowing-text*
+                                                      :width 60)))))
     (is equal '(4 14) (multiple-value-list (tuatara.buffer:buffer-region b)))))
 
 (define-test (narrowing search-reads-only-the-part-shown)
   ;; a search of a large buffer narrowed to a few lines is bounded by them, never by the whole text
   (let* ((line (format nil "~a~%" (make-string 99 :initial-element #\x)))
          (b (tuatara.buffer:make-buffer (tuatara.buffer:unique-buffer-name "narrowed search")
-                                        :text (with-output-to-string (out) (loop repeat 80000 do (write-string line out))))))
+                                        :text (with-output-to-string (out)
+                                                (loop repeat 80000 do (write-string line out))))))
     (unwind-protect
          (let ((state (tuatara.defaults::make-search-state 4000000 t t)))
            (is equal (list 0 8000000 nil) (multiple-value-list (tuatara.defaults::search-bounds state b)))
@@ -419,14 +459,16 @@ or :HUNG, so that each of several sessions in a test says how it ended."
                                    (loop while (zerop (tuatara-user:forward-line 1)) count t))
                             (progn (tuatara-user:goto-char (tuatara-user:point-min)) (tuatara-user:forward-line -1))
                             (progn (tuatara-user:goto-char (tuatara-user:point-max))
-                                   (handler-case (progn (tuatara-user:forward-char 1) :moved) (error (e) (princ-to-string e))))
+                                   (handler-case (progn (tuatara-user:forward-char 1) :moved)
+                                     (error (e) (princ-to-string e))))
                             (tuatara-user:char-after (tuatara-user:point-max))
                             (progn (tuatara-user:goto-char (tuatara-user:point-min)) (tuatara-user:char-before))
                             (list (tuatara-user:point-min) (tuatara-user:point-max))
                             (progn (tuatara.buffer:narrow-buffer b 5 12)
                                    (tuatara-user:goto-char 7)
                                    (list (tuatara-user:line-beginning-position) (tuatara-user:line-end-position)
-                                         (tuatara-user:line-number-at-pos) (tuatara-user:line-number-at-pos nil t)))))))))
+                                         (tuatara-user:line-number-at-pos)
+                                         (tuatara-user:line-number-at-pos nil t)))))))))
            (is equal (list 2 -1 "End of buffer" nil nil '(5 15) '(6 8 1 2)) result))
       (tuatara.buffer:kill-buffer b))))
 
@@ -470,8 +512,9 @@ or :HUNG, so that each of several sessions in a test says how it ended."
   (is string= *narrowing-text*
       (session-text (nth-value 1 (narrowing-keys (list *narrow-to-two-and-three* "M-< M-x j o i n - l i n e RET")
                                                  :text *narrowing-text* :width 80))))
-  (multiple-value-bind (f editor) (narrowing-keys (list *narrow-to-two-and-three* "M-> M-x k i l l - w h o l e - l i n e RET")
-                                                  :text *narrowing-text* :width 80)
+  (multiple-value-bind (f editor)
+      (narrowing-keys (list *narrow-to-two-and-three* "M-> M-x k i l l - w h o l e - l i n e RET")
+                      :text *narrowing-text* :width 80)
     (is string= *narrowing-text* (session-text editor))
     (true (tuatara.frontend.fake:fake-frame-showing f "End of the part shown"))))
 
@@ -480,7 +523,8 @@ or :HUNG, so that each of several sessions in a test says how it ended."
   ;; going round at it: filling a paragraph in text, Org and Markdown, a balanced expression
   ;; swapped at the edge, going to the running clock's task
   (let ((text (format nil "one two~%three four~%~%five six~%seven eight~%")))
-    (let ((editor (keys-finish-within (list (lambda () (tuatara.buffer:narrow-buffer (tuatara.command:current-buffer) 20 41))
+    (let ((editor (keys-finish-within (list (lambda ()
+                                              (tuatara.buffer:narrow-buffer (tuatara.command:current-buffer) 20 41))
                                                "M-< M-q RET")
                                       :text text :width 60)))
       (true (typep editor 'tuatara.command:editor) "~a" editor)
@@ -500,7 +544,8 @@ or :HUNG, so that each of several sessions in a test says how it ended."
   (with-test-directory (dir)
     (let* ((text (format nil "(a) (b) ; c~%(d)~%"))
            (path (put-file (merge-pathnames "swap.lisp" dir) text))
-           (editor (keys-finish-within (list (lambda () (tuatara.buffer:narrow-buffer (tuatara.command:current-buffer) 0 8))
+           (editor (keys-finish-within (list (lambda ()
+                                               (tuatara.buffer:narrow-buffer (tuatara.command:current-buffer) 0 8))
                                                 "M-< C-f C-f C-f C-f C-f C-f C-f C-M-t")
                                        :file path :width 60)))
       (true (typep editor 'tuatara.command:editor) "~a" editor)
@@ -525,7 +570,9 @@ or :HUNG, so that each of several sessions in a test says how it ended."
     (let* ((path (put-file (merge-pathnames "clock.org" dir) (format nil "* Task~%body~%more~%")))
            (editor (nth-value 1 (narrowing-keys (list "C-c C-x C-i"
                                    (lambda () (let ((b (tuatara.command:current-buffer)))
-                                                (tuatara.buffer:narrow-buffer b (- (tuatara.buffer:buffer-size b) 5) (tuatara.buffer:buffer-size b))
+                                                (tuatara.buffer:narrow-buffer b
+                                                                              (- (tuatara.buffer:buffer-size b) 5)
+                                                                              (tuatara.buffer:buffer-size b))
                                                 (setf (tuatara.buffer:buffer-point b) (tuatara.buffer:buffer-size b))))
                                    "C-c C-x C-o")
                              :file path :width 80))))
@@ -539,8 +586,11 @@ or :HUNG, so that each of several sessions in a test says how it ended."
       (unwind-protect
            (progn
              (narrowing-keys (list "C-c C-x C-i"
-                             (lambda () (push (lambda (buffer edits) (declare (ignore buffer edits)) (error "Refused for the test"))
-                                              tuatara.buffer:*before-edit-functions*))
+                             (lambda ()
+                               (push (lambda (buffer edits)
+                                       (declare (ignore buffer edits))
+                                       (error "Refused for the test"))
+                                     tuatara.buffer:*before-edit-functions*))
                              "C-c C-x C-o"
                              (lambda () (pop tuatara.buffer:*before-edit-functions*)))
                        :file path :width 80)
@@ -553,7 +603,10 @@ or :HUNG, so that each of several sessions in a test says how it ended."
   (with-test-directory (dir)
     (let ((path (put-file (merge-pathnames "count.lisp" dir) (format nil "a~%b~%c~%d~%"))))
       (is string= (format nil ";; a~%;; b~%;; c~%d~%")
-          (session-text (nth-value 1 (narrowing-keys "C-u 3 M-x t o g g l e - c o m m e n t - l i n e s - r e t RET" :file path :width 80))))))
+          (session-text (nth-value 1
+                                   (narrowing-keys "C-u 3 M-x t o g g l e - c o m m e n t - l i n e s - r e t RET"
+                                                   :file path
+                                                   :width 80))))))
   (with-test-directory (dir)
     (let ((path (put-file (merge-pathnames "lines.lisp" dir) (format nil "a~%b~%c~%d~%"))))
       (is string= (format nil "a~%;; b~%;; c~%d~%")
@@ -561,9 +614,11 @@ or :HUNG, so that each of several sessions in a test says how it ended."
                                                      "M-< C-u 5 M-x t o g g l e - c o m m e n t - l i n e s - r e t RET")
                                                :file path :width 80))))))
   ;; the last line of a part ending inside a line swapped with the one before, within the part
-  (let ((editor (nth-value 1 (narrowing-keys (list (lambda () (tuatara.buffer:narrow-buffer (tuatara.command:current-buffer) 4 11))
-                                             "M-> C-x C-t")
-                                       :text *narrowing-text* :width 80))))
+  (let ((editor (nth-value 1
+                           (narrowing-keys (list (lambda ()
+                                                   (tuatara.buffer:narrow-buffer (tuatara.command:current-buffer) 4 11))
+                                           "M-> C-x C-t")
+                                     :text *narrowing-text* :width 80))))
     (let ((text (session-text editor)))
       (false (string= text *narrowing-text*))
       (true (uiop:string-prefix-p (format nil "one~%") text))
@@ -584,15 +639,20 @@ or :HUNG, so that each of several sessions in a test says how it ended."
                                        :text *narrowing-text* :width 60))))
     (is string= "" (session-text editor))
     (true (tuatara.buffer:buffer-narrowed-p (session-buffer editor))))
-  (let ((editor (nth-value 1 (narrowing-keys (list (lambda () (tuatara.buffer:narrow-buffer (tuatara.command:current-buffer) 0 0)) "i x C-g")
-                                       :text "" :width 60))))
+  (let ((editor (nth-value 1
+                           (narrowing-keys (list (lambda ()
+                                                   (tuatara.buffer:narrow-buffer (tuatara.command:current-buffer) 0 0))
+                                                 "i x C-g")
+                                     :text "" :width 60))))
     (is string= "x" (session-text editor))
     (true (tuatara.buffer:buffer-narrowed-p (session-buffer editor))))
   (with-test-directory (dir)
     (let* ((path (put-file (merge-pathnames "read.txt" dir) *narrowing-text*))
-           (editor (nth-value 1 (narrowing-keys (list *narrow-to-two-and-three* (lambda () (put-file path (format nil "new~%~a" *narrowing-text*)))
-                                                "M-x r e v e r t - b u f f e r RET")
-                                          :file path :width 80))))
+           (editor (nth-value 1
+                              (narrowing-keys (list *narrow-to-two-and-three*
+                                                    (lambda () (put-file path (format nil "new~%~a" *narrowing-text*)))
+                                              "M-x r e v e r t - b u f f e r RET")
+                                        :file path :width 80))))
       (is string= (format nil "new~%~a" *narrowing-text*) (session-text editor))
       (false (tuatara.buffer:buffer-narrowed-p (session-buffer editor))))))
 
@@ -606,7 +666,8 @@ or :HUNG, so that each of several sessions in a test says how it ended."
 
 (define-test (narrowing hex-view-refused)
   ;; the hex view, which shows every octet, is refused while the buffer is narrowed
-  (multiple-value-bind (f editor) (narrowing-keys (list *narrow-to-two-and-three* "M-x h e x - m o d e RET") :text *narrowing-text* :width 120)
+  (multiple-value-bind (f editor)
+      (narrowing-keys (list *narrow-to-two-and-three* "M-x h e x - m o d e RET") :text *narrowing-text* :width 120)
     (false (tuatara.display:hex-view-p (session-buffer editor)))
     (true (tuatara.frontend.fake:fake-frame-showing-across-rows f "is narrowed, and the hex view shows every octet"))))
 

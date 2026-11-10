@@ -231,7 +231,8 @@ does listing another directory."
           (dolist (entry chosen)
             (remhash (rimu-mark-key (tuatara.buffer:buffer-local buffer 'rimu-directory) entry) (rimu-marks buffer)))
           (rimu-take-out buffer chosen)
-          (message "~d line~:p taken out of the list; \\<rimu-mode>\\[revert-buffer] shows ~:*~[~;it~:;them~] again" (length chosen))))))
+          (message "~d line~:p taken out of the list; \\<rimu-mode>\\[revert-buffer] shows ~:*~[~;it~:;them~] again"
+                   (length chosen))))))
 
 (defun rimu-chosen-paths (buffer &key files-only (mark #\>) here-only)
   "The paths of the entries an operation in the rimu list BUFFER works on, those
@@ -308,15 +309,17 @@ directory, else (one path only) to that name. A list of (FROM . TO)."
 
 ;;; Work in the background
 
-(defstruct (rimu-operation (:include tuatara.runtime:job) (:constructor make-rimu-operation (verb pairs buffer left &optional then))
+(defstruct (rimu-operation (:include tuatara.runtime:job)
+                           (:constructor make-rimu-operation (verb pairs buffer left &optional then))
                            (:copier nil))
-  "Files being worked on in the background for BUFFER, a rimu list or the
-list of the trash, a job (TUATARA.RUNTIME:JOB): VERB, one of *RIMU-VERBS*; PAIRS, each (FROM . TO), TO NIL for a deletion; LEFT, what was
-left alone before it began, as words; DONE, how many are through; FAILED, sentences of what could
-not be done; REPLACED, how many names there went to the trash first;
-DONE-PAIRS, the pairs done; LOCKED, the pairs of archives to extract that
-wait for their passwords; THEN, a function of no arguments called once it
-is taken in, or NIL. It stops between files."
+  "Files being worked on in the background for BUFFER, a rimu list or the list
+of the trash, a job (TUATARA.RUNTIME:JOB). VERB is one of *RIMU-VERBS*. PAIRS
+are each (FROM . TO), TO NIL for a deletion. LEFT is what was left alone
+before it began, as words. DONE is how many are through. FAILED is sentences
+of what could not be done. REPLACED is how many names there went to the trash
+first. DONE-PAIRS are the pairs done. LOCKED are the pairs of archives to
+extract that wait for their passwords. THEN is a function of no arguments
+called once it is taken in, or NIL. It stops between files."
   verb pairs left then (done 0) (failed '()) (replaced 0) (done-pairs '()) (locked '()))
 
 (setf (documentation 'rimu-operation-p 'function) "True when OBJECT is a RIMU-OPERATION.")
@@ -631,7 +634,8 @@ entries to a place asked for."
                                          :initial (abbreviated-path offered) :writing t)))
           (cond ((null target) (message "Nowhere given: nothing done"))
                 ((and (eq verb :move) (not (eq :directory (rimu-place-kind target))))
-                 (message "~a is no directory: nothing moved (\\<rimu-mode>\\[rimu-rename] renames)" (abbreviated-path target)))
+                 (message "~a is no directory: nothing moved (\\<rimu-mode>\\[rimu-rename] renames)"
+                          (abbreviated-path target)))
                 ((and (> (length paths) 1) (not (eq :directory (rimu-place-kind target))))
                  (message "~a is no directory: ~d files go only into one" (abbreviated-path target) (length paths)))
                 (t (rimu-place-to verb paths target buffer)))))))
@@ -690,9 +694,13 @@ about names there already, in the background; what is left alone is said."
                                                (rimu-question nil (mapcar #'car there)) (rest there)))))
            (pairs (if replace pairs (set-difference pairs there)))
            (left (append (mapcar (lambda (p) (format nil "~a (itself)" (tuatara.io:native-file-name (car p)))) itself)
-                         (mapcar (lambda (p) (format nil "~a (another of its name goes there)" (tuatara.io:native-file-name (car p))))
+                         (mapcar (lambda (p)
+                                   (format nil
+                                           "~a (another of its name goes there)"
+                                           (tuatara.io:native-file-name (car p))))
                                  doubled)
-                         (mapcar (lambda (p) (format nil "~a (a directory is there)" (tuatara.io:native-file-name (car p))))
+                         (mapcar (lambda (p)
+                                   (format nil "~a (a directory is there)" (tuatara.io:native-file-name (car p))))
                                  directories)
                          (and (not replace)
                               (mapcar (lambda (p) (format nil "~a (there already)" (tuatara.io:native-file-name (car p)))) there)))))
@@ -889,7 +897,9 @@ deleted for good after one plain yes that says so."
       (unless paths (return-from rimu-delete-paths nil)))
     (cond ((or for-good (not *rimu-delete-to-trash*))
            (when (and (yes-or-no-p* (format nil "~a for good?" (rimu-question "Delete" paths :here here)))
-                      (yes-or-no-p* (format nil "~a for good? It cannot be put back." (rimu-question "Really delete" paths :here here))))
+                      (yes-or-no-p* (format nil
+                                            "~a for good? It cannot be put back."
+                                            (rimu-question "Really delete" paths :here here))))
              (rimu-start-operation :delete (mapcar #'list paths) buffer)))
           ((y-or-n-p* (format nil "~a?" (rimu-question "Move" paths :here here :after "to the trash")))
            ;; whether a trash can be had is the same for every file of one directory
@@ -946,9 +956,11 @@ elsewhere, with those above it that are not there; the list shows it."
 
 (define-major-mode rimu-names-mode fundamental-mode
   "The names of a directory's entries as text, a line each, to rename them
-by editing (\\<rimu-mode>\\[rimu-edit-names] in a list): \\<rimu-names-mode>\\[rimu-names-finish] renames those whose line
-changed, \\[rimu-names-cancel] leaves them as they are. Each line stands for its entry: lines
-are not added, taken away or joined; an empty line leaves its entry's name."
+by editing (\\<rimu-mode>\\[rimu-edit-names] in a list):
+\\<rimu-names-mode>\\[rimu-names-finish] renames those whose line changed,
+\\[rimu-names-cancel] leaves them as they are. Each line stands for its entry:
+lines are not added, taken away or joined; an empty line leaves its entry's
+name."
   :lighter "Rename" :interactive nil)
 
 (defvar *rimu-names-keymap* (mode-keymap 'rimu-names-mode)
@@ -1201,14 +1213,15 @@ list shows it, point on it."
 
 (defun install-rimu-operations ()
   "Bind the keys of the marks and operations of rimu's lists."
-  (define-keys *rimu-keymap* '(("m" list-mark-entry) ("u" list-unmark-entry) ("U" list-unmark-all) ("t" list-toggle-marks)
-                               ("d" list-mark-for-deletion) ("x" list-execute) ("D" list-delete-marked)
-                               ("C" rimu-copy) ("R" rimu-rename) ("M" rimu-move) ("Y" rimu-symlink) ("L" rimu-hardlink)
-                               ("c" rimu-archive-create) ("Z" rimu-archive-extract) ("C-c e" rimu-archive-list)
-                               ("=" rimu-diff)
-                               ("+" rimu-make-directory) ("K" rimu-take-out-lines)
-                               ("a" rimu-touch) ("A" rimu-make-formatted-file) ("C-x C-q" rimu-edit-names)
-                               ("g t" rimu-trash) ("g w" rimu-wipe-files) ("C-c f m" rimu-mark-master)))
+  (define-keys *rimu-keymap*
+      '(("m" list-mark-entry) ("u" list-unmark-entry) ("U" list-unmark-all) ("t" list-toggle-marks)
+        ("d" list-mark-for-deletion) ("x" list-execute) ("D" list-delete-marked)
+        ("C" rimu-copy) ("R" rimu-rename) ("M" rimu-move) ("Y" rimu-symlink) ("L" rimu-hardlink)
+        ("c" rimu-archive-create) ("Z" rimu-archive-extract) ("C-c e" rimu-archive-list)
+        ("=" rimu-diff)
+        ("+" rimu-make-directory) ("K" rimu-take-out-lines)
+        ("a" rimu-touch) ("A" rimu-make-formatted-file) ("C-x C-q" rimu-edit-names)
+        ("g t" rimu-trash) ("g w" rimu-wipe-files) ("C-c f m" rimu-mark-master)))
   (commands-for-mode 'rimu-mode "a rimu list (\\[rimu])"
                      'list-mark-entry 'list-mark-for-deletion 'list-unmark-entry 'list-unmark-all 'list-toggle-marks
                      'list-execute 'list-delete-marked 'rimu-mark-master)

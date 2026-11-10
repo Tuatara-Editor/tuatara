@@ -1,4 +1,5 @@
-;;;; lisp/selecting/selecting.lisp --- Selecting and acting on the selection: the verbs that take it, or a character without one.
+;;;; lisp/selecting/selecting.lisp --- Selecting and acting on the selection: the verbs that take it, or a character
+;;;; without one.
 ;;;; Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
 ;;;;
 ;;;; A selection is started at point and grown by any motion (start-selection),
@@ -44,11 +45,12 @@ written in the background as the typing ends.")
 
 (defvar *split-limit-ask* nil
   "True to be asked, when the places would pass their limit, whether to hold
-them all the same, the memory having room, rather than those in sight only:
-the matches of \\<normal>\\[split-selection] past *SPLIT-LIMIT*, the cursors of
-\\[add-cursor-below] past *CURSORS-LIMIT* (a count past it too), and those of
-\\[tuatara-change] on a rectangle past *RECTANGLE-CURSORS-LIMIT*; one
-question, the same for them all. NIL, the default, holds those in sight.")
+them all the same, the memory having room, rather than those in sight only.
+This covers the matches of \\<normal>\\[split-selection] past *SPLIT-LIMIT*,
+the cursors of \\[add-cursor-below] past *CURSORS-LIMIT* (a count past it
+too), and those of \\[tuatara-change] on a rectangle past
+*RECTANGLE-CURSORS-LIMIT*. It is one question, the same for them all. NIL, the
+default, holds those in sight.")
 
 ;;; Selections: the mark, and visual-line sessions started with V
 
@@ -143,7 +145,8 @@ narrowed buffer, the lines of the part shown, cut at its edges."
             (values (tuatara.display:visible-line-start buffer low :hidden nil) (line-after buffer last))
             (let* ((rope (tuatara.buffer:buffer-text buffer))
                    (newline (tuatara.text:rope-find-line-end rope :start last)))
-              (values (tuatara.text:rope-line-start rope low) (if newline (1+ newline) (tuatara.text:rope-octet-length rope)))))
+              (values (tuatara.text:rope-line-start rope low)
+                      (if newline (1+ newline) (tuatara.text:rope-octet-length rope)))))
       (values (tuatara.buffer:within-narrowing buffer from) (tuatara.buffer:within-narrowing buffer to)))))
 
 (defun whole-lines-span (buffer start end)
@@ -154,9 +157,10 @@ VISIBLE) as (START . END)."
 (defun selection-range (&key widen)
   "Two values, the start and end of the active selection, or NIL. With WIDEN
 true a visual-line session covers whole lines including the final newline,
-as \\<normal>\\[copy-selection-or-char], \\[delete-selection-or-char] and \\[yank-over-selection] take it; without, it is the highlighted text, as
-\\[tuatara-change] takes it. A line whose end a fold hides is whole with all
-the fold hides."
+as \\<normal>\\[copy-selection-or-char], \\[delete-selection-or-char] and
+\\[yank-over-selection] take it; without, it is the highlighted text, as
+\\[tuatara-change] takes it. A line whose end a fold hides is whole with all the
+fold hides."
   (let ((b (current-buffer)))
     (when (tuatara.buffer:buffer-mark-active-p b)
       (multiple-value-bind (start end) (tuatara.buffer:buffer-region b)
@@ -312,7 +316,8 @@ instead, and the key pressed again pastes."
                   ((banked-p b)
                    (if (stringp copies)
                        (yank-over-banked copies)
-                       (message "The last kill (~a) is too large to paste over banked lines" (octets-words (kill-size copies)))))
+                       (message "The last kill (~a) is too large to paste over banked lines"
+                                (octets-words (kill-size copies)))))
                   (start
                    (let ((restore (and (line-selection-anchor)
                                        (plusp (kill-size copies))
@@ -341,8 +346,10 @@ join the lines it touches into one, in the background when it holds more than
         (return-from join-selected-lines
           (join-lines-in-background b start (max start (tuatara.buffer:buffer-forward-char b end -1)))))
       (let ((n (if start
-                   (max 1 (- (tuatara.buffer:buffer-line-number b (max start (tuatara.buffer:buffer-forward-char b end -1)))
-                             (tuatara.buffer:buffer-line-number b start)))
+                   (max 1
+                        (- (tuatara.buffer:buffer-line-number b
+                                                              (max start (tuatara.buffer:buffer-forward-char b end -1)))
+                           (tuatara.buffer:buffer-line-number b start)))
                    (prefix))))
         (when start
           (goto start)
@@ -571,7 +578,8 @@ again only when NORMAL state's keys have changed."
         (third (setf *text-object-commands-found*
                      (list normal syntax
                            (loop for (keys command) in (append normal syntax)
-                                 when (and (uiop:string-prefix-p "m " keys) (uiop:string-prefix-p "SELECT-" (symbol-name command)))
+                                 when (and (uiop:string-prefix-p "m " keys)
+                                           (uiop:string-prefix-p "SELECT-" (symbol-name command)))
                                    collect command)))))))
 
 (defparameter *repeat-selection-largest* (* 64 1024)

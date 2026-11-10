@@ -22,12 +22,12 @@ for Sunday; NIL to start on today.")
 
 (defvar *org-agenda-time-grid*
   '((:daily :today :require-timed) (800 1000 1200 1400 1600 1800 2000) " ┄┄┄┄┄ " "┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄")
-  "Today's time grid in the agenda: (WHEN TIMES
-AFTER-TIME LINE). WHEN holds :daily for a grid on every day of a day's agenda,
-:today for one on today, :weekly for one on every day, :require-timed for none
-on a day with no entry at a time of day; TIMES the times of the grid's lines
-(800 for 8:00); AFTER-TIME what follows a time, on the grid's lines and the
-entries' alike; LINE the grid's line. NIL for no grid.")
+  "Today's time grid in the agenda: (WHEN TIMES AFTER-TIME LINE). WHEN holds
+:daily for a grid on every day of a day's agenda, :today for one on today,
+:weekly for one on every day, :require-timed for none on a day with no entry at
+a time of day. TIMES the times of the grid's lines (800 for 8:00). AFTER-TIME
+what follows a time, on the grid's lines and the entries' alike. LINE the grid's
+line. NIL for no grid.")
 
 (defvar *org-agenda-category-width* 12
   "How wide the agenda's first column is, its category (the file's name, or
@@ -40,7 +40,8 @@ with spaces, or cut short with … when longer (TUATARA.DISPLAY:FIT-COLUMNS),
 wide characters counted as the columns they take."
   (let* ((width (max 3 *org-agenda-category-width*))
          (shown (concatenate 'string (values (tuatara.display:fit-columns (princ-to-string category) '() (1- width))) ":")))
-    (concatenate 'string shown (make-string (max 0 (- width (tuatara.display:string-columns shown))) :initial-element #\Space))))
+    (concatenate 'string shown (make-string (max 0 (- width (tuatara.display:string-columns shown)))
+                                            :initial-element #\Space))))
 
 (defvar *org-agenda-untimed-text* "all day"
   "What the agenda's time column says on a line with no time of day, faint:
@@ -49,13 +50,13 @@ leaves the column empty, lined up all the same; NIL leaves it out, the line's
 text where the time would have been.")
 
 (defvar *org-agenda-event-kind-text* "Event:"
-  "What the agenda's column of kinds (Scheduled:, Deadline:) says on the line
-of an event, a date in the text of an entry with no TODO keyword
-\(:org-agenda-event-kind), Event:, so that every line says what it is and
-its heading stands in one column, the kinds shorter than the column (1/3):
-filled out to it; \"\" leaves the column empty, lined up all the same; NIL
-leaves it out, the heading where the kind would have been, as Org's, a
-task's too (*ORG-AGENDA-TASK-KIND-TEXT*).")
+  "What the agenda's column of kinds (Scheduled:, Deadline:) says on the line of
+an event, a date in the text of an entry with no TODO keyword
+\(:org-agenda-event-kind), Event:. This way every line says what it is and its
+heading stands in one column. The kinds shorter than the column (1/3): filled
+out to it; \"\" leaves the column empty, lined up all the same. NIL leaves it
+out, the heading where the kind would have been, as Org's, a task's too
+\(*ORG-AGENDA-TASK-KIND-TEXT*).")
 
 (defvar *org-agenda-task-kind-text* "Task:"
   "What the agenda's column of kinds says on the line of a date in the text
@@ -189,7 +190,8 @@ column shows it."
 (defun org-agenda-deadline-face (item)
   "The face of a deadline line: imminent on its day and after, upcoming in the
 second half of its warning, distant before."
-  (destructuring-bind (&optional deadline own-warning repeats) (getf (agenda-entry-facts (org-item-entry item)) :deadline)
+  (destructuring-bind (&optional deadline own-warning repeats)
+      (getf (agenda-entry-facts (org-item-entry item)) :deadline)
     (declare (ignore repeats))
     (if (null deadline)
         :org-upcoming-distant-deadline
@@ -260,7 +262,8 @@ keyword, priority cookie, heading and tags; empty where it has none."
         (org-agenda-text-parts (org-agenda-item-text item) (agenda-entry-todo entry))
       (vector (princ-to-string (agenda-entry-category entry))
               (cond ((not times) "")
-                    ((org-item-time item) (string-trim " " (org-agenda-time-column (org-item-time item) (org-item-end item))))
+                    ((org-item-time item)
+                     (string-trim " " (org-agenda-time-column (org-item-time item) (org-item-end item))))
                     (t (or *org-agenda-untimed-text* "")))
               (string-trim " " (or (org-item-extra item) ""))
               (or keyword "")
@@ -269,12 +272,11 @@ keyword, priority cookie, heading and tags; empty where it has none."
               (or (org-agenda-tags-text entry) "")))))
 
 (defun org-agenda-item-pieces (item width today &key (times t))
-  "The line of ITEM, WIDTH columns wide, as pieces (TEXT . FACE): its
-category, its time (unless TIMES is NIL, as in the TODO list), its kind
-(Scheduled:, In 3 d.:) in the face of what it is (ORG-AGENDA-ITEM-FACE), its
-text with its keyword and priority coloured, its tags at the window's edge;
-each part in a face of its own, so that they are told apart, a line done
-faint throughout."
+  "The line of ITEM, WIDTH columns wide, as pieces (TEXT . FACE): its category,
+its time (unless TIMES is NIL, as in the TODO list), its kind (Scheduled:, In 3
+d.:) in the face of what it is (ORG-AGENDA-ITEM-FACE), its text with its keyword
+and priority coloured, its tags at the window's edge. Each part in a face of its
+own, so that they are told apart, a line done faint throughout."
   (let* ((entry (org-item-entry item))
          (face (org-agenda-item-face item today))
          (done (eq face :org-agenda-done))
@@ -295,7 +297,9 @@ faint throughout."
              (piece (if (and times *org-agenda-event-kind-text*) (format nil "~11a" extra) extra) face)
              (piece " " nil))
             ((and times *org-agenda-event-kind-text*)
-             (piece (format nil "~11a" (if (and todo *org-agenda-task-kind-text*) *org-agenda-task-kind-text* *org-agenda-event-kind-text*))
+             (piece (format nil "~11a" (if (and todo *org-agenda-task-kind-text*)
+                                           *org-agenda-task-kind-text*
+                                           *org-agenda-event-kind-text*))
                     :org-agenda-event-kind)
              (piece " " nil))))
     ;; the entry's own text in the text's colour, unless it is done
@@ -384,7 +388,8 @@ the time grid, or NIL."
                 (w1 (nth-value 1 (iso-week start))) (w2 (nth-value 1 (iso-week (+ start count -1)))))
            (line (structure (format nil "~a-agenda (W~2,'0d~:[-W~2,'0d~;~*~]):" (org-agenda-span-name span) w1 (= w1 w2) w2)))
            (loop for day from start below (+ start count)
-                 do (let* ((day-items (loop while (and items (eql (org-item-day (first items)) day)) collect (pop items)))
+                 do (let* ((day-items (loop while (and items (eql (org-item-day (first items)) day))
+                                            collect (pop items)))
                            (all (org-agenda-sort (append (org-agenda-grid-items day day-items today now count) day-items) '(:time :urgency)))
                            (weekend (member (weekday day) *calendar-weekend-days*)))
                       (line (list (cons (org-agenda-date-line day)
@@ -464,7 +469,9 @@ and hidden with none left, the time grid's lines going with their date."
                                               (setf (buffer-read-only-p buffer) t
                                                     (tuatara.buffer:buffer-local buffer :tuatara-support-keymap)
                                                     *tuatara-list-keymap*)
-                                              (set-search-filtering buffer :heading #'org-agenda-date-line-p :empty-headings nil
+                                              (set-search-filtering buffer
+                                                                    :heading #'org-agenda-date-line-p
+                                                                    :empty-headings nil
                                                                            :decoration #'org-agenda-grid-line-p))))
 
 (defun org-agenda-view (buffer)
@@ -520,7 +527,9 @@ date), :first on the first entry; a number puts it on that line."
                      (min point last)
                      (ecase point
                        (:keep (min (or old-line 0) last))
-                       (:today (let ((today (position-if (lambda (what) (and (org-agenda-date-line-p what) (= (second what) (org-today))))
+                       (:today (let ((today (position-if (lambda (what)
+                                                           (and (org-agenda-date-line-p what)
+                                                                (= (second what) (org-today))))
                                                          shown)))
                                  (if today (+ first today) (min (1+ first) last))))
                        (:first (let ((item (position-if #'org-agenda-item-p shown)))
@@ -538,7 +547,16 @@ in the background is put in (ORG-AGENDA-START-REFRESH) is forgotten."
       (org-agenda-apply buffer view text spans whats sources point))))
 
 (defparameter *org-agenda-carried-settings*
-  '(*org-now* *org-agenda-files* *org-agenda-file-functions* *org-agenda-time-grid* *org-agenda-category-width* *org-agenda-untimed-text* *org-agenda-event-kind-text* *org-agenda-task-kind-text* *org-agenda-date-in-title* *org-agenda-current-time-string*
+  '(*org-now*
+    *org-agenda-files*
+    *org-agenda-file-functions*
+    *org-agenda-time-grid*
+    *org-agenda-category-width*
+    *org-agenda-untimed-text*
+    *org-agenda-event-kind-text*
+    *org-agenda-task-kind-text*
+    *org-agenda-date-in-title*
+    *org-agenda-current-time-string*
     *org-deadline-warning-days* *org-agenda-start-on-weekday*)
   "The settings the agenda is worked out with, carried to the thread that works
 it out in the background, and to the one marking its days in the calendar, as
@@ -565,12 +583,12 @@ spans and lines ORG-AGENDA-COMPOSE gives, NIL when it gave up."
 
 (defun org-agenda-start-refresh (buffer &key (point :keep))
   "Work BUFFER's agenda out again in the background, a job of BUFFER
-\(AGENDA-REFRESH), from the agenda files as they are now, those open as
-their buffers have them taken here and the rest looked at on the job's thread
-\(ORG-AGENDA-OPEN-SNAPSHOT, ORG-AGENDA-SNAPSHOT-WITH), unless that is under way; the result is put in as the
-job is taken in, point put as POINT says (as ORG-AGENDA-APPLY has it), or as
-the last POINT other than :keep asked for meanwhile. An agenda never drawn
-yet says it is being worked out."
+\(AGENDA-REFRESH), from the agenda files as they are now, those open as their
+buffers have them taken here and the rest looked at on the job's thread
+\(ORG-AGENDA-OPEN-SNAPSHOT, ORG-AGENDA-SNAPSHOT-WITH), unless that is under way.
+The result is put in as the job is taken in, point put as POINT says (as
+ORG-AGENDA-APPLY has it), or as the last POINT other than :keep asked for
+meanwhile. An agenda never drawn yet says it is being worked out."
   (unless (eq point :keep)
     (setf (tuatara.buffer:buffer-local buffer 'org-agenda-refresh-point) point))
   (when (zerop (tuatara.buffer:buffer-size buffer))
@@ -677,7 +695,9 @@ in an agenda file beside it never waits for it."
         (org-agenda-render buffer)
         (org-agenda-start-refresh buffer))))
 
-(keep-shown-current 'org-agenda-mode (lambda (buffer) (declare (ignore buffer)) (org-agenda-sources-key)) 'org-agenda-follow)
+(keep-shown-current 'org-agenda-mode
+                    (lambda (buffer) (declare (ignore buffer)) (org-agenda-sources-key))
+                    'org-agenda-follow)
 
 (defun org-agenda-shown-window (editor)
   "The agenda shown in a window of EDITOR and that window, the selected one when
@@ -742,7 +762,8 @@ itself (ORG-AGENDA-NEXT-REDRAW), worked out again only when DRAWN or
     (if (and kept (eql (first kept) drawn) (eql (second kept) *org-agenda-refresh-minutes*))
         (third kept)
         (let ((due (org-agenda-next-redraw drawn)))
-          (setf (tuatara.buffer:buffer-local buffer 'org-agenda-redraw-due) (list drawn *org-agenda-refresh-minutes* due))
+          (setf (tuatara.buffer:buffer-local buffer 'org-agenda-redraw-due)
+                (list drawn *org-agenda-refresh-minutes* due))
           due))))
 
 (defun org-agenda-refresh-tick (editor)
@@ -1285,12 +1306,12 @@ that day."
     (calendar-open (or (and buffer (org-agenda-day-at-point buffer)) (org-today)))))
 
 (defun install-org-agenda-view (editor)
-  "Bind the agenda's keys, undo's among them (those EDITOR runs undo by, and
-u), and the calendar's key that shows the agenda of its day; and keep an
-agenda shown current by itself: drawn again when an agenda file changes on
-disk, its folder watched (ORG-AGENDA-FOLDERS-CHANGED), and every
-*ORG-AGENDA-REFRESH-MINUTES* and at midnight (ORG-AGENDA-REFRESH-TICK); and,
-as Tuatara starts, take up the clocks left running in the agenda files
+  "Bind the agenda's keys, undo's among them (those EDITOR runs undo by, and u),
+and the calendar's key that shows the agenda of its day. And keep an agenda
+shown current by itself: drawn again when an agenda file changes on disk, its
+folder watched (ORG-AGENDA-FOLDERS-CHANGED), and every
+*ORG-AGENDA-REFRESH-MINUTES* and at midnight (ORG-AGENDA-REFRESH-TICK). And, as
+Tuatara starts, take up the clocks left running in the agenda files
 \(ORG-CLOCK-START-TICK)."
   (dolist (key (cons "u" (where-is 'undo (list (editor-global-keymap editor)))))
     (define-key *org-agenda-keymap* key 'org-agenda-undo))
@@ -1303,8 +1324,10 @@ as Tuatara starts, take up the clocks left running in the agenda files
                                      ("d" org-agenda-deadline) ("n" org-agenda-add-note) ("t" org-agenda-set-tags)
                                      ("I" org-agenda-clock-in) ("O" org-agenda-clock-out) ("C" org-agenda-clock-cancel)
                                      ("T" org-agenda-todo) ("L" org-agenda-log-mode)
-                                     ("C-c C-t" org-agenda-todo) ("C-c C-x C" org-agenda-cancel-task) ("C-c C-s" org-agenda-schedule) ("C-c C-d" org-agenda-deadline)
-                                     ("C-c C-q" org-agenda-set-tags) ("C-c C-z" org-agenda-add-note) ("C-c C-w" org-agenda-refile)
+                                     ("C-c C-t" org-agenda-todo) ("C-c C-x C" org-agenda-cancel-task)
+                                     ("C-c C-s" org-agenda-schedule) ("C-c C-d" org-agenda-deadline)
+                                     ("C-c C-q" org-agenda-set-tags) ("C-c C-z" org-agenda-add-note)
+                                     ("C-c C-w" org-agenda-refile)
                                      ("s" org-agenda-save-all-buffers) ("c" org-agenda-goto-calendar)
                                      ("i" org-capture-on-day)))
   (pushnew 'org-agenda-refresh-tick *tick-functions*)

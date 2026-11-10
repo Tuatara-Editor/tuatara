@@ -5,8 +5,8 @@
 
 (define-test search-filters
   :description "Search filters: any list narrowed as a pattern is typed (C-x / s), the pattern kept on RET and
-the next one narrowing what it left, C-g letting only the one typed go; headings kept over the entries shown;
-more text a list gives of its entries matched in the background; the filters listed, one taken away from the
+the next one narrowing what it left, C-g letting only the one typed go. Headings kept over the entries shown.
+More text a list gives of its entries matched in the background; the filters listed, one taken away from the
 middle and all taken away; C-s narrowing the lists that ask for it; the filters' matches lit elsewhere.")
 
 (defparameter *filter-test-entries*
@@ -20,7 +20,8 @@ under a title line, narrowed as SET-SEARCH-FILTERING says with TEXT and SEARCHES
     (tuatara.modes:set-major-mode buffer 'tuatara.defaults::special-mode)
     (tuatara.defaults::render-pieces
      buffer (cons (format nil "Foods~%")
-                  (mapcar (lambda (entry) (format nil "~a~%" (if (consp entry) (cdr entry) entry))) *filter-test-entries*))
+                  (mapcar (lambda (entry) (format nil "~a~%" (if (consp entry) (cdr entry) entry)))
+                          *filter-test-entries*))
      :entries *filter-test-entries* :first-line 1 :point :start)
     (tuatara:set-search-filtering buffer :heading #'consp :text text :searches searches :nouns "foods")))
 
@@ -76,7 +77,8 @@ the list."
   (is equal '("Foods" "Fruit" "apple" "Vegetables" "leek") (first *seen-lines*))
   ;; DEL with point further down than the narrowed list reaches: narrowed again, point on its entry
   (multiple-value-bind (f editor list)
-      (filtered-session (list (lambda () (tuatara.defaults::goto (tuatara.buffer:buffer-size (tuatara.command:current-buffer))))
+      (filtered-session (list (lambda ()
+                                (tuatara.defaults::goto (tuatara.buffer:buffer-size (tuatara.command:current-buffer))))
                               "C-x / s l e e k DEL DEL" :look "RET"))
     (declare (ignore editor))
     (is equal '("Foods" "Fruit" "apple" "Vegetables" "leek") (first *seen-lines*))
@@ -92,7 +94,8 @@ the list."
     (is equal '("Foods" "Fruit" "cherry" "Vegetables" "carrot") (first *seen-lines*))
     (true (tuatara.frontend.fake:fake-frame-showing f "incomplete")))
   ;; not a list: said so
-  (true (tuatara.frontend.fake:fake-frame-showing (run-keys "C-x / s" :text "plain text") "Only a list or a file of records")))
+  (true (tuatara.frontend.fake:fake-frame-showing (run-keys "C-x / s" :text "plain text")
+                                                  "Only a list or a file of records")))
 
 (define-test (search-filters stacked)
   ;; each filter narrows what the one before it left
@@ -127,7 +130,8 @@ the list."
                                 (lambda ()
                                   (setf filters-list (tuatara.command:current-buffer))
                                   ;; the second filter's line
-                                  (setf (tuatara.buffer:buffer-point filters-list) (tuatara.buffer:buffer-goto-line filters-list 5)))
+                                  (setf (tuatara.buffer:buffer-point filters-list)
+                                        (tuatara.buffer:buffer-goto-line filters-list 5)))
                                 "d"))
       (declare (ignore f editor))
       (is equal '("Foods" "Fruit" "apple" "Vegetables" "leek") (shown-lines list))
@@ -151,7 +155,8 @@ the list."
 (defun wait-for-filter-jobs ()
   "Wait, a few seconds at most, till no list is being filtered in the background."
   (let ((until (+ (get-internal-real-time) (* 10 internal-time-units-per-second))))
-    (loop while (and (some (lambda (job) (and (tuatara.defaults::search-filter-job-p job) (tuatara.runtime:job-running-p job)))
+    (loop while (and (some (lambda (job)
+                             (and (tuatara.defaults::search-filter-job-p job) (tuatara.runtime:job-running-p job)))
                                  tuatara.runtime:*jobs*)
                      (< (get-internal-real-time) until))
           do (sleep 0.01))))
@@ -175,9 +180,11 @@ the list."
     (let* ((buffer (tuatara.buffer:make-buffer (tuatara.buffer:unique-buffer-name "filter parts")))
            (filtering (tuatara.defaults::list-filtering-made buffer))
            (filter (tuatara.defaults::make-search-filter "an" :where :colour)))
-      (setf (tuatara.defaults::list-filtering-text filtering) (lambda (entry where) (declare (ignore entry)) (and (eq where :colour) "green")))
+      (setf (tuatara.defaults::list-filtering-text filtering)
+            (lambda (entry where) (declare (ignore entry)) (and (eq where :colour) "green")))
       (false (tuatara.defaults::entry-matches-p filtering filter "banana" "banana"))
-      (true (tuatara.defaults::entry-matches-p filtering (tuatara.defaults::make-search-filter "green" :where :colour) "x" "x"))
+      (true (tuatara.defaults::entry-matches-p filtering
+                                               (tuatara.defaults::make-search-filter "green" :where :colour) "x" "x"))
       (tuatara.buffer:kill-buffer buffer))))
 
 (define-test (search-filters failing-text-reported)
@@ -231,7 +238,10 @@ the list."
     (run-keys (list (lambda ()
                       (setf list (tuatara.command:current-buffer))
                       (tuatara.modes:set-major-mode list 'tuatara.defaults::special-mode)
-                      (tuatara.defaults::render-pieces list (list (format nil "Fruit~%") (format nil "apple~%") (format nil "banana~%"))
+                      (tuatara.defaults::render-pieces list
+                                                       (list (format nil "Fruit~%")
+                                                             (format nil "apple~%")
+                                                             (format nil "banana~%"))
                                                        :entries '((:section :fruit) "apple" "banana") :point :start))
                     "C-x / s n a n RET")
               :width 100 :height 20)
@@ -304,9 +314,14 @@ the list."
                (multiple-value-bind (entries pieces)
                    (tuatara.defaults::sectioned-pieces buffer '((:fruit "apple" "banana") (:nuts "walnut" "pecan"))
                                                        (lambda (section) (string-downcase (symbol-name section)))
-                                                       (lambda (member section) (declare (ignore section)) (list (format nil "  ~a~%" member))))
+                                                       (lambda (member section)
+                                                         (declare (ignore section))
+                                                         (list (format nil "  ~a~%" member))))
                  (tuatara.defaults::render-pieces buffer pieces :entries entries :redraw #'draw :point :keep)))
-             (lines () (rest (remove "" (uiop:split-string (tuatara.buffer:buffer-string list) :separator '(#\Newline)) :test #'string=)))
+             (lines ()
+               (rest (remove ""
+                             (uiop:split-string (tuatara.buffer:buffer-string list) :separator '(#\Newline))
+                             :test #'string=)))
              (summary () (first (uiop:split-string (tuatara.buffer:buffer-string list) :separator '(#\Newline)))))
       (run-keys (list (lambda ()
                         (setf list (tuatara.command:current-buffer))
@@ -322,7 +337,9 @@ the list."
                         (true (search "1 of 4 entries" (summary)))
                         ;; of the entries marked, those the filters hide
                         (is equal '((:member "walnut" :nuts))
-                            (tuatara.defaults::keys-hidden-by-filters list '((:member "apple" :fruit) (:member "walnut" :nuts)))))
+                            (tuatara.defaults::keys-hidden-by-filters list
+                                                                      '((:member "apple" :fruit)
+                                                                        (:member "walnut" :nuts)))))
                       (lambda () (setf (tuatara.buffer:buffer-point list) (tuatara.buffer:buffer-goto-line list 1)))
                       "TAB"
                       (lambda ()
@@ -332,23 +349,32 @@ the list."
                       "M-x s e a r c h - f i l t e r - r e m o v e - a l l RET"
                       (lambda ()
                         (is equal '("▸ fruit (2)" "▾ nuts (2)" "  walnut" "  pecan")
-                            (remove "" (uiop:split-string (tuatara.buffer:buffer-string list) :separator '(#\Newline)) :test #'string=))))
+                            (remove ""
+                                    (uiop:split-string (tuatara.buffer:buffer-string list) :separator '(#\Newline))
+                                    :test #'string=))))
                 :width 100 :height 20))))
 
 (define-test (search-filters lines-going-with-headings)
-  ;; a list may hide a heading with nothing under it, and give lines that go with their heading, never matched nor counted
+  ;; a list may hide a heading with nothing under it, and give lines that go with their heading, never matched nor
+  ;; counted
   (let ((entries '((:day 1) (:grid 1) "alpha" (:day 2) (:grid 2) "beta" (:day 3)))
         (list nil))
     (run-keys (list (lambda ()
                       (setf list (tuatara.command:current-buffer))
                       (tuatara.modes:set-major-mode list 'tuatara.defaults::special-mode)
                       (tuatara.defaults::render-pieces
-                       list (list (format nil "Plan~%") (format nil "Day 1~%") (format nil "  grid~%") (format nil "alpha~%")
-                                  (format nil "Day 2~%") (format nil "  grid~%") (format nil "beta~%") (format nil "Day 3~%"))
+                       list
+                       (list (format nil "Plan~%") (format nil "Day 1~%") (format nil "  grid~%") (format nil "alpha~%")
+                             (format nil "Day 2~%")
+                             (format nil "  grid~%")
+                             (format nil "beta~%")
+                             (format nil "Day 3~%"))
                        :entries entries :first-line 1 :point :start)
                       (tuatara:set-search-filtering list :nouns "items" :empty-headings nil
-                                                         :heading (lambda (entry) (and (consp entry) (eq (first entry) :day)))
-                                                         :decoration (lambda (entry) (and (consp entry) (eq (first entry) :grid)))))
+                                                         :heading (lambda (entry)
+                                                                    (and (consp entry) (eq (first entry) :day)))
+                                                         :decoration (lambda (entry)
+                                                                       (and (consp entry) (eq (first entry) :grid)))))
                     "C-x / s a l p h a RET"
                     (lambda ()
                       (is equal '("Plan" "Day 1" "  grid" "alpha") (shown-lines list))
@@ -436,10 +462,11 @@ ITEMS and OPTIONS, the buffer killed and its file deleted after."
     (true (screen-showing f "Filtered by zzz: 0 of 5 records")))
   ;; narrowed as typed, C-g lets the one typed go
   (let ((seen nil))
-    (with-records (f buffer path) ((list "C-x / s t u" (lambda () (setf seen (records-shown (tuatara.command:current-buffer)))) "C-g"))
-      (is equal '("name,place,count" "tui,Raglan,5") seen)
-      (false (filter-strings buffer))
-      (is = 6 (length (records-shown buffer))))))
+    (with-records (f buffer path)
+      ((list "C-x / s t u" (lambda () (setf seen (records-shown (tuatara.command:current-buffer)))) "C-g"))
+(is equal '("name,place,count" "tui,Raglan,5") seen)
+(false (filter-strings buffer))
+(is = 6 (length (records-shown buffer))))))
 
 (define-test (search-filters log-records)
   ;; a log is narrowed as a CSV is, but has no header: its first line is hidden as any other
@@ -479,7 +506,8 @@ ITEMS and OPTIONS, the buffer killed and its file deleted after."
   ;; one taken away from the list of filters: the other works out again
   (with-records (f buffer path) ((list "C-x / s k i w i RET C-x / s r a g RET C-x / l"
                                        (lambda () (let ((list (tuatara.command:current-buffer)))
-                                                    (setf (tuatara.buffer:buffer-point list) (tuatara.buffer:buffer-goto-line list 4))))
+                                                    (setf (tuatara.buffer:buffer-point list)
+                                                          (tuatara.buffer:buffer-goto-line list 4))))
                                        "d"))
     (is equal '("rag") (filter-strings buffer))
     (is equal '("name,place,count" "tui,Raglan,5" "kiwi,Raglan,7") (records-shown buffer)))
@@ -491,9 +519,10 @@ ITEMS and OPTIONS, the buffer killed and its file deleted after."
 
 (define-test (search-filters csv-tsv-and-header-lock)
   ;; a TSV alike; the header kept at the top while filters hide the rest
-  (with-records (f buffer path) ('("C-x / s k e a RET") :text (format nil "name	place~%kiwi	Akaroa~%kea	Arthur's Pass~%") :type "tsv")
-    (is equal '("name	place" "kea	Arthur's Pass") (records-shown buffer))
-    (true (screen-showing f "Filtered by kea: 1 of 2 records")))
+  (with-records (f buffer path)
+    ('("C-x / s k e a RET") :text (format nil "name	place~%kiwi	Akaroa~%kea	Arthur's Pass~%") :type "tsv")
+(is equal '("name	place" "kea	Arthur's Pass") (records-shown buffer))
+(true (screen-showing f "Filtered by kea: 1 of 2 records")))
   (with-records (f buffer path) ('("C-x / L C-x / s w e k a RET M->"))
     (is string= "name,place,count" (tuatara.frontend.fake:fake-screen-line f 0))
     (is equal '("name,place,count" "weka,Akaroa,1") (records-shown buffer))))
@@ -510,16 +539,20 @@ ITEMS and OPTIONS, the buffer killed and its file deleted after."
       ;; a selection over hidden records: deleting it is refused, nothing changed
       (with-records (f buffer path) ((list "C-x / s k i w i RET"
                                            (lambda () (let ((b (tuatara.command:current-buffer)))
-                                                        (setf (tuatara.buffer:buffer-mark b) 0 (tuatara.buffer:buffer-mark-active-p b) t
-                                                              (tuatara.buffer:buffer-point b) (tuatara.buffer:buffer-size b))))
+                                                        (setf (tuatara.buffer:buffer-mark b) 0
+                                                              (tuatara.buffer:buffer-mark-active-p b) t
+                                                              (tuatara.buffer:buffer-point b)
+                                                              (tuatara.buffer:buffer-size b))))
                                            "C-w"))
         (is string= *filter-test-records* (tuatara.buffer:buffer-string buffer))
         (true (tuatara.frontend.fake:fake-frame-showing f "That would change lines the search filters hide")))
       ;; so are keep-lines and a sort over them
       (with-records (f buffer path) ((list "C-x / s k i w i RET"
                                            (lambda () (let ((b (tuatara.command:current-buffer)))
-                                                        (setf (tuatara.buffer:buffer-mark b) 0 (tuatara.buffer:buffer-mark-active-p b) t
-                                                              (tuatara.buffer:buffer-point b) (tuatara.buffer:buffer-size b))))
+                                                        (setf (tuatara.buffer:buffer-mark b) 0
+                                                              (tuatara.buffer:buffer-mark-active-p b) t
+                                                              (tuatara.buffer:buffer-point b)
+                                                              (tuatara.buffer:buffer-size b))))
                                            "M-x k e e p - l i n e s RET RET a RET"))
         (is string= *filter-test-records* (tuatara.buffer:buffer-string buffer))
         (true (tuatara.frontend.fake:fake-frame-showing f "That would change lines the search filters hide")))
@@ -530,12 +563,14 @@ ITEMS and OPTIONS, the buffer killed and its file deleted after."
       (with-records (f buffer path) ((list "C-x / s k i w i RET" (on-line kiwi-line) "C-e C-d"))
         (is string= *filter-test-records* (tuatara.buffer:buffer-string buffer)))
       ;; a record shown killed whole goes, the hidden ones stay; undo brings it back
-      (with-records (f buffer path) ((list "C-x / s k i w i RET" (on-line kiwi-line) "M-x k i l l - w h o l e - l i n e RET"))
-        (is string= (remove-first-line *filter-test-records* 1) (tuatara.buffer:buffer-string buffer))
-        (is equal '("name,place,count" "kiwi,Raglan,7") (records-shown buffer)))
-      (with-records (f buffer path) ((list "C-x / s k i w i RET" (on-line kiwi-line) "M-x k i l l - w h o l e - l i n e RET u" :tick))
-        (is string= *filter-test-records* (tuatara.buffer:buffer-string buffer))
-        (is equal '("name,place,count" "kiwi,Akaroa,3" "kiwi,Raglan,7") (records-shown buffer)))
+      (with-records (f buffer path)
+        ((list "C-x / s k i w i RET" (on-line kiwi-line) "M-x k i l l - w h o l e - l i n e RET"))
+(is string= (remove-first-line *filter-test-records* 1) (tuatara.buffer:buffer-string buffer))
+(is equal '("name,place,count" "kiwi,Raglan,7") (records-shown buffer)))
+      (with-records (f buffer path)
+        ((list "C-x / s k i w i RET" (on-line kiwi-line) "M-x k i l l - w h o l e - l i n e RET u" :tick))
+(is string= *filter-test-records* (tuatara.buffer:buffer-string buffer))
+(is equal '("name,place,count" "kiwi,Akaroa,3" "kiwi,Raglan,7") (records-shown buffer)))
       ;; point is kept on the records shown: down from the first kiwi goes to the second
       (with-records (f buffer path) ((list "C-x / s k i w i RET" (on-line kiwi-line) "j"))
         (is = (tuatara.buffer:buffer-goto-line buffer 4) (tuatara.buffer:buffer-point buffer))))))
@@ -562,16 +597,19 @@ with y hidden between them and after the last.")
 (define-test (search-filters copies-take-records-shown)
   (let ((shown (format nil "a1,x~%a3,x~%a5,x~%")))
     ;; V over three records shown, two hidden between: y copies the three alone, and says what it left out
-    (with-records (f buffer path) ((list "C-x / s x RET" (line-start-of 1) "V j j y" (see-kill)) :text *filter-test-pairs*)
-      (is string= shown *seen-kill*)
-      (is string= *filter-test-pairs* (tuatara.buffer:buffer-string buffer))
-      (true (tuatara.frontend.fake:fake-frame-showing f "Copied, 2 lines hidden by the search filters left out")))
+    (with-records (f buffer path)
+      ((list "C-x / s x RET" (line-start-of 1) "V j j y" (see-kill)) :text *filter-test-pairs*)
+(is string= shown *seen-kill*)
+(is string= *filter-test-pairs* (tuatara.buffer:buffer-string buffer))
+(true (tuatara.frontend.fake:fake-frame-showing f "Copied, 2 lines hidden by the search filters left out")))
     ;; a region copied with M-w alike, from mid-record to mid-record
     (with-records (f buffer path) ((list "C-x / s x RET"
                                          (lambda () (let ((b (tuatara.command:current-buffer)))
-                                                      (setf (tuatara.buffer:buffer-mark b) (1+ (tuatara.buffer:buffer-goto-line b 1))
+                                                      (setf (tuatara.buffer:buffer-mark b)
+                                                            (1+ (tuatara.buffer:buffer-goto-line b 1))
                                                             (tuatara.buffer:buffer-mark-active-p b) t
-                                                            (tuatara.buffer:buffer-point b) (+ 2 (tuatara.buffer:buffer-goto-line b 5)))))
+                                                            (tuatara.buffer:buffer-point b)
+                                                            (+ 2 (tuatara.buffer:buffer-goto-line b 5)))))
                                          "M-w" (see-kill))
                                    :text *filter-test-pairs*)
       (is string= (format nil "1,x~%a3,x~%a5") *seen-kill*))
@@ -592,8 +630,9 @@ with y hidden between them and after the last.")
     (with-records (f buffer path) ((list "C-x / s x RET" (line-start-of 1) "m v j j l y") :text *filter-test-pairs*)
       (is equal '("a1" "a3" "a5") tuatara.defaults::*killed-rectangle*)
       (true (tuatara.frontend.fake:fake-frame-showing f "Copied a rectangle of 3 rows, 2 lines hidden by the search filters left out")))
-    (with-records (f buffer path) ((list "C-x / s x RET" (line-start-of 1) "m v j j l M-w" (see-kill)) :text *filter-test-pairs*)
-      (is string= (format nil "a1~%a3~%a5") *seen-kill*))
+    (with-records (f buffer path)
+      ((list "C-x / s x RET" (line-start-of 1) "m v j j l M-w" (see-kill)) :text *filter-test-pairs*)
+(is string= (format nil "a1~%a3~%a5") *seen-kill*))
     ;; counting words counts the records shown
     (with-records (f buffer path) ((list "C-x / s x RET M-x c o u n t - w o r d s RET") :text *filter-test-pairs*)
       (true (tuatara.frontend.fake:fake-frame-showing f "Buffer has 4 lines"))
@@ -606,7 +645,8 @@ with y hidden between them and after the last.")
 (define-test (search-filters copies-take-folds-whole)
   ;; a folded Org subtree is copied whole: folds are not search filters
   (let ((tuatara-user:*org-startup-indented* nil) (*seen-kill* nil))
-    (run-keys (list "M-x o r g - m o d e RET S-TAB V y" (see-kill)) :text (format nil "* One~%body one~%* Two~%body two~%"))
+    (run-keys (list "M-x o r g - m o d e RET S-TAB V y" (see-kill))
+              :text (format nil "* One~%body one~%* Two~%body two~%"))
     (is string= (format nil "* One~%body one~%") *seen-kill*)))
 
 (defun remove-first-line (text n)
@@ -618,9 +658,12 @@ with y hidden between them and after the last.")
   ;; saving writes the whole file, with the edit made to a record shown
   (with-records (f buffer path) ((list "C-x / s k i w i RET"
                                        (lambda () (let ((b (tuatara.command:current-buffer)))
-                                                    (setf (tuatara.buffer:buffer-point b) (tuatara.buffer:buffer-goto-line b 4))))
+                                                    (setf (tuatara.buffer:buffer-point b)
+                                                          (tuatara.buffer:buffer-goto-line b 4))))
                                        "i X C-g C-x C-s" :tick))
-    (is string= (cl-ppcre:regex-replace "kiwi,Raglan" *filter-test-records* "Xkiwi,Raglan") (uiop:read-file-string path))
+    (is string=
+        (cl-ppcre:regex-replace "kiwi,Raglan" *filter-test-records* "Xkiwi,Raglan")
+        (uiop:read-file-string path))
     (is equal '("name,place,count" "kiwi,Akaroa,3" "Xkiwi,Raglan,7") (records-shown buffer)))
   ;; read again after the file changed on disk: the filters worked out again for what it holds now
   (with-records (f buffer path) ((list "C-x / s k i w i RET"
@@ -748,7 +791,9 @@ with y hidden between them and after the last.")
             (with-records (f buffer path)
                 ((list "C-x / s ^ ( a + ) +" #'stamp "$" #'stamp :tick #'stamp "C-g" #'stamp
                        (lambda ()
-                         (loop repeat 50 while (find-if #'tuatara.runtime:job-running-p tuatara.runtime:*jobs*) do (sleep 0.01))
+                         (loop repeat 50
+                               while (find-if #'tuatara.runtime:job-running-p tuatara.runtime:*jobs*)
+                               do (sleep 0.01))
                          (setf left-running (find-if #'tuatara.runtime:job-running-p tuatara.runtime:*jobs*))))
                  :text (format nil "name,count~%kea,2~%~a!,3~%tui,5~%" (make-string 40 :initial-element #\a)))
               (true (tuatara.frontend.fake:fake-frame-showing f "Regex filter [slow pattern: still filtering]: ^(a+)+$"))
@@ -780,7 +825,6 @@ with y hidden between them and after the last.")
       (kill-records b path))
     (is = 2 (length lit) "lit: ~s" (subseq lit 0 (min 6 (length lit))))))
 
-
 (defun list-records-after (keys text &key on-disk (mode "csv-mode") crlf)
   "The text after typing KEYS on TEXT in MODE, with CRLF its lines ending
 with a carriage return and a newline. With ON-DISK, the work goes to disk in
@@ -802,13 +846,17 @@ tiny pieces, a few lines each, so that a small text exercises it."
   (dolist (on-disk '(nil t))
     ;; by the header's name: the quoted field's value, the comma inside it no separator
     (is string= (format nil "NAME,CITY,NOTE~%Bob,\"Napier, Hawke's Bay\",coffee~%")
-        (list-records-after (format nil "C-x / k C I T Y RET ~a RET" (typed-keys "^Napier, H")) *list-records-sample* :on-disk on-disk))
+        (list-records-after (format nil "C-x / k C I T Y RET ~a RET" (typed-keys "^Napier, H"))
+                            *list-records-sample*
+                            :on-disk on-disk))
     ;; by its number, from 0: the city, Auckland's records deleted, the header kept though it does not match
     (is string= (format nil "NAME,CITY,NOTE~%Bob,\"Napier, Hawke's Bay\",coffee~%Cat,Nelson,\"said \"\"hi\"\"\"~%")
         (list-records-after "C-x / d 1 RET a u c k RET" *list-records-sample* :on-disk on-disk))
     ;; a doubled quote read as one; a record short of the column does not match
     (is string= (format nil "NAME,CITY,NOTE~%Cat,Nelson,\"said \"\"hi\"\"\"~%")
-        (list-records-after (format nil "C-x / k $ 2 RET ~a RET" (typed-keys "\"hi\"$")) *list-records-sample* :on-disk on-disk))
+        (list-records-after (format nil "C-x / k $ 2 RET ~a RET" (typed-keys "\"hi\"$"))
+                            *list-records-sample*
+                            :on-disk on-disk))
     ;; the whole record
     (is string= (format nil "NAME,CITY,NOTE~%Ann,Auckland,tea~%Dan,Auckland~%")
         (list-records-after "C-x / k RET l a n d RET" *list-records-sample* :on-disk on-disk))
@@ -817,7 +865,8 @@ tiny pieces, a few lines each, so that a small text exercises it."
         (list-records-after "C-x / k B RET y RET" (format nil "A	B~%1	x~%2	y~%") :on-disk on-disk :mode "tsv-mode"))
     ;; a log: the whole line, no header
     (is string= (format nil "10:00 ERROR disk~%10:02 ERROR net~%")
-        (list-records-after "C-x / k RET E R R O R RET" (format nil "10:00 ERROR disk~%10:01 INFO up~%10:02 ERROR net~%")
+        (list-records-after "C-x / k RET E R R O R RET"
+                            (format nil "10:00 ERROR disk~%10:01 INFO up~%10:02 ERROR net~%")
                             :on-disk on-disk :mode "log-mode"))
     ;; a log by the date its lines begin with, compared as a date, as written and in UTC
     (let ((log (format nil "2026-06-29T22:10:04+02:00 login aroha~%2026-06-30T23:30:00-05:00 login hemi~%2026-07-01T00:15:00+02:00 login aroha~%2026-07-01 08:00:00 +0200 backup~%")))
@@ -825,10 +874,14 @@ tiny pieces, a few lines each, so that a small text exercises it."
           (list-records-after (format nil "C-x / k $ 0 RET ~a RET" (typed-keys "[[:date>=2026-07-01:]]")) log
                               :on-disk on-disk :mode "log-mode"))
       (is string= (format nil "2026-06-29T22:10:04+02:00 login aroha~%2026-07-01T00:15:00+02:00 login aroha~%")
-          (list-records-after (format nil "C-x h M-x k e e p - l i n e s RET $ 0 RET ~a RET" (typed-keys "[[:dateutc<2026-07-01:]]")) log
-                              :on-disk on-disk :mode "log-mode"))))
+          (list-records-after (format nil
+                                      "C-x h M-x k e e p - l i n e s RET $ 0 RET ~a RET"
+                                      (typed-keys "[[:dateutc<2026-07-01:]]")) log
+                                      :on-disk on-disk :mode "log-mode"))))
   ;; no such column: said, nothing changed
-  (multiple-value-bind (f editor) (run-keys "M-x c s v - m o d e RET C-x / k P L A C E RET" :text *list-records-sample* :width 100)
+  (multiple-value-bind (f editor) (run-keys "M-x c s v - m o d e RET C-x / k P L A C E RET"
+                                            :text *list-records-sample*
+                                            :width 100)
     (is string= *list-records-sample* (session-text editor))
     (true (tuatara.frontend.fake:fake-frame-showing f "No such column: PLACE")))
   ;; not a file of records: said, nothing changed
@@ -845,18 +898,24 @@ tiny pieces, a few lines each, so that a small text exercises it."
     (is equal '("NAME,CITY,NOTE" "Ann,Auckland,tea" "Dan,Auckland") (records-shown buffer))
     (is equal '("$1: ^auck") (mapcar #'tuatara.defaults::search-filter-words (tuatara.defaults::search-filters buffer))))
   ;; hidden by a column; the next filter narrows what it leaves
-  (with-records (f buffer path) ((list "C-x / h 1 RET ^ a u c k RET" :tick "C-x / s c o f RET" :tick) :text *list-records-sample*)
-    (is string= *list-records-sample* (tuatara.buffer:buffer-string buffer))
-    (is equal '("NAME,CITY,NOTE" "Bob,\"Napier, Hawke's Bay\",coffee") (records-shown buffer))
-    (is equal '("not $1: ^auck" "cof") (mapcar #'tuatara.defaults::search-filter-words (tuatara.defaults::search-filters buffer))))
+  (with-records (f buffer path)
+    ((list "C-x / h 1 RET ^ a u c k RET" :tick "C-x / s c o f RET" :tick) :text *list-records-sample*)
+(is string= *list-records-sample* (tuatara.buffer:buffer-string buffer))
+(is equal '("NAME,CITY,NOTE" "Bob,\"Napier, Hawke's Bay\",coffee") (records-shown buffer))
+(is equal
+'("not $1: ^auck" "cof")
+(mapcar #'tuatara.defaults::search-filter-words (tuatara.defaults::search-filters buffer))))
   ;; a log: the whole line hidden; the filters taken away show every line again
   (with-records (f buffer path) ((list "C-x / h RET I N F O RET" :tick) :type "log"
                                  :text (format nil "10:00 ERROR disk~%10:01 INFO up~%10:02 ERROR net~%"))
     (is equal '("10:00 ERROR disk" "10:02 ERROR net") (records-shown buffer)))
   ;; a large file: worked out in the background on all but two cores, as C-x / s is
   (with-records (f buffer path) ((list "C-x / h 1 RET 7 RET" :tick
-                                       (lambda () (loop repeat 500 while (tuatara.runtime:jobs-of (tuatara.command:current-buffer) :running t)
-                                                        do (sleep 0.01))))
+                                       (lambda ()
+                                         (loop repeat 500
+                                               while (tuatara.runtime:jobs-of (tuatara.command:current-buffer)
+                                                                              :running t)
+                                               do (sleep 0.01))))
                                  :text (with-output-to-string (o)
                                          (format o "n,a~%")
                                          (loop for i below 100000 do (format o "~d,~d~%" i (* 7 i)))))
@@ -886,7 +945,9 @@ tiny pieces, a few lines each, so that a small text exercises it."
   (is string= (format nil "Eve,Wellington~%")
       (list-records-after "C-x / t C-x / d $ 1 RET a u c k RET" *headerless-records*))
   ;; the columns offered by number, the first record's values beside them, never as names
-  (multiple-value-bind (f editor) (run-keys "M-x c s v - m o d e RET C-x / t C-x / k E v e RET" :text *headerless-records* :width 100)
+  (multiple-value-bind (f editor) (run-keys "M-x c s v - m o d e RET C-x / t C-x / k E v e RET"
+                                            :text *headerless-records*
+                                            :width 100)
     (is string= *headerless-records* (session-text editor))
     (true (tuatara.frontend.fake:fake-frame-showing f "First line a record like the rest"))
     (true (tuatara.frontend.fake:fake-frame-showing f "No such column: Eve (a number from 0)")))
@@ -901,7 +962,9 @@ tiny pieces, a few lines each, so that a small text exercises it."
       (true (tuatara.frontend.fake:fake-frame-showing f "First line the header, always shown"))))
   ;; *csv-header* nil for every CSV buffer; its first line no name in the mode line
   (let ((tuatara-user::*csv-header* nil))
-    (multiple-value-bind (f editor) (run-keys "M-x c s v - m o d e RET C-x / k 1 RET W RET" :text *headerless-records* :width 100)
+    (multiple-value-bind (f editor) (run-keys "M-x c s v - m o d e RET C-x / k 1 RET W RET"
+                                              :text *headerless-records*
+                                              :width 100)
       (is string= (format nil "Eve,Wellington~%") (session-text editor))
       (false (tuatara.frontend.fake:fake-frame-showing f "col 0 Eve")))))
 
@@ -933,14 +996,18 @@ tiny pieces, a few lines each, so that a small text exercises it."
         (list-records-after (format nil "C-x / t C-x / k l e v e l RET ~a RET" (typed-keys "^INFO$"))
                             (format nil "time level message~%~a" log) :mode "log-mode")))
   ;; the password file by its seven names, each offered with the first record's value
-  (multiple-value-bind (f editor) (run-keys "M-x e t c - p a s s w d - g e n e r i c - m o d e RET C-x / k" :text (format nil "root:x:0:0:root:/root:/bin/bash~%") :width 100 :height 14)
+  (multiple-value-bind (f editor) (run-keys "M-x e t c - p a s s w d - g e n e r i c - m o d e RET C-x / k"
+                                            :text (format nil "root:x:0:0:root:/root:/bin/bash~%")
+                                            :width 100
+                                            :height 14)
     (declare (ignore editor))
     (true (tuatara.frontend.fake:fake-frame-showing f "$6 /bin/bash")))
   (is string= (format nil "bob:x:1000:1000:Bob:/home/bob:/bin/zsh~%")
       (by-column "etc-passwd-generic-mode" (format nil "root:x:0:0:root:/root:/bin/bash~%bob:x:1000:1000:Bob:/home/bob:/bin/zsh~%") "shell" "zsh$"))
   ;; hosts by address and name, the other names by number
   (is string= (format nil "127.0.0.1 localhost~%")
-      (by-column "hosts-generic-mode" (format nil "127.0.0.1 localhost~%10.0.0.2 nas nas.lan~%") "name" "^nas$" "C-x / d"))
+      (by-column "hosts-generic-mode"
+                 (format nil "127.0.0.1 localhost~%10.0.0.2 nas nas.lan~%") "name" "^nas$" "C-x / d"))
   (is string= (format nil "10.0.0.2 nas nas.lan~%")
       (by-column "hosts-generic-mode" (format nil "127.0.0.1 localhost~%10.0.0.2 nas nas.lan~%") "$2" "lan$"))
   ;; .env: export left out, quotes and a comment after them taken off
@@ -950,29 +1017,51 @@ tiny pieces, a few lines each, so that a small text exercises it."
     (is string= (format nil "export A=1~%") (by-column "dotenv-mode" env "name" "^A$")))
   ;; requirements by name, version and markers
   (let ((reqs (format nil "requests>=2.0~%numpy==1.26 ; python_version>'3'~%flask~%")))
-    (is string= (format nil "numpy==1.26 ; python_version>'3'~%") (by-column "pip-requirements-mode" reqs "version" "^=="))
-    (is string= (format nil "numpy==1.26 ; python_version>'3'~%") (by-column "pip-requirements-mode" reqs "markers" "python"))
+    (is string=
+        (format nil "numpy==1.26 ; python_version>'3'~%")
+        (by-column "pip-requirements-mode" reqs "version" "^=="))
+    (is string=
+        (format nil "numpy==1.26 ; python_version>'3'~%")
+        (by-column "pip-requirements-mode" reqs "markers" "python"))
     (is string= (format nil "flask~%") (by-column "pip-requirements-mode" reqs "name" "^flask$")))
   ;; todo.txt by its parts and its tags' keys
   (let ((todo (format nil "x 2026-10-01 2026-09-30 pay rent +home~%(A) 2026-10-02 call mum @phone due:2026-10-20~%buy milk +home @shops~%")))
-    (is string= (format nil "x 2026-10-01 2026-09-30 pay rent +home~%buy milk +home @shops~%") (by-column "todotxt-mode" todo "project" "^home$"))
-    (is string= (format nil "(A) 2026-10-02 call mum @phone due:2026-10-20~%") (by-column "todotxt-mode" todo "priority" "A"))
-    (is string= (format nil "(A) 2026-10-02 call mum @phone due:2026-10-20~%") (by-column "todotxt-mode" todo "due" "10-20$"))
-    (is string= (format nil "x 2026-10-01 2026-09-30 pay rent +home~%") (by-column "todotxt-mode" todo "created" "^2026-09"))
+    (is string=
+        (format nil "x 2026-10-01 2026-09-30 pay rent +home~%buy milk +home @shops~%")
+        (by-column "todotxt-mode" todo "project" "^home$"))
+    (is string=
+        (format nil "(A) 2026-10-02 call mum @phone due:2026-10-20~%")
+        (by-column "todotxt-mode" todo "priority" "A"))
+    (is string=
+        (format nil "(A) 2026-10-02 call mum @phone due:2026-10-20~%")
+        (by-column "todotxt-mode" todo "due" "10-20$"))
+    (is string=
+        (format nil "x 2026-10-01 2026-09-30 pay rent +home~%")
+        (by-column "todotxt-mode" todo "created" "^2026-09"))
     (is string= (format nil "x 2026-10-01 2026-09-30 pay rent +home~%") (by-column "todotxt-mode" todo "done" "x"))
     (is string= (format nil "buy milk +home @shops~%") (by-column "todotxt-mode" todo "text" "^buy")))
   ;; JSON Lines by key, a path of keys, a string's escapes undone; a line that is no JSON has no value
   (let ((json (format nil "{\"level\":\"error\",\"user\":{\"id\":7}}~%{\"level\":\"info\",\"msg\":\"caf\\u00e9\"}~%not json~%")))
-    (is string= (format nil "{\"level\":\"error\",\"user\":{\"id\":7}}~%") (by-column "jsonl-mode" json "level" "^error$"))
-    (is string= (format nil "{\"level\":\"error\",\"user\":{\"id\":7}}~%") (by-column "jsonl-mode" json "user.id" "^7$"))
-    (is string= (format nil "{\"level\":\"info\",\"msg\":\"caf\\u00e9\"}~%") (by-column "jsonl-mode" json "msg" "\\x{e9}$")))
+    (is string=
+        (format nil "{\"level\":\"error\",\"user\":{\"id\":7}}~%")
+        (by-column "jsonl-mode" json "level" "^error$"))
+    (is string=
+        (format nil "{\"level\":\"error\",\"user\":{\"id\":7}}~%")
+        (by-column "jsonl-mode" json "user.id" "^7$"))
+    (is string=
+        (format nil "{\"level\":\"info\",\"msg\":\"caf\\u00e9\"}~%")
+        (by-column "jsonl-mode" json "msg" "\\x{e9}$")))
   ;; shown by a column, the filter named by it
   (with-records (f buffer path) ((list "C-x / f l e v e l RET e r r RET" :tick) :type "jsonl"
                                  :text (format nil "{\"level\":\"error\"}~%{\"level\":\"info\"}~%"))
     (is equal '("{\"level\":\"error\"}") (records-shown buffer))
-    (is equal '("level: err") (mapcar #'tuatara.defaults::search-filter-words (tuatara.defaults::search-filters buffer))))
+    (is equal
+        '("level: err")
+        (mapcar #'tuatara.defaults::search-filter-words (tuatara.defaults::search-filters buffer))))
   ;; a .gitignore has no columns: the whole line, asked at once
-  (is string= (format nil "build/~%") (list-records-after "C-x / k b u i l d RET" (format nil "build/~%*.o~%") :mode "gitignore-mode")))
+  (is string=
+      (format nil "build/~%")
+      (list-records-after "C-x / k b u i l d RET" (format nil "build/~%*.o~%") :mode "gitignore-mode")))
 
 (define-test (search-filters columns-asked-before-any-grammar-question)
   ;; the first file of a language whose grammar is off asks whether to turn it on in a session
@@ -1000,11 +1089,18 @@ tiny pieces, a few lines each, so that a small text exercises it."
       (with-records (f buffer path) ((list "C-x / t C-x / t M->") :type "log" :text log :height 10)
         (false (tuatara.buffer:buffer-local buffer :header-line))))
     ;; another mode lets go of a log's filters, its lock and its header
-    (with-records (f buffer path) ((list "C-x / t C-x / L C-x / s E R R O R RET" :tick "M-x t e x t - m o d e RET") :type "log" :text log :height 10)
-      (false (tuatara.defaults::search-filters buffer))
-      (false (tuatara.display:hidden-bounds buffer))
-      (false (tuatara.buffer:buffer-local buffer :header-line))
-      (is eq :mode (tuatara.buffer:buffer-local buffer :list-header :mode)))
+    (with-records (f buffer path)
+      ((list "C-x / t C-x / L C-x / s E R R O R RET" :tick "M-x t e x t - m o d e RET")
+       :type
+       "log"
+       :text
+       log
+       :height
+       10)
+(false (tuatara.defaults::search-filters buffer))
+(false (tuatara.display:hidden-bounds buffer))
+(false (tuatara.buffer:buffer-local buffer :header-line))
+(is eq :mode (tuatara.buffer:buffer-local buffer :list-header :mode)))
     ;; not a file of records: said
     (multiple-value-bind (f editor) (run-keys "C-x / L" :text "a b c" :width 100)
       (declare (ignore editor))
@@ -1032,7 +1128,9 @@ tiny pieces, a few lines each, so that a small text exercises it."
              (true (find-if (lambda (line) (search "alpha-notes" line)) shown))
              (false (find-if (lambda (line) (search " beta " line)) shown))
              (false (find-if (lambda (line) (search "gamma" line)) shown))
-             (is equal '("Name: ^alpha") (mapcar #'tuatara.defaults::search-filter-words (tuatara.defaults::search-filters list)))
+             (is equal
+                 '("Name: ^alpha")
+                 (mapcar #'tuatara.defaults::search-filter-words (tuatara.defaults::search-filters list)))
              ;; a column's filter lights nothing: what it matches in other columns is no match of it
              (setf tuatara.defaults::*search-lit* nil)
              (tuatara:light-search-filters list list)
@@ -1044,8 +1142,11 @@ tiny pieces, a few lines each, so that a small text exercises it."
       (dolist (b made) (when (tuatara.buffer:live-buffer-p b) (tuatara.buffer:kill-buffer b)))
       (forget-list))))
   ;; the package manager: by its State column
-  (let ((tuatara.packages::*declared-packages* '(("kea" "https://example.nz/kea" nil) ("tui" "https://example.nz/tui" nil))))
-    (multiple-value-bind (f editor) (run-keys "M-x p a c k a g e - m a n a g e r RET C-x / h N a m e RET k e a RET" :width 160 :height 20)
+  (let ((tuatara.packages::*declared-packages* '(("kea" "https://example.nz/kea" nil)
+                                                 ("tui" "https://example.nz/tui" nil))))
+    (multiple-value-bind (f editor) (run-keys "M-x p a c k a g e - m a n a g e r RET C-x / h N a m e RET k e a RET"
+                                              :width 160
+                                              :height 20)
       (declare (ignore f editor))
       (let ((list (find-if (lambda (b) (search "ackage" (tuatara.buffer:buffer-name b))) tuatara.buffer:*buffers*)))
         (true list)
@@ -1169,7 +1270,10 @@ for, anchors, empty matches, line ends, and matches running over them.")
   ;; records over several lines, quoted line breaks in a CSV: a record matched anywhere is
   ;; left whole, its line breaks part of it
   (dolist (crlf '(nil t))
-    (let ((text (format nil (if crlf "n,a~c~%kiwi,\"one~c~%two\"~c~%tui,\"x~c~%kea\"~c~%weka,y~c~%" "n,a~*~%kiwi,\"one~*~%two\"~*~%tui,\"x~*~%kea\"~*~%weka,y~*~%")
+    (let ((text (format nil
+                        (if crlf
+                            "n,a~c~%kiwi,\"one~c~%two\"~c~%tui,\"x~c~%kea\"~c~%weka,y~c~%"
+                            "n,a~*~%kiwi,\"one~*~%two\"~*~%tui,\"x~*~%kea\"~*~%weka,y~*~%")
                         #\Return #\Return #\Return #\Return #\Return #\Return)))
       (dolist (pattern '("kiwi" "two" "kea" "^kea" "one\\s+two" "\\n" "y$" "$" "^" "zzz"))
         (is eq t (filter-scan-agrees text pattern :crlf crlf :ends #'tuatara.defaults::csv-record-end))
@@ -1187,22 +1291,28 @@ for, anchors, empty matches, line ends, and matches running over them.")
   ;; a match running over a line end leaves every line any part of it lies on: whole, in
   ;; pieces cut inside the match, a megabyte at a time, LF and CRLF, and in a list
   (dolist (crlf '(nil t))
-    (flet ((text (&rest lines) (format nil "~{~a~:[~*~;~c~]~%~}" (loop for line in lines collect line collect crlf collect #\Return))))
+    (flet ((text (&rest lines)
+             (format nil "~{~a~:[~*~;~c~]~%~}" (loop for line in lines collect line collect crlf collect #\Return))))
       (dolist (case (list (list "[^,]*foo" (text "a,b" "foo,c" "zz") '(0 1))
                           (list "\\s+foo" (text "a,b" "foo,c" "zz") '(0 1))
                           (list "\\Wfoo" (text "a,b" "foo,c" "zz") '(0 1))
                           (list "1\\r?\\ny" (text "h1,h2" "x,1" "y,2" "z,3") '(1 2))
                           (list "\\nz" (text "h1,h2" "x,1" "y,2" "z,3") '(2 3))
                           (list "(?:[A-Za-z0-9+/]{4}\\s*){12,}=*"
-                                (text "head,1" "S2lhIG9yYSBrb3V0b3Uga2F0b2Es" "IHRoZSBrZWEgaXMgYSBwYXJyb3Q=" "tail,2") '(1 2))))
+                                (text "head,1" "S2lhIG9yYSBrb3V0b3Uga2F0b2Es" "IHRoZSBrZWEgaXMgYSBwYXJyb3Q=" "tail,2")
+                                '(1 2))))
         (destructuring-bind (pattern string lines) case
           (let* ((rope (tuatara.text:string->rope string))
                  (filter (tuatara.defaults::make-search-filter pattern :crlf crlf))
                  (all (runs-of (list (list 0 (length string))))))
-            (is equal lines (kept-line-numbers string (tuatara.defaults::lines-matching (list filter) rope all crlf)) "~a" pattern)
-            (is equal lines (kept-line-numbers string (tuatara.defaults::lines-matching (list filter) rope all crlf :most 10)))
+            (is equal lines
+                (kept-line-numbers string (tuatara.defaults::lines-matching (list filter) rope all crlf)) "~a" pattern)
+            (is equal lines
+                (kept-line-numbers string (tuatara.defaults::lines-matching (list filter) rope all crlf :most 10)))
             (let ((tuatara.defaults::*filter-piece* 1))
-              (is equal lines (kept-line-numbers string (tuatara.defaults::lines-matching-everywhere filter rope all crlf nil nil nil))
+              (is equal lines
+                  (kept-line-numbers string
+                                     (tuatara.defaults::lines-matching-everywhere filter rope all crlf nil nil nil))
                   "~a in pieces" pattern))
             (is eq t (filter-scan-agrees string pattern :crlf crlf))
             ;; hidden: the lines no part of a match lies on
@@ -1212,9 +1322,10 @@ for, anchors, empty matches, line ends, and matches running over them.")
                       #'<))
             ;; a list's lines, matched together
             (let ((list-lines (coerce (butlast (uiop:split-string (remove #\Return string) :separator '(#\Newline))) 'simple-vector)))
-              (is equal lines (loop for bit across (tuatara.defaults::list-lines-matched filter list-lines 0 (length list-lines)
-                                                                                         (constantly t))
-                                    for n from 0 when (= bit 1) collect n)
+              (is equal lines
+                  (loop for bit across (tuatara.defaults::list-lines-matched filter list-lines 0 (length list-lines)
+                                                                             (constantly t))
+                        for n from 0 when (= bit 1) collect n)
                   "~a in a list" pattern))))))))
 
 (define-test (search-filters list-total-counted-once)
@@ -1251,8 +1362,11 @@ for, anchors, empty matches, line ends, and matches running over them.")
              (matcher (tuatara.defaults::search-filter-matcher filter))
              (scan (least-seconds (lambda ()
                                     (let ((n 0))
-                                      (tuatara.defaults::map-matcher-matches (lambda (s e m g) (declare (ignore s e m g)) (incf n) nil)
-                                                                             rope matcher 0 (tuatara.text:rope-octet-length rope))
+                                      (tuatara.defaults::map-matcher-matches (lambda (s e m g)
+                                                                               (declare (ignore s e m g))
+                                                                               (incf n) nil)
+                                                                             rope matcher 0
+                                                                             (tuatara.text:rope-octet-length rope))
                                       n))))
              (filter-time (least-seconds (lambda () (tuatara.defaults::lines-matching (list filter) rope all nil)))))
         (true (< filter-time (+ 0.002 (* 3 scan))) "~a: filtered in ~,4fs, scanned in ~,4fs" pattern filter-time scan)))))
@@ -1263,7 +1377,8 @@ for, anchors, empty matches, line ends, and matches running over them.")
          (each (tuatara.defaults::record-fields-each fields))
          (line "{\"user\": {\"id\": 7, \"name\": \"Hēmi \\\"H\\\"\"}}")
          (cuts 0))
-    (sb-int:encapsulate 'uiop:split-string 'counted (lambda (function &rest arguments) (incf cuts) (apply function arguments)))
+    (sb-int:encapsulate 'uiop:split-string 'counted
+                        (lambda (function &rest arguments) (incf cuts) (apply function arguments)))
     (unwind-protect
          (progn
            (dotimes (i 100)
@@ -1294,16 +1409,19 @@ JSON and the value looked up in what is read: the oracle of the JSON Lines filte
          (rope (tuatara.text:string->rope text))
          (each (tuatara.defaults::record-fields-each
                 (tuatara.defaults::mode-record-fields (make-instance 'tuatara.defaults::jsonl-mode) nil)))
-         (filter (tuatara.defaults::make-search-filter "kiwi|^1" :test (tuatara.defaults::field-line-matcher each "user.id")))
+         (filter (tuatara.defaults::make-search-filter "kiwi|^1"
+                                                       :test (tuatara.defaults::field-line-matcher each "user.id")))
          (oracle (loop for line in (uiop:split-string (string-right-trim '(#\Newline) text) :separator '(#\Newline))
                        count (cl-ppcre:scan "kiwi|^1" (json-line-value-read-whole line "user.id"))))
          (count nil))
     ;; the path is slow to cut, so every piece asks for it before the first has it
-    (sb-int:encapsulate 'uiop:split-string 'slowed (lambda (function &rest arguments) (sleep 0.05) (apply function arguments)))
+    (sb-int:encapsulate 'uiop:split-string 'slowed
+                        (lambda (function &rest arguments) (sleep 0.05) (apply function arguments)))
     (unwind-protect
          (let ((tuatara.defaults::*filter-piece* 300))
            (setf count (nth-value 1 (tuatara.defaults::lines-matching-everywhere
-                                     filter rope (runs-of (list (list 0 (tuatara.text:rope-octet-length rope)))) nil nil nil nil))))
+                                     filter rope
+                                     (runs-of (list (list 0 (tuatara.text:rope-octet-length rope)))) nil nil nil nil))))
       (sb-int:unencapsulate 'uiop:split-string 'slowed))
     (is = 111 oracle)
     (is = oracle count)))
@@ -1326,7 +1444,9 @@ JSON and the value looked up in what is read: the oracle of the JSON Lines filte
                       "[1, 2, 3]" "7" "\"text\"" "" "{" "{\"id\": 1,}" "{\"id\": 01}" "{\"id\": 1} x"
                       "{\"id\": tru}" "{\"name\": \"bad \\x escape\"}" "{\"id\": 1.}" "{\"id\": -}" "{\"id\": 1e}"
                       (format nil "{\"name\": \"control ~c\"}" (code-char 1))
-                      (format nil "{\"deep\": ~a1~a}" (make-string 600 :initial-element #\[) (make-string 600 :initial-element #\]))
+                      (format nil "{\"deep\": ~a1~a}"
+                              (make-string 600 :initial-element #\[)
+                              (make-string 600 :initial-element #\]))
                       (format nil "{\"long\": ~a}" (make-string 1200 :initial-element #\7))))
          (fields '("id" "name" "ok" "no" "gone" "size" "neg" "big" "user" "user.id" "user.name.first" "user.tags"
                    "user.name" "list" "obj" "arr" "deep" "long" "missing" "user.missing" "" "id.x")))

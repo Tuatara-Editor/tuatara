@@ -194,7 +194,9 @@ last newline is not one."
         (spots '()))
     (dotimes (i n (nreverse spots))
       (let ((next (if above
-                      (and (plusp line) (tuatara.display:visible-line-start buffer (tuatara.buffer:buffer-forward-char buffer line -1)))
+                      (and (plusp line)
+                           (tuatara.display:visible-line-start buffer
+                                                               (tuatara.buffer:buffer-forward-char buffer line -1)))
                       (let ((end (tuatara.display:visible-line-end buffer line)))
                         (and (< end size) (tuatara.buffer:buffer-forward-char buffer end))))))
         (when (and next (not above) (= next size)) (setf next nil))
@@ -255,12 +257,13 @@ time, or, when they are long, each found by its number."
 
 (defun cursors-on-selected-lines (buffer)
   "With more than one line selected in BUFFER, put a cursor on every one of
-them, at point's column (at each line's start for a visual-line selection), the
-real one on point's line; past the most cursors there may be (PLACE-LIMIT),
-those in sight, the others written in the background once a verb is done
-(HOLD-VIRTUAL-CURSORS), or all of them when the question past the limit is
-answered yes (PAST-LIMIT-CHOICE). The lines are counted before a cursor is
-made. NIL, doing nothing, when no more than a line is selected."
+them, at point's column (at each line's start for a visual-line selection),
+the real one on point's line. Past the most cursors there may be
+(PLACE-LIMIT), those in sight stand and the others are written in the
+background once a verb is done (HOLD-VIRTUAL-CURSORS), or all of them are put
+when the question past the limit is answered yes (PAST-LIMIT-CHOICE). The
+lines are counted before a cursor is made. NIL, doing nothing, when no more
+than a line is selected."
   (let ((span (selected-lines-span buffer)))
     (when span
       (destructuring-bind (start . end) span
@@ -295,39 +298,36 @@ the line starting at HERE."
   (and (split-here-p) (split-cursors *split*) *split*))
 
 (define-command add-cursor-below ()
-  "Add a cursor on the line below, at the same column: the first press makes
+  "Add a cursor on the line below, at the same column. The first press makes
 cursors of point and the line below, each one after adds one below the last,
 and a count adds that many (negative, above). A shorter line gets its cursor
 at its end. With lines selected (\\<normal>\\[select-lines],
-\\[start-selection], or a rectangle), the first press puts a cursor on every one
-of them instead: at each line's start for \\[select-lines], else at
-point's column; the lines are counted first. Past *CURSORS-LIMIT* (or
-what the memory has room for), lines selected or a count such as
-\\[universal-argument] 50000 \\[add-cursor-below], the cursors in sight
-stand, and the others are written in the background as each verb is done at
-those: then \\<normal>\\[backward-char] \\[forward-char] \\[beginning-of-line]
-\\[end-of-line] move them all alike, those out of sight keeping one column,
-\\<*virtual-cursor-keymap*>\\[cursors-insert]
-\\[cursors-append] \\[cursors-insert-line]
-\\[cursors-append-line] \\[cursors-change] and
-\\[cursors-delete] act at them, their other keys are refused, saying what
-works, and undo ends them.
-Every cursor then does what the real one does: \\<normal>\\[backward-char]
-\\[forward-char] \\[forward-word] \\[backward-word] \\[forward-sexp]
-\\[backward-sexp] \\[beginning-of-line] \\[end-of-line] move,
-\\[start-selection] \\[select-lines] \\[select-word] and the
-other \\`m' keys select, \\[tuatara-insert] \\[tuatara-insert-after]
-\\[tuatara-insert-line-start] \\[tuatara-insert-line-end]
-\\[tuatara-change] \\[tuatara-open-below] \\[tuatara-open-above] type at all of
-them, \\[delete-selection-or-char] \\[kill-line] \\[copy-selection-or-char] \\[yank-over-selection]
-delete, kill, copy and paste, a delimiter wraps, \\[mark-run-toggle]
-starts a mark run, \\[undo] \\[redo] undo, \\[repeat] repeats, \\[split-selection]
-searches. \\[add-cursor-above] adds above,
-\\<*cursor-keymap*>\\[drop-last-cursor] takes back the cursor added
-last, \\[align-cursors] lines them up. A cursor never leaves its
-line, and cursors that come to share one become one; any other key ends them and
-does its own job. \\[split-quit] lets go of the selections, and then ends
-them."
+\\[start-selection], or a rectangle), the first press puts a cursor on every
+one of them instead: at each line's start for \\[select-lines], else at
+point's column. The lines are counted first. Past *CURSORS-LIMIT* (or what the
+memory has room for), lines selected or a count such as \\[universal-argument]
+50000 \\[add-cursor-below], the cursors in sight stand, and the others are
+written in the background as each verb is done at those. Then
+\\<normal>\\[backward-char] \\[forward-char] \\[beginning-of-line]
+\\[end-of-line] move them all alike, those out of sight keeping one column.
+\\<*virtual-cursor-keymap*>\\[cursors-insert] \\[cursors-append]
+\\[cursors-insert-line] \\[cursors-append-line] \\[cursors-change] and
+\\[cursors-delete] act at them. Their other keys are refused, saying what
+works, and undo ends them. Every cursor then does what the real one does:
+\\<normal>\\[backward-char] \\[forward-char] \\[forward-word]
+\\[backward-word] \\[forward-sexp] \\[backward-sexp] \\[beginning-of-line]
+\\[end-of-line] move, \\[start-selection] \\[select-lines] \\[select-word] and
+the other \\`m' keys select. \\[tuatara-insert] \\[tuatara-insert-after]
+\\[tuatara-insert-line-start] \\[tuatara-insert-line-end] \\[tuatara-change]
+\\[tuatara-open-below] \\[tuatara-open-above] type at all of them.
+\\[delete-selection-or-char] \\[kill-line] \\[copy-selection-or-char]
+\\[yank-over-selection] delete, kill, copy and paste, and a delimiter wraps.
+\\[mark-run-toggle] starts a mark run, \\[undo] \\[redo] undo, \\[repeat]
+repeats, \\[split-selection] searches. \\[add-cursor-above] adds above,
+\\<*cursor-keymap*>\\[drop-last-cursor] takes back the cursor added last,
+\\[align-cursors] lines them up. A cursor never leaves its line, and cursors
+that come to share one become one. Any other key ends them and does its own
+job. \\[split-quit] lets go of the selections, and then ends them."
   (let ((count (prefix-argument)))
     (unless (and (not (cursors-here)) (cursors-on-selected-lines (current-buffer)))
       (add-cursors-beside (max 1 (abs (or count 1))) (and count (minusp count))))))
@@ -349,14 +349,14 @@ most there may be, those in sight (COUNTED-CURSORS-IN-SIGHT)."
           (add-cursors (or split (start-cursors column)) (cursor-spots b from column n above))))))
 
 (defun counted-cursors-in-sight (buffer split n above)
-  "Past the most cursors there may be (PLACE-LIMIT), the N cursors a count asks
-for below the last of SPLIT's cursors, or above the first with ABOVE, or below
-or above point's line with no cursors yet: held as the cursors of selected lines
-are (HOLD-VIRTUAL-CURSORS), those in sight standing and the others written in
-the background once a verb is done, SPLIT's cursors taken in. Refused when
-there are not N lines that way, the empty line after the last newline not one,
-and when SPLIT's cursors do not stand alone on lines one after another. Counts
-BUFFER's lines first, as goto-line does."
+  "Past the most cursors there may be (PLACE-LIMIT), the N cursors a count
+asks for go below the last of SPLIT's cursors, or above the first with ABOVE,
+or below or above point's line with no cursors yet. They are held as the
+cursors of selected lines are (HOLD-VIRTUAL-CURSORS), those in sight standing
+and the others written in the background once a verb is done, SPLIT's cursors
+taken in. Refused when there are not N lines that way, the empty line after
+the last newline not one, and when SPLIT's cursors do not stand alone on lines
+one after another. Counts BUFFER's lines first, as goto-line does."
   (let* ((places (and split (sort (copy-seq (split-places split)) #'< :key (lambda (p) (cursor-position buffer p)))))
          (lines (and split (map 'list (lambda (p) (tuatara.buffer:buffer-line-number buffer (cursor-position buffer p))) places)))
          (total (+ n (if split (length places) 1))))
@@ -381,7 +381,9 @@ BUFFER's lines first, as goto-line does."
              (start (tuatara.buffer:buffer-goto-line buffer from))
              (end (if (< to (tuatara.text:rope-lines rope)) (tuatara.buffer:buffer-goto-line buffer (1+ to)) size)))
         (message "~a" (hold-virtual-cursors buffer start end
-                                            (if split (split-column split) (tuatara.display:buffer-screen-column buffer (point)))
+                                            (if split
+                                                (split-column split)
+                                                (tuatara.display:buffer-screen-column buffer (point)))
                                             here (1+ (- to from)) t))))))
 
 (define-command add-cursor-above ()
@@ -404,7 +406,8 @@ never taken back, and \\<*cursor-keymap*>\\[split-quit] ends the cursors."
          (standing (let ((set (make-hash-table :test 'eq)))
                      (loop for place across (split-places split) do (setf (gethash place set) t))
                      set))
-         (candidates (remove-if-not (lambda (place) (and (gethash place standing) (not (eq place (split-primary split)))))
+         (candidates (remove-if-not (lambda (place)
+                                      (and (gethash place standing) (not (eq place (split-primary split)))))
                                     (split-order split)))
          (place (or (first candidates)
                     (find-if (lambda (place) (not (eq place (split-primary split))))
@@ -535,10 +538,10 @@ then waits its turn, its rows and SKIP's places followed."
 
 (defun hold-virtual-cursors (buffer start end column here rows exact)
   "Put a cursor on each of the ROWS lines of BUFFER from START, a line start,
-below END (more, unless EXACT), at COLUMN, the real one on the line starting at
-HERE: more than there may be (PLACE-LIMIT of *CURSORS-LIMIT*), so those in
-sight are held, as many as there may be, and the others are written in the
-background once a verb is done at those held. Returns what to say."
+below END (more, unless EXACT), at COLUMN, the real one on the line starting
+at HERE. These are more than there may be (PLACE-LIMIT of *CURSORS-LIMIT*), so
+those in sight are held, as many as there may be, and the others are written
+in the background once a verb is done at those held. Returns what to say."
   (multiple-value-bind (limit why) (place-limit *cursors-limit*)
     (let ((version (tuatara.buffer:buffer-version buffer))
           (bottom (tuatara.buffer:buffer-line-start buffer (max start (1- end)))))
@@ -805,7 +808,9 @@ with its newline, or else COUNT characters from the cursor within its line."
   (let ((cursor (cursor-position buffer place)))
     (multiple-value-bind (start end) (cursor-line-bounds buffer place)
       (cond ((and whole-lines (place-line place))
-             (values start (if (< end (tuatara.buffer:buffer-size buffer)) (tuatara.buffer:buffer-forward-char buffer end) end) t))
+             (values start (if (< end (tuatara.buffer:buffer-size buffer))
+                               (tuatara.buffer:buffer-forward-char buffer end)
+                               end) t))
             ((cursor-selecting-p place)
              (multiple-value-bind (s e) (place-bounds buffer place) (values s e t)))
             (t (let ((far (max start (min end (tuatara.buffer:buffer-forward-char buffer cursor count)))))
@@ -872,15 +877,15 @@ as one kill, one line a cursor; the selections are let go."
                (deselect-cursors split)))))
 
 (define-command cursors-yank ()
-  "Paste at every cursor, over its selection: a kill made of as many parts
+  "Paste at every cursor, over its selection. A kill made of as many parts
 \(KILL-PARTS), at as many cursors or a rectangle of as many rows, gives each
-cursor its own part back, top to bottom; another kill with as many lines as
-there are cursors gives each its own line; else each gets the whole kill;
-a count pastes that many copies. A selection of lines is replaced as whole
+cursor its own part back, top to bottom. Another kill with as many lines as
+there are cursors gives each its own line. Else each gets the whole kill. A
+count pastes that many copies. A selection of lines is replaced as whole
 lines: a paste that ends with a newline slots in as complete lines, one that
-does not keeps the line's newline. One change. When a selection replaced
-would take part of the text a fold hides, but not all of it, nothing is
-pasted: the fold is shown instead, and the key pressed again pastes."
+does not keeps the line's newline. One change. When a selection replaced would
+take part of the text a fold hides, but not all of it, nothing is pasted: the
+fold is shown instead, and the key pressed again pastes."
   (take-in-clipboard)
   (let* ((split (live-split)) (b (split-buffer split))
          (text (first (editor-kill-ring *editor*)))
@@ -1251,7 +1256,12 @@ same keys.")
     ;; undo, redo, repeating and making cursors end them and do their own job, as before
     (loop for (command . verb) in *cursor-verbs*
           unless (or (member verb *virtual-cursor-verbs*)
-                     (member verb '(cursors-undo cursors-redo cursors-repeat add-cursor-below add-cursor-above split-selection)))
+                     (member verb
+                             '(cursors-undo cursors-redo
+                               cursors-repeat
+                               add-cursor-below
+                               add-cursor-above
+                               split-selection)))
             do (dolist (keys (short-keys-of command *tuatara-normal-keymap*))
                  (bind *virtual-cursor-keymap* keys 'cursors-past-limit-refuse)))
     (loop for (command) in *cursor-global-verbs*

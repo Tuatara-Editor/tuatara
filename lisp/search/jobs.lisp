@@ -22,14 +22,14 @@
 (in-package #:tuatara.defaults)
 
 (defstruct (queued-job (:constructor make-queued-job (buffer words starter anchors shade counted place)) (:copier nil))
-  "A job waiting its turn in BUFFER: WORDS say what it will do; STARTER, a
-function of the offsets its ANCHORS stand at when its turn comes, starts it;
-SHADE, a function of those offsets and the offsets FROM and TO of the text
-shown, gives the (START END) stretches it will change, painted while it waits;
-COUNTED true when it needs BUFFER's lines counted first (LINES-UNCOUNTED-P);
-PLACE is where in BUFFER's undo history it was given
+  "A job waiting its turn in BUFFER. WORDS say what it will do. STARTER is a
+function of the offsets its ANCHORS stand at when its turn comes, and starts
+the job. SHADE is a function of those offsets and the offsets FROM and TO of
+the text shown, and gives the (START END) stretches it will change, painted
+while it waits. COUNTED is true when it needs BUFFER's lines counted first
+(LINES-UNCOUNTED-P). PLACE is where in BUFFER's undo history it was given
 \(TUATARA.BUFFER:MAKE-UNDO-PLACE), for its change to stand there
-\(JOB-BEGINS-WHERE-GIVEN); QUEUED is the time it was queued at."
+\(JOB-BEGINS-WHERE-GIVEN). QUEUED is the time it was queued at."
   buffer words starter anchors shade counted place (queued (get-universal-time)))
 
 (setf (documentation 'queued-job-p 'function) "True when OBJECT is a QUEUED-JOB.")
@@ -110,18 +110,21 @@ as you edited them meanwhile, when any were."
 
 (defun job-report (kind counted whole &key (refused (list 0)) (hidden (list 0)))
   "A job's REPORT (REWRITE) for doing KIND (JOB-WORDS) at many places in the
-background, as every such job says how it ended: what was done to the places
-COUNTED names (a function of the changes made giving them in words), in how
-long, then how many were kept as edited meanwhile, how many were left as they
-were because the text beside them was not what was deleted beside the places
-in sight (the car of REFUSED) or because a fold hides part of what would go
-\(the car of HIDDEN), and how many a fold hides any of were left alone
-\(HIDDEN-LEFT-WORDS); or, with no change, that doing it at WHOLE, the places
-in words, changed nothing."
+background, as every such job says how it ended. It says what was done to the
+places COUNTED names (a function of the changes made giving them in words), in
+how long, then how many were kept as edited meanwhile. It says how many were
+left as they were because the text beside them was not what was deleted beside
+the places in sight (the car of REFUSED) or because a fold hides part of what
+would go (the car of HIDDEN). It says too how many a fold hides any of were
+left alone (HIDDEN-LEFT-WORDS). With no change, it says instead that doing it
+at WHOLE, the places in words, changed nothing."
   (lambda (job how changes seconds kept)
     (case how
       (:done (format nil "~a ~a~[~:;; ~:*~:d left as they were, the text beside them not the same~]~[~:;; ~:*~:d left as they were, partly hidden in a fold~]~a"
-                     (job-words kind :done (funcall counted changes)) (job-done-words seconds kept) (car refused) (car hidden)
+                     (job-words kind :done (funcall counted changes))
+                     (job-done-words seconds kept)
+                     (car refused)
+                     (car hidden)
                      (hidden-left-words job)))
       (:none (format nil "~a changed nothing~a" (job-words kind :doing whole) (hidden-left-words job))))))
 
@@ -146,13 +149,13 @@ than this is done before the key, as if it had taken no time.")
 
 (defun take-in-soon (job seconds &optional words then)
   "Wait up to SECONDS for JOB, just started, to end, or, after
-*GIVE-WAY-AFTER*, until a key is pressed, whichever comes first: when it has
+*GIVE-WAY-AFTER*, until a key is pressed, whichever comes first. When it has
 ended, take it in now, with the other jobs of its kind that have ended, so
-that quick work looks done at once; else, with WORDS, say that it goes on in
+that quick work looks done at once. Else, with WORDS, say that it goes on in
 the background, and THEN after it when given (SAY-IN-BACKGROUND). A key
-pressed meanwhile is answered then, the work going on behind it; keys played
-from a recording never are, so that what they do is the same however fast
-the work."
+pressed meanwhile is answered then, the work going on behind it. Keys played
+from a recording never are, so that what they do is the same however fast the
+work."
   (let ((deadline (tuatara.runtime:deadline-in seconds))
         (patient (tuatara.runtime:deadline-in (min seconds *give-way-after*))))
     (loop for left = (tuatara.runtime:seconds-left deadline)
@@ -206,11 +209,11 @@ reach into the text from FROM below TO."
           collect (list (max start from) (min end to))))
 
 (defun block-shade (buffer left right &key wide (tab-width (tuatara.display:tab-width-of buffer)))
-  "A SHADE for a job waiting its turn over a rectangle's rows in BUFFER: from
-the line its first offset starts to the one its second starts, the text
-between the columns LEFT and RIGHT of each row shown, or with WIDE the whole
-line; the columns on the screen, a tab TAB-WIDTH columns at most, or with
-TAB-WIDTH NIL characters."
+  "A SHADE for a job waiting its turn over a rectangle's rows in BUFFER. It
+runs from the line its first offset starts to the one its second starts, and
+covers the text between the columns LEFT and RIGHT of each row shown, or with
+WIDE the whole line. The columns are those on the screen, a tab TAB-WIDTH
+columns at most, or with TAB-WIDTH NIL characters."
   (lambda (positions from to)
     (destructuring-bind (top bottom &rest more) positions
       (declare (ignore more))
@@ -295,7 +298,10 @@ has started."
                     (not (and (queued-job-counted job) (lines-uncounted-p buffer))))
                (setf *job-queue* (remove job *job-queue*))
                (tuatara.buffer:forget-undo-place buffer (queued-job-place job))
-               (tuatara.runtime:debug-report :job "~a in ~a: its turn" (queued-job-words job) (tuatara.buffer:buffer-name buffer))
+               (tuatara.runtime:debug-report :job
+                                             "~a in ~a: its turn"
+                                             (queued-job-words job)
+                                             (tuatara.buffer:buffer-name buffer))
                (setf started t)
                (let ((*starting-queued-job* t)
                      (*queued-job-since* (car (queued-job-place job))))
@@ -435,16 +441,16 @@ the file kept mapped for it (BUFFER-LENT-P). A save is waited for, not stopped
 
 (define-command stop-job ()
   "Stop the work running in the background in the current buffer, after
-asking: a replacement or count, a search for a split, a change at a rectangle
-or at every match, a sort or filter, a SHA-256 sum, a count of words, dynamic
-blocks made, a save, a list's copying, moving or deleting, an agenda worked
-out, a calendar's days marked. The buffer stays as it is, and a file being
-saved as it was (a file written in place is finished first, since stopping
-half-way would spoil it). The jobs waiting their turn behind it then start, one
-after another; \\[list-jobs] lists them, and drops those not wanted. Changing
-the text a sort, a filter or dynamic blocks being made work on asks first
-whether to stop them, since the change would spoil their work. A job already
-asked to stop, and ending, is not asked about again."
+asking. The work may be a replacement or count, a search for a split, a change
+at a rectangle or at every match, a sort or filter, a SHA-256 sum, a count of
+words, dynamic blocks made, a save, a list's copying, moving or deleting, an
+agenda worked out, a calendar's days marked. The buffer stays as it is, and a
+file being saved as it was (a file written in place is finished first, since
+stopping half-way would spoil it). The jobs waiting their turn behind it then
+start, one after another; \\[list-jobs] lists them, and drops those not
+wanted. Changing the text a sort, a filter or dynamic blocks being made work
+on asks first whether to stop them, since the change would spoil their work. A
+job already asked to stop, and ending, is not asked about again."
   (let* ((running (remove-if (lambda (job) (car (tuatara.runtime:job-cancel job)))
                              (jobs-of (current-buffer) :running t)))
          (job (or (find-if #'tuatara.runtime:job-holds-queue-p running) (first running))))
@@ -491,11 +497,12 @@ spoil it. O(jobs of BUFFER) when none of them guards text."
 (define-major-mode jobs-mode marked-list-mode
   "The list of jobs in the background (\\[list-jobs]): those running in each
 buffer, with how far they have got, and those waiting their turn, in the order
-they will run. \\<jobs-mode>\\[list-mark-for-deletion] marks the job on the line for deletion,
-\\[list-mark-entry] marks it, \\[list-unmark-entry] unmarks it; \\[list-execute] drops the jobs marked for
-deletion that wait and stops those running, after asking, \\[list-delete-marked] the
-marked ones, or the one on the line; \\[revert-buffer] lists them again, as
-the list does by itself while it is shown, when they have changed;
+they will run. \\<jobs-mode>\\[list-mark-for-deletion] marks the job on the
+line for deletion, \\[list-mark-entry] marks it, \\[list-unmark-entry] unmarks
+it. \\[list-execute] drops the jobs marked for deletion that wait and stops
+those running, after asking. \\[list-delete-marked] does the same to the
+marked ones, or the one on the line. \\[revert-buffer] lists them again, as
+the list does by itself while it is shown, when they have changed.
 \\[quit-window] or \\`h' returns."
   :lighter "Jobs" :interactive nil)
 
@@ -598,12 +605,12 @@ after one stopped move up."
                (and waiting (length waiting)) (and waiting running) (and running (length running))))))
 
 (defun install-jobs ()
-  "Have the jobs in the background be taken in as they end, the jobs waiting
-their turn start as each buffer's job ends, their text painted, and the jobs
-running or waiting asked about before their buffer is killed or the editor
-left, and stopped when their buffer is killed; and an edit by a command that
-would spoil the work of a job running over the text it touches asked about
-first (GUARD-JOB-EDITS). The mode line's sign of the work
+  "Have the jobs in the background be taken in as they end. Have the jobs
+waiting their turn start as each buffer's job ends, their text painted. Have
+the jobs running or waiting asked about before their buffer is killed or the
+editor left, and stopped when their buffer is killed. Have an edit by a
+command that would spoil the work of a job running over the text it touches
+asked about first (GUARD-JOB-EDITS). The mode line's sign of the work
 \(PROCESSING-MODE-LINE) is shown with those of directories kept read
 \(MODE-LINE-SIGNS)."
   (pushnew 'job-queue-tick *tick-functions*)

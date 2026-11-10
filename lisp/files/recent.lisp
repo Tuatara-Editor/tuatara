@@ -17,7 +17,8 @@ NIL adds nothing to it. The list is the file recent-files in
 $XDG_STATE_HOME/tuatara/ (~/.local/state/tuatara/), readable by you alone.")
 
 (defvar *recent-files-limit* 25
-  "How many files the list of recent files keeps.")
+  "How many files the list of recent files keeps, 25 as standard. Raise it to
+choose among more files; lower it for a shorter list.")
 
 (defvar *recent-files-auto-cleanup* t
   "True to take out of the list of recent files, when the editor starts, the
@@ -49,7 +50,9 @@ a line that makes no sense."
 (define-state-list *recent-files* "recent-files" 'parse-recent-file-line 'recent-file-line '*recent-files-limit*
   :header (format nil "# The files Tuatara visited lately, the latest first: file, or safe for one~%~
                        # opened safely, then its path (\\\\, \\n and \\r stand for \\, a newline and a return).~%")
-  :path-of #'car :key #'identity :line-key (spaced-line-key 1 (lambda (word) (member word '("file" "safe") :test #'string=))))
+  :path-of #'car
+  :key #'identity
+  :line-key (spaced-line-key 1 (lambda (word) (member word '("file" "safe") :test #'string=))))
 
 (defun read-recent-files ()
   "The list of recent files: a list of (PATH . SAFE), the latest first, SAFE

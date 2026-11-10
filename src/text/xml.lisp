@@ -48,7 +48,9 @@ NIL for is left as written."
 ;;; children elements and strings of text.
 
 (defun xml-name (node) "The name of the element NODE, NIL for text." (and (consp node) (first node)))
-(defun xml-attribute (node name) "The value of NODE's attribute NAME, or NIL." (cdr (assoc name (second node) :test #'string=)))
+(defun xml-attribute (node name)
+  "The value of NODE's attribute NAME, or NIL."
+  (cdr (assoc name (second node) :test #'string=)))
 (defun xml-children (node) "The children of the element NODE." (cddr node))
 
 (defun xml-child (node name)
@@ -194,7 +196,8 @@ second value."
                           (when space
                             (xml-map-attributes
                              (lambda (key value)
-                               (push (cons (or (gethash key names) (setf (gethash key names) key)) (xml-text-value value)) attributes))
+                               (push (cons (or (gethash key names) (setf (gethash key names) key))
+                                           (xml-text-value value)) attributes))
                              inside space))
                           (when (> (incf elements) most)
                             (error "XML of more than ~:d elements" most))
@@ -224,7 +227,9 @@ XML has no place for (a control character, a raw byte's) as U+FFFD."
                (#\< (write-string "&lt;" out))
                (#\> (write-string "&gt;" out))
                (#\" (write-string "&quot;" out))
-               (t (if (or (and (< code 32) (not (member code '(9 10 13)))) (<= #xD800 code #xDFFF) (member code '(#xFFFE #xFFFF)))
+               (t (if (or (and (< code 32) (not (member code '(9 10 13))))
+                          (<= #xD800 code #xDFFF)
+                          (member code '(#xFFFE #xFFFF)))
                       (write-char (code-char #xFFFD) out)
                       (write-char c out)))))))
 

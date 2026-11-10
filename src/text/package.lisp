@@ -3,35 +3,47 @@
 
 (defpackage #:tuatara.text
   (:use #:cl #:alexandria)
-  (:documentation "The text model: a rope of UTF-8 leaves with cached counts, mapped files, edit batches, versions and anchors.")
+  (:documentation "The text model: a rope of UTF-8 leaves with cached counts, mapped files, edit
+batches, versions and anchors.")
   (:export #:escape-sequence-end #:c1-control-p #:xml-entity #:xml-tag-end #:xml-text-value
-   #:xml-name #:xml-attribute #:xml-children #:xml-child #:xml-root #:xml-local-name #:xml-unprefixed #:xml-local-children #:xml-find-all #:xml-all-text
+   #:xml-name #:xml-attribute #:xml-children #:xml-child #:xml-root #:xml-local-name #:xml-unprefixed
+   #:xml-local-children #:xml-find-all #:xml-all-text
    #:xml-first-text #:xml-parse #:*xml-deepest* #:*xml-most-elements* #:xml-escape
-   #:xml-elements #:xml-element #:xml-top-elements #:xml-element-inner #:xml-element-inside #:xml-replace-elements #:xml-value
+   #:xml-elements #:xml-element #:xml-top-elements #:xml-element-inner #:xml-element-inside #:xml-replace-elements
+   #:xml-value
    #:utf-16-text #:parse-decimal #:whole-number #:split-words #:number-formatter #:merge-ranges
    #:+fnv-offset+ #:+fnv-prime+ #:octets-hash #:string-hash
    ;; JSON
-   #:json-read #:json-path-bounds #:json-write #:json-object #:json-get #:json-integer #:json-text #:json-items #:json-true-p #:json-error #:json-error-position #:json-error-text #:*json-deepest*
+   #:json-read #:json-path-bounds #:json-write #:json-object #:json-get #:json-integer #:json-text #:json-items
+   #:json-true-p #:json-error #:json-error-position #:json-error-text #:*json-deepest*
    ;; types and tunables
-   #:octets #:make-octets #:with-octet-block #:fixvec #:+max-leaf+ #:+target-leaf+ #:+min-leaf+ #:+max-fanout+ #:+span-size+
+   #:octets #:make-octets #:with-octet-block #:fixvec #:+max-leaf+ #:+target-leaf+ #:+min-leaf+ #:+max-fanout+
+   #:+span-size+
    ;; mapped files
    #:mapping #:mapping-p #:map-file #:map-fd #:close-mapping #:retarget-mapping #:retarget-mapping-range
    #:mapping-source #:mapping-sources #:live-mappings #:drop-cached #:read-ahead #:*large-mapping-octets*
-   #:mapping-holes #:mapping-torn #:rope-check-arrived #:rope-arrived-around #:not-arrived #:refuse-not-arrived #:rope-holes #:rope-hole-at #:+kept-ends+ #:with-read-pass #:note-read #:begin-file-read-pass #:file-read-pass-note #:end-file-read-pass
+   #:mapping-holes #:mapping-torn #:rope-check-arrived #:rope-arrived-around #:not-arrived #:refuse-not-arrived
+   #:rope-holes #:rope-hole-at #:+kept-ends+ #:with-read-pass #:note-read #:begin-file-read-pass #:file-read-pass-note
+   #:end-file-read-pass
    #:mapping-path #:mapping-length #:mapping-live #:mapping-fd #:mapping-sap #:mapping-rope #:map-rope-sources
    ;; ropes
    #:rope #:rope-p #:make-rope #:string->rope #:octets->rope #:open-file-rope #:index-rope
    #:rope-octet-length #:rope-chars #:rope-utf16 #:rope-lines #:rope-indexed-p #:rope-holds-return-p
    #:rope-statistics
    ;; conversions
-   #:byte->char #:char->byte #:byte->utf16 #:utf16->byte #:byte->line #:line->byte #:byte->row #:row->byte #:char-boundary-p
+   #:byte->char #:char->byte #:byte->utf16 #:utf16->byte #:byte->line #:line->byte #:byte->row #:row->byte
+   #:char-boundary-p
    ;; reading
-   #:map-leaf-pieces #:piece-copy #:piece-octet #:rope-octets #:rope-copy-into #:rope-copy-to-sap #:rope-string #:rope-octet
-   #:rope-next-boundary #:rope-previous-boundary #:string-cluster-end #:string-cluster-start #:cluster-joins-p #:regional-indicator-code-p #:rope-char-start #:rope-char-at #:rope-find-octet #:rope-find-octet-backward #:rope-find-any-octet #:rope-bracket-match #:rope-escaped-p #:rope-skip-octets #:*blank-octets*
+   #:map-leaf-pieces #:piece-copy #:piece-octet #:rope-octets #:rope-copy-into #:rope-copy-to-sap #:rope-string
+   #:rope-octet
+   #:rope-next-boundary #:rope-previous-boundary #:string-cluster-end #:string-cluster-start #:cluster-joins-p
+   #:regional-indicator-code-p #:rope-char-start #:rope-char-at #:rope-find-octet #:rope-find-octet-backward
+   #:rope-find-any-octet #:rope-bracket-match #:rope-escaped-p #:rope-skip-octets #:*blank-octets*
    #:rope-line-downward #:rope-line-upward #:map-line-slices #:rope-count-chars #:*text-octets*
    #:tally #:tally-p #:make-tally #:tally-line-number #:tally-line-start #:tally-counted-lines
    #:rope-count-newlines #:rope-nth-newline #:rope-find-line-end #:rope-find-line-end-backward
-   #:line-end-octet-p #:octets-line-end-p #:line-text-ends-p #:octets-line-end-position #:octets-line-end-position-backward #:octets-line-ends
+   #:line-end-octet-p #:octets-line-end-p #:line-text-ends-p #:octets-line-end-position
+   #:octets-line-end-position-backward #:octets-line-ends
    #:rope-line-start #:rope-line-end #:rope-line-pieces #:blank-line-octet-p #:*blank-line-octets*
    #:rope-pieces #:rope-slice #:splice-rope
    ;; edits
@@ -51,6 +63,10 @@
    ;; invariants
    #:check-rope #:summarise #:continuation-byte-p
    ;; strict UTF-8
-   #:octets-decode #:octets-char-start-p #:octets-pending #:octets-string #:octets-first-line #:string-octets #:put-string-octets #:string-octet-length #:char-octet-length #:lenient-string #:raw-byte-code-p #:control-code-p #:crlf-octets-p #:line-text-end #:rope-line-text-end #:rope-line-text-ends-p #:rope-line-start-p #:rope-crlf-p #:*openers* #:*closers* #:*opening-octets* #:*closing-octets* #:*bracket-octets* #:rope-invalid
+   #:octets-decode #:octets-char-start-p #:octets-pending #:octets-string #:octets-first-line #:string-octets
+   #:put-string-octets #:string-octet-length #:char-octet-length #:lenient-string #:raw-byte-code-p #:control-code-p
+   #:crlf-octets-p #:line-text-end #:rope-line-text-end #:rope-line-text-ends-p #:rope-line-start-p #:rope-crlf-p
+   #:*openers* #:*closers* #:*opening-octets* #:*closing-octets* #:*bracket-octets* #:rope-invalid
    ;; octets and lines of plain strings
-   #:octets-latin-1 #:word-char-p #:name-char-p #:charset-text #:octets-hex #:*hex-pairs* #:string-line-start #:string-line-end #:one-line #:natural-string-lessp))
+   #:octets-latin-1 #:word-char-p #:name-char-p #:charset-text #:octets-hex #:*hex-pairs* #:string-line-start
+   #:string-line-end #:one-line #:natural-string-lessp))

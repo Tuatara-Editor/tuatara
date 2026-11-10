@@ -82,7 +82,8 @@ names_in() {
     echo LGPL-2.1
   fi
   # a file that names its licence by its SPDX identifier alone
-  [ -n "$texts_only" ] || sed -n 's/^.*SPDX-License-Identifier: *//p' "$1" | while IFS= read -r expression; do label_names "$expression"; done
+  [ -n "$texts_only" ] || sed -n 's/^.*SPDX-License-Identifier: *//p' "$1" |
+    while IFS= read -r expression; do label_names "$expression"; done
   return 0
 }
 

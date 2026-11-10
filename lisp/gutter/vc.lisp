@@ -115,7 +115,9 @@ keeps it."
                 ;; git reports a deletion after 1-based line NEW-START: mark the line
                 ;; that follows the gap (0-based NEW-START), or the last line
                 (let ((line (min new-start (1- lines)))) (values line line :deleted))
-                (values (1- new-start) (min (1- lines) (+ new-start new-count -2)) (if (zerop old-count) :added :changed)))
+                (values (1- new-start)
+                        (min (1- lines) (+ new-start new-count -2))
+                        (if (zerop old-count) :added :changed)))
           (let ((first (max first (1+ taken))))
             (when (<= first last)
               (push (line-mark buffer first last kind) marks)
@@ -134,14 +136,14 @@ once done, (TRACKED HUNKS) as VC-START-REFRESH says.")
   :left-words "the marks are as they were")
 
 (defun vc-start-refresh (buffer)
-  "Work out in the background whether BUFFER's file is in git and its marks,
-a job (VC-JOB): git asked for the committed text's lines (COMMITTED-LINE-HASHES,
-or GIT-TRACKED-P for a file too large to compare) and the texts compared on a thread of their own, from
-the buffer's text as it is now, which never changes, so that nothing waits
-for it; the result put in as the job is taken in. A refresh started before
-for BUFFER is stopped (START-SHOWN-TEXT-JOB). The text of a file mapped from
-disk and compared is read as a slice (BUFFER-SLICE), which keeps the mapping
-while the job reads it."
+  "Work out in the background whether BUFFER's file is in git and its marks, a
+job (VC-JOB). Git is asked for the committed text's lines
+\(COMMITTED-LINE-HASHES, or GIT-TRACKED-P for a file too large to compare), and
+the texts are compared on a thread of their own, from the buffer's text as it is
+now, which never changes, so that nothing waits for it. The result is put in as
+the job is taken in. A refresh started before for BUFFER is stopped
+\(START-SHOWN-TEXT-JOB). The text of a file mapped from disk and compared is
+read as a slice (BUFFER-SLICE), which keeps the mapping while the job reads it."
   (let* ((path (tuatara.buffer:buffer-file buffer))
          (compare (and (tuatara.io:path-stamp path :failure nil)
                        (<= (tuatara.buffer:buffer-size buffer) *vc-gutter-max-bytes*))))
@@ -271,8 +273,12 @@ Complexity: O(log marks + the marks there)."
   "The marks over the text of ROWS of WINDOW, worked out once a frame (VC-VISIBLE-MARKS)."
   (declare (ignore editor))
   (let ((buffer (tuatara.display:window-buffer window)))
-    (when (and (plusp (length rows)) (tuatara.buffer:buffer-local buffer 'vc-marks) (tuatara.buffer:buffer-indexed-p buffer))
-      (vc-visible-marks buffer (tuatara.display:row-start (aref rows 0)) (tuatara.display:row-end (aref rows (1- (length rows))))))))
+    (when (and (plusp (length rows))
+               (tuatara.buffer:buffer-local buffer 'vc-marks)
+               (tuatara.buffer:buffer-indexed-p buffer))
+      (vc-visible-marks buffer
+                        (tuatara.display:row-start (aref rows 0))
+                        (tuatara.display:row-end (aref rows (1- (length rows))))))))
 
 (defun vc-gutter-width (editor window)
   "One column for marks when the buffer is a tracked file, else 0."

@@ -22,9 +22,10 @@ typed (those *ELECTRIC-PAIR-TYPING* names), what \\[insert-pair] puts around the
 region, and what select-pair selects within and the wrap keys wrap with.")
 
 (defvar *electric-pair-mode* nil
-  "True to close delimiters as they are typed: an opening one writes its closing half after point, a closing half typed where
-it stands steps over it, and \\[delete-backward-char] between an empty pair
-takes both. Off unless asked for, by \\[electric-pair-mode] or in the init file.")
+  "True to close delimiters as they are typed: an opening one writes its closing
+half after point, a closing half typed where it stands steps over it, and
+\\[delete-backward-char] between an empty pair takes both. Off unless asked for,
+by \\[electric-pair-mode] or in the init file.")
 
 (defvar *electric-pair-typing* :safe
   "Which delimiters close themselves as they are typed: :safe, the pairs of
@@ -134,7 +135,8 @@ times and paired with none. With a count it is on when it is positive and off wh
   (and (plusp start) (< end (tuatara.buffer:buffer-size buffer))
        (eql (buffer-char-before buffer start) open)
        (eql (tuatara.buffer:buffer-char-at buffer end) close)
-       (not (tuatara.text:rope-escaped-p (tuatara.buffer:buffer-text buffer) (tuatara.buffer:buffer-forward-char buffer start -1)))))
+       (not (tuatara.text:rope-escaped-p (tuatara.buffer:buffer-text buffer)
+                                         (tuatara.buffer:buffer-forward-char buffer start -1)))))
 
 (defun wrap-between (buffer start end char)
   "Put the pair CHAR belongs to around BUFFER's octets START below END, or take

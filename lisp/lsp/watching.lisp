@@ -144,7 +144,8 @@ projects watched and their folders are the same."
   ;; projects no running server watches let go
   (maphash (lambda (root tree)
              (declare (ignore tree))
-             (unless (some (lambda (s) (and (string= (lsp-server-root s) root) (gethash s *lsp-watchers*))) *lsp-servers*)
+             (unless (some (lambda (s) (and (string= (lsp-server-root s) root) (gethash s *lsp-watchers*)))
+                           *lsp-servers*)
                (remhash root *lsp-watched-trees*)))
            *lsp-watched-trees*)
   (maphash (lambda (server watchers)

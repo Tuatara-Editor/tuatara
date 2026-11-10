@@ -35,7 +35,11 @@ is, never by a shell. For example: '((\"application/pdf\" . \"zathura\")
 
 (defparameter *kind-mime-types*
   '((:png "image/png") (:jpeg "image/jpeg") (:gif "image/gif") (:webp "image/webp") (:bmp "image/bmp")
-    (:tiff "image/tiff") (:raw "image/x-dcraw") (:ico "image/vnd.microsoft.icon") (:heif "image/heif") (:avif "image/avif")
+    (:tiff "image/tiff")
+    (:raw "image/x-dcraw")
+    (:ico "image/vnd.microsoft.icon")
+    (:heif "image/heif")
+    (:avif "image/avif")
     (:jp2 "image/jp2") (:j2k "image/x-jp2-codestream") (:jxl "image/jxl")
     (:xcf "image/x-xcf") (:psd "image/vnd.adobe.photoshop") (:svg "image/svg+xml") (:pdf "application/pdf")
     (:mp4 "video/mp4" ("m4a" . "audio/mp4") ("m4b" . "audio/mp4") ("mov" . "video/quicktime") ("qt" . "video/quicktime")
@@ -60,7 +64,9 @@ is, never by a shell. For example: '((\"application/pdf\" . \"zathura\")
      ("ppsm" . "application/vnd.ms-powerpoint.slideshow.macroEnabled.12"))
     (:ole "application/x-ole-storage" ("doc" . "application/msword") ("dot" . "application/msword")
      ("xls" . "application/vnd.ms-excel") ("xlt" . "application/vnd.ms-excel")
-     ("ppt" . "application/vnd.ms-powerpoint") ("pot" . "application/vnd.ms-powerpoint") ("pps" . "application/vnd.ms-powerpoint"))
+     ("ppt" . "application/vnd.ms-powerpoint")
+     ("pot" . "application/vnd.ms-powerpoint")
+     ("pps" . "application/vnd.ms-powerpoint"))
     (:odt "application/vnd.oasis.opendocument.text") (:ods "application/vnd.oasis.opendocument.spreadsheet")
     (:odp "application/vnd.oasis.opendocument.presentation"))
   "The Multipurpose Internet Mail Extensions (MIME) type of each kind of file
@@ -103,7 +109,7 @@ before the name, and the program as given; NIL when it gives none."
 Extensions (MIME) type TYPE outside Tuatara, as four values: the program's
 full path (NIL when not found), the arguments to give before the name, the
 program as given, and how to speak of it (the desktop's program, or the
-program's name); a program of your choosing (*OPEN-EXTERNALLY-PROGRAMS*)
+program's name). A program of your choosing (*OPEN-EXTERNALLY-PROGRAMS*) comes
 before the desktop's (*OPEN-EXTERNALLY-PROGRAM*)."
   (multiple-value-bind (path arguments given) (chosen-program type)
     (if given
@@ -182,7 +188,8 @@ not there (ENSURE-PRIVATE-DIRECTORY); its native name, ending in /."
   (tuatara.io:ensure-private-directory (tuatara.io:path-join (tuatara.io:native base) name)))
 
 (defun private-cache-directory (name)
-  "The directory NAME (ending in /) in the cache directory, for you alone, made when it is not there; its native name, ending in /."
+  "The directory NAME (ending in /) in the cache directory, for you alone, made
+when it is not there; its native name, ending in /."
   (private-directory-in (tuatara.io:cache-directory) name))
 
 (defun remote-copy-p (path)
@@ -459,7 +466,9 @@ MISSING, what to do about it (install readpst)."
      :fedora ("bubblewrap") :debian ("bubblewrap") :arch ("bubblewrap") :weight :recommends)
     (:pictures :name "ImageMagick" :what "pictures"
      :programs ("magick")
-     :fedora ("ImageMagick") :debian ("imagemagick") :arch ("imagemagick" "libjpeg-turbo" "libtiff" "libwebp" "libheif" "librsvg" "libraw" "openjpeg2" "libjxl")
+     :fedora ("ImageMagick")
+     :debian ("imagemagick")
+     :arch ("imagemagick" "libjpeg-turbo" "libtiff" "libwebp" "libheif" "librsvg" "libraw" "openjpeg2" "libjxl")
      :weight :recommends)
     (:pdf :name "poppler" :what "PDF files"
      :programs ("pdftotext" "pdftoppm")
@@ -488,10 +497,14 @@ MISSING, what to do about it (install readpst)."
     (:office :name "LibreOffice" :what "pages of Office documents"
      :programs ("soffice")
      :fedora ("libreoffice-writer" "libreoffice-calc" "libreoffice-impress")
-     :debian ("libreoffice-writer" "libreoffice-calc" "libreoffice-impress") :arch ("libreoffice-fresh") :weight :suggests)
+     :debian ("libreoffice-writer" "libreoffice-calc" "libreoffice-impress")
+     :arch ("libreoffice-fresh")
+     :weight :suggests)
     (:latex :name "TeX Live" :what "PDFs of Org and LaTeX files"
      :found tuatara.export:latex-engines-found
-     :fedora ("texlive-xetex" "texlive-luatex") :debian ("texlive-xetex" "texlive-luatex") :arch ("texlive-xetex" "texlive-luatex")
+     :fedora ("texlive-xetex" "texlive-luatex")
+     :debian ("texlive-xetex" "texlive-luatex")
+     :arch ("texlive-xetex" "texlive-luatex")
      :weight :suggests))
   "The software from outside that Tuatara's features run, each (KEY . PLIST):
 :NAME what it is called, :WHAT what it is for, the packages it comes in on
@@ -611,9 +624,12 @@ kind (*OPEN-ADDRESS-SCHEMES*) is refused, and that is said."
          (type (format nil "x-scheme-handler/~a" (address-scheme address))))
     (multiple-value-bind (program arguments given label) (and (open-address-p address) (external-opener type))
       (cond ((not (open-address-p address))
-             (message "Links of the kind ~a are not opened: ~a" (escape-controls (address-scheme address)) (escape-controls address)))
+             (message "Links of the kind ~a are not opened: ~a"
+                      (escape-controls (address-scheme address))
+                      (escape-controls address)))
             ((null program) (message "~a" (opener-missing given type)))
-            ((not (yes-or-no-p* (format nil "Open ~a in ~a, outside Tuatara?~:[ (the files it asked to attach left out)~;~]"
+            ((not (yes-or-no-p* (format nil
+                                        "Open ~a in ~a, outside Tuatara?~:[ (the files it asked to attach left out)~;~]"
                                         address label (string= address asked))))
              (message "Not opened"))
             (t (start-detached program (append arguments (list address)) :label "open address")

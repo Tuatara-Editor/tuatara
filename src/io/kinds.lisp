@@ -82,7 +82,9 @@ group: what BASE64-OCTETS reads back."
          (count (- end start))
          (out (make-string (* 4 (ceiling count 3))))
          (digits *base64-digits*))
-    (declare (type (simple-array (unsigned-byte 8) (*)) octets) (type simple-string digits out) (fixnum start end count))
+    (declare (type (simple-array (unsigned-byte 8) (*)) octets)
+             (type simple-string digits out)
+             (fixnum start end count))
     (loop for i fixnum from start below end by 3
           for o fixnum from 0 by 4
           do (let* ((left (- end i))
@@ -177,7 +179,12 @@ holds values no PNG has."
     (if width
         (joined-words "PNG image" (size-words width height)
                       (format nil "~d-bit ~a" (octet-at o 24)
-                              (case (octet-at o 25) (0 "grey") (2 "RGB") (3 "with a palette") (4 "grey and alpha") (t "RGBA"))))
+                              (case (octet-at o 25)
+                                (0 "grey")
+                                (2 "RGB")
+                                (3 "with a palette")
+                                (4 "grey and alpha")
+                                (t "RGBA"))))
         "damaged PNG image: its image header is missing or wrong")))
 
 (defun jpeg-segments (octets function)
@@ -203,7 +210,8 @@ markers are looked at."
   "The width and height of the JPEG image whose first octets are O, as two
 values, from its first frame header; NIL when that is not among O."
   (let ((size (jpeg-segments o (lambda (marker start end)
-                                 (and (member marker '(#xC0 #xC1 #xC2 #xC3 #xC5 #xC6 #xC7 #xC9 #xCA #xCB #xCD #xCE #xCF))
+                                 (and (member marker
+                                              '(#xC0 #xC1 #xC2 #xC3 #xC5 #xC6 #xC7 #xC9 #xCA #xCB #xCD #xCE #xCF))
                                       (<= (+ start 5) end)
                                       (list (octets-integer o (+ start 3) 2 :big-endian t)
                                             (octets-integer o (+ start 1) 2 :big-endian t)))))))
@@ -245,10 +253,10 @@ boxes read octets in hand (BOX-CONTENTS-START)."
 
 (defun box-header-at (read at)
   "The box of a file kept in boxes (JPEG 2000, JPEG XL) whose header is at AT,
-read with READ (OCTETS-READER), as three values: its type, where its contents
-begin and where it ends (NIL for one running to the end of the file), its
-size read in the long form too; NIL when no header is there or its size is
-shorter than its header."
+read with READ (OCTETS-READER), as three values. They are its type, where its
+contents begin and where it ends (NIL for one running to the end of the
+file), and its size read in the long form too. The result is NIL when no
+header is there or its size is shorter than its header."
   (let ((header (funcall read at 16)))
     (when (and header (>= (length header) 8))
       (let ((size (octets-integer header 0 4 :big-endian t))
@@ -277,10 +285,10 @@ unless given: the box found may begin past them."
 
 (defun j2k-header (o &optional (at 0))
   "What the JPEG 2000 codestream at AT in O says of its picture in its main
-header, as a list of :WIDTH and :HEIGHT, :COMPONENTS (colours and the
+header, as a list. It holds :WIDTH and :HEIGHT, :COMPONENTS (colours and the
 like, alpha too), :PRECISION (the most bits of any one, NIL when not all are
-among O) and :TILES (how many pieces the picture is cut in); NIL when its
-size marker is not there or holds values no codestream has."
+among O) and :TILES (how many pieces the picture is cut in). The result is NIL
+when its size marker is not there or holds values no codestream has."
   (flet ((n (offset count) (octets-integer o (+ at offset) count :big-endian t)))
     (let ((x (n 8 4)) (y (n 12 4)) (xo (n 16 4)) (yo (n 20 4))
           (xt (n 24 4)) (yt (n 28 4)) (xto (n 32 4)) (yto (n 36 4))
@@ -351,7 +359,8 @@ those fields are not all among O."
                         (ratio (bits 3)))
                    (values (if (zerop ratio)
                                (if small (* 8 (1+ (bits 5))) (choice '(9 . 1) '(13 . 1) '(18 . 1) '(30 . 1)))
-                               (destructuring-bind (across down) (nth (1- ratio) '((1 1) (12 10) (4 3) (3 2) (16 9) (5 4) (2 1)))
+                               (destructuring-bind (across down) (nth (1- ratio)
+                                                                      '((1 1) (12 10) (4 3) (3 2) (16 9) (5 4) (2 1)))
                                  (floor (* height across) down)))
                            height)))
                (preview-size ()
@@ -395,7 +404,8 @@ boxes is read with READ (BOX-CONTENTS-START), its codestream perhaps past O."
               (t (let ((joined (make-array 0 :element-type '(unsigned-byte 8) :adjustable t :fill-pointer 0)))
                    (loop repeat 64
                          while (and type (equal type "jxlp") end (< (length joined) 1024))
-                         do (let ((part (and (< (+ start 4) end) (funcall read (+ start 4) (min 1024 (- end start 4))))))
+                         do (let ((part (and (< (+ start 4) end)
+                                             (funcall read (+ start 4) (min 1024 (- end start 4))))))
                               (loop for octet across (or part #()) do (vector-push-extend octet joined))
                               (multiple-value-setq (type start end) (box-header-at read end))))
                    (jxl-header joined)))))
@@ -471,8 +481,9 @@ with an EXIF directory); NIL for a TIFF image."
                     (count (and make (third make)))
                     (at (and make (if (<= count 4) nil (fourth make))))
                     (name (and at (<= (+ at count) (length o)) (octets-ascii o at (+ at (min count 64)))))
-                    (maker (and name (find-if (lambda (m) (uiop:string-prefix-p (car m) (string-trim '(#\Nul #\Space) name)))
-                                              *raw-camera-makers*))))
+                    (maker (and name
+                                (find-if (lambda (m) (uiop:string-prefix-p (car m) (string-trim '(#\Nul #\Space) name)))
+                                         *raw-camera-makers*))))
                (and maker (assoc 34665 entries) (cdr maker)))))))
 
 (defun raw-words (o)
@@ -553,7 +564,8 @@ version and flags are passed over when it has them."
     (dolist (type path box)
       (let* ((inner (second box))
              ;; meta is a full box in MP4 and HEIF (four octets of version and flags), not in QuickTime
-             (inner (if (and (equal (first box) "meta") (not (octets-at-p octets "hdlr" (+ inner 4)))) (+ inner 4) inner)))
+             (inner (if (and (equal (first box) "meta")
+                             (not (octets-at-p octets "hdlr" (+ inner 4)))) (+ inner 4) inner)))
         (setf box (find type (box-children octets inner (third box)) :key #'first :test #'equal))
         (unless box (return nil))))))
 
@@ -577,8 +589,10 @@ when none is among O."
   "An ISO media file described by its brand: MP4 video, a QuickTime movie,
 MPEG-4 audio, 3GP, or a HEIF or AVIF image, with its size."
   (let ((brand (octets-ascii o 8 12)))
-    (values (cond ((member brand '("heic" "heix" "heim" "heis" "mif1" "msf1") :test #'equal) (joined-words "HEIF image" (multiple-value-call #'size-words (ispe-size o))))
-                  ((member brand '("avif" "avis") :test #'equal) (joined-words "AVIF image" (multiple-value-call #'size-words (ispe-size o))))
+    (values (cond ((member brand '("heic" "heix" "heim" "heis" "mif1" "msf1") :test #'equal)
+                   (joined-words "HEIF image" (multiple-value-call #'size-words (ispe-size o))))
+                  ((member brand '("avif" "avis") :test #'equal)
+                   (joined-words "AVIF image" (multiple-value-call #'size-words (ispe-size o))))
                   ((equal brand "qt  ") "QuickTime movie")
                   ((member brand '("M4A " "M4B " "M4P ") :test #'equal) "MPEG-4 audio")
                   ((and brand (uiop:string-prefix-p "3g" brand)) "3GP video")
@@ -655,7 +669,9 @@ plain text, and as a second value its kind."
           ((or (and (>= (length start) 4) (string-equal "<svg" start :end2 4))
                (and (>= (length start) 5) (string-equal "<?xml" start :end2 5) (search "<svg" head)))
            (values "SVG image" :svg))
-          ((or (and (>= (length start) 9) (string-equal "<!doctype" start :end2 9) (search "html" head :test #'char-equal))
+          ((or (and (>= (length start) 9)
+                    (string-equal "<!doctype" start :end2 9)
+                    (search "html" head :test #'char-equal))
                (and (>= (length start) 5) (string-equal "<html" start :end2 5)))
            (values "HTML document" :html))
           ((and (>= (length start) 5) (string-equal "<?xml" start :end2 5)) (values "XML document" :xml)))))
@@ -668,7 +684,8 @@ plain text, and as a second value its kind."
     (:avif "avif") (:jp2 "jp2" "jpx" "jpf" "jph") (:j2k "j2k" "j2c" "jpc" "jhc") (:jxl "jxl")
     (:psd "psd" "psb") (:xcf "xcf") (:svg "svg") (:pdf "pdf") (:postscript "ps" "eps" "ai")
     (:rtf "rtf") (:ole "doc" "xls" "ppt" "msg" "msi" "vsd" "pub" "dot" "xlt" "pot" "pps")
-    (:docx "docx" "docm" "dotx" "dotm") (:xlsx "xlsx" "xlsm" "xltx" "xltm") (:pptx "pptx" "pptm" "potx" "potm" "ppsx" "ppsm")
+    (:docx "docx" "docm" "dotx" "dotm") (:xlsx "xlsx" "xlsm" "xltx"
+                                         "xltm") (:pptx "pptx" "pptm" "potx" "potm" "ppsx" "ppsm")
     (:odt "odt" "ott") (:ods "ods" "ots") (:odp "odp" "otp") (:epub "epub") (:apk "apk") (:jar "jar" "war" "ear")
     (:zip "zip" "whl" "xpi" "crx" "nupkg" "cbz" "kmz" "ipa")
     (:gzip "gz" "tgz") (:bzip2 "bz2" "tbz" "tbz2") (:xz "xz" "txz") (:zstd "zst" "zstd" "tzst") (:lz4 "lz4")
@@ -731,7 +748,8 @@ gpg writes them first."
 (defun pdf-words (octets header)
   "What the PDF whose first octets are OCTETS is, in words, its %PDF- header
 at HEADER: PDF document, version 1.7."
-  (joined-words "PDF document" (let ((v (octets-ascii octets (+ header 5) (+ header 8)))) (and v (format nil "version ~a" v)))))
+  (joined-words "PDF document"
+                (let ((v (octets-ascii octets (+ header 5) (+ header 8)))) (and v (format nil "version ~a" v)))))
 
 (defun octets-kind (octets)
   "What the file whose first octets are OCTETS is, told by them alone: two
@@ -748,7 +766,8 @@ octets, up to 64 KB, the more kinds are told (a disc image's mark is 32 KB in)."
         ((is (list #xFF #x4F #xFF #x51))
          (values (joined-words "JPEG 2000 codestream" (multiple-value-call #'size-words (j2k-size o))) :j2k))
         ((or (is *jxl-signature*) (and (is (list #xFF #x0A)) (jxl-header o))) (values (jxl-words o) :jxl))
-        ((or (is "GIF87a") (is "GIF89a")) (values (joined-words "GIF image" (multiple-value-call #'size-words (gif-size o))) :gif))
+        ((or (is "GIF87a") (is "GIF89a"))
+         (values (joined-words "GIF image" (multiple-value-call #'size-words (gif-size o))) :gif))
         ((and (is "RIFF") (is "WEBP" 8)) (values (webp-words o) :webp))
         ((and (is "BM") (member (octets-integer o 14 4) '(12 40 52 56 64 108 124)))
          (values (joined-words "BMP image" (multiple-value-call #'size-words (bmp-size o))) :bmp))
@@ -828,13 +847,17 @@ octets, up to 64 KB, the more kinds are told (a disc image's mark is 32 KB in)."
         ((is (list 10 13 13 10)) (values "network capture (pcapng)" :pcapng))
         ((is (list 76 0 0 0 1 20 2 0)) (values "Windows shortcut" :lnk))
         ((is "regf") (values "Windows registry hive" :registry))
-        ((is "!BDN") (values (case (octet-at o 10) ((14 15) "Outlook mailbox (ANSI, before 2003)") (23 "Outlook mailbox (Unicode)")
-                                   (36 "Outlook mailbox (Unicode, 4 KB pages)") (t "Outlook mailbox"))
+        ((is "!BDN") (values (case (octet-at o 10)
+                               ((14 15) "Outlook mailbox (ANSI, before 2003)")
+                               (23 "Outlook mailbox (Unicode)")
+                               (36 "Outlook mailbox (Unicode, 4 KB pages)") (t "Outlook mailbox"))
                              :pst))
         ((is (list 69 108 102 70 105 108 101 0)) (values "Windows event log" :evtx))
         ((is "MDMP") (values "Windows memory dump" :minidump))
         ((or (is (list 0 1 0 0 0)) (is "OTTO") (is "true") (is "ttcf") (is "wOFF") (is "wOF2")) (values "font" :font))
-        ((openpgp-encrypted-p o) (values (if (is "-----") "OpenPGP encrypted message, armoured" "OpenPGP encrypted message") :openpgp))
+        ((openpgp-encrypted-p o) (values (if (is "-----")
+                                             "OpenPGP encrypted message, armoured"
+                                             "OpenPGP encrypted message") :openpgp))
         ;; a PDF with other octets before its header, and binary data after it
         ((and (pdf-header-at o) (binary-head-p o)) (values (pdf-words o (pdf-header-at o)) :pdf))
         ;; text in another encoding, then kinds of text

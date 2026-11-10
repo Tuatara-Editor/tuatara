@@ -24,14 +24,18 @@
     ;; showing the octets changes nothing
     (false (tuatara.buffer:buffer-modified-p (session-buffer editor))))
   ;; and back to text
-  (multiple-value-bind (f editor) (run-keys "M-x h e x - m o d e RET M-x h e x - m o d e RET" :text *hex-sample* :width 80)
+  (multiple-value-bind (f editor)
+      (run-keys "M-x h e x - m o d e RET M-x h e x - m o d e RET" :text *hex-sample* :width 80)
     (false (tuatara.display:hex-view-p (session-buffer editor)))
     (is string= "Hello, world!" (string-right-trim " " (tuatara.frontend.fake:fake-screen-line f 0)))))
 
 (define-test (hex-and-sums hex-motion)
   ;; NORMAL state's h j k l, g h, g l, g g and g e move by octets and rows of sixteen
   (flet ((hex-after (keys)
-           (session-hex-point (nth-value 1 (run-keys (format nil "M-x h e x - m o d e RET ~a" keys) :text *hex-sample* :width 80)))))
+           (session-hex-point (nth-value 1
+                                         (run-keys (format nil "M-x h e x - m o d e RET ~a" keys)
+                                                   :text *hex-sample*
+                                                   :width 80)))))
     (is = 3 (hex-after "l l l"))
     (is = 16 (hex-after "j"))
     (is = 18 (hex-after "j l l"))       ; the second octet of é
@@ -52,16 +56,29 @@
       (true (> (session-hex-point editor) 16))
       (is = 1 (mod (session-hex-point editor) 16))
       (true (search (format nil "~(~8,'0x~)" (tuatara.display:hex-row-start (session-hex-point editor)))
-                    (with-output-to-string (s) (dotimes (r 6) (write-line (tuatara.frontend.fake:fake-screen-line f r) s))))))
+                    (with-output-to-string (s)
+                      (dotimes (r 6) (write-line (tuatara.frontend.fake:fake-screen-line f r) s))))))
     (is = 1 (session-hex-point (nth-value 1 (run-keys "M-x h e x - m o d e RET l C-v M-v" :text long :width 80)))))
   ;; M-g g asks for an offset: 0x for hex, else decimal
-  (is = 16 (session-hex-point (nth-value 1 (run-keys "M-x h e x - m o d e RET M-g g 0 x 1 0 RET" :text *hex-sample* :width 80))))
-  (is = 5 (session-hex-point (nth-value 1 (run-keys "M-x h e x - m o d e RET M-g g 5 RET" :text *hex-sample* :width 80))))
-  (is = 20 (session-hex-point (nth-value 1 (run-keys "M-x h e x - m o d e RET M-g g 9 9 9 RET" :text *hex-sample* :width 80)))))
+  (is = 16
+      (session-hex-point (nth-value 1
+                                    (run-keys "M-x h e x - m o d e RET M-g g 0 x 1 0 RET"
+                                              :text *hex-sample*
+                                              :width 80))))
+  (is = 5
+      (session-hex-point (nth-value 1 (run-keys "M-x h e x - m o d e RET M-g g 5 RET" :text *hex-sample* :width 80))))
+  (is = 20
+      (session-hex-point (nth-value 1
+                                    (run-keys "M-x h e x - m o d e RET M-g g 9 9 9 RET"
+                                              :text *hex-sample*
+                                              :width 80)))))
 
 (define-test (hex-and-sums hex-editing)
   (flet ((octets-after (keys)
-           (let ((editor (nth-value 1 (run-keys (format nil "M-x h e x - m o d e RET ~a" keys) :text *hex-sample* :width 80))))
+           (let ((editor (nth-value 1
+                                    (run-keys (format nil "M-x h e x - m o d e RET ~a" keys)
+                                              :text *hex-sample*
+                                              :width 80))))
              (values (tuatara.text:rope-octets (tuatara.buffer:buffer-text (session-buffer editor)))
                      (session-hex-point editor)))))
     ;; in the hex digits, typing writes hex digits: two an octet, then on to the next
@@ -127,7 +144,8 @@
 (define-test (hex-and-sums hex-view-keeps-size)
   ;; the keys that would insert or delete octets do nothing in the hex view, and say why
   (dolist (keys '("l d" "l o C-g" "l O C-g" "l i RET C-g" "y p" "l y p" "l D" "l c C-g" "C-k" "C-d" "l i DEL C-g"))
-    (multiple-value-bind (f editor) (run-keys (format nil "M-x h e x - m o d e RET ~a" keys) :text *hex-sample* :width 80)
+    (multiple-value-bind (f editor)
+        (run-keys (format nil "M-x h e x - m o d e RET ~a" keys) :text *hex-sample* :width 80)
       (is string= *hex-sample* (session-text editor) "~a changes nothing" keys)
       (false (tuatara.buffer:buffer-modified-p (session-buffer editor)) "~a leaves the buffer unmodified" keys)
       (true (tuatara.display:hex-view-p (session-buffer editor)))
@@ -168,7 +186,9 @@
            (is = 0 (tuatara.display:hex-point buffer))
            (true (tuatara.buffer:buffer-local buffer :read-only))
            (is equalp #(0 1 2 255) (tuatara.text:rope-octets (tuatara.buffer:buffer-text buffer)))
-           (let ((again (tuatara.defaults::show-octets-in-hex "*hex octets*" (coerce #(9) 'tuatara.text:octets) :show #'identity)))
+           (let ((again (tuatara.defaults::show-octets-in-hex "*hex octets*"
+                                                              (coerce #(9) 'tuatara.text:octets)
+                                                              :show #'identity)))
              (false (tuatara.buffer:live-buffer-p buffer))
              (setf buffer again)
              (is = 1 (tuatara.buffer:buffer-size again))))
@@ -220,7 +240,8 @@
         (text (make-string 3000000 :initial-element #\a)))
     (multiple-value-bind (f editor) (run-keys "M-x s h a 2 5 6 - s u m RET" :text text :width 160)
       (declare (ignore editor))
-      (true (tuatara.frontend.fake:fake-frame-showing f "Summing *scratch*'s text (3,000,000 octets) in the background"))
+      (true (tuatara.frontend.fake:fake-frame-showing f
+                                                      "Summing *scratch*'s text (3,000,000 octets) in the background"))
       (true (tuatara.frontend.fake:fake-frame-showing f "SHA-256 of *scratch*'s text (3,000,000 octets): "
                                                       "2a152c894398719c0570f83fac34ac03a0f6e8e474b995c2403aa5434f7b9dd4")))))
 
@@ -257,8 +278,11 @@
     (tuatara.runtime:forget-job job)
     (tuatara.buffer:kill-buffer b))
   ;; one that runs until stopped: M-x stop-job
-  (let ((tuatara.defaults::*hash-library* nil) (tuatara.defaults::*hash-program* "yes") (tuatara.defaults::*hash-wait* 0))
-    (multiple-value-bind (f editor) (run-keys "M-x s h a 2 5 6 - s u m RET M-x s t o p - j o b RET y RET" :text "abc" :width 140)
+  (let ((tuatara.defaults::*hash-library* nil)
+        (tuatara.defaults::*hash-program* "yes")
+        (tuatara.defaults::*hash-wait* 0))
+    (multiple-value-bind (f editor)
+        (run-keys "M-x s h a 2 5 6 - s u m RET M-x s t o p - j o b RET y RET" :text "abc" :width 140)
       (declare (ignore editor))
       (true (tuatara.frontend.fake:fake-frame-showing f "Stop summing at"))
       (true (tuatara.frontend.fake:fake-frame-showing f "Stopped: nothing summed"))
@@ -273,7 +297,8 @@
 
 (define-test (hex-and-sums hex-rows-cheaply)
   ;; a row of the hex view is made without writing text through a stream per octet
-  (let ((rope (tuatara.text:make-rope (coerce (loop for i below 4096 collect (mod i 256)) '(vector (unsigned-byte 8))))))
+  (let ((rope (tuatara.text:make-rope (coerce (loop for i below 4096 collect (mod i 256))
+                                              '(vector (unsigned-byte 8))))))
     (flet ((per-row (rows)
              (tuatara.display::hex-layout rope 0 rows)
              (/ (nth-value 2 (tuatara.bench::measuring (tuatara.display::hex-layout rope 0 rows))) rows)))

@@ -13,18 +13,21 @@
 
 (define-major-mode buffers-mode sectioned-list-mode
   "The buffer list: one line per live buffer, in a section for each project.
-\\<support>\\[next-line] and \\[previous-line] move, \\<buffers-mode>\\[list-visit] or \\`RET' opens the buffer
-on the line (on a heading, folds or unfolds its section; on that of a client that ended,
-takes its buffers up into this client), \\[list-visit-other] in another
-window, \\[quit-window] returns; \\[list-toggle-fold] folds or unfolds the section, \\[list-toggle-all-folds] all of them; \\[list-mark-entry] marks a buffer (>),
-\\[list-mark-for-deletion] marks it for deletion (D; on the heading of a client that ended, every
-buffer of its folder), \\[list-unmark-entry] unmarks it,
-\\[list-unmark-all] unmarks them all, \\[list-toggle-marks] swaps marked and unmarked; \\[buffers-save] saves the marked buffers,
-\\[list-delete-marked] kills them after asking (on a heading, every buffer of
-that project or client's folder), \\[list-execute] kills those marked for deletion; \\[revert-buffer] lists
-them again, as the list does by itself while it is shown, marks kept. The modal keys that move, select and copy
-work as in any support buffer; \\<normal>\\[start-selection] and
-\\[select-lines] select."
+\\<support>\\[next-line] and \\[previous-line] move,
+\\<buffers-mode>\\[list-visit] or \\`RET' opens the buffer on the line (on a
+heading, folds or unfolds its section; on that of a client that ended, takes its
+buffers up into this client), \\[list-visit-other] in another window,
+\\[quit-window] returns. \\[list-toggle-fold] folds or unfolds the section,
+\\[list-toggle-all-folds] all of them. \\[list-mark-entry] marks a buffer (>),
+\\[list-mark-for-deletion] marks it for deletion (D; on the heading of a client
+that ended, every buffer of its folder), \\[list-unmark-entry] unmarks it,
+\\[list-unmark-all] unmarks them all, \\[list-toggle-marks] swaps marked and
+unmarked. \\[buffers-save] saves the marked buffers, \\[list-delete-marked]
+kills them after asking (on a heading, every buffer of that project or client's
+folder), \\[list-execute] kills those marked for deletion. \\[revert-buffer]
+lists them again, as the list does by itself while it is shown, marks kept. The
+modal keys that move, select and copy work as in any support buffer;
+\\<normal>\\[start-selection] and \\[select-lines] select."
   :lighter "Buffers" :interactive nil)
 
 (defvar *buffers-keymap* (mode-keymap 'buffers-mode)
@@ -176,9 +179,9 @@ NIL."
 (defun buffers-render (list-buffer &optional (point :line))
   "Fill LIST-BUFFER with the live buffers (see BUFFERS) in a section for each
 project and one for those in none (BUFFER-SECTIONS, SECTIONED-PIECES), then a
-line summing them up; point staying on its buffer's line, or on its line when
-that buffer is gone, at its start, or with POINT :keep at its column; a mark
-on a buffer killed meanwhile is dropped."
+line summing them up. Point stays on its buffer's line, or on its line when that
+buffer is gone, at its start, or with POINT :keep at its column. A mark on a
+buffer killed meanwhile is dropped."
   (let* ((buffers (buffers-in-order list-buffer))
          (files (count-if #'buffer-listed-file buffers))
          (sections (buffer-sections buffers)))
@@ -224,35 +227,38 @@ which of them ended or are kept; another key means the list is out of date
   "List every live buffer in *Buffers*, those used most recently first, in a
 section for each project (a folder holding .git or .project,
 *PROJECT-ROOT-MARKERS*: its files, the folders of it listed and the buffers
-standing in them), the project of the buffer used last first, then one for
-those in none; each heading says the project's folder name and how many
-buffers it holds. In an editor running in the background, a folder for each
-client instead: this client's open, the other clients' folded, then those of
-clients that ended, the last to end first, each under a faint heading saying
-when it ended; then those of the buffers every client is offered (*Messages*);
-a buffer opened from another folder becomes this client's too; where they are shows in the last column, a rimu
-list's folder there too. \\<buffers-mode>\\[list-visit] on the heading of a client that ended takes its buffers up into
-this client, as starting tuatara --client with no files does for the last to end,
-and \\[list-mark-for-deletion] there marks every buffer of its folder for deletion;
-\\[list-toggle-fold] folds or unfolds a section,
-\\[list-toggle-all-folds] all of them; \\[list-delete-marked] on a heading kills the buffers of the project or client's folder, as
-\\[kill-project-buffers] does from any of them. Each line shows a buffer's marks (> marked, D marked for
-deletion, * modified, % read-only), name, size, major mode and file; names in
-stars (*Messages*), read-only buffers, help and marked names each set apart
-in a face of their own; the number of buffers, their size and files summed
-up at the end. \\<support>\\[next-line] and
-\\[previous-line] move, \\<buffers-mode>\\[list-visit] or \\`RET' opens the
-buffer on the line, \\[list-visit-other] in another window, \\[quit-window] returns; \\[list-mark-entry] marks the
-buffer on the line, \\[list-mark-for-deletion] marks it for deletion,
-\\[list-unmark-entry] unmarks it, \\[list-unmark-all] unmarks them all, \\[list-toggle-marks] swaps marked and unmarked, a count
-marking as many;
-\\[buffers-keep-client] makes the client whose folder the cursor is in the persistent one;
-\\[buffers-save] saves the marked buffers (the one on the line when none is),
-\\[list-delete-marked] kills them after asking, \\[list-execute] kills those
-marked for deletion; \\[revert-buffer] lists them again, marks kept, as the
-list does by itself while it is shown. \\<support>\\[beginning-of-buffer],
-\\`g e', \\[start-selection], \\[copy-selection-or-char] and the other modal keys that read
-and select work as in any support buffer."
+standing in them), the project of the buffer used last first, then one for those
+in none. Each heading says the project's folder name and how many buffers it
+holds. In an editor running in the background, a folder for each client instead:
+this client's open, the other clients' folded, then those of clients that ended,
+the last to end first, each under a faint heading saying when it ended. Then
+come those of the buffers every client is offered (*Messages*). A buffer opened
+from another folder becomes this client's too. Where they are shows in the last
+column, a rimu list's folder there too. \\<buffers-mode>\\[list-visit] on the
+heading of a client that ended takes its buffers up into this client, as
+starting tuatara --client with no files does for the last to end, and
+\\[list-mark-for-deletion] there marks every buffer of its folder for deletion.
+\\[list-toggle-fold] folds or unfolds a section, \\[list-toggle-all-folds] all
+of them. \\[list-delete-marked] on a heading kills the buffers of the project or
+client's folder, as \\[kill-project-buffers] does from any of them. Each line
+shows a buffer's marks (> marked, D marked for deletion, * modified, %
+read-only), name, size, major mode and file; names in stars (*Messages*),
+read-only buffers, help and marked names each set apart in a face of their own;
+the number of buffers, their size and files summed up at the end.
+\\<support>\\[next-line] and \\[previous-line] move,
+\\<buffers-mode>\\[list-visit] or \\`RET' opens the buffer on the line,
+\\[list-visit-other] in another window, \\[quit-window] returns.
+\\[list-mark-entry] marks the buffer on the line, \\[list-mark-for-deletion]
+marks it for deletion, \\[list-unmark-entry] unmarks it, \\[list-unmark-all]
+unmarks them all, \\[list-toggle-marks] swaps marked and unmarked, a count
+marking as many. \\[buffers-keep-client] makes the client whose folder the
+cursor is in the persistent one. \\[buffers-save] saves the marked buffers (the
+one on the line when none is), \\[list-delete-marked] kills them after asking,
+\\[list-execute] kills those marked for deletion. \\[revert-buffer] lists them
+again, marks kept, as the list does by itself while it is shown.
+\\<support>\\[beginning-of-buffer], \\`g e', \\[start-selection],
+\\[copy-selection-or-char] and the other modal keys that read and select work as
+in any support buffer."
   (let ((list (buffer-in-mode "*Buffers*" 'buffers-mode)))
     (show-buffer list)
     ;; the other clients' folders shown folded, this client's open
@@ -352,7 +358,9 @@ buffer on the current line."
                (lambda (list targets)
                  (let ((files (remove-if-not #'tuatara.buffer:buffer-file targets)))
                    (if (null files)
-                       (message "~:[~a has~;~*None of them has~] no file" (rest targets) (tuatara.buffer:buffer-name (first targets)))
+                       (message "~:[~a has~;~*None of them has~] no file"
+                                (rest targets)
+                                (tuatara.buffer:buffer-name (first targets)))
                        (progn (save-buffers-saying files (and (rest files) "Saved ~d buffers"))
                               (buffers-render list)))))
                "buffer"))

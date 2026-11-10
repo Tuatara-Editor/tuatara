@@ -57,7 +57,10 @@ directory removed afterwards."
                  (true (tuatara.frontend.fake:fake-frame-showing f "No recent files")))
                ;; visited in turn: C-x C-r RET goes back to the one before, the current one left out
                (multiple-value-bind (f editor)
-                   (run-keys (format nil "C-x C-f C-a C-k ~a RET C-x C-f C-a C-k ~a RET C-x C-r" (key-string a) (key-string b))
+                   (run-keys (format nil
+                                     "C-x C-f C-a C-k ~a RET C-x C-f C-a C-k ~a RET C-x C-r"
+                                     (key-string a)
+                                     (key-string b))
                              :width 100 :height 12)
                  (declare (ignore editor))
                  (multiple-value-bind (screen) (tuatara.frontend.fake:fake-frame-with f "Open recent file:")
@@ -66,7 +69,11 @@ directory removed afterwards."
                    ;; its permissions, size and when it changed beside it
                    (true (find-if (lambda (row) (and (search "a.txt" row) (search "-rw" row) (search "2 B" row))) screen))))
                (kill-buffers-visiting dir)
-               (multiple-value-bind (f editor) (run-keys (format nil "C-x C-f C-a C-k ~a RET C-x C-r RET" (key-string a)) :width 100 :height 12)
+               (multiple-value-bind (f editor) (run-keys (format nil
+                                                                 "C-x C-f C-a C-k ~a RET C-x C-r RET"
+                                                                 (key-string a))
+                                                         :width 100
+                                                         :height 12)
                  (declare (ignore f))
                  (is string= "b.txt" (tuatara.buffer:buffer-name (tuatara.display:window-buffer (tuatara.command:editor-window editor)))))
                (is equal (list b a) (mapcar #'car (subseq (tuatara.defaults::read-recent-files) 0 2)))
@@ -134,13 +141,16 @@ directory removed afterwards."
 (define-test (recent-files opening-safely-by-itself)
   (with-fresh-recent-files
     (with-test-directory (dir)
-      (let* ((binary (namestring (put-file (merge-pathnames "blob.dat" dir) (format nil "MZ~c~cpayload" (code-char 0) (code-char 1)))))
+      (let* ((binary (namestring (put-file (merge-pathnames "blob.dat" dir)
+                                           (format nil "MZ~c~cpayload" (code-char 0) (code-char 1)))))
              (evidence (ensure-directories-exist (merge-pathnames "evidence/" dir)))
              (kept (namestring (put-file (merge-pathnames "note.txt" evidence) "hello")))
              (plain (namestring (put-file (merge-pathnames "plain.txt" dir) "hello"))))
         (flet ((open-it (path &rest more)
                  (multiple-value-bind (f editor)
-                     (run-keys (format nil "C-x C-f C-a C-k ~a RET~{ ~a~}" (key-string path) more) :width 150 :height 12)
+                     (run-keys (format nil "C-x C-f C-a C-k ~a RET~{ ~a~}" (key-string path) more)
+                               :width 150
+                               :height 12)
                    (values f (tuatara.display:window-buffer (tuatara.command:editor-window editor))))))
           (unwind-protect
                (progn
@@ -230,10 +240,16 @@ directory removed afterwards."
                  (true (tuatara.frontend.fake:fake-frame-showing f "a.txt safe")))
                ;; RET takes the latest, the safe one; C-n the other
                (true (tuatara.io:safe-visit-p (tuatara.display:window-buffer
-                                               (tuatara.command:editor-window (nth-value 1 (run-keys "C-x C-r RET" :width 100 :height 12))))))
+                                               (tuatara.command:editor-window (nth-value 1
+                                                                                         (run-keys "C-x C-r RET"
+                                                                                                   :width 100
+                                                                                                   :height 12))))))
                (kill-buffers-visiting dir)
                (false (tuatara.io:safe-visit-p (tuatara.display:window-buffer
-                                                (tuatara.command:editor-window (nth-value 1 (run-keys "C-x C-r C-n RET" :width 100 :height 12))))))
+                                                (tuatara.command:editor-window (nth-value 1
+                                                                                          (run-keys "C-x C-r C-n RET"
+                                                                                                    :width 100
+                                                                                                    :height 12))))))
                ;; still listed once each way
                (is = 2 (count a (tuatara.defaults::read-recent-files) :key #'car :test #'string=)))
           (kill-buffers-visiting dir))))))

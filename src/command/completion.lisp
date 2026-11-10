@@ -9,21 +9,22 @@
 
 (in-package #:tuatara.command)
 
-(defstruct (candidate (:constructor make-candidate (string &key annotation value group columns suffix rank)) (:copier nil))
-  "One completion candidate: STRING is what is matched, and what is shown
-unless COLUMNS says otherwise; SUFFIX, fields shown right after STRING, such
-as a command's keys after its name in M-x; ANNOTATION what is shown beside
-it at the right edge (a docstring line, a size and a date); VALUE what
-the caller gets back (STRING when NIL); GROUP the title of the group it is
-listed under, or NIL; COLUMNS, when not NIL, the fields shown in its place,
+(defstruct (candidate (:constructor make-candidate (string &key annotation value group columns suffix rank))
+                      (:copier nil))
+  "One completion candidate. STRING is what is matched, and what is shown
+unless COLUMNS says otherwise. SUFFIX is fields shown right after STRING, such
+as a command's keys after its name in M-x. ANNOTATION is what is shown beside
+it at the right edge (a docstring line, a size and a date). VALUE is what
+the caller gets back (STRING when NIL). GROUP is the title of the group it is
+listed under, or NIL. COLUMNS, when not NIL, is the fields shown in its place,
 each lined up with the same field of the candidates around it. An annotation
-is a string or a list of fields. A field is a string, or a list (TEXT FACE WIDTH
-CUT): FACE a face name, or a list of (START END FACE) over TEXT; WIDTH, when
-given, the columns it takes, its text at the left of them, or at the right for
-a negative WIDTH, or a fraction, that share of the row, the text cut to fit at
-its end, or in its middle when CUT is :MIDDLE. RANK, when given, puts it with
-the entries of a completing read's history, the lower the sooner: for files,
-how lately it was chosen."
+is a string or a list of fields. A field is a string, or a list (TEXT FACE
+WIDTH CUT). FACE is a face name, or a list of (START END FACE) over TEXT.
+WIDTH, when given, is the columns it takes, its text at the left of them, or
+at the right for a negative WIDTH, or a fraction, that share of the row. The
+text is cut to fit at its end, or in its middle when CUT is :MIDDLE. RANK,
+when given, puts it with the entries of a completing read's history, the lower
+the sooner: for files, how lately it was chosen."
   (string "" :type string :read-only t)
   (annotation nil :type (or null string list) :read-only t)
   (value nil :read-only t)
@@ -32,7 +33,8 @@ how lately it was chosen."
   (suffix nil :type list :read-only t)
   (rank nil :read-only t))
 
-(setf (documentation 'make-candidate 'function) "Return a CANDIDATE for STRING with ANNOTATION, VALUE, GROUP and COLUMNS."
+(setf (documentation 'make-candidate 'function) "Return a CANDIDATE for STRING with ANNOTATION,
+VALUE, GROUP and COLUMNS."
       (documentation 'candidate-p 'function) "True when OBJECT is a CANDIDATE."
       (documentation 'candidate-string 'function) "The text of CANDIDATE."
       (documentation 'candidate-annotation 'function) "The annotation of CANDIDATE, or NIL."
@@ -40,7 +42,8 @@ how lately it was chosen."
       (documentation 'candidate-group 'function) "The title of the group CANDIDATE is listed under, or NIL."
       (documentation 'candidate-columns 'function) "The fields CANDIDATE is shown as, or NIL to show its string."
       (documentation 'candidate-suffix 'function) "The fields shown right after CANDIDATE's string, or NIL."
-      (documentation 'candidate-rank 'function) "How soon CANDIDATE comes with a read's history (lower sooner), or NIL.")
+      (documentation 'candidate-rank
+                     'function) "How soon CANDIDATE comes with a read's history (lower sooner), or NIL.")
 
 (defun candidate-result (candidate)
   "What choosing CANDIDATE returns: its value, or its string."
@@ -67,13 +70,14 @@ words are separated by WORD-SEPARATOR-P, or by a change to upper case."
 
 (defun component-walk (folded string case-sensitive &optional positions)
   "How FOLDED, a component of what was typed in lower case unless
-CASE-SENSITIVE (FOLD-COMPONENT), matches STRING, as four values: the kind of
-match, :prefix, :substring, :initialism (its characters the first characters
-of STRING's first words, WORD-START-P), :flex (its characters in STRING in
-order, not necessarily adjacent) or NIL; where a prefix or substring was
-found; how spread out a flex match is, found in order from STRING's start, the
-gaps between its characters counted ten each and the characters skipped inside
-it one each, 0 when they stand together; and with POSITIONS, the positions of
+CASE-SENSITIVE (FOLD-COMPONENT), matches STRING, as four values.
+The first is the kind of match: :prefix, :substring, :initialism (its
+characters the first characters of STRING's first words, WORD-START-P), :flex
+\(its characters in STRING in order, not necessarily adjacent) or NIL. The
+second is where a prefix or substring was found. The third is how spread out a
+flex match is, found in order from STRING's start. The gaps between its
+characters count ten each and the characters skipped inside it one each; it is
+0 when they stand together. The fourth, with POSITIONS, is the positions of
 STRING it matches, as a list. Each character of STRING is compared once for
 each way of matching, and nothing is made but the positions."
   (declare (type simple-string folded) (type string string))
@@ -219,11 +223,12 @@ the candidates ITEMS held let go of."
              (fill ,items nil :end (min ,n (length ,items)))))))))
 
 (defun candidate-sort-key (exact closeness place score length)
-  "The order of a candidate matching an input, one fixnum, lower first, made
-of (in order of weight) EXACT (0 when it is the input itself, else 1),
-CLOSENESS (0 to 3), PLACE (its place in the history or its rank, or NIL for
-none: those with one first, the lower the sooner), SCORE and LENGTH (the
-smaller first); each kept to the bits it has, huge values tying."
+  "The order of a candidate matching an input, one fixnum, lower first. It is
+made of these, in order of weight. EXACT is 0 when it is the input itself,
+else 1. CLOSENESS is 0 to 3. PLACE is its place in the history or its rank,
+or NIL for none: those with one come first, the lower the sooner. Then come
+SCORE and LENGTH (the smaller first). Each is kept to the bits it has, huge
+values tying."
   (declare (type fixnum exact closeness score length))
   (flet ((capped (value bits) (min (max value 0) (1- (ash 1 bits)))))
     (logior (ash exact 50) (ash (capped closeness 2) 48)
@@ -277,20 +282,21 @@ Complexity: O(COUNT log COUNT)."
 
 (defun filter-candidates (input candidates &key history keep-order)
   "Return the CANDIDATES (a list or a vector) matching INPUT as a
-simple-vector sorted best first:
-the one whose string is INPUT exactly; then those matching more closely
-\(COMPONENT-SCORE's second value, found at the start of a word before inside
-one, before the first letters of words, before letters apart); among those
-matching as closely, entries of HISTORY (a list of strings, most recent
-first) and candidates with a RANK before others, in that order; then those
-matching better (CANDIDATE-SCORE: most of the name in one piece, near its
-start), then shorter strings, then alphabetical order. With
-KEEP-ORDER, those matching in the order of CANDIDATES instead, the exact one
-still first; with KEEP-ORDER :UNTIL-TYPED, only while INPUT has nothing to
-match. With an empty INPUT every candidate matches. The second value holds
-those matching, to filter again for a longer INPUT: in the order of
-CANDIDATES when it is kept, else the first value itself. Sorted, the matches
-make no garbage but the vector returned (SORT-MATCHES)."
+simple-vector sorted best first.
+The one whose string is INPUT exactly comes first. Then come those matching
+more closely (COMPONENT-SCORE's second value, found at the start of a word
+before inside one, before the first letters of words, before letters apart).
+Among those matching as closely, entries of HISTORY (a list of strings, most
+recent first) and candidates with a RANK come before others, in that order.
+Then come those matching better (CANDIDATE-SCORE: most of the name in one
+piece, near its start), then shorter strings, then alphabetical order.
+With KEEP-ORDER, those matching are kept in the order of CANDIDATES instead,
+the exact one still first. With KEEP-ORDER :UNTIL-TYPED, this holds only while
+INPUT has nothing to match. With an empty INPUT every candidate matches.
+The second value holds those matching, to filter again for a longer INPUT.
+It is in the order of CANDIDATES when that order is kept, else the first value
+itself. Sorted, the matches make no garbage but the vector returned
+\(SORT-MATCHES)."
   (let ((components (input-components input)))
     (when (if (eq keep-order :until-typed) (null components) keep-order)
       (let ((matching (with-filter-room (keys order items spare (length candidates))
@@ -469,7 +475,9 @@ last one left cut at its end. Returns the string and its spans."
                       collect (if (funcall share-p field)
                                   (multiple-value-bind (text face width cut) (field-parts field default-face)
                                     (let ((columns (min each (floor (* (abs width) row-width)))))
-                                      (list text face (if (minusp width) (- (/ columns row-width)) (/ columns row-width)) cut)))
+                                      (list text face (if (minusp width)
+                                                          (- (/ columns row-width))
+                                                          (/ columns row-width)) cut)))
                                   field)))))
     ;; fields give way from the left while they do not fit
     (loop while (and (rest fields) (> (fields-columns fields row-width) limit))

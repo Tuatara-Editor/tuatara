@@ -14,11 +14,15 @@
   ((text :initarg :text :reader json-error-text)
    (position :initarg :position :reader json-error-position))
   (:report (lambda (condition stream)
-             (format stream "Not JSON: ~a, at character ~d" (json-error-text condition) (json-error-position condition))))
+             (format stream
+                     "Not JSON: ~a, at character ~d"
+                     (json-error-text condition)
+                     (json-error-position condition))))
   (:documentation "Text read as JSON that is not: what was wrong, and where."))
 
 (setf (documentation 'json-error-text 'function) "What was wrong with the text read as JSON."
-      (documentation 'json-error-position 'function) "Where in the text read as JSON it went wrong: a character's index.")
+      (documentation 'json-error-position 'function) "Where in the text read as JSON it went wrong:
+a character's index.")
 
 (defparameter *json-deepest* 512
   "The deepest JSON read: objects and arrays within each other past this are refused.")
@@ -74,7 +78,9 @@ around it; a JSON-ERROR when it holds anything else."
              (hex-at (at)
                ;; the code of the four hexadecimal digits at AT, or NIL
                (and (<= (+ at 4) end)
-                    (loop for j from at below (+ at 4) always (and (char< (char text j) #\Rubout) (digit-char-p (char text j) 16)))
+                    (loop for j from at below (+ at
+                                                 4) always (and (char< (char text j) #\Rubout)
+                                                                (digit-char-p (char text j) 16)))
                     (parse-integer text :start at :end (+ at 4) :radix 16)))
              (hex4 ()
                (let ((code (hex-at i)))
@@ -97,22 +103,23 @@ around it; a JSON-ERROR when it holds anything else."
                           (case e
                             ((#\" #\\ #\/) (write-char e out))
                             (#\b (write-char (code-char 8) out)) (#\f (write-char (code-char 12) out))
-                            (#\n (write-char #\Newline out)) (#\r (write-char #\Return out)) (#\t (write-char #\Tab out))
-                            (#\u (let* ((code (hex4))
+                            (#\n (write-char #\Newline out)) (#\r
+                                                              (write-char #\Return out)) (#\t (write-char #\Tab out))
+                                                              (#\u (let* ((code (hex4))
                                         (low (and (<= #xD800 code #xDBFF) (< (1+ i) end)
                                                   (char= (char text i) #\\) (char= (char text (1+ i)) #\u)
                                                   (hex-at (+ i 2)))))
-                                   ;; a pair of surrogates is one character; one alone stands as
-                                   ;; U+FFFD, what follows it read as itself
-                                   (write-char
-                                    (code-char
-                                     (cond ((and low (<= #xDC00 low #xDFFF))
+                                                                     ;; a pair of surrogates is one character; one alone stands as
+                                                                     ;; U+FFFD, what follows it read as itself
+                                                                     (write-char
+                                                                      (code-char
+                                                                       (cond ((and low (<= #xDC00 low #xDFFF))
                                             (incf i 6)
-                                            (+ #x10000 (ash (- code #xD800) 10) (- low #xDC00)))
-                                           ((<= #xD800 code #xDFFF) #xFFFD)
-                                           (t code)))
-                                    out)))
-                            (t (fail "an unknown escape")))))
+                                                                              (+ #x10000 (ash (- code #xD800) 10) (- low #xDC00)))
+                                                                             ((<= #xD800 code #xDFFF) #xFFFD)
+                                                                             (t code)))
+                                                                      out)))
+                                                              (t (fail "an unknown escape")))))
                        (t (when (< (char-code c) 32) (fail "a control character in a string"))
                           (write-char c out)))))))
              (digits (from)
@@ -244,7 +251,8 @@ for keys that hold an escape."
                             ((#\" #\\ #\/ #\b #\f #\n #\r #\t))
                             (#\u (unless (and (<= (+ i 4) end)
                                               (loop for j from i below (+ i 4)
-                                                    always (and (char< (char text j) #\Rubout) (digit-char-p (char text j) 16))))
+                                                    always (and (char< (char text j) #\Rubout)
+                                                                (digit-char-p (char text j) 16))))
                                    (fail))
                                  (incf i 4))
                             (t (fail)))))
@@ -328,12 +336,13 @@ for keys that hold an escape."
 ;;; Writing
 
 (defun json-write (value &optional stream)
-  "Write VALUE as JSON to STREAM, or return it as a string when STREAM is NIL:
-a hash table as an object (its keys strings, or symbols written in lower
-case), a vector or a list as an array, a string as a string, a number as a
-number, T and :TRUE as true, :FALSE as false, NIL and :NULL as null. A raw
-byte in a string (an octet of text that is not UTF-8) is written as U+FFFD,
-so that what is written is always UTF-8 and takes the same room in UTF-16."
+  "Write VALUE as JSON to STREAM, or return it as a string when STREAM is NIL.
+A hash table is written as an object (its keys strings, or symbols written in
+lower case), a vector or a list as an array, a string as a string, a number
+as a number, T and :TRUE as true, :FALSE as false, NIL and :NULL as null. A
+raw byte in a string (an octet of text that is not UTF-8) is written as
+U+FFFD, so that what is written is always UTF-8 and takes the same room in
+UTF-16."
   (if (null stream)
       (with-output-to-string (s) (json-write value s))
       (labels ((text (string)

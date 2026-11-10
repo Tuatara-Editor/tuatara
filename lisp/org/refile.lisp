@@ -104,7 +104,8 @@ else the first."
                  (:agenda-files (dolist (p (ignoring-errors-reported ("listing the agenda files")
                                              (org-agenda-file-paths)))
                                   (add p levels)))
-                 (:this-file (add (and (tuatara.buffer:buffer-file buffer) (tuatara.io:native (tuatara.buffer:buffer-file buffer))) levels))
+                 (:this-file (add (and (tuatara.buffer:buffer-file buffer)
+                                       (tuatara.io:native (tuatara.buffer:buffer-file buffer))) levels))
                  (t (add (tuatara.io:native (tuatara.io:expand-path where)) levels)))))
     (nreverse files)))
 

@@ -30,7 +30,11 @@ standard key bindings, the modal editing layer (TUATARA NORMAL and INSERT), and 
 them into an editor.")
   (:export #:install-defaults #:*config-file* #:load-user-config
            #:modal-state #:tuatara-normal #:tuatara-insert
-           #:*tuatara-normal-keymap* #:*tuatara-insert-keymap* #:*tuatara-support-keymap* #:*tuatara-list-keymap* #:*tuatara-leader-keymap*
+           #:*tuatara-normal-keymap*
+           #:*tuatara-insert-keymap*
+           #:*tuatara-support-keymap*
+           #:*tuatara-list-keymap*
+           #:*tuatara-leader-keymap*
            #:*global-keymap* #:*tuatara-normal-bindings* #:buffer-modal-class))
 
 (in-package #:tuatara.defaults)

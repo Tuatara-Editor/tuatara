@@ -28,10 +28,13 @@ the project's.")
 
 (defvar *format-seconds* 30
   "The seconds a formatter may take before it is stopped and nothing is
-changed; a language server laying out code that has not answered by then is
-no longer waited for.")
+changed, 30 as standard; a language server laying out code that has not
+answered by then is no longer waited for. Raise it for a formatter that is
+slow on a large file; lower it to give up sooner on one that hangs.")
 
-(defstruct (format-job (:include tuatara.runtime:job) (:constructor make-format-job (buffer version program then)) (:copier nil))
+(defstruct (format-job (:include tuatara.runtime:job)
+                       (:constructor make-format-job (buffer version program then))
+                       (:copier nil))
   "BUFFER's text at VERSION being laid out by PROGRAM, a job: OUTPUT, the text
 it gave back, and SAID, what it said when it failed; THEN, a function of the
 buffer and whether its text was laid out, called once it is over."
@@ -100,14 +103,17 @@ the sandbox when *FORMAT-IN-SANDBOX*."
           (sb-posix:close fd)))
       (multiple-value-bind (output ok)
           (tuatara.io:program-output (cons program (rest command))
-                                     :input (tuatara.text:octets-string input) :seconds *format-seconds* :directory directory)
+                                     :input (tuatara.text:octets-string input)
+                                     :seconds *format-seconds*
+                                     :directory directory)
         (if ok (values (tuatara.text:string-octets output) nil) (values nil "it failed")))))
 
 (defun formatter-output-refusal (input output)
   "Why OUTPUT, the octets a formatter gave back for the octets INPUT, is not
 put in their place: nothing for a text that is not empty, or what is not
 text (well-formed UTF-8) for one that is; NIL when it may be."
-  (flet ((raw-p (octets) (plusp (tuatara.text:rope-invalid (tuatara.text:octets->rope (coerce octets 'tuatara.text:octets))))))
+  (flet ((raw-p (octets)
+           (plusp (tuatara.text:rope-invalid (tuatara.text:octets->rope (coerce octets 'tuatara.text:octets))))))
     (cond ((null output) nil)
           ((and (zerop (length output)) (plusp (length input))) "it gave nothing back")
           ((and (raw-p output) (not (raw-p input))) "what it gave back is not text (UTF-8)"))))
@@ -131,7 +137,9 @@ formatter of the whole file is not run then, and that is said."
          (narrowed (tuatara.buffer:buffer-narrowed-p buffer)))
     (cond
       ((or (tuatara.io:safe-visit-p buffer) (buffer-read-only-p buffer))
-       (message "~a is ~:[read only~;opened safely~]: not formatted" (tuatara.buffer:buffer-name buffer) (tuatara.io:safe-visit-p buffer))
+       (message "~a is ~:[read only~;opened safely~]: not formatted"
+                (tuatara.buffer:buffer-name buffer)
+                (tuatara.io:safe-visit-p buffer))
        (when then (funcall then buffer nil)))
       ;; narrowed: the part shown, by a language server that lays out a part
       ((and narrowed (buffer-servers buffer)
@@ -195,10 +203,13 @@ otherwise, and go on with what was waiting for it."
          (output (format-job-output job))
          (formatted
            (cond ((not (live-buffer-p buffer)) (return-from tuatara.runtime:job-take-in))
-                 (t (finish-formatting buffer (tuatara.io:native-file-name (format-job-program job)) (format-job-version job)
+                 (t (finish-formatting buffer
+                                       (tuatara.io:native-file-name (format-job-program job))
+                                       (format-job-version job)
                                        (case (tuatara.runtime:job-status job)
                                          (:stopped (format nil "it was stopped; ~a" (tuatara.runtime:job-left-words job)))
-                                         (:failed (short-failure-words (or (tuatara.runtime:job-error job) "it ended unexpectedly")))
+                                         (:failed (short-failure-words (or (tuatara.runtime:job-error job)
+                                                                           "it ended unexpectedly")))
                                          (t (and (null output) (short-failure-words (format-job-said job)))))
                                        (lambda ()
                                          (put-text-by-lines buffer (tuatara.text:version-rope (format-job-version job))
@@ -248,7 +259,8 @@ laid out or, when the formatter failed, as it is."
       (start-formatting buffer :then (lambda (b formatted)
                                        (declare (ignore formatted))
                                        ;; formatted or not, not tried again for this save
-                                       (setf (tuatara.buffer:buffer-local b 'formatted-at) (tuatara.buffer:buffer-content-number b))
+                                       (setf (tuatara.buffer:buffer-local b 'formatted-at)
+                                             (tuatara.buffer:buffer-content-number b))
                                        (save-buffer-with-care b :path path :then then)))
       :later)))
 

@@ -24,7 +24,9 @@ the names it is given to the file RECORD, as xdg-open would open them."
   "The names the stand-in opener was given so far, waiting a moment for it."
   (loop repeat 100
         for text = (and (probe-file record) (alexandria:read-file-into-string record))
-        when (and text (plusp (length text))) return (uiop:split-string (string-right-trim '(#\Newline) text) :separator '(#\Newline))
+        when (and text
+                  (plusp (length text))) return (uiop:split-string (string-right-trim '(#\Newline) text)
+                                                                   :separator '(#\Newline))
         do (sleep 0.02)))
 
 (define-test (external opened-on-asking)
@@ -77,7 +79,8 @@ the names it is given to the file RECORD, as xdg-open would open them."
           ;; text
           (refused "notes.png" (kind-octets "hello, world") "notes.png is not a picture, a PDF, a sound or a video")
           ;; an SVG image: it can hold a program a web browser would run
-          (refused "drawing.svg" (kind-octets "<svg xmlns=\"http://www.w3.org/2000/svg\"><script>alert(1)</script></svg>")
+          (refused "drawing.svg"
+                   (kind-octets "<svg xmlns=\"http://www.w3.org/2000/svg\"><script>alert(1)</script></svg>")
                    "by its contents: not opened outside Tuatara (*open-externally-kinds*)"))
         ;; no program to open with
         (alexandria:write-byte-vector-into-file *tiny-png* (merge-pathnames "photo.png" dir) :if-exists :supersede)
@@ -138,9 +141,12 @@ the names it is given to the file RECORD, as xdg-open would open them."
     (true (search "; application/pdf, video/* to programs of your choosing"
                   (tuatara.defaults::external-program-words))))
   ;; what runs a thing, said one way in M-x check-health
-  (is string= "mailboxes by /usr/bin/readpst, shut in" (tuatara.defaults::program-health-words "mailboxes" "/usr/bin/readpst" "install readpst"))
-  (is string= "mailboxes by none: install readpst" (tuatara.defaults::program-health-words "mailboxes" nil "install readpst"))
-  (is string= "outside Tuatara by xdg-open, on asking" (tuatara.defaults::program-health-words "outside Tuatara" "xdg-open" "" :how "on asking"))
+  (is string= "mailboxes by /usr/bin/readpst, shut in"
+      (tuatara.defaults::program-health-words "mailboxes" "/usr/bin/readpst" "install readpst"))
+  (is string= "mailboxes by none: install readpst"
+      (tuatara.defaults::program-health-words "mailboxes" nil "install readpst"))
+  (is string= "outside Tuatara by xdg-open, on asking"
+      (tuatara.defaults::program-health-words "outside Tuatara" "xdg-open" "" :how "on asking"))
   ;; a likelihood shown in a face by how likely
   (is eq :info (tuatara.defaults::likelihood-face 97.2))
   (is eq :info (tuatara.defaults::likelihood-face 80))
@@ -258,8 +264,10 @@ cat \"$2\" && echo \" $*\" && echo \"$4 is gone\" >&2 && exit 1
       (is equal program (tuatara.defaults::user-program-path program))
       (is eq nil (tuatara.defaults::user-program-path (concatenate 'string program "-gone")))
       (multiple-value-bind (output outcome said names)
-          (tuatara.defaults::run-on-copies program (list (cons "master" (list (first files))) (cons "photo" (rest files)))
-                                           (lambda (masters photos) (append (list "--master") masters (list "--photo") photos))
+          (tuatara.defaults::run-on-copies program
+                                           (list (cons "master" (list (first files))) (cons "photo" (rest files)))
+                                           (lambda (masters photos)
+                                             (append (list "--master") masters (list "--photo") photos))
                                            :seconds 30)
         (is eq :failed outcome)
         (is string= "alice.jpg --master /tmp/files/master-1.jpg --photo /tmp/files/photo-1.png"
@@ -361,13 +369,20 @@ cat \"$2\" && echo \" $*\" && echo \"$4 is gone\" >&2 && exit 1
          (tuatara.runtime:*stop-wait* 0.05)
          (gate (list nil))
          (job nil)
-         (buffer (tuatara:reading-buffer '*private-folder-readings* (lambda (b) (tuatara.buffer:buffer-local b 'private-folder-reading))
-                                         "/nonexistent/read.bin" "*private folder test*" (format nil "Reading...~%") 'tuatara:special-mode
+         (buffer (tuatara:reading-buffer '*private-folder-readings*
+                                         (lambda (b) (tuatara.buffer:buffer-local b 'private-folder-reading))
+                                         "/nonexistent/read.bin"
+                                         "*private folder test*"
+                                         (format nil "Reading...~%")
+                                         'tuatara:special-mode
                                          (lambda (b)
-                                           (setf (tuatara.buffer:buffer-local b 'private-folder-reading) "/nonexistent/read.bin"
+                                           (setf (tuatara.buffer:buffer-local b 'private-folder-reading)
+                                                 "/nonexistent/read.bin"
                                                  job (tuatara.defaults::%make-count-job :buffer b :what "Buffer" :total 10))
                                            (tuatara.runtime:start-job-thread
-                                            job (lambda (job) (declare (ignore job)) (loop repeat 1000 until (car gate) do (sleep 0.01)))
+                                            job (lambda (job)
+                                                  (declare (ignore job))
+                                                  (loop repeat 1000 until (car gate) do (sleep 0.01)))
                                             :name "tuatara test job"))
                                          :private-folder "opened/"))
          (folder (tuatara:buffer-private-folder buffer)))

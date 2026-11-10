@@ -13,11 +13,12 @@
 
 (defun hash-lines-into (octets end hash open hashes &optional (avail end))
   "Go on hashing lines (FNV-1a, with the octets that end each:
-TUATARA.TEXT:LINE-END-OCTET-P, so that a line ended by a carriage return
-alone is another than the same line ended by a newline) through OCTETS below
-END from HASH, pushing the hash of each line ended on HASHES; the text goes on to AVAIL, so that a
-carriage return at END - 1 ends a line unless the octet at END is a newline.
-Returns the hash and whether a line is open, to go on with in the next octets."
+TUATARA.TEXT:LINE-END-OCTET-P, so that a line ended by a carriage return alone
+is another than the same line ended by a newline) through OCTETS below END
+from HASH, pushing the hash of each line ended on HASHES. The text goes on to
+AVAIL, so that a carriage return at END - 1 ends a line unless the octet at
+END is a newline. Returns the hash and whether a line is open, to go on with
+in the next octets."
   (declare (type (simple-array (unsigned-byte 8) (*)) octets) (type fixnum end avail)
            (type (unsigned-byte 64) hash))
   (loop with start of-type fixnum = 0
@@ -141,11 +142,12 @@ removed and added."
 
 (defun unified-diff (old new &key (old-name "old") (new-name "new") (context 3) (limit 2000))
   "The differences between OLD and NEW, lists of lines (strings without their
-newlines), written as diff --unified and git write them: a --- line naming
-OLD-NAME and a +++ line naming NEW-NAME, then each hunk, its @@ line, the
-lines only OLD has after -, those only NEW has after +, and CONTEXT lines
-both have around them after a space, hunks whose context would meet made
-one. Empty when they are the same. LIMIT is as for DIFF-HUNKS."
+newlines), written as diff --unified and git write them. First comes a ---
+line naming OLD-NAME and a +++ line naming NEW-NAME. Then comes each hunk,
+with its @@ line, the lines only OLD has after -, those only NEW has after +,
+and CONTEXT lines both have around them after a space. Hunks whose context
+would meet are made one. Empty when they are the same. LIMIT is as for
+DIFF-HUNKS."
   (let* ((old (coerce old 'simple-vector)) (new (coerce new 'simple-vector))
          (n (length old))
          ;; each hunk as 0-based (OLD-FROM OLD-TO NEW-FROM NEW-TO)
@@ -235,7 +237,10 @@ where it is, cut to the other text's size."
 (defun line-edges (rope from count)
   "The byte offsets in ROPE where its COUNT lines from the 0-based line FROM
 begin and end; past its last line, its end."
-  (flet ((at (line) (if (> line (tuatara.text:rope-lines rope)) (tuatara.text:rope-octet-length rope) (tuatara.text:line->byte rope line))))
+  (flet ((at (line)
+           (if (> line (tuatara.text:rope-lines rope))
+               (tuatara.text:rope-octet-length rope)
+               (tuatara.text:line->byte rope line))))
     (values (at from) (at (+ from count)))))
 
 (defun put-text-by-lines (buffer old new)
@@ -245,7 +250,8 @@ the cursor and the window stay on the text they were on; returns how many
 places changed."
   (let* ((new (if (stringp new) (tuatara.text:string->rope new) new))
          (edits (loop for (os oc ns nc) in (diff-hunks (rope-line-hashes old) (rope-line-hashes new))
-                     collect (multiple-value-bind (start end) (if (zerop oc) (line-edges old os 0) (line-edges old (1- os) oc))
+                     collect (multiple-value-bind (start end)
+                                 (if (zerop oc) (line-edges old os 0) (line-edges old (1- os) oc))
                                (multiple-value-bind (from to) (if (zerop nc) (values 0 0) (line-edges new (1- ns) nc))
                                  (tuatara.text:make-edit start end (and (< from to) (tuatara.text:rope-octets new :start from :end to))))))))
     (when edits

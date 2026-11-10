@@ -117,7 +117,8 @@ and again only when *BUILT-IN-SNIPPETS* is another list."
 made from, the nearest first, then fundamental-mode's; in each, Tuatara's own
 and yours, one of yours taking the place of one of the same name."
   (let ((snippets '()))
-    (dolist (mode (remove-duplicates (append (mode-precedence (buffer-major-mode buffer)) '(fundamental-mode)) :from-end t))
+    (dolist (mode (remove-duplicates (append (mode-precedence (buffer-major-mode buffer)) '(fundamental-mode))
+                                     :from-end t))
       (let* ((name (string-downcase (symbol-name mode)))
              (yours (user-snippets-of name)))
         (dolist (s (in-place-of-own yours (built-in-snippets-of name) #'snippet-name))
@@ -240,12 +241,12 @@ NIL for a name it does not know."
 ;;; Fields
 
 (defstruct (snippet-field (:constructor make-snippet-field (number start choices outer index)) (:copier nil))
-  "A place in a snippet that is filled in: NUMBER, its number ($1 is 1);
-START and END, where it begins and ends, octets of the snippet's text as it is
-made, then anchors in the buffer; CHOICES, a choice's options; OUTER, the
-field it is within, or NIL; INDEX, how many fields come before it in the text;
-MIRRORS, the other places its number stands, when it is the one \\`TAB' goes
-to; GONE, true once the text it was in was replaced."
+  "A place in a snippet that is filled in. NUMBER is its number ($1 is 1). START
+and END are where it begins and ends, octets of the snippet's text as it is
+made, then anchors in the buffer. CHOICES is a choice's options. OUTER is the
+field it is within, or NIL. INDEX is how many fields come before it in the text.
+MIRRORS is the other places its number stands, when it is the one \\`TAB' goes
+to. GONE is true once the text it was in was replaced."
   number start (end 0) choices outer index (mirrors '()) (gone nil))
 
 (defun field-within-p (field other)
@@ -302,13 +303,13 @@ it or holding it. A snippet with no 0 ends after its text."
 ;;; A snippet being filled in
 
 (defstruct (snippet-session (:constructor make-snippet-session (buffer fields order start end)) (:copier nil))
-  "A snippet put in BUFFER whose fields are being filled in: FIELDS, its
-SNIPPET-FIELDs in the order of the text; ORDER, those \\`TAB' goes to, in
-turn (ORDER-FIELDS); START and END, anchors at the ends of all of it; AT, the
-index in ORDER of the field the cursor went to; FRESH, true while that
-field's text is as the snippet gave it, typing replacing it; KEPT, the
-buffer's override keymap before; UNDO-SINCE, the buffer's undo stack before a
-field's text was replaced, so that the replacing is one change to undo."
+  "A snippet put in BUFFER whose fields are being filled in. FIELDS is its
+SNIPPET-FIELDs in the order of the text. ORDER is those \\`TAB' goes to, in turn
+\(ORDER-FIELDS). START and END are anchors at the ends of all of it. AT is the
+index in ORDER of the field the cursor went to. FRESH is true while that field's
+text is as the snippet gave it, typing replacing it. KEPT is the buffer's
+override keymap before. UNDO-SINCE is the buffer's undo stack before a field's
+text was replaced, so that the replacing is one change to undo."
   buffer fields order start end (at -1) (fresh nil) (kept nil) (undo-since nil))
 
 (defvar *snippet-keymap*
@@ -540,8 +541,13 @@ its line's start, and where the key starts, as two values; NIL when there is non
   "SNIPPET as a candidate to choose by its name, said with its key and whose
 it is, VALUE what choosing it gives."
   (make-candidate (snippet-name snippet) :value value
-                  :annotation (format nil "~@[~a  ~]~:[yours~;Tuatara's~]~@[ (~a)~]" (snippet-key snippet) (snippet-own snippet)
-                                      (and (snippet-mode snippet) (string/= (snippet-mode snippet) "fundamental-mode") (snippet-mode snippet)))))
+                  :annotation (format nil
+                                      "~@[~a  ~]~:[yours~;Tuatara's~]~@[ (~a)~]"
+                                      (snippet-key snippet)
+                                      (snippet-own snippet)
+                                      (and (snippet-mode snippet)
+                                           (string/= (snippet-mode snippet) "fundamental-mode")
+                                           (snippet-mode snippet)))))
 
 (define-command insert-snippet ()
   "Put in a snippet chosen by its name among those of the current buffer's
@@ -551,7 +557,9 @@ place, the selected text where it has $TM_SELECTED_TEXT."
          (snippets (mode-snippets buffer)))
     (if (null snippets)
         (message "No snippets for this buffer's mode (~a)" (abbreviated-path (first (snippet-directories))))
-        (let ((snippet (completing-read-value "Snippet: " (mapcar (lambda (s) (snippet-candidate s s)) snippets) :require-match t)))
+        (let ((snippet (completing-read-value "Snippet: "
+                                              (mapcar (lambda (s) (snippet-candidate s s)) snippets)
+                                              :require-match t)))
           (when (snippet-p snippet)
             (multiple-value-bind (start end) (if (tuatara.buffer:buffer-mark-active-p buffer)
                                                  (tuatara.buffer:buffer-region buffer)

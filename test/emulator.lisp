@@ -93,7 +93,8 @@ and fourth values."
                    (sleep 1/100))
           (true (plusp frames))
           ;; a frame, the wait for the reader to step aside included
-          (true (< (/ longest internal-time-units-per-second) (* 1/10 (machine-slowdown))) "the longest frame took ~,3f s"
+          (true (< (/ longest internal-time-units-per-second) (* 1/10 (machine-slowdown)))
+                "the longest frame took ~,3f s"
                 (/ longest internal-time-units-per-second))
           (true (find-if (lambda (r) (search "line 399999 of" r)) (emulator-screen e))))))))
 
@@ -131,7 +132,8 @@ and fourth values."
     (setf tuatara-user:*terminal-compress-after* 0.3)
     (unwind-protect
          (with-emulator (e "sh" (list "-c" "seq 1 300000; sleep 30") :columns 80 :rows 24)
-           (true (find-if (lambda (r) (search "300000" r)) (emulator-screen e :until (screen-has "300000") :seconds 20)))
+           (true (find-if (lambda (r) (search "300000" r))
+                          (emulator-screen e :until (screen-has "300000") :seconds 20)))
            (let ((before (tuatara.terminal-emulator::emulator-memory e))
                  (deadline (tuatara.runtime:deadline-in 10))
                  (after nil)
@@ -142,7 +144,8 @@ and fourth values."
                         (setf longest (max longest (- (get-internal-real-time) start))))
                    until (or (plusp (getf after :compressed-pages)) (<= (tuatara.runtime:seconds-left deadline) 0))
                    do (sleep 0.005))
-             (true (< (/ longest internal-time-units-per-second) (* 1/10 (machine-slowdown))) "the library was held ~,3f s"
+             (true (< (/ longest internal-time-units-per-second) (* 1/10 (machine-slowdown)))
+                   "the library was held ~,3f s"
                    (/ longest internal-time-units-per-second))
              (true (getf after :compression))
              (true (plusp (getf after :compressed-pages)))
@@ -157,7 +160,8 @@ and fourth values."
   ;; a character with more combining marks than a cell keeps (text made to garble
   ;; screens): read safely, the rest of the row where it belongs
   (with-emulator (e "sh" (list "-c" (format nil "printf 'a~a|end\\n'; sleep 5"
-                                           (with-output-to-string (out) (dotimes (i 70) (write-string "\\314\\201" out)))))
+                                           (with-output-to-string (out)
+                                             (dotimes (i 70) (write-string "\\314\\201" out)))))
                  :columns 40 :rows 6)
     (let* ((texts (emulator-screen e :until (screen-has "end")))
            (row (find-if (lambda (r) (search "end" r)) texts)))
@@ -173,7 +177,9 @@ and fourth values."
     ;; set, not bound: the reader's thread reads it
     (setf tuatara.terminal-emulator::*terminal-reply-limit* 65536)
     (unwind-protect
-         (with-emulator (e "sh" (list "-c" (format nil "stty -echo -icanon; printf '\\033[c%.0s' $(seq 1 60000); echo flooded; ~
+         (with-emulator (e "sh"
+                           (list "-c"
+                                 (format nil "stty -echo -icanon; printf '\\033[c%.0s' $(seq 1 60000); echo flooded; ~
                                                   until [ -e ~a ]; do sleep 0.05; done; exec cat -v" go-on))
                         :columns 80 :rows 10)
            (let ((most 0) (deadline (tuatara.runtime:deadline-in 60)))
@@ -186,7 +192,8 @@ and fourth values."
              (true (plusp most))
              (with-open-file (out go-on :direction :output) (write-line "go" out))
              (tuatara.terminal-emulator::emulator-input e (format nil "typed-ok~c" #\Return))
-             (true (find-if (lambda (r) (search "typed-ok" r)) (emulator-screen e :until (screen-has "typed-ok") :seconds 20)))))
+             (true (find-if (lambda (r) (search "typed-ok" r))
+                            (emulator-screen e :until (screen-has "typed-ok") :seconds 20)))))
       (setf tuatara.terminal-emulator::*terminal-reply-limit* was)
       (ignore-errors (delete-file go-on)))))
 
@@ -194,7 +201,8 @@ and fourth values."
   ;; without pictures the library keeps none of them; with them, as much as is allowed
   (flet ((limit (e)
            (tuatara.terminal-emulator::with-emulator-turn (e)
-             (tuatara.terminal-emulator::library-size (tuatara.terminal-emulator::emulator-terminal e) (tuatara.terminal-emulator::vt :data-kitty-storage-limit)))))
+             (tuatara.terminal-emulator::library-size (tuatara.terminal-emulator::emulator-terminal e)
+                                                      (tuatara.terminal-emulator::vt :data-kitty-storage-limit)))))
     (with-emulator (e "sh" (list "-c" "sleep 5") :columns 40 :rows 6)
       (is eql 0 (limit e)))
     (with-emulator (e "sh" (list "-c" "sleep 5") :columns 40 :rows 6 :pictures t :cell-width 10 :cell-height 20)
@@ -255,7 +263,8 @@ the octets it consed."
   (true (tuatara.terminal-emulator::terminal-library-p))
   (let* ((layout tuatara.terminal-emulator::*terminal-layout*)
          (time (lambda (key)
-                 (least-of-three (compile nil `(lambda () (dotimes (i 1000000) (tuatara.terminal-emulator::vt ,key))))))))
+                 (least-of-three (compile nil
+                                          `(lambda () (dotimes (i 1000000) (tuatara.terminal-emulator::vt ,key))))))))
     (let ((first (funcall time (first layout))) (last (funcall time (car (last layout 2)))))
       (true (< (max last 1000) (* 3 (max first 1000))) "the last key ~d, the first ~d" last first))))
 
@@ -273,9 +282,15 @@ the octets it consed."
                   (format out "~c[1;38;2;~d;~d;~dm~c[48;2;~d;~d;7mx" #\Escape (mod row 256) row (floor column 8) #\Escape (floor column 8) row)
                   (write-char #\Space out)))
             (format out "~c[0m~c~%" #\Escape #\Return)))
-        (with-emulator (e "sh" (list "-c" (format nil "cat '~a'; echo; echo shown; sleep 30" file)) :columns 200 :rows 50)
+        (with-emulator (e "sh"
+                          (list "-c" (format nil "cat '~a'; echo; echo shown; sleep 30" file))
+                          :columns 200
+                          :rows 50)
           (true (find-if (lambda (r) (search "shown" r)) (emulator-screen e :until (screen-has "shown"))))
-          (let ((each (/ (least-of-three (lambda () (tuatara.terminal-emulator::emulator-frame e (lambda (&rest row) (declare (ignore row))) :all t))
+          (let ((each (/ (least-of-three (lambda ()
+                                           (tuatara.terminal-emulator::emulator-frame e (lambda (&rest row)
+                                                                                          (declare (ignore row)))
+                                                                                      :all t))
                                          :bytes t)
                          (* 200 50))))
             (true (< each 24) "~:[blank~;coloured~] cells: ~,1f octets a cell" coloured (float each))))))))
@@ -314,7 +329,10 @@ before each by its program."
   (with-emulator (e "sh" (list "-c" (format nil "cat '~a'; while :; do printf '\\033[50;10Hz'; sleep 0.02; done" file))
                  :columns 200 :rows 50 :pictures t :cell-width 10 :cell-height 20)
     (true (find-if (lambda (r) (search "shown" r)) (emulator-screen e :until (screen-has "shown") :seconds 30)))
-    (least-of-three (lambda () (tuatara.terminal-emulator::emulator-frame e (lambda (&rest row) (declare (ignore row))) :all t)))))
+    (least-of-three (lambda ()
+                      (tuatara.terminal-emulator::emulator-frame e
+                                                                 (lambda (&rest row) (declare (ignore row)))
+                                                                 :all t)))))
 
 (define-test (emulator picture-runs-framed-in-linear-time)
   ;; two pictures in text, the screen's cells standing for them in turn, 1,200 runs and
@@ -336,7 +354,9 @@ before each by its program."
     (let ((file (namestring (merge-pathnames "placements.txt" dir))))
       (picture-screen-file file 2450 :placements 20000)
       (let ((each (picture-frame-time file)))
-        (true (< each (/ internal-time-units-per-second 20)) "~,3f s a frame" (/ each internal-time-units-per-second))))))
+        (true (< each (/ internal-time-units-per-second 20))
+              "~,3f s a frame"
+              (/ each internal-time-units-per-second))))))
 
 ;;; Output the terminal library must survive
 
@@ -346,10 +366,10 @@ test fails.")
 
 (defun survives-in-child (case &key (script "test/emulator/survives.lisp") (heap "2GB") address-space directory)
   "Run SCRIPT, a file of this repository run with sbcl --script and given CASE,
-a file to write to and DIRECTORY (by default one of the test's own), in a
-process of its own, so that what could end that process fails a test rather
-than ending the tests; by default the script that shows the output CASE
-names in a terminal (test/emulator/survives.lisp). HEAP is SBCL's dynamic
+a file to write to and DIRECTORY (by default one of the test's own). It runs
+in a process of its own, so that what could end that process fails a test
+rather than ending the tests. By default it is the script that shows the
+output CASE names in a terminal (test/emulator/survives.lisp). HEAP is SBCL's dynamic
 space; ADDRESS-SPACE, when given, holds the process to that many octets of
 address space (ulimit -v).
 Returns what the script wrote to the file, read as Lisp (for the terminal,
@@ -368,7 +388,10 @@ its errors among it."
                                             (list* "-c" "ulimit -v \"$1\" && shift && exec \"$@\"" "sh"
                                                    (princ-to-string (floor address-space 1024)) sbcl)
                                             (list* "-c" "exec \"$@\"" "sh" sbcl))
-                                        :wait nil :output (namestring printed) :if-output-exists :supersede :error :output))
+                                        :wait nil
+                                        :output (namestring printed)
+                                        :if-output-exists :supersede
+                                        :error :output))
            (deadline (tuatara.runtime:deadline-in *survival-seconds*)))
       (loop while (and (sb-ext:process-alive-p process) (plusp (tuatara.runtime:seconds-left deadline)))
             do (sleep 1/10))

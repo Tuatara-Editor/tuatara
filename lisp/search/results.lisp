@@ -217,11 +217,11 @@ entries, TEXT :CONFLICT when the two were changed to different text."
 (defstruct (write-back-job (:include tuatara.runtime:job) (:constructor make-write-back-job (buffer files))
                            (:copier nil))
   "The lines changed in BUFFER, lines found, being written back into their files, a job
-\(TUATARA.RUNTIME:JOB): FILES, each (PATH . LINES) not handed over yet (CHANGES-BY-FILE); TOTAL files
-in all; REQUEST, the file handed to the editor and ANSWERED when it has dealt with it; ROOTS, what
-is known of whether the projects are looked at only; SAVING, the buffers being saved, each (BUFFER
-LINES MADE DONE); WRITTEN lines written in FILES-WRITTEN files, REFUSED the reasons the others were
-not, and LEFT what else is to say of a file, each a sentence."
+\(TUATARA.RUNTIME:JOB). FILES is each (PATH . LINES) not handed over yet (CHANGES-BY-FILE). TOTAL is
+files in all. REQUEST is the file handed to the editor, and ANSWERED says when it has dealt with it.
+ROOTS is what is known of whether the projects are looked at only. SAVING is the buffers being
+saved, each (BUFFER LINES MADE DONE). WRITTEN is lines written in FILES-WRITTEN files, REFUSED the
+reasons the others were not, and LEFT what else is to say of a file, each a sentence."
   files (total (length files)) request (answered (sb-thread:make-semaphore))
   (roots (make-hash-table :test 'equal)) (saving '()) (written 0) (files-written 0) (refused '()) (left '()))
 

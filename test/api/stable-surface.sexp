@@ -2,7 +2,7 @@
 ;; ARGUMENTS (REQUIRED OPTIONAL KEYS REST OTHER-KEYS); (:setting NAME); (:init NAME KIND ARGUMENTS), the init
 ;; file's functions and macros; (:keywords LOAD-PACKAGE KEYWORDS); (:flag OPTION), the command line's
 ;; options; (:command PACKAGE NAME).
-(:version "0.90.21")
+(:version "0.90.22")
 (:api "*BUFFERS-ASKED-ABOUT*" :variable)
 (:api "*BUILD*" :variable)
 (:api "*BUILT-AT*" :variable)
@@ -89,10 +89,10 @@
 (:api "COMMANDS-FOR-MODE" :function (2 nil nil t nil))
 (:api "COMPILE-REGEX" :function (1 nil ("CASE-FOLD" "CRLF" "THOROUGH") nil nil))
 (:api "COMPLETE-IN-MINIBUFFER" :function (1 nil ("ANNOTATE" "CONSTITUENT" "DOCUMENT" "KEEP-ORDER") t nil))
-(:api "COMPLETING-READ" :function (2 nil ("ANNOTATE" "DEFAULT" "FILTER" "HISTORY" "INITIAL" "KEEP-ORDER" "KEYMAP" "NONE" "PREVIEW" "REQUIRE-MATCH" "RESELECT" "SELECT" "SEPARATOR" "SOURCE" "TAKEN") nil nil))
+(:api "COMPLETING-READ" :function (2 nil ("ANNOTATE" "DEFAULT" "FILTER" "HISTORY" "INITIAL" "KEEP-ORDER" "KEYMAP" "NONE" "PREVIEW" "REQUIRE-MATCH" "RESELECT" "REWRITE" "SELECT" "SEPARATOR" "SOURCE" "TAKEN") nil nil))
 (:api "COMPLETING-READ-VALUE" :function (2 nil nil t nil))
 (:api "COPIES-ORIGINAL-NAMES" :function (2 nil nil nil nil))
-(:api "COPY-FILE-CHECKED" :function (2 nil ("CANCEL" "SUM") nil nil))
+(:api "COPY-FILE-CHECKED" :function (2 nil ("CANCEL" "CHECK" "SUM") nil nil))
 (:api "COPY-REGULAR-FILE" :function (2 nil ("CANCEL" "PROGRESS") nil nil))
 (:api "COPY-TO-FREE-NAME" :function (3 nil ("CANCEL") nil nil))
 (:api "CSV-DELIMITER" :function (1 nil nil nil nil))
@@ -337,7 +337,7 @@
 (:api "READ-NEW-NATIVE-PATH" :function (1 nil nil t nil))
 (:api "READ-PATH" :function (1 nil ("DIRECTORIES" "INITIAL" "PREVIEW" "WRITING") nil nil))
 (:api "READ-STREAM-OCTETS" :function (1 nil ("CANCEL" "DRAIN" "LIMIT" "WIPE") nil nil))
-(:api "READ-STRING" :function (1 nil ("CHANGED" "COMPLETE" "HISTORY" "INITIAL" "KEYMAP" "SELECT-INITIAL" "UPDATE") nil nil))
+(:api "READ-STRING" :function (1 nil ("CHANGED" "COMPLETE" "HISTORY" "INITIAL" "KEYMAP" "REWRITE" "SELECT-INITIAL" "UPDATE") nil nil))
 (:api "READ-WHOLE-NUMBER" :function (2 nil ("REFUSAL" "VALID") nil nil))
 (:api "READING-BUFFER" :function (7 nil ("PRIVATE-FOLDER") nil nil))
 (:api "REAL-PATH-OR-PARENT" :function (1 nil nil nil nil))
@@ -1587,6 +1587,7 @@
 (:command "TUATARA.EXPORT" "EXPORT-TEMPLATE-FROM-LATEX")
 (:command "TUATARA.EXPORT" "ORG-EXPORT-DOCX")
 (:command "TUATARA.EXPORT" "ORG-EXPORT-DOCX-XDG")
+(:command "TUATARA.EXPORT" "ORG-EXPORT-HTML")
 (:command "TUATARA.EXPORT" "ORG-EXPORT-LATEX")
 (:command "TUATARA.EXPORT" "ORG-EXPORT-LATEX-ENHANCED")
 (:command "TUATARA.EXPORT" "ORG-EXPORT-LATEX-PDF")

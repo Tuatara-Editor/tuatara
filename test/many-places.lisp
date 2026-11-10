@@ -23,14 +23,19 @@ work in the background the one before began is done."
         (tuatara.defaults::*rectangle-cursors-limit* 2)
         (lines (format nil "abc~%abc~%abc~%abc~%")))
     (true (tuatara.frontend.fake:fake-frame-showing
-           (many-frame "% f b RET" lines) "Hold all 4 matches, with every key slow at that many (else those in sight)?"))
+           (many-frame "% f b RET" lines)
+           "Hold all 4 matches, with every key slow at that many (else those in sight)?"))
     (true (tuatara.frontend.fake:fake-frame-showing
-           (many-frame "V j j j t" lines) "Hold all 4 cursors, with every key slow at that many (else those in sight)?"))
+           (many-frame "V j j j t" lines)
+           "Hold all 4 cursors, with every key slow at that many (else those in sight)?"))
     (true (tuatara.frontend.fake:fake-frame-showing
-           (many-frame "m v j j j c" lines) "Hold all 4 cursors, with every key slow at that many (else those in sight)?"))
+           (many-frame "m v j j j c" lines)
+           "Hold all 4 cursors, with every key slow at that many (else those in sight)?"))
     ;; yes holds them all, no those in sight, and every one is written either way
-    (true (tuatara.frontend.fake:fake-frame-showing (many-frame "% f b RET y" lines) "Split: 4 places in the selection"))
-    (true (tuatara.frontend.fake:fake-frame-showing (many-frame "% f b RET n" lines) "Split: 2 places of 4 in the selection"))
+    (true (tuatara.frontend.fake:fake-frame-showing (many-frame "% f b RET y" lines)
+                                                    "Split: 4 places in the selection"))
+    (true (tuatara.frontend.fake:fake-frame-showing (many-frame "% f b RET n" lines)
+                                                    "Split: 2 places of 4 in the selection"))
     (dolist (answer '("y" "n"))
       (is string= (format nil "aXc~%aXc~%aXc~%aXc~%")
           (many-text (list (format nil "% f b RET ~a RET c X C-g" answer) "") lines) "f, ~a" answer)
@@ -56,7 +61,9 @@ work in the background the one before began is done."
     (is string= block (many-text "l m v j M-w g g p" two))
     (is string= block (many-text "l m v j M-w g g t p" two))
     (multiple-value-bind (parts shape)
-        (tuatara.defaults::kill-parts (first (tuatara.command:editor-kill-ring (nth-value 1 (run-keys "l m v j M-w" :text two)))))
+        (tuatara.defaults::kill-parts (first (tuatara.command:editor-kill-ring (nth-value 1
+                                                                                          (run-keys "l m v j M-w"
+                                                                                                    :text two)))))
       (is equal '("b" "d") parts)
       (is eq :block shape)))
   ;; a kill made at as many cursors gives each its own part, and is one text at one place
@@ -65,7 +72,9 @@ work in the background the one before began is done."
     (is string= (format nil "ab~%cd~%ef~%ab~%cd~%ef") (many-text "t t m w y C-g C-g g e C-y" three))
     (is string= (format nil "ab~%cd~%ef~%ab~%cd~%ef") (many-text "t t m w y C-g C-g g e p" three))
     (multiple-value-bind (parts shape)
-        (tuatara.defaults::kill-parts (first (tuatara.command:editor-kill-ring (nth-value 1 (run-keys "t t m w y" :text three)))))
+        (tuatara.defaults::kill-parts (first (tuatara.command:editor-kill-ring (nth-value 1
+                                                                                          (run-keys "t t m w y"
+                                                                                                    :text three)))))
       (is equal '("ab" "cd" "ef") parts)
       (is eq :pieces shape))
     ;; the kill's text is one copy where the parts agree, whole lines together, else one a line
@@ -96,7 +105,8 @@ work in the background the one before began is done."
   ;; every kind refuses a buffer that may not be written, one way, and changes nothing
   (let ((two (format nil "foo~%foo~%")))
     (dolist (keys '("% f f o o RET d" "t d" "t m w d" "m v j l d" "m l j m l d" "y m w p" "m l y j m l p"))
-      (multiple-value-bind (f editor) (run-keys (format nil "M-x r e a d - o n l y - m o d e RET ~a" keys) :text two :width 80 :height 10)
+      (multiple-value-bind (f editor)
+          (run-keys (format nil "M-x r e a d - o n l y - m o d e RET ~a" keys) :text two :width 80 :height 10)
         (is string= two (session-text editor) "~a" keys)
         (true (tuatara.frontend.fake:fake-frame-showing f "read-only") "~a says so" keys))))
   ;; the deletion itself: in order and apart, one change, positions after each
@@ -112,7 +122,8 @@ work in the background the one before began is done."
 
 (define-test (many-places one-matcher)
   ;; f, r r and :s find a pattern one way
-  (flet ((kind (pattern &rest keys) (tuatara.defaults::matcher-kind (apply #'tuatara.defaults::make-pattern-matcher pattern keys))))
+  (flet ((kind (pattern &rest keys)
+           (tuatara.defaults::matcher-kind (apply #'tuatara.defaults::make-pattern-matcher pattern keys))))
     (is eq :literal (kind "foo" :regex t))
     (is eq :regex (kind "f.o" :regex t))
     (is eq :regex (kind "foo" :regex t :compiled t))
@@ -146,10 +157,12 @@ work in the background the one before began is done."
                                                       "Pasting the rectangle's 2 rows in the background")))
     ;; and how they ended, one way
     (let ((tuatara-user:*split-limit* 1))
-      (true (tuatara.frontend.fake:fake-frame-showing (many-frame '("% f o RET d" "") text) "Deleted 3 more matches of o, out of sight, in"))
+      (true (tuatara.frontend.fake:fake-frame-showing (many-frame '("% f o RET d" "") text)
+                                                      "Deleted 3 more matches of o, out of sight, in"))
       (true (tuatara.frontend.fake:fake-frame-showing (many-frame '("% f z RET" "") text) "Nothing matched z")))
     (let ((tuatara.defaults::*rewrite-threshold* 0))
-      (true (tuatara.frontend.fake:fake-frame-showing (many-frame '("l m v j d" "") text) "Cut the rectangle's 2 rows in")))))
+      (true (tuatara.frontend.fake:fake-frame-showing (many-frame '("l m v j d" "") text)
+                                                      "Cut the rectangle's 2 rows in")))))
 
 (define-test (many-places last-line-copied-as-a-line)
   ;; V y of a last line without a line end copies it as a whole line: p puts it in as one

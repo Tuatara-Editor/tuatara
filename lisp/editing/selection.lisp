@@ -51,31 +51,38 @@ would only make the query slower."
          (wanted (loop for (name) in *text-objects* collect (format nil "@~a." name))))
     (dotimes (i (length starts))
       (let ((text (sb-ext:octets-to-string octets :start (aref starts i)
-                                                  :end (if (< (1+ i) (length starts)) (aref starts (1+ i)) (length octets))
+                                                  :end (if (< (1+ i) (length starts))
+                                                           (aref starts (1+ i))
+                                                           (length octets))
                                                   :external-format :utf-8)))
         (unless (some (lambda (capture) (search capture text)) wanted)
           (tuatara.syntax:disable-query-pattern query i))))))
 
-(defun text-object-ranges (query tree rope name start end)
+(defun text-object-ranges (query tree rope name start end &optional also)
   "What QUERY, a language's selection rules, captures as NAME (such as
 function.inside) in TREE, the tree of ROPE, in the matches touching octets
 START below END: a list of (START . END), the nodes one match captures as NAME
-taken together."
-  (let ((number (position name (tuatara.syntax:query-captures query) :test #'string=))
-        (ranges '()))
-    (when number
+taken together. With ALSO, another such name, what it captures as a second
+value, from the same pass over the tree."
+  (let ((numbers (mapcar (lambda (n) (and n (position n (tuatara.syntax:query-captures query) :test #'string=)))
+                         (list name also)))
+        (ranges (list '() '())))
+    (when (some #'identity numbers)
       (tuatara.syntax:map-query-matches
        (lambda (pattern captures count)
          (declare (ignore pattern))
-         (let ((first nil) (last nil))
-           (dotimes (i count)
-             (when (= number (aref captures (* 4 i)))
-               (let ((s (aref captures (+ 1 (* 4 i)))) (e (aref captures (+ 2 (* 4 i)))))
-                 (setf first (if first (min first s) s)
-                       last (if last (max last e) e)))))
-           (when first (push (cons first last) ranges))))
+         (loop for number in numbers
+               for cell on ranges
+               when number
+                 do (let ((first nil) (last nil))
+                      (dotimes (i count)
+                        (when (= number (aref captures (* 4 i)))
+                          (let ((s (aref captures (+ 1 (* 4 i)))) (e (aref captures (+ 2 (* 4 i)))))
+                            (setf first (if first (min first s) s)
+                                  last (if last (max last e) e)))))
+                      (when first (push (cons first last) (car cell))))))
        query tree rope start end))
-    ranges))
+    (values (first ranges) (second ranges))))
 
 (defun smallest-around (ranges start end selected)
   "The smallest of RANGES, each (START . END), holding octets START below END:
@@ -89,6 +96,28 @@ the character at START."
                      (< start (cdr r)))
                  (or (null best) (< (- (cdr r) (car r)) (- (cdr best) (car best)))))
         (setf best r)))))
+
+(defun inside-around (insides arounds point)
+  "Of INSIDES, the insides of text objects such as functions' bodies, the one
+of the smallest of AROUNDS (the whole objects) holding the character at POINT
+and an inside: the smallest inside it that holds POINT too, else the largest
+inside it, its own body when POINT is on its first line. A whole object with
+no inside of its own, such as a function's heading or a declaration without a
+body, gives way to the next larger one. Without such an object, the smallest
+of INSIDES holding POINT."
+  (flet ((within (r around) (and (<= (car around) (car r)) (<= (cdr r) (cdr around)))))
+    (let ((around (smallest-around (remove-if-not (lambda (a) (some (lambda (r) (within r a)) insides)) arounds)
+                                   point point nil)))
+      (if (null around)
+          (smallest-around insides point point nil)
+          (let ((holding nil) (largest nil))
+            (dolist (r insides (or holding largest))
+              (when (within r around)
+                (when (and (<= (car r) point) (< point (cdr r))
+                           (or (null holding) (< (- (cdr r) (car r)) (- (cdr holding) (car holding)))))
+                  (setf holding r))
+                (when (or (null largest) (> (- (cdr r) (car r)) (- (cdr largest) (car largest))))
+                  (setf largest r)))))))))
 
 (defun mark-text-object (object inner)
   "Select the OBJECT around point, one of *TEXT-OBJECTS* by the name its rules
@@ -105,19 +134,22 @@ out."
         (let* ((rope (tuatara.buffer:buffer-text b))
                (active (tuatara.buffer:buffer-mark-active-p b)))
           (multiple-value-bind (start end) (if active (tuatara.buffer:buffer-region b) (values (point) (point)))
-            (let ((ranges (text-object-ranges query (tuatara.syntax:syntax-tree syntax) rope
-                                              (format nil "~a.~:[around~;inside~]" object inner)
-                                              (max 0 (- start 65536))
-                                              (min (tuatara.text:rope-octet-length rope) (+ end 65536))))
-                  (found nil))
-              (dotimes (i (max 1 (prefix)))
-                (let ((next (smallest-around ranges start end (or active found))))
-                  (unless next (return))
-                  (setf found next start (car next) end (cdr next))))
-              (if found
-                  (progn (select-bounds b (car found) (cdr found))
-                         (message "Marked ~:[outer~;inner~] ~a" inner word))
-                  (message "No ~a around point" word))))))))
+            (multiple-value-bind (ranges arounds)
+                (text-object-ranges query (tuatara.syntax:syntax-tree syntax) rope
+                                    (format nil "~a.~:[around~;inside~]" object inner)
+                                    (max 0 (- start 65536)) (min (tuatara.text:rope-octet-length rope) (+ end 65536))
+                                    (and inner (not active) (format nil "~a.around" object)))
+              (let ((found nil))
+                (dotimes (i (max 1 (prefix)))
+                  (let ((next (cond ((or active found) (smallest-around ranges start end t))
+                                    (inner (inside-around ranges arounds start))
+                                    (t (smallest-around ranges start end nil)))))
+                    (unless next (return))
+                    (setf found next start (car next) end (cdr next))))
+                (if found
+                    (progn (select-bounds b (car found) (cdr found))
+                           (message "Marked ~:[outer~;inner~] ~a" inner word))
+                    (message "No ~a around point" word)))))))))
 
 ;;; Growing, shrinking and moving the selection
 
@@ -215,7 +247,8 @@ In a buffer with no syntax tree, back through the growings alone."
                        (unless syntax (return))
                        (multiple-value-bind (s e)
                            (tuatara.syntax:select-node syntax start end
-                                                       (if (tuatara.buffer:buffer-mark-active-p b) :first-child :smallest))
+                                                       (if (tuatara.buffer:buffer-mark-active-p b)
+                                                           :first-child :smallest))
                          (unless s (return))
                          (select-bounds b s e (selection-forward-p b))
                          (setf done t)))))))

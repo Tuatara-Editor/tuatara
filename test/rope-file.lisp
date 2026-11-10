@@ -166,7 +166,8 @@
       (multiple-value-bind (rope mapping) (tuatara.text:open-file-rope path)
         (let* ((newline (1+ (position #\Return text)))
                (left (tuatara.text:rope-slice rope 0 newline))
-               (right (tuatara.text:index-rope (tuatara.text:rope-slice rope newline (tuatara.text:rope-octet-length rope))))
+               (right (tuatara.text:index-rope (tuatara.text:rope-slice rope newline
+                                                                        (tuatara.text:rope-octet-length rope))))
                (joined (tuatara.text:index-rope (tuatara.text:splice-rope left newline newline right))))
           (is = 20000 (tuatara.text:rope-lines joined))
           (loop for byte in (list newline (+ newline 2) 60000 (1- (length text)))

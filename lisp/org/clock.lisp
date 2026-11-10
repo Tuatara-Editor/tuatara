@@ -69,7 +69,8 @@ file or the line is no longer there, or the buffer had no file."
                (at (and text (loop for at = (search line text) then (search line text :start2 (1+ at))
                                    while at
                                    when (org-read-clock-line text (string-line-start text at))
-                                     do (multiple-value-bind (from to) (org-read-clock-line text (string-line-start text at))
+                                   do (multiple-value-bind (from to)
+                                          (org-read-clock-line text (string-line-start text at))
                                           (when (and from (not to)) (return at)))))))
           (if at
               (progn (org-clock-hold clock buffer (org-parse-octet parse (string-line-start text at)))
@@ -95,7 +96,9 @@ is forgotten with only its start. The clock running, or NIL."
                                                  (eql (org-clock-started clock) (org-clock-started running))))
                             open)))
     (when (and running (eq running last))
-      (message "The clock open since ~a runs again: ~a" (format-time "%F %R" (org-clock-started running)) (org-clock-task running)))
+      (message "The clock open since ~a runs again: ~a"
+               (format-time "%F %R" (org-clock-started running))
+               (org-clock-task running)))
     (when others
       (let ((words (format nil "~{~a~^; ~}~@[; and ~d more~]"
                            (loop for clock in others repeat *org-clocks-named*
@@ -196,7 +199,9 @@ buffer is narrowed to another part; the clock stops only once it is."
               (tuatara.buffer:buffer-replace buffer start end new))
             ;; point on the line stays on it, as far in as the new line goes
             (setf (tuatara.buffer:buffer-point buffer)
-                  (if (> point end) (+ point (- (tuatara.text:string-octet-length new) (- end start))) (min point (+ start (tuatara.text:string-octet-length new)))))
+                  (if (> point end)
+                      (+ point (- (tuatara.text:string-octet-length new) (- end start)))
+                      (min point (+ start (tuatara.text:string-octet-length new)))))
             ;; the clock is let go only once its line is finished
             (setf *org-clock* nil)
             (org-save-changed buffer modified :existing t)
@@ -293,7 +298,8 @@ finished CLOCK: line, write its duration again from its two times; true when it 
 
 (defun org-clock-quit-query ()
   "Before quitting: with a clock running, ask whether to clock out first."
-  (when (and *org-clock* (y-or-n-p* (format nil "The clock runs on ~a: clock out before quitting?" (org-clock-task *org-clock*))))
+  (when (and *org-clock*
+             (y-or-n-p* (format nil "The clock runs on ~a: clock out before quitting?" (org-clock-task *org-clock*))))
     (org-clock-out-now))
   t)
 

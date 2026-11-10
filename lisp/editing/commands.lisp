@@ -66,7 +66,9 @@ BUFFER's narrowing is lifted for a change, the jump has it stay widened."
     (tuatara.buffer:let-go-of-lifted-narrowing buffer)
     (let ((line (tuatara.io:buffer-known-line-number buffer byte)))
       ;; seen whatever the command says after it
-      (say-with-command-messages "Widened ~a to show line ~:[…~;~:*~:d~]" (tuatara.buffer:buffer-name buffer) (and line (1+ line))))))
+      (say-with-command-messages "Widened ~a to show line ~:[…~;~:*~:d~]"
+                                 (tuatara.buffer:buffer-name buffer)
+                                 (and line (1+ line))))))
 
 (defun goto-shown (buffer byte &key (open byte))
   "Put BUFFER's point at the octet BYTE, the fold that hides OPEN (BYTE unless
@@ -78,7 +80,10 @@ widened first, and that said, when BYTE is outside the part of it shown."
   (setf (tuatara.buffer:buffer-point buffer) byte))
 
 (defun point () "Point of the current buffer." (tuatara.buffer:buffer-point (current-buffer)))
-(defun goto (byte) "Move point of the current buffer to BYTE." (setf (tuatara.buffer:buffer-point (current-buffer)) byte))
+(defun goto
+    (byte)
+  "Move point of the current buffer to BYTE."
+  (setf (tuatara.buffer:buffer-point (current-buffer)) byte))
 
 ;;; Motion
 
@@ -397,11 +402,12 @@ use to group digits (100,000,000); NIL when there is none."
 
 (define-command goto-line ()
   "Move point to the start of a line number read from the minibuffer (1-based),
-the mark left where it was unless the region is active. Digits may be grouped as the mode line shows them: 100,000,000. In the hex view,
-go to an offset instead (0x for hex). While a large file's lines are still
-being counted, a line in its first 64 MB is found at once; one further in
-waits until the count has passed it, not for the whole file. A line outside
-the part shown of a narrowed buffer widens it, and that is said."
+the mark left where it was unless the region is active. Digits may be grouped as
+the mode line shows them: 100,000,000. In the hex view, go to an offset instead (0x
+for hex). While a large file's lines are still being counted, a line in its
+first 64 MB is found at once; one further in waits until the count has passed
+it, not for the whole file. A line outside the part shown of a narrowed buffer
+widens it, and that is said."
   (if (hex-view-here-p)
       (hex-goto-offset)
       (let ((n (parse-line-number (read-string "Go to line: ")))
@@ -455,7 +461,10 @@ turned: *WHEEL-SCROLL-LINES* lines on for \\`<wheel-down>', back for
 
 (defun sexp-boundary-p (char)
   "True for characters that end a symbol: whitespace and brackets."
-  (or (null char) (member char '(#\Space #\Tab #\Newline #\Return)) (find char tuatara.text:*openers*) (find char tuatara.text:*closers*)))
+  (or (null char)
+      (member char '(#\Space #\Tab #\Newline #\Return))
+      (find char tuatara.text:*openers*)
+      (find char tuatara.text:*closers*)))
 
 (defparameter *text-scan-limit* (* 64 1024 1024)
   "The most octets looked through, about a tenth of a second's worth, for
@@ -590,7 +599,8 @@ balance (no partner after the start of the text, or within
 *TEXT-SCAN-LIMIT*); the offset is then that of the bracket. A symbol without
 its start within *TEXT-SCAN-LIMIT* is refused."
   (let ((p position) (balanced t))
-    (flet ((before (p) (and (plusp p) (tuatara.buffer:buffer-char-at buffer (tuatara.buffer:buffer-forward-char buffer p -1)))))
+    (flet ((before (p)
+             (and (plusp p) (tuatara.buffer:buffer-char-at buffer (tuatara.buffer:buffer-forward-char buffer p -1)))))
       (setf p (skip-blanks buffer p :backward t))
       (let ((c (before p)))
         (cond ((null c))
@@ -650,7 +660,9 @@ expression around it; :UNBALANCED when the bracket before has no partner."
       (:unbalanced (values nil :unbalanced))
       (:text (let ((before (skip-blanks buffer position :backward t)))
                (if (and (plusp before)
-                        (find (tuatara.buffer:buffer-char-at buffer (tuatara.buffer:buffer-forward-char buffer before -1)) tuatara.text:*openers*))
+                        (find (tuatara.buffer:buffer-char-at buffer
+                                                             (tuatara.buffer:buffer-forward-char buffer before -1))
+                              tuatara.text:*openers*))
                    (values nil :start)
                    (multiple-value-bind (start balanced) (sexp-start-before buffer position)
                      (if balanced (values start nil) (values nil :unbalanced))))))
@@ -887,17 +899,31 @@ that takes a fold whole, such as a folded headline's line with all it hides,
 goes ahead. Only the folds in that stretch are looked at."
   (refuse-hidden-deletions buffer (list (cons start end))))
 
+(defgeneric mode-kill-follow-up (mode buffer start end)
+  (:documentation "What MODE does once the text of BUFFER from START below END
+is killed, asked before it is: a function of no arguments, called right after
+the kill in the same command, or NIL for nothing more.")
+  (:method (mode buffer start end)
+    (declare (ignore mode buffer start end))
+    nil))
+
 (defun kill-span (buffer start end &key prepend)
   "Kill the text of BUFFER from START below END (kill-text, PREPEND as it
 takes it) and delete it, unless that would take part of the text a fold
 hides (REFUSE-HIDDEN-DELETION); a carriage return and the newline after it
-that an edge would part go together (TUATARA.BUFFER:WHOLE-LINE-ENDS).
-Returns START."
+that an edge would part go together (TUATARA.BUFFER:WHOLE-LINE-ENDS). What
+the buffer's mode does after a kill follows it (MODE-KILL-FOLLOW-UP).
+Returns where the text killed was, START moved by what the mode changed."
   (multiple-value-setq (start end) (tuatara.buffer:whole-line-ends buffer start end))
   (refuse-hidden-deletion buffer start end)
-  (kill-text (region-text buffer start end) :prepend prepend)
-  (tuatara.buffer:buffer-delete buffer start end)
-  start)
+  (let ((follow-up (mode-kill-follow-up (buffer-major-mode buffer) buffer start end)))
+    (kill-text (region-text buffer start end) :prepend prepend)
+    (tuatara.buffer:buffer-delete buffer start end)
+    (if follow-up
+        (let ((before (tuatara.buffer:buffer-version buffer)))
+          (funcall follow-up)
+          (tuatara.text:map-forward start before (tuatara.buffer:buffer-version buffer) :after))
+        start)))
 
 (defun refuse-hidden-deletions (buffer spans)
   "Refuse a command that would delete the stretches SPANS of BUFFER (a list
@@ -977,7 +1003,8 @@ spans."
     (when before (funcall before))
     (if (and (every #'null (rest replacements))
              (or (> (loop for (s . e) in spans sum (- e s)) tuatara.buffer:*large-edit-octets*)
-                 (and (tuatara.text:rope-p first) (> (tuatara.text:rope-octet-length first) tuatara.buffer:*large-edit-octets*))))
+                 (and (tuatara.text:rope-p first)
+                      (> (tuatara.text:rope-octet-length first) tuatara.buffer:*large-edit-octets*))))
         (let ((rope (etypecase first
                       (null nil)
                       (tuatara.text:rope first)
@@ -998,7 +1025,9 @@ spans."
                       edits)
             (tuatara.buffer:buffer-edit buffer (coerce (if replacements
                                                            edits
-                                                           (remove-if (lambda (edit) (= (tuatara.text:edit-start edit) (tuatara.text:edit-end edit)))
+                                                           (remove-if (lambda (edit)
+                                                                        (= (tuatara.text:edit-start edit)
+                                                                           (tuatara.text:edit-end edit)))
                                                                       edits))
                                                        'simple-vector)
                                         :group group))))))
@@ -1038,10 +1067,16 @@ unseen: the fold is shown instead, and the key pressed again deletes."
   (member command '(kill-line kill-region kill-whole-line kill-sexp backward-kill-sexp zap-to-char zap-up-to-char)))
 
 (defvar *clipboard-size-limit* (* 8 1024 1024)
-  "The most characters a kill may have and still go on the system clipboard.")
+  "The most characters a kill may have and still go on the system clipboard, 8
+million as standard; a longer one stays on the kill ring only. Raise it to
+paste a larger kill in other programs, at the cost of the memory the clipboard
+holds; lower it to keep a large kill from being copied there at all, where a
+clipboard history would keep it.")
 
 (defvar *kill-ring-max* 120
-  "The most kills the kill ring keeps: older ones are forgotten.")
+  "The most kills the kill ring keeps, 120 as standard: older ones are
+forgotten. Raise it to yank text cut long ago; each kill kept holds its text in
+memory, up to *KILL-RING-MAX-SIZE* all together. Lower it to forget sooner.")
 
 (defvar *kill-ring-max-size* (* 64 1024 1024)
   "The most characters (octets, for a kill kept where it is) the kills on the
@@ -1127,7 +1162,10 @@ search filters hide were left out of it; empty when none were."
       (concatenate 'string a b)
       (flet ((as-rope (kill) (if (stringp kill) (tuatara.text:string->rope kill) kill)))
         (let ((head (as-rope a)))
-          (tuatara.text:splice-rope head (tuatara.text:rope-octet-length head) (tuatara.text:rope-octet-length head) (as-rope b))))))
+          (tuatara.text:splice-rope head
+                                    (tuatara.text:rope-octet-length head)
+                                    (tuatara.text:rope-octet-length head)
+                                    (as-rope b))))))
 
 (defun kill-copies (kill n)
   "KILL N times over, as one kill. A rope is doubled, not joined N times over,
@@ -1375,7 +1413,8 @@ going to the ring's far end, and make the region inactive. Point stays."
       (let ((mark (tuatara.buffer:buffer-mark buffer))
             (next (anchor-in buffer (first ring))))
         (setf (tuatara.buffer:buffer-local buffer 'mark-ring)
-              (append (rest ring) (and mark (list (tuatara.text:make-anchor (tuatara.buffer:buffer-version buffer) mark)))))
+              (append (rest ring)
+                      (and mark (list (tuatara.text:make-anchor (tuatara.buffer:buffer-version buffer) mark)))))
         (when next (setf (tuatara.buffer:buffer-mark buffer) next)))))
   (setf (tuatara.buffer:buffer-mark-active-p buffer) nil))
 
@@ -1467,7 +1506,8 @@ shown until then lets go (a search's matches lit after it ended).")
 
 (define-command keyboard-quit ()
   "Abandon the current operation and deactivate the region; what stays shown
-until then goes, such as the matches of the last search."
+until then goes, such as the matches of the last search. In the view of a
+picture or a PDF, its decoding under way stops."
   (setf (tuatara.buffer:buffer-mark-active-p (current-buffer)) nil)
   (run-hook *keyboard-quit-functions*)
   (keyboard-quit-signal))
@@ -1554,7 +1594,8 @@ saved."
     (mapcar (lambda (b)
               (let ((file (buffer-listed-file b)))
                 (make-candidate (tuatara.buffer:buffer-name b)
-                                :annotation (list (list (if (tuatara.buffer:buffer-modified-p b) "+" "") :completion-modified 1)
+                                :annotation (list (list (if (tuatara.buffer:buffer-modified-p b) "+" "")
+                                                        :completion-modified 1)
                                                   (list (octets-words (tuatara.buffer:buffer-size b)) :list-size -8)
                                                   (list (or (buffer-mode-name b) "") :completion-major-mode mode-width)
                                                   (list (if file (abbreviated-path file) "") :completion-annotation 2/5 :middle)))))
@@ -1626,7 +1667,8 @@ Returns the name."
        (and buffer (live-buffer-p buffer) buffer)))
    (lambda (show)
      (completing-read prompt (buffer-candidates) :history (recent-buffer-names) :require-match require-match
-                                                 :taken (and (not require-match) (list (tuatara.buffer:buffer-name (current-buffer))))
+                                                 :taken (and (not require-match)
+                                                             (list (tuatara.buffer:buffer-name (current-buffer))))
                                                  :preview (and *preview-buffers* show)))))
 
 (define-command switch-to-buffer ()

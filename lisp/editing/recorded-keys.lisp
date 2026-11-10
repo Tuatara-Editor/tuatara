@@ -182,7 +182,8 @@ one given to recorded keys before, which then plays these.
 \\[insert-recorded-keys-definition] writes this for an init file:
 \(define-recorded-keys 'kill-after-date \"C-s date RET C-k\")."
   (let* ((events (if (stringp keys)
-                     (map 'simple-vector (lambda (spec) (tuatara.frontend:make-event :key :key (tuatara.frontend:spec-key spec)))
+                     (map 'simple-vector
+                          (lambda (spec) (tuatara.frontend:make-event :key :key (tuatara.frontend:spec-key spec)))
                           (tuatara.frontend:parse-key-sequence keys))
                      (coerce keys 'simple-vector)))
          (text (recorded-keys-text events))
@@ -215,7 +216,10 @@ DEFAULT, when given, taken when nothing is typed; its symbol in tuatara-user,
 or NIL, said why, for a name that cannot be one: one that reads back as a
 number or another thing than that symbol (-5, 1e3), or a name of Lisp's own
 \(t, nil, pi)."
-  (let ((name (string-trim " " (read-string (if default (format nil "~a (default ~(~a~)): " prompt default) (format nil "~a: " prompt))))))
+  (let ((name (string-trim " "
+                           (read-string (if default
+                                            (format nil "~a (default ~(~a~)): " prompt default)
+                                            (format nil "~a: " prompt))))))
     (cond ((and (zerop (length name)) default) default)
           ((not (recorded-keys-name-p name))
            (message "A name is letters, digits and - _ + * / < > = ! ? %, not digits alone") nil)

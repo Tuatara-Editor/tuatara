@@ -82,12 +82,11 @@ others, the rest after it (one before and one after with three)."
 
 (defun calendar-layout (year month)
   "The calendar of the months around MONTH of YEAR (*CALENDAR-MONTHS* of them,
-*CALENDAR-MONTHS-PER-ROW* side by side, a blank line between rows of them),
-as three values: its text, lines joined
-by line ends and none after the last;
-the place of each day shown, a list of (DAY START END) of characters (END
-after its last digit); and the spans of its titles and day names, (START END
-FACE) of characters."
+*CALENDAR-MONTHS-PER-ROW* side by side, a blank line between rows of them), as
+three values: its text, lines joined by line ends and none after the last. The
+place of each day shown, a list of (DAY START END) of characters (END after its
+last digit). And the spans of its titles and day names, (START END FACE) of
+characters."
   (let ((lines (make-array 0 :adjustable t :fill-pointer t))
         (places '()) (spans '()) (band 0))
     (labels ((line (index)
@@ -143,16 +142,21 @@ FACE) of characters."
 
 (define-major-mode calendar-mode special-mode
   "The calendar (\\[calendar]): three months, point on a day.
-\\<calendar-mode>\\[calendar-forward-day] and \\[calendar-backward-day] move a day,
-\\[calendar-forward-week] and \\[calendar-backward-week] a week, \\[calendar-forward-month] and \\[calendar-backward-month]
-a month, \\[calendar-forward-year] and \\[calendar-backward-year] a year; \\[calendar-beginning-of-week], \\[calendar-end-of-week],
-\\[calendar-beginning-of-month], \\[calendar-end-of-month], \\[calendar-beginning-of-year] and \\[calendar-end-of-year] to the
-week's, month's or year's ends; \\[calendar-scroll-left] and \\[calendar-scroll-right] scroll a month,
-\\[calendar-scroll-left-three-months] and \\[calendar-scroll-right-three-months] three; \\[calendar-goto-today] today, \\[calendar-goto-date] a date asked
-for, \\[calendar-other-month] a month asked for; \\[calendar-print-day-of-year] and \\[calendar-iso-print-date] say
-which day of the year and which ISO week it is; \\[calendar-mark-days] and
-\\[calendar-unmark] mark and unmark the days with agenda entries; \\[quit-window] leaves; \\[revert-buffer] draws it
-again."
+\\<calendar-mode>\\[calendar-forward-day] and \\[calendar-backward-day] move a
+day, \\[calendar-forward-week] and \\[calendar-backward-week] a week,
+\\[calendar-forward-month] and \\[calendar-backward-month] a month,
+\\[calendar-forward-year] and \\[calendar-backward-year] a year.
+\\[calendar-beginning-of-week], \\[calendar-end-of-week],
+\\[calendar-beginning-of-month], \\[calendar-end-of-month],
+\\[calendar-beginning-of-year] and \\[calendar-end-of-year] to the week's,
+month's or year's ends; \\[calendar-scroll-left] and \\[calendar-scroll-right]
+scroll a month, \\[calendar-scroll-left-three-months] and
+\\[calendar-scroll-right-three-months] three. \\[calendar-goto-today] goes to
+today, \\[calendar-goto-date] a date asked for, \\[calendar-other-month] a month
+asked for; \\[calendar-print-day-of-year] and \\[calendar-iso-print-date] say
+which day of the year and which ISO week it is. \\[calendar-mark-days] and
+\\[calendar-unmark] mark and unmark the days with agenda entries;
+\\[quit-window] leaves; \\[revert-buffer] draws it again."
   :lighter "Calendar" :interactive nil)
 
 (defmethod mode-wraps-p ((mode calendar-mode))
@@ -163,7 +167,8 @@ again."
   "The *Calendar* buffer, made in calendar mode when there is none."
   (find-or-make-buffer "*Calendar*" :mode 'calendar-mode
                                     :made (lambda (buffer)
-                                            ;; a grid of days, no lines to number; in the modal editing, its own few keys
+                                            ;; a grid of days, no lines to number; in the modal editing, its own few
+                                            ;; keys
                                             (choose-display buffer 'line-numbers nil)
                                             (setf (tuatara.buffer:buffer-local buffer :tuatara-support-keymap)
                                                   *tuatara-calendar-keymap*))))
@@ -420,10 +425,10 @@ around this one, the one ending in them (2027 in 2026, 1999 for '99)."
           (t year))))
 
 (defun calendar-read-month (text)
-  "The first day of the month TEXT names, as a day number, such as jan '27, jan 27,
-january 2027 (a month's name, three letters at least, then its year, two
+  "The first day of the month TEXT names, as a day number, such as jan '27, jan
+27, january 2027 (a month's name, three letters at least, then its year, two
 digits, with or without ', for the year of this century nearest to this one,
-four as it is); jan alone for this year's; 2027-03; or a date as
+four as it is). Jan alone for this year's; 2027-03. Or a date as
 CALENDAR-READ-DAY reads it, its month. NIL for none."
   (let ((text (string-downcase (string-trim " " text))))
     (or (cl-ppcre:register-groups-bind (name short long) ("^([a-z]+)\\.?(?:\\s+(?:'?(\\d{1,2})|(\\d{3,4})))?$" text)
@@ -441,7 +446,9 @@ CALENDAR-READ-DAY reads it, its month. NIL for none."
 \(or jan 27, january 2027) for January 2027, jan for this year's, 2027-03,
 or a date (2027-03-14, fri, +3m) for its month."
   (let ((day (calendar-read-month (read-string "Month (jan '27, 2027-03): "))))
-    (if day (calendar-show-day (current-buffer) day :centre t) (message "That is no month: jan '27, january 2027 or 2027-03"))))
+    (if day
+        (calendar-show-day (current-buffer) day :centre t)
+        (message "That is no month: jan '27, january 2027 or 2027-03"))))
 
 (define-command calendar-print-day-of-year ()
   "Say which day of its year the day at point is."
@@ -461,20 +468,18 @@ year."
 
 (defun read-date (prompt &key (now (get-universal-time)) (shown #'date-time-text) follow none also typed keymap)
   "Ask PROMPT for a date, read as READ-DATE-TEXT reads it (tomorrow, fri, +3d,
-sep 30, 2026-12-24 14:00, 3pm), the date it reads shown below as it is
-typed, as SHOWN, a function of its day number, hour, minute, end hour and
-end minute, writes it (2026-12-24 Thu 14:00 unless given), \\`RET' taking it;
-FOLLOW, when given, a function of the same, is called as each is read. NOW
-is the universal time taken as now. ALSO, when given, reads what is typed
-when it is no date: a function of it giving what it reads and the words
-shown for it, or NIL. TYPED, when given, a function of what is typed, is
-called each time it changes: while it returns true, nothing is offered to
-take. KEYMAP, when given, holds keys of the question's own.
-Returns the universal time of the date in local time,
-at midnight when no time is given, and as the values after it its day
-number, hour, minute, end hour and end minute; when what was typed is no
-date, what NONE, a function of it or of what ALSO read, gives (NIL unless
-given)."
+sep 30, 2026-12-24 14:00, 3pm), the date it reads shown below as it is typed, as
+SHOWN, a function of its day number, hour, minute, end hour and end minute,
+writes it (2026-12-24 Thu 14:00 unless given), \\`RET' taking it. FOLLOW, when
+given, a function of the same, is called as each is read. NOW is the universal
+time taken as now. ALSO, when given, reads what is typed when it is no date: a
+function of it giving what it reads and the words shown for it, or NIL. TYPED,
+when given, a function of what is typed, is called each time it changes: while
+it returns true, nothing is offered to take. KEYMAP, when given, holds keys of
+the question's own. Returns the universal time of the date in local time, at
+midnight when no time is given, and as the values after it its day number, hour,
+minute, end hour and end minute; when what was typed is no date, what NONE, a
+function of it or of what ALSO read, gives (NIL unless given)."
   (let* ((today (nth-value 0 (time-day now)))
          (chosen (completing-read prompt
                                   (lambda (input)
@@ -561,7 +566,8 @@ others are worked out for it since, or marks were taken off meanwhile."
              (setf (tuatara.buffer:buffer-local buffer 'calendar-marked)
                    (let ((table (make-hash-table)))
                      (dolist (mark (calendar-marks-marks job) table)
-                       (multiple-value-bind (day face) (if (consp mark) (values (car mark) (cdr mark)) (values mark :calendar-marked))
+                       (multiple-value-bind (day face)
+                           (if (consp mark) (values (car mark) (cdr mark)) (values mark :calendar-marked))
                          (pushnew face (gethash day table)))))))))))
 
 (define-command calendar-mark-days ()
@@ -600,11 +606,11 @@ by the key that opens it alone."
   (message "Marks taken off"))
 
 (defun calendar-day-faces (faces)
-  "The FACES a day is marked with (newest first, as the marks keep them), in
-the order they are laid on it, each over the one before: as the marks came,
+  "The FACES a day is marked with (newest first, as the marks keep them), in the
+order they are laid on it, each over the one before. They are as the marks came,
 but the agenda's (:calendar-marked) last, so that a day with agenda entries
-shows their colour whatever else marks it (a journal's day then shows its
-bold and underline in that colour)."
+shows their colour whatever else marks it (a journal's day then shows its bold
+and underline in that colour)."
   (stable-sort (reverse faces) #'< :key (lambda (face) (if (eq face :calendar-marked) 1 0))))
 
 (defmethod mode-syntax-highlights ((mode calendar-mode) buffer rows)
@@ -620,7 +626,8 @@ CALENDAR-CHOSEN, a list of day numbers) and today."
               (when marked
                 (loop for (day start end) across (calendar-days-of buffer)
                       when (and (< start to) (> end from))
-                        append (loop for face in (calendar-day-faces (gethash day marked)) collect (list start end face))))
+                      append (loop for face in (calendar-day-faces (gethash day marked))
+                                   collect (list start end face))))
               ;; the days chosen, looked through only while a date question has some
               (let ((chosen (tuatara.buffer:buffer-local buffer 'calendar-chosen)))
                 (when chosen
@@ -705,10 +712,13 @@ colour."
   (commands-for-mode 'calendar-mode "the calendar (\\[calendar])"
                      'calendar-forward-day 'calendar-backward-day 'calendar-forward-week 'calendar-backward-week
                      'calendar-forward-month 'calendar-backward-month 'calendar-forward-year 'calendar-backward-year
-                     'calendar-beginning-of-week 'calendar-end-of-week 'calendar-beginning-of-month 'calendar-end-of-month
+                     'calendar-beginning-of-week 'calendar-end-of-week 'calendar-beginning-of-month
+                     'calendar-end-of-month
                      'calendar-beginning-of-year 'calendar-end-of-year 'calendar-scroll-left 'calendar-scroll-right
-                     'calendar-scroll-left-three-months 'calendar-scroll-right-three-months 'calendar-goto-today 'calendar-jump-back
-                     'calendar-goto-date 'calendar-open-day 'calendar-other-month 'calendar-print-day-of-year 'calendar-iso-print-date
+                     'calendar-scroll-left-three-months 'calendar-scroll-right-three-months 'calendar-goto-today
+                     'calendar-jump-back
+                     'calendar-goto-date 'calendar-open-day 'calendar-other-month 'calendar-print-day-of-year
+                     'calendar-iso-print-date
                      'calendar-mark-days 'calendar-unmark)
   (place-buffers 'calendar-mode :below :size :fit :keep t :select t)
   (pushnew 'calendar-mode-line *mode-line-functions*)

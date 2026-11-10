@@ -44,7 +44,9 @@ without the spaces around it; a key with no value has \"\"."
 double quotes around it."
   (loop for (key . value) in (org-keyword-arguments text)
         collect (cons (string-downcase key)
-                      (if (and (>= (length value) 2) (char= (char value 0) #\") (char= (char value (1- (length value))) #\"))
+                      (if (and (>= (length value) 2)
+                               (char= (char value 0) #\")
+                               (char= (char value (1- (length value))) #\"))
                           (subseq value 1 (1- (length value)))
                           value))))
 
@@ -53,7 +55,9 @@ double quotes around it."
 when KEY is NAME, NEW added to VALUE after a space when KEY is NAME+, else
 VALUE as it was."
   (cond ((string-equal key name) new)
-        ((and (= (length key) (1+ (length name))) (char= (char key (length name)) #\+) (string-equal key name :end1 (length name)))
+        ((and (= (length key) (1+ (length name)))
+              (char= (char key (length name)) #\+)
+              (string-equal key name :end1 (length name)))
          (if value (format nil "~a ~a" value new) new))
         (t value)))
 
@@ -105,7 +109,10 @@ its language's (header-args:LANGUAGE) over all languages' (header-args), each
 as the subtrees above it and the file give them, over the defaults (:tangle
 no, :padline yes, :noweb no), with :mkdirp as *CODE-FILES-MAKE-FOLDERS* says."
   (let ((language (org-property block :language))
-        (merged (list (cons "tangle" "no") (cons "padline" "yes") (cons "noweb" "no") (cons "mkdirp" (if *code-files-make-folders* "yes" "no")))))
+        (merged (list (cons "tangle" "no")
+                      (cons "padline" "yes")
+                      (cons "noweb" "no")
+                      (cons "mkdirp" (if *code-files-make-folders* "yes" "no")))))
     (flet ((over (pairs) (loop for (key . value) in pairs
                                do (setf merged (cons (cons key value) (remove key merged :key #'car :test #'string=))))))
       (over (org-header-arguments (org-inherited-property tree block "header-args")))
@@ -122,7 +129,10 @@ away (a tab counting to the next eighth column)."
                        unless (string= (string-trim " 	" line) "")
                          minimize (loop for c across line
                                         with column = 0
-                                        do (case c (#\Space (incf column)) (#\Tab (setf column (tuatara.display:next-tab-stop column 8))) (t (return column)))
+                                        do (case c
+                                             (#\Space (incf column))
+                                             (#\Tab (setf column (tuatara.display:next-tab-stop column 8)))
+                                             (t (return column)))
                                         finally (return column)))))
     (if (or (null indent) (zerop indent))
         text
@@ -131,7 +141,8 @@ away (a tab counting to the next eighth column)."
                           (let ((column 0) (i 0))
                             (loop while (and (< i (length line)) (< column indent))
                                   do (case (char line i)
-                                       (#\Space (incf column)) (#\Tab (setf column (tuatara.display:next-tab-stop column 8)))
+                                       (#\Space (incf column))
+                                       (#\Tab (setf column (tuatara.display:next-tab-stop column 8)))
                                        (t (return)))
                                      (incf i))
                             (subseq line i)))
@@ -159,11 +170,11 @@ unescaped and their common indentation taken away (`org-remove-common-indentatio
 the references left are left as they are written.")
 
 (defun org-expand-noweb (code names &optional (depth 0) (within '()) (budget (list *noweb-limit*)))
-  "CODE with each <<name>> on its own in a line put in place by the code of
-the block of that #+NAME: in NAMES, every line of it with what came before the
-reference on its line; <<name()>>, which would run the block, names not known,
-a block's reference to itself or to a block it is within (WITHIN), and
-references past *NOWEB-LIMIT* (BUDGET) left as they are."
+  "CODE with each <<name>> on its own in a line put in place by the code of the
+block of that #+NAME: in NAMES, every line of it with what came before the
+reference on its line. <<name()>>, which would run the block, names not known, a
+block's reference to itself or to a block it is within (WITHIN), and references
+past *NOWEB-LIMIT* (BUDGET) left as they are."
   (if (> depth 20)
       code
       (cl-ppcre:regex-replace-all
@@ -189,10 +200,10 @@ references past *NOWEB-LIMIT* (BUDGET) left as they are."
 (defstruct (code-file (:conc-name code-file-))
   "A file tangle-code-files writes: PATH (native), TEXT, the BLOCKS written to
 it, MODE to give it (or NIL), MAKE-DIRECTORIES true for :mkdirp, and STATE
-(:new, :changed, :same or :cannot), with why it cannot be written; REAL,
-where writing it lands, its links followed, when that is elsewhere; STAMP,
-what was there when it was looked at (NIL for nothing), so that a file put
-in its place meanwhile is not written over."
+\(:new, :changed, :same or :cannot), with why it cannot be written. REAL, where
+writing it lands, its links followed, when that is elsewhere. STAMP, what was
+there when it was looked at (NIL for nothing), so that a file put in its place
+meanwhile is not written over."
   path text (blocks 0) mode make-directories state reason real stamp)
 
 (defun org-tangle-mode (value)
@@ -217,8 +228,11 @@ are in, relative :tangle files taken from its folder."
                  (unless (member tangle '("no" "") :test #'string=)
                    (let* ((language (or (org-property node :language) ""))
                           (target (if (string= tangle "yes")
-                                      (and base (format nil "~a.~a" base (or (cdr (assoc language *code-file-extensions* :test #'string=))
-                                                                             language)))
+                                      (and base
+                                           (format nil "~a.~a" base (or (cdr (assoc language
+                                                                                    *code-file-extensions*
+                                                                                    :test #'string=))
+                                                                        language)))
                                       tangle)))
                      (when target
                        (let* ((path (tuatara.io:clean-path (tuatara.io:native (tuatara.io:expand-path target :directory directory))))
@@ -226,18 +240,21 @@ are in, relative :tangle files taken from its folder."
                                         (car (push (make-code-file :path path :text nil) files))))
                               (code (org-block-code node))
                               (code (org-trim-code (if (member (cdr (assoc "noweb" arguments :test #'string=)) '("yes" "tangle" "strip-tangle" "no-export" "strip-export") :test #'string=)
-                                        (org-expand-noweb code names 0 (let ((own (org-property node :name))) (and own (list own))))
+                                                       (org-expand-noweb code names 0 (let ((own (org-property node :name)))
+                                                                                        (and own (list own))))
                                         code)))
                               (shebang (cdr (assoc "shebang" arguments :test #'string=)))
                               (padline (not (string= (cdr (assoc "padline" arguments :test #'string=)) "no"))))
                          (setf (code-file-text file)
                                (concatenate 'string
-                                            (cond ((null (code-file-text file)) (if (plusp (length shebang)) (format nil "~a~%" shebang) ""))
+                                            (cond ((null (code-file-text file))
+                                                   (if (plusp (length shebang)) (format nil "~a~%" shebang) ""))
                                                   (padline (format nil "~a~%" (code-file-text file)))
                                                   (t (code-file-text file)))
                                             code (string #\Newline)))
                          (incf (code-file-blocks file))
-                         (when (plusp (length shebang)) (setf (code-file-mode file) (or (code-file-mode file) :executable)))
+                         (when (plusp (length shebang))
+                           (setf (code-file-mode file) (or (code-file-mode file) :executable)))
                          (let ((mode (cdr (assoc "tangle-mode" arguments :test #'string=))))
                            (when mode (setf (code-file-mode file) (or (org-tangle-mode mode) (code-file-mode file)))))
                          (when (string= (cdr (assoc "mkdirp" arguments :test #'string=)) "yes")
@@ -271,7 +288,8 @@ file its links lead to, or its own path."
           (stamp
            (let ((old (ignoring-errors-reported ("reading ~a to compare" (code-file-place file))
                         (tuatara.io:file-octets (code-file-place file)))))
-             (setf (code-file-state file) (if (equalp old (tuatara.text:string-octets (code-file-text file))) :same :changed))))
+             (setf (code-file-state file)
+                   (if (equalp old (tuatara.text:string-octets (code-file-text file))) :same :changed))))
           ((or (tuatara.io:path-stamp folder :failure nil) (code-file-make-directories file))
            (setf (code-file-state file) :new))
           (t (setf (code-file-state file) :cannot
@@ -353,19 +371,18 @@ over."
     (error (e) (format nil "~a" e))))
 
 (define-command tangle-code-files ()
-  "Write the code files of this Org file's source blocks (\\`C-c C-v t'), each block with :tangle FILE (on its
-#+begin_src line, in a subtree's property :header-args: or :header-args:LANGUAGE:,
-or in #+PROPERTY: header-args for the file) goes to FILE, relative
-to the Org file's folder, the blocks for one file in order, a blank line
-between them unless :padline no; :tangle yes, the Org file's name with the
-language's ending (*CODE-FILE-EXTENSIONS*); :mkdirp yes makes the folders a
-file goes in when they are not there (for every block with
-*CODE-FILES-MAKE-FOLDERS*);
-:shebang \"#!/bin/sh\" begins the file and makes it executable, :tangle-mode
-o755 gives it that mode; :noweb yes puts in the code <<name>> stands for.
-First it lists every file, new, changed, the same or not to be written, and
-those outside the Org file's folder, and writes the new and changed ones only
-when you say so. Nothing in a block is ever run."
+  "Write the code files of this Org file's source blocks (\\`C-c C-v t'), each
+block with :tangle FILE (on its #+begin_src line, in a subtree's property
+:header-args: or :header-args:LANGUAGE:, or in #+PROPERTY: header-args for the
+file) goes to FILE. The file is relative to the Org file's folder, the blocks
+for one file in order, a blank line between them unless :padline no. :tangle yes
+the Org file's name with the language's ending (*CODE-FILE-EXTENSIONS*); :mkdirp
+yes makes the folders a file goes in when they are not there (for every block
+with *CODE-FILES-MAKE-FOLDERS*); :shebang \"#!/bin/sh\" begins the file and
+makes it executable, :tangle-mode o755 gives it that mode; :noweb yes puts in
+the code <<name>> stands for. First it lists every file, new, changed, the same
+or not to be written, and those outside the Org file's folder, and writes the
+new and changed ones only when you say so. Nothing in a block is ever run."
   (let ((buffer (current-buffer)))
     (if (not (typep (buffer-major-mode buffer) 'org-mode))
         (message "tangle-code-files writes the code of an Org file's source blocks: this is no Org buffer")
@@ -401,7 +418,9 @@ when you say so. Nothing in a block is ever run."
                                         (push (format nil "~a: ~a" (abbreviated-path (code-file-path file)) why) failed)
                                         (push file written))))
                                 (if failed
-                                    (message "Wrote ~d of ~d (~{~a~^, ~}); not written: ~{~a~^; ~}" (length written) (length to-write)
+                                    (message "Wrote ~d of ~d (~{~a~^, ~}); not written: ~{~a~^; ~}"
+                                             (length written)
+                                             (length to-write)
                                              (mapcar #'code-file-words (reverse written)) (reverse failed))
                                     (message "Wrote ~d file~:p: ~{~a~^, ~}" (length to-write)
                                              (mapcar #'code-file-words to-write))))

@@ -16,24 +16,43 @@
 
 (defparameter *decoding-carried-settings*
   '(tuatara-user:*sandbox-program* tuatara-user:*sandbox-seconds* tuatara-user:*sandbox-memory*
-    tuatara-user:*sandbox-total-memory* *pdf-decoders* *pdf-text-pages* *image-decoders* *magick-largest-side*
-    *picture-memory* *image-view-largest*)
+    tuatara-user:*sandbox-total-memory* tuatara-user:*sandbox-input-limit* *pdf-decoders* *pdf-text-pages*
+    *image-decoders* *magick-largest-side* *picture-memory* *image-view-largest*)
   "The settings that decoding reads, carried to the thread that draws a PDF's
 page, takes out its text, draws an image or makes a preview, as they are on
 the editor's when that starts (TUATARA.RUNTIME:CARRY-SETTINGS).")
+
+(defstruct (decoding-job (:include tuatara.runtime:job) (:constructor nil) (:copier nil))
+  "A job whose work is a file decoded in the sandbox for the view of its
+buffer, such as a picture drawn or a PDF's text taken out: \\[keyboard-quit]
+in that buffer stops it (STOP-DECODING), its programs ended with all they
+started, as killing the buffer or leaving does.")
+
+(setf (documentation 'decoding-job-p 'function) "True when OBJECT is a DECODING-JOB.")
+
+(defmethod tuatara.runtime:job-at-exit ((job decoding-job))
+  "Decoding only shows something: stopped without asking."
+  :quiet)
+
+(defun stop-decoding ()
+  "Keyboard-quit function: stop the decoding jobs (DECODING-JOB) running for
+the current buffer, their programs ended with all they started."
+  (dolist (job (tuatara.runtime:jobs-of (current-buffer) :running t))
+    (when (and (decoding-job-p job) (not (car (tuatara.runtime:job-cancel job))))
+      (tuatara.runtime:job-stop job))))
 
 (defparameter *pdf-decoders*
   '((:name "poppler"
      :info ("pdfinfo" "fd://0")
      :text ("pdftotext" "-layout" "-enc" "UTF-8" "-l" :pages "fd://0" "-")
      :page ("pdftoppm" "-f" :page "-l" :page "-scale-to-x" :width "-scale-to-y" :height "fd://0")))
-  "The programs known to take the text out of a PDF, the first found used,
-each a list of :NAME, the package they come in, :TEXT, the program printing
-the text and its arguments (:PAGES standing for how many pages, the file read
-on standard input), :INFO, the one printing the number of pages, their size
-and the like, as lines of Name: value, and :PAGE, the one drawing page :PAGE
-as a PPM or PAM image :WIDTH by :HEIGHT pixels (-1 for a height that keeps
-the page's proportions).")
+  "The programs known to take the text out of a PDF, the first found used. Each
+is a list of :NAME, the package they come in, and three more entries. :TEXT is
+the program printing the text and its arguments (:PAGES standing for how many
+pages, the file read on standard input). :INFO is the one printing the number
+of pages, their size and the like, as lines of Name: value. :PAGE is the one
+drawing page :PAGE as a PPM or PAM image :WIDTH by :HEIGHT pixels (-1 for a
+height that keeps the page's proportions).")
 
 (defparameter *pdf-text-pages* 50
   "The pages of a PDF whose text is taken out for a preview, from the first.")
@@ -210,7 +229,8 @@ out."
               (when (uiop:string-prefix-p "yes" (info-field info "Encrypted")) (note ", encrypted" :warning)))))
         ;; the text
         (let ((program (first (getf decoder :text))))
-          (destructuring-bind (output outcome said) (run (getf decoder :text) (list :pages (list (princ-to-string *pdf-text-pages*))) limit)
+          (destructuring-bind (output outcome said)
+              (run (getf decoder :text) (list :pages (list (princ-to-string *pdf-text-pages*))) limit)
             (case outcome
               (:cancelled (stopped))
               ((:done :too-much)
@@ -246,7 +266,8 @@ program: call it from a thread working in the background."
                                                                          :height (list (princ-to-string down))))
                                       :input fd :cancel cancel
                                       ;; its height not known: up to 16 times its width, as a long receipt
-                                      :output-limit (+ 4096 (* 3 across (if (plusp down) down (min 16384 (* 16 across))))))
+                                      :output-limit (+ 4096
+                                                       (* 3 across (if (plusp down) down (min 16384 (* 16 across))))))
             (and (eq outcome :done) (decoded-image output))))))))
 
 ;;; Pictures: the pixels of an image, made no larger than they are shown
@@ -269,18 +290,18 @@ program: call it from a thread working in the background."
      :jpeg-hint ("-size" "~dx~d")))
   "The programs known to turn an image into pixels, the first found used
 \(ImageMagick 7's magick, then ImageMagick 6's convert as some systems still
-have it, under the same policy, then GraphicsMagick), each
-a list of :NAME, the package they come in, and :PROGRAM, the program and its
-arguments, :INPUT standing for the image on standard input, its format named
-(PNG:-[0], its first frame), :SIZE for the most it may be (640x480>, made
-no larger than it is), :DENSITY for how finely a drawing (SVG) is drawn
-before that, -density N, when asked (nothing otherwise), and :JPEG-HINT, for a
-JPEG, the arguments of its :JPEG-HINT with that size: the JPEG is then
-decoded at the smallest fraction of its size (an eighth, two eighths...) no
-smaller than that, from the start, so that a photo of a hundred megapixels
-needs little more memory than a small one. It prints the pixels as a PAM (or PPM) image. :SANDBOX
-names a function giving what else the sandbox gives it, as TUATARA.IO:SANDBOX-RUN's
-:FILES and :ENVIRONMENT.")
+have it, under the same policy, then GraphicsMagick). Each is a list of :NAME,
+the package they come in, and :PROGRAM, the program and its arguments. In the
+arguments, :INPUT stands for the image on standard input, its format named
+\(PNG:-[0], its first frame). :SIZE stands for the most it may be (640x480>,
+made no larger than it is). :DENSITY stands for how finely a drawing (SVG) is
+drawn before that, -density N, when asked (nothing otherwise). Last, :JPEG-HINT
+gives, for a JPEG, the arguments of its :JPEG-HINT with that size. The JPEG is
+then decoded at the smallest fraction of its size (an eighth, two eighths...)
+no smaller than that, from the start, so that a photo of a hundred megapixels
+needs little more memory than a small one. It prints the pixels as a PAM (or
+PPM) image. :SANDBOX names a function giving what else the sandbox gives it, as
+TUATARA.IO:SANDBOX-RUN's :FILES and :ENVIRONMENT.")
 
 (defvar *magick-largest-side* "64KP"
   "The widest and tallest image ImageMagick reads for a preview, in its own
@@ -347,13 +368,13 @@ read where its first directory stands when that is past them
         (values words kind))))
 
 (defun picture-memory (kind pixels octets &optional (channels 0))
-  "The memory the program drawing a picture of KIND of PIXELS pixels (NIL:
-not known), its file OCTETS long, is given: *SANDBOX-MEMORY*, or what a large
+  "The memory the program drawing a picture of KIND of PIXELS pixels (NIL: not
+known), its file OCTETS long, is given. It is *SANDBOX-MEMORY*, or what a large
 one needs, its file read whole first, and four octets a pixel more for each of
-its CHANNELS that its decoder keeps apart (a JPEG 2000 picture's components,
-a JPEG XL picture's channels); a JPEG's the first, decoded at a fraction of
-its size; a camera's raw what its file's size calls for, developed whole, up
-to *PICTURE-MEMORY*."
+its CHANNELS that its decoder keeps apart (a JPEG 2000 picture's components, a
+JPEG XL picture's channels). For a JPEG it is the first, decoded at a fraction
+of its size. For a camera's raw it is what its file's size calls for, developed
+whole, up to *PICTURE-MEMORY*."
   (cond ((eq kind :raw)
          ;; its size not in its first octets (they hold a thumbnail's): reckoned from its file's
          (let ((need (+ (* 1024 1024 1024) (* 64 (or octets 0)))))
@@ -386,11 +407,11 @@ allows is never drawn, which bounds the time."
       (ceiling (+ base (* *picture-seconds-per-megapixel* (/ pixels 1000000)))))))
 
 (defun coded-picture-header (fd head kind)
-  "What the JPEG 2000 or JPEG XL picture of KIND (:jp2 or :j2k, either
-taken for both, or :jxl) open as file descriptor (FD), whose first octets are
-HEAD, says of itself in its header (TUATARA.IO:J2K-HEADER,
-TUATARA.IO:JXL-FILE-HEADER), a file kept in boxes read from FD where its
-codestream begins when that is past HEAD; NIL when its header does not say, or
+  "What the JPEG 2000 or JPEG XL picture of KIND (:jp2 or :j2k, either taken
+for both, or :jxl) open as file descriptor (FD), whose first octets are HEAD,
+says of itself in its header (TUATARA.IO:J2K-HEADER,
+TUATARA.IO:JXL-FILE-HEADER). A file kept in boxes is read from FD where its
+codestream begins when that is past HEAD. NIL when its header does not say, or
 for another kind."
   (let* ((size (handler-case (sb-posix:stat-size (sb-posix:fstat fd)) (sb-posix:syscall-error () nil)))
          (read (lambda (at count)
@@ -463,10 +484,11 @@ mapped memory and disk set to that."
   "What the sandbox gives ImageMagick: a policy of its own (MAGICK-POLICY,
 MEMORY the octets it is given) at *MAGICK-POLICY-PATH*, through
 MAGICK_CONFIGURE_PATH, and the same policy in place of each of OVERLAYS, the
-other policy files it reads (MAGICK-POLICY-OVERLAYS); reading only the
-formats of *IMAGE-FORMATS*, writing only PAM pixels, no program started
-\(delegates), no filters, no file named by @, no image wider or taller than
-*MAGICK-LARGEST-SIDE*, two threads at most, no more memory than it is given."
+other policy files it reads (MAGICK-POLICY-OVERLAYS). The policy reads only the
+formats of *IMAGE-FORMATS* and writes only PAM pixels. It allows no program
+started \(delegates), no filters and no file named by @. It allows no image
+wider or taller than *MAGICK-LARGEST-SIDE*, two threads at most, and no more
+memory than it is given."
   (let ((policy (magick-policy memory)))
     (list :files (mapcar (lambda (path) (cons path policy)) (cons *magick-policy-path* overlays))
           :environment '(("MAGICK_CONFIGURE_PATH" "/etc/tuatara/ImageMagick")))))
@@ -559,10 +581,10 @@ Found once for each program file (MAGICK-CHECKED)."
     (:ico . "ICO") (:heif . "HEIC") (:avif . "AVIF") (:svg . "SVG") (:jp2 . "JP2") (:j2k . "J2K") (:jxl . "JXL"))
   "The kinds of image (TUATARA.IO:OCTETS-KIND's keywords) turned into pixels
 for a preview, each with the name of its format that the decoding program is
-told, so that it reads the file as that and nothing else: a camera's raw is
-developed by ImageMagick's LibRaw reader (DNG), whatever its maker; a JPEG
-2000 file or codestream is read by its OpenJPEG reader, a JPEG XL one by its
-libjxl reader.")
+told, so that it reads the file as that and nothing else. A camera's raw is
+developed by ImageMagick's LibRaw reader (DNG), whatever its maker. A JPEG 2000
+file or codestream is read by its OpenJPEG reader, a JPEG XL one by its libjxl
+reader.")
 
 (defparameter *image-format-libraries*
   '((:jpeg "libjpeg" "libjpeg-turbo") (:tiff "libtiff" "libtiff") (:webp "libwebp" "libwebp")
@@ -593,7 +615,8 @@ when the sandbox cannot run it."
                            (tuatara.io:sandbox-run (first words) (append (rest words) (list "-list" "format"))
                                                    :output-limit (* 1024 1024))
                          (if (eq outcome :done)
-                             (loop for line in (uiop:split-string (tuatara.text:lenient-string output) :separator '(#\Newline))
+                             (loop for line in (uiop:split-string (tuatara.text:lenient-string output)
+                                                                  :separator '(#\Newline))
                                    for word = (first (tuatara.text:split-words line))
                                    when word collect (string-right-trim "*" word))
                              :unlisted)))))))
@@ -607,9 +630,15 @@ kinds of picture it has no reader for (IMAGE-READERS-MISSING) and the
 library each needs."
   (let ((decoder (find-image-decoder)))
     (if decoder
-        (format nil "pictures by ~a (~a)~@[, without readers for ~{~a~^, ~}~]" (first (getf decoder :program)) (getf decoder :name)
+        (format nil
+                "pictures by ~a (~a)~@[, without readers for ~{~a~^, ~}~]"
+                (first (getf decoder :program))
+                (getf decoder :name)
                 (mapcar (lambda (kind)
-                          (format nil "~a~@[ (~a)~]" (cdr (assoc kind *image-formats*)) (second (assoc kind *image-format-libraries*))))
+                          (format nil
+                                  "~a~@[ (~a)~]"
+                                  (cdr (assoc kind *image-formats*))
+                                  (second (assoc kind *image-format-libraries*))))
                         (image-readers-missing decoder)))
         (format nil "pictures by none of ~{~a~^, ~}: ~a, or ~{~a~^ or ~}"
                 (mapcar (lambda (d) (first (getf d :program))) *image-decoders*)
@@ -728,7 +757,8 @@ its car turns true; NIL, NIL then. DENSITY, dots an inch, draws a drawing
                              :jpeg-hint (and (eq kind :jpeg) (getf decoder :jpeg-hint)
                                              (destructuring-bind (option value) (getf decoder :jpeg-hint)
                                                ;; no larger than the JPEG itself
-                                               (multiple-value-bind (across down) (and head (tuatara.io:octets-picture-size head))
+                                               (multiple-value-bind (across down)
+                                                   (and head (tuatara.io:octets-picture-size head))
                                                  (list option (format nil value (max 1 (min width (or across width)))
                                                                       (max 1 (min height (or down height))))))))))
                       :input fd :cancel cancel :seconds seconds :output-limit (+ 4096 (* 4 (max 1 width) (max 1 height)))
@@ -759,7 +789,8 @@ its car turns true; NIL, NIL then. DENSITY, dots an inch, draws a drawing
                (when preview
                  (return-from decode-image (decode-picture preview :jpeg width height :cancel cancel))))
              (note (if (and (eq outcome :failed) (cl-ppcre:scan "(?i)no decode delegate" (or said "")))
-                       (format nil ", not shown: ~a here cannot read ~a pictures~@[: it was built or installed without ~a~]"
+                       (format nil
+                               ", not shown: ~a here cannot read ~a pictures~@[: it was built or installed without ~a~]"
                                program format (second (assoc kind *image-format-libraries*)))
                        (format nil ", not shown: ~a" (sandbox-outcome-words outcome said :label program)))
                    :comment)
@@ -769,14 +800,14 @@ its car turns true; NIL, NIL then. DENSITY, dots an inch, draws a drawing
                        &key (cancel (and tuatara.runtime:*job* (tuatara.runtime:job-cancel tuatara.runtime:*job*))))
   "The picture OCTETS hold, of KIND (TUATARA.IO:OCTETS-KIND's keyword: :jpeg,
 :png, :tiff, :jxl, :jp2 for a JPEG 2000 file or :j2k for a bare JPEG 2000
-codestream, either read as both, as a PDF's /JPXDecode picture is one or
-the other...), turned into pixels in the sandbox as DECODE-IMAGE turns a
-file's, no larger than WIDTH by HEIGHT pixels, as two values, a
-TUATARA.FRONTEND:IMAGE, NIL when it could not be made, and notes saying
-why. For a package reading pictures it finds in other files: only plain
-pixels come back, checked, the picture itself never decoded in the editor.
-Waits for the program: call it from a thread working in the background; in
-a job, stopping the job (CANCEL, the job's own by default) stops it too."
+codestream, either read as both, as a PDF's /JPXDecode picture is one or the
+other...), turned into pixels in the sandbox as DECODE-IMAGE turns a file's. It
+is no larger than WIDTH by HEIGHT pixels. Two values come back: a
+TUATARA.FRONTEND:IMAGE, NIL when it could not be made, and notes saying why.
+For a package reading pictures it finds in other files: only plain pixels come
+back, checked, the picture itself never decoded in the editor. Waits for the
+program: call it from a thread working in the background; in a job, stopping
+the job (CANCEL, the job's own by default) stops it too."
   (let ((fd (tuatara.io:memory-file "tuatara-picture" octets :kept nil)))
     (unwind-protect (decode-image fd kind width height :cancel cancel)
       (ignoring-errors-reported ("closing the copy of a picture") (sb-posix:close fd)))))

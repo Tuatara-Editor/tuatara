@@ -168,7 +168,8 @@ either, up to the next headline."
                                 while (member octet '(32 9))
                                 finally (return (and (< i size) (tuatara.text:rope-octet rope i))))))
                (when (member first '(58 45 67)) ; a line whose text begins with a colon, a dash or a C
-                 (multiple-value-bind (range stop) (if (eql first 58) (org-drawer-range buffer line) (org-notes-range buffer line))
+                 (multiple-value-bind (range stop)
+                     (if (eql first 58) (org-drawer-range buffer line) (org-notes-range buffer line))
                    (when range (tuatara.display:fold-region buffer (car range) (cdr range)))
                    (when stop (setf next (max next stop)))))
                (setf line next)))))
@@ -369,7 +370,8 @@ than *ORG-DRAWER-LOOK-BACK* lines."
           for above = (and (plusp start) (tuatara.buffer:buffer-line-start buffer (1- start)))
           while above
           do (let ((text (tuatara.buffer:buffer-string buffer :start above
-                                                              :end (min (+ above 512) (tuatara.buffer:buffer-line-end buffer above)))))
+                                                       :end (min (+ above 512)
+                                                                 (tuatara.buffer:buffer-line-end buffer above)))))
                (cond ((org-stars rope above) (return nil))
                      ((cl-ppcre:scan *org-drawer-end-re* text) (return nil))
                      ((cl-ppcre:scan *org-drawer-line-re* text) (return t)))))))
@@ -399,7 +401,9 @@ to the next field. After a snippet's key (<s for a source block), the snippet
          (bare (string-left-trim " 	" line)))
     ;; a line that is no headline, table, template or list item to fold: indented, the file not parsed for it
     ;; a drawer's first line, the drawer folded or opened, found by its lines
-    (when (and (or (uiop:string-prefix-p ":" bare) (uiop:string-prefix-p "- " bare) (uiop:string-prefix-p "CLOCK: " bare))
+    (when (and (or (uiop:string-prefix-p ":" bare)
+                   (uiop:string-prefix-p "- " bare)
+                   (uiop:string-prefix-p "CLOCK: " bare))
                (org-cycle-drawer buffer start))
       (return-from org-cycle))
     ;; planning lines and a drawer's lines: left as Org writes them
@@ -409,7 +413,9 @@ to the next field. After a snippet's key (<s for a source block), the snippet
                 (and *org-cycle-include-plain-lists* (cl-ppcre:scan (concatenate 'string "^" (org-item-re)) line)))
       (return-from org-cycle (indent-for-tab-command)))
     ;; a list item of a large file whose parse is not ready: said, the parse under way
-    (when (and (not (uiop:string-prefix-p "*" line)) (not (uiop:string-prefix-p "|" bare)) (not (uiop:string-prefix-p "<" bare))
+    (when (and (not (uiop:string-prefix-p "*" line))
+               (not (uiop:string-prefix-p "|" bare))
+               (not (uiop:string-prefix-p "<" bare))
                (> (tuatara.buffer:buffer-size buffer) *org-parse-at-once*)
                (progn (org-buffer-parse buffer)
                       (not (org-parse-current-p buffer))))

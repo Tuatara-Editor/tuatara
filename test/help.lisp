@@ -40,7 +40,8 @@
 
 (define-test (help symbol-at-point-offered)
   ;; C-h f in a Lisp buffer: the operator named at point selected first, RET describes it
-  (multiple-value-bind (f editor) (run-keys-in-turns '("C-h f RET") :text "mapcar #'1+ list" :mode 'tuatara.defaults::lisp-mode)
+  (multiple-value-bind (f editor)
+      (run-keys-in-turns '("C-h f RET") :text "mapcar #'1+ list" :mode 'tuatara.defaults::lisp-mode)
     (declare (ignore f))
     (true (search "mapcar is a function" (help-text editor))))
   ;; elsewhere the first one shown
@@ -105,7 +106,8 @@
       (destructuring-bind (name line) (followed "C-h k C-x C-f")
         (is string= "visiting.lisp" name)
         (true (uiop:string-prefix-p "(define-command find-file " line) "~a" line))
-      (destructuring-bind (name line) (followed "C-h v t u a t a r a . d e f a u l t s : : * h e l p - c o l u m n * RET")
+      (destructuring-bind (name line)
+          (followed "C-h v t u a t a r a . d e f a u l t s : : * h e l p - c o l u m n * RET")
         (true (search "(defparameter *help-column* " line) "~a ~a" name line)))))
 
 (define-test (help docstrings-split-one-way)
@@ -141,7 +143,8 @@
     (true (tuatara.frontend.fake:fake-frame-showing f "Char: h (104, #o150, #x68) point=1 of 5 (0%) octet=0 column=0")))
   (multiple-value-bind (f editor) (run-keys "l C-x =" :text "héllo" :width 100)
     (declare (ignore editor))
-    (true (tuatara.frontend.fake:fake-frame-showing f "Char: é (233, #o351, #xe9) point=2 of 5 (20%) octet=1 column=1")))
+    (true (tuatara.frontend.fake:fake-frame-showing f
+                                                    "Char: é (233, #o351, #xe9) point=2 of 5 (20%) octet=1 column=1")))
   (multiple-value-bind (f editor) (run-keys "M-> C-x =" :text "héllo" :width 100)
     (declare (ignore editor))
     (true (tuatara.frontend.fake:fake-frame-showing f "point=6 of 5 (100%) octet=6 column=5")))
@@ -169,12 +172,14 @@
   (multiple-value-bind (f editor) (run-keys "i x C-g C-h f u n d o RET i y C-g" :text "")
     (declare (ignore f))
     ;; typing in *Help* is refused with a message; q brings the previous buffer back
-    (is string= "*Help*" (tuatara.buffer:buffer-name (tuatara.display:window-buffer (tuatara.command:editor-window editor))))
+    (is string= "*Help*"
+        (tuatara.buffer:buffer-name (tuatara.display:window-buffer (tuatara.command:editor-window editor))))
     (true (search "undo is a command" (session-text editor)))
     (false (search "y" (subseq (session-text editor) 0 1))))
   (multiple-value-bind (f editor) (run-keys "i x C-g C-h f u n d o RET q" :text "")
     (declare (ignore f))
-    (is string= "*scratch*" (tuatara.buffer:buffer-name (tuatara.display:window-buffer (tuatara.command:editor-window editor))))
+    (is string= "*scratch*"
+        (tuatara.buffer:buffer-name (tuatara.display:window-buffer (tuatara.command:editor-window editor))))
     (is string= "x" (session-text editor))))
 
 (define-test (help which-tuatara)
@@ -183,7 +188,8 @@
   (let ((sbcl (subseq (lisp-implementation-version) 0 (or (position #\- (lisp-implementation-version))
                                                           (length (lisp-implementation-version))))))
     (let ((tuatara:*build* nil))
-      (is string= (format nil "Tuatara ~a (from its sources) on SBCL ~a" (tuatara:version) sbcl) (tuatara:version-line)))
+      (is string= (format nil "Tuatara ~a (from its sources) on SBCL ~a" (tuatara:version) sbcl)
+          (tuatara:version-line)))
     (let ((tuatara:*build* '("a1b2c3d" nil "2026-10-02")))
       (is string= (format nil "Tuatara ~a (a1b2c3d, built 2026-10-02) on SBCL ~a, in the terminal (kitty)" (tuatara:version) sbcl)
           (tuatara:version-line "in the terminal (kitty)")))
@@ -268,7 +274,8 @@
     (multiple-value-bind (f editor) (run-keys "C-h C-a S-TAB" :text "x" :width 120 :height 40)
       (declare (ignore f))
       (let ((buffer (shown editor)))
-        (is = (octets-to (tuatara.buffer:buffer-string buffer) "Checking health") (tuatara.buffer:buffer-point buffer))))
+        (is = (octets-to (tuatara.buffer:buffer-string buffer) "Checking health")
+            (tuatara.buffer:buffer-point buffer))))
     ;; C-h C-c: all of the license
     (multiple-value-bind (f editor) (run-keys "C-h C-c" :text "x" :width 120 :height 40)
       (declare (ignore f))
@@ -324,9 +331,15 @@
   ;; a command's or a variable's documentation is filled to *help-column*, as the
   ;; settings' help is: no line past it, a key written in never split over two lines
   (let ((tuatara.command:*editor* (nth-value 1 (run-keys "" :text ""))))
-    (flet ((widest (pieces) (reduce #'max (mapcar #'length (uiop:split-string (tuatara.defaults::pieces-text pieces :keys t) :separator '(#\Newline))))))
-      (true (<= (widest (tuatara.defaults::describe-function-pieces 'tuatara.defaults::org-insert-link)) tuatara.defaults::*help-column*))
-      (true (<= (widest (tuatara.defaults::describe-variable-pieces 'tuatara-user::*auto-save-directory*)) tuatara.defaults::*help-column*))
+    (flet ((widest (pieces)
+             (reduce #'max
+                     (mapcar #'length
+                             (uiop:split-string (tuatara.defaults::pieces-text pieces :keys t)
+                                                :separator '(#\Newline))))))
+      (true (<= (widest (tuatara.defaults::describe-function-pieces 'tuatara.defaults::org-insert-link))
+              tuatara.defaults::*help-column*))
+      (true (<= (widest (tuatara.defaults::describe-variable-pieces 'tuatara-user::*auto-save-directory*))
+              tuatara.defaults::*help-column*))
       (true (search "C-x a l" (tuatara.defaults::pieces-text (tuatara.defaults::describe-function-pieces 'tuatara.defaults::org-insert-link) :keys t)))))
   ;; a list item's lines filled under its words; a line set in kept as written
   (is string= (format nil "Text one two.~%- an item that~%  goes on~%    | kept |  as is~%")
@@ -338,7 +351,8 @@
   ;; to *help-column*, lines set in kept as they are, the keys named written in
   (let ((text (format nil "A report~%~%~{~a ~}\\[find-file] opens a file.~%~%Settings~%  *a-setting*        t~%  *another-setting*  nil~%"
                       (loop repeat 30 collect "word"))))
-    (multiple-value-bind (f editor) (run-keys (list (lambda () (tuatara.defaults::show-help text :fill t))) :text "" :width 120)
+    (multiple-value-bind (f editor)
+        (run-keys (list (lambda () (tuatara.defaults::show-help text :fill t))) :text "" :width 120)
       (declare (ignore f editor))
       (let* ((help (tuatara.buffer:find-buffer "*Help*"))
              (lines (uiop:split-string (tuatara.buffer:buffer-string help) :separator '(#\Newline))))
@@ -349,7 +363,8 @@
 
 (define-test (help variable-value-cut-short)
   ;; a variable holding a great deal is shown cut short, said so, never printed whole
-  (let ((text (tuatara.defaults::variable-value-text (loop repeat 100000 collect (make-string 100 :initial-element #\x)))))
+  (let ((text (tuatara.defaults::variable-value-text (loop repeat 100000 collect (make-string 100
+                                                                                              :initial-element #\x)))))
     (true (<= (length text) (+ tuatara.defaults::*variable-value-shown* 20)))
     (true (search "(cut short)" text)))
   (is string= "(1 2 3)" (tuatara.defaults::variable-value-text (list 1 2 3))))
@@ -374,7 +389,8 @@
   (let ((words (tuatara.defaults::pieces-text (tuatara.defaults::source-location-pieces 'tuatara.defaults::search-again :function))))
     (true (search "Defined in lisp/search/incremental.lisp" words) "~a" words)
     (false (search "//" words)))
-  (is string= "src/syntax/search.lisp" (tuatara.defaults::source-file-words "/home/ann/work/tuatara/src/syntax/search.lisp"))
+  (is string= "src/syntax/search.lisp"
+      (tuatara.defaults::source-file-words "/home/ann/work/tuatara/src/syntax/search.lisp"))
   (is string= "notes.lisp" (tuatara.defaults::source-file-words "/tmp/notes.lisp"))
   (let ((tuatara.runtime:*source-tree* nil))
     (finish (tuatara.defaults::license-file))))
@@ -485,7 +501,8 @@ second when that row does not go on from it."
     (tuatara.buffer:buffer-replace buffer 0 (tuatara.buffer:buffer-end buffer) text)
     (is string= "         " (tuatara.defaults::hanging-prefix buffer 0 t))
     (is string= "  " (tuatara.defaults::hanging-prefix buffer (1+ (position #\Newline text)) t))
-    (false (tuatara.defaults::hanging-prefix buffer (1+ (position #\Newline text :from-end t :end (1- (length text)))) t))
+    (false (tuatara.defaults::hanging-prefix buffer (1+
+                                                     (position #\Newline text :from-end t :end (1- (length text)))) t))
     (true (tuatara.defaults::soft-wrap-p buffer))
     (tuatara.buffer:kill-buffer buffer)))
 
@@ -498,7 +515,10 @@ second when that row does not go on from it."
       (is string= "       " (tuatara.defaults::hanging-prefix buffer 0 t))
       (false (tuatara.defaults::hanging-prefix buffer 0 nil)))
     ;; a single column, or a last column with a width, hangs nowhere
-    (tuatara.defaults::render-table-list buffer '(("Name" :width 6)) '(("abc")) (lambda (item mark section) (declare (ignore mark section)) item))
+    (tuatara.defaults::render-table-list buffer
+                                         '(("Name" :width 6))
+                                         '(("abc"))
+                                         (lambda (item mark section) (declare (ignore mark section)) item))
     (false (tuatara.defaults::hanging-prefix buffer 0 t))
     (tuatara.buffer:kill-buffer buffer)))
 

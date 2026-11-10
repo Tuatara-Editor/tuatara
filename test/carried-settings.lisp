@@ -76,7 +76,9 @@ called meanwhile on a thread other than this one, or :NEVER when it was not."
           (true (tuatara.frontend.fake:fake-frame-showing f "Carried along")))
         ;; the calendar's days marked in the background, from them too, on the day the calendar binds as today
         (is eql (encode-universal-time 0 0 12 3 10 2026)
-            (seen-elsewhere 'tuatara.defaults::org-agenda-day 'tuatara.defaults::*org-now* (lambda () (calendar-keys ""))))
+            (seen-elsewhere 'tuatara.defaults::org-agenda-day
+                            'tuatara.defaults::*org-now*
+                            (lambda () (calendar-keys ""))))
         (let ((marked (marked-days)))
           (true (and marked (gethash (calendar-day 2026 10 1) marked)))
           (false (and marked (gethash (calendar-day 2026 10 6) marked))))))))
@@ -98,7 +100,8 @@ called meanwhile on a thread other than this one, or :NEVER when it was not."
   (with-journal (dir)
     (let ((tuatara-user:*journal-directory* (namestring (merge-pathnames "diary/" dir)))
           (tuatara-user:*journal-file-name* "%Y-%m-%d.org"))
-      (alexandria:write-string-into-file "my day" (ensure-directories-exist (merge-pathnames "diary/2026-10-01.org" dir)))
+      (alexandria:write-string-into-file "my day"
+                                         (ensure-directories-exist (merge-pathnames "diary/2026-10-01.org" dir)))
       (calendar-keys "")
       (let ((marked (marked-days)))
         (true (and marked (member :calendar-journal (gethash (calendar-day 2026 10 1) marked))))
@@ -141,8 +144,10 @@ called meanwhile on a thread other than this one, or :NEVER when it was not."
   (let ((text (lines-text "a" "10" "9")))
     (dolist (on-disk '(nil t))
       (let ((tuatara.defaults::*sort-numeric-base* 16))
-        (is string= (lines-text "9" "a" "10") (sorted-text "M-x s o r t - n u m e r i c - f i e l d s RET" text :on-disk on-disk)))
-      (is string= (lines-text "a" "9" "10") (sorted-text "M-x s o r t - n u m e r i c - f i e l d s RET" text :on-disk on-disk)))))
+        (is string= (lines-text "9" "a" "10")
+            (sorted-text "M-x s o r t - n u m e r i c - f i e l d s RET" text :on-disk on-disk)))
+      (is string= (lines-text "a" "9" "10")
+          (sorted-text "M-x s o r t - n u m e r i c - f i e l d s RET" text :on-disk on-disk)))))
 
 (define-test (carried-settings sums-carried)
   ;; summed by the program bound here

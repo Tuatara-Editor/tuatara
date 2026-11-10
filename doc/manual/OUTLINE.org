@@ -1,0 +1,36 @@
+#+title: Tuatara manual: chapters
+
+Each chapter covers every command, setting and face of its subject, with its
+keys and standard values. The last two list every name, generated from the
+source.
+
+tools/manual-tables.sh fills the tables into doc/manual/generated/, read in
+Tuatara. tools/manual-html.sh makes the web pages and tools/manual-pdf.sh the
+PDF, both in build/manual/. The web pages are a page for each chapter and
+all.html, every chapter on one page, to print at once or search with the
+browser's find. A button changes between light and dark colours, and a link
+in the corner of each page goes to the contents. tools/manual-publish.sh REMOTE puts the pages on
+the branch gh-pages of REMOTE, which GitHub Pages serves, at each release.
+
+1. The screen
+2. Moving around
+3. Writing and changing text
+4. Cutting and pasting
+5. Selecting, rectangles and many cursors
+6. Searching and replacing
+7. Buffers and sessions
+8. Commands, keys and help
+9. Files
+10. Folders
+11. Large files and work in the background
+12. Files you do not trust
+13. Writing code
+14. Org
+15. Git
+16. Data, pictures and PDFs
+17. The terminal
+18. The daemon and other machines
+19. Packages
+20. Making it your own
+21. Every setting
+22. Every command

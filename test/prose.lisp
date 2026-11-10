@@ -49,6 +49,7 @@ buffer in MODE holding TEXT, asked by PROSE-P and by PROSE-TEST, as two values."
            (tuatara.defaults::set-major-mode b 'tuatara.defaults::org-mode)
            (dolist (place '(("Words" nil) ("kept" t) ("Quoted" nil)))
              (is eq (second place)
-                 (and (tuatara.defaults::mode-verbatim-line-p (tuatara.defaults::buffer-major-mode b) b (search (first place) note)) t)
+                 (and (tuatara.defaults::mode-verbatim-line-p (tuatara.defaults::buffer-major-mode b) b
+                                                              (search (first place) note)) t)
                  "~a filled" (first place))))
       (tuatara.buffer:kill-buffer b))))

@@ -172,8 +172,8 @@ ends a line."
 (defun org-blocks-read-again (buffer old lines)
   "The source blocks of BUFFER, a note, now, from OLD, those of its text as
 last sent (each (FIRST LAST ...) as ORG-BLOCKS-SHADOW keeps them), and LINES,
-the lines changed since (STRETCHES-LINES): a vector in order of OLD's
-blocks moved by the lines added and taken away before them, each
+the lines changed since (STRETCHES-LINES). The result is a vector in order of
+OLD's blocks moved by the lines added and taken away before them, each
 \(FIRST LAST OCTETS), and of those read again, each (FIRST LAST NIL NAME).
 Only the lines that may begin or end a block are read, from the block a
 change begins in until a block begins where one began before. Complexity:
@@ -235,10 +235,10 @@ O(blocks, and the lines read again)."
 
 (defun widen-to-blocks (lines old new read-again)
   "LINES, as STRETCHES-LINES gives them, with the lines of READ-AGAIN, blocks
-of NEW read again (ORG-BLOCKS-READ-AGAIN), each widened until it holds whole
-every block of OLD, the blocks as last sent, and of NEW, those now, that it
-reaches into: from the line beginning one to the line ending it, then and
-now alike; those that come to meet made one."
+of NEW read again (ORG-BLOCKS-READ-AGAIN). Each is widened until it holds
+whole every block of OLD, the blocks as last sent, and of NEW, those now, that
+it reaches into: from the line beginning one to the line ending it, then and
+now alike. Those that come to meet are made one."
   (let ((changed (coerce lines 'simple-vector)))
     (labels ((place (line from)
                ;; LINE of the text then (FROM 0) or now (FROM 2) as (OLD-FIRST OLD-LAST NEW-FIRST
@@ -360,10 +360,13 @@ else the note's own name with LANGUAGE's ending."
                         (cond ((member tangle '("no" "") :test #'string-equal) nil)
                               ((string-equal tangle "yes")
                                (format nil "~a.~a" (tuatara.io:native-file-stem file)
-                                       (or (cdr (assoc name *code-file-extensions* :test #'string=)) (language-extension language))))
+                                       (or (cdr (assoc name *code-file-extensions* :test #'string=))
+                                           (language-extension language))))
                               (t tangle)))))
          (path (and target (tuatara.io:clean-path (tuatara.io:native (tuatara.io:expand-path target :directory (tuatara.io:parent-path file)))))))
-    (path-uri (if (and path (tuatara.io:really-within-p path (lsp-project-of buffer language)) (not (buffer-visiting path)))
+    (path-uri (if (and path
+                       (tuatara.io:really-within-p path (lsp-project-of buffer language))
+                       (not (buffer-visiting path)))
                   path
                   (format nil "~a.~a" file (language-extension language))))))
 
@@ -425,7 +428,8 @@ not again for text typed elsewhere; again when the files open change
                  (specs (loop for language in (org-blocks-languages buffer)
                               collect (let ((language language))
                                         (list language (org-blocks-uri buffer language)
-                                              (lambda (b &optional doc stretches) (org-blocks-shadow b language doc stretches))
+                                              (lambda (b &optional doc stretches)
+                                                (org-blocks-shadow b language doc stretches))
                                               (org-blocks-size buffer blocks language))))))
             ;; kept only when read from the parse of the text as it is now
             (when (and (org-buffer-parse buffer) (org-parse-current-p buffer))

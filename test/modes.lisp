@@ -34,7 +34,8 @@ extension and #! line, the mode name in the mode line, CSV colours and the colum
   (is eq :support (tuatara.modes:mode-modal-class (make-instance 'tuatara.defaults::help-mode)))
   ;; so does the way comments are written, given in the definition
   (is equal '("%" "%%") (multiple-value-list (tuatara.modes:mode-comment-syntax (make-instance 'test-child-mode))))
-  (is equal '(nil) (multiple-value-list (tuatara.modes:mode-comment-syntax (make-instance 'tuatara.defaults::text-mode))))
+  (is equal '(nil)
+      (multiple-value-list (tuatara.modes:mode-comment-syntax (make-instance 'tuatara.defaults::text-mode))))
   (is equal '(nil) (multiple-value-list (tuatara.modes:mode-block-comment-syntax (make-instance 'test-child-mode)))))
 
 (define-test (modes file-patterns-compiled-once)
@@ -232,7 +233,8 @@ the buffer killed."
                  (tuatara.frontend.fake:fake-queue-keys f item)
                  (destructuring-bind (base column row) item
                    (tuatara.frontend.fake:fake-queue-event
-                    f (tuatara.frontend:make-event :key :key (tuatara.frontend:make-key base :column column :row row))))))
+                    f (tuatara.frontend:make-event :key
+                                                   :key (tuatara.frontend:make-key base :column column :row row))))))
            (let* ((editor (tuatara.command:run-editor f :files (list (namestring path))
                                                         :setup #'tuatara.defaults:install-defaults))
                   (buffer (tuatara.display:window-buffer (tuatara.command:editor-window editor)))
@@ -282,7 +284,8 @@ the buffer killed."
         (is equal '((0 3 :csv-column-0) (4 5 :csv-column-1))
             (first-row (csv-run '("") (format nil "a;b~cc~%" #\Tab) :type "tsv"))))
       ;; made for CSV buffers alone: M-x does not offer it elsewhere
-      (false (tuatara.frontend.fake:fake-frame-showing (run-keys "M-x c s v - d e f i n e RET C-g" :text "a;b") "Separator")))))
+      (false (tuatara.frontend.fake:fake-frame-showing (run-keys "M-x c s v - d e f i n e RET C-g" :text "a;b")
+               "Separator")))))
 
 (define-test (modes csv-header-lock)
   ;; ten rows: the header line, 7 of text, the mode line, the echo area
@@ -369,7 +372,8 @@ the buffer killed."
                        (multiple-value-list (tuatara.defaults::csv-count-fields rope 0 end 44 0 nil))))))
   (flet ((consed (length)
            (let ((b (tuatara.buffer:make-buffer "*csv count*"
-                                                :text (with-output-to-string (o) (dotimes (i (floor length 4)) (write-string "abc," o))))))
+                                                :text (with-output-to-string (o)
+                                                        (dotimes (i (floor length 4)) (write-string "abc," o))))))
              (unwind-protect
                   (progn
                     (tuatara.modes:set-major-mode b 'tuatara.defaults::csv-mode)
@@ -407,15 +411,26 @@ the buffer killed."
       (dolist (crlf '(nil t))
         (flet ((crlf (text) (if crlf (cl-ppcre:regex-replace-all (string #\Newline) text (format nil "~c~c" #\Return #\Newline)) text)))
           (is string= (crlf (format nil "id,name,place,amount~%~a" aroha))
-              (list-records-after (format nil "C-x / k n a m e RET ~a RET" (typed-keys "^Aroha")) (crlf *records-over-lines*) :on-disk on-disk :crlf crlf)
+              (list-records-after (format nil "C-x / k n a m e RET ~a RET" (typed-keys "^Aroha"))
+                (crlf *records-over-lines*)
+                :on-disk on-disk
+                :crlf crlf)
               "kept by name~:[~;, on disk~]~:[~;, CRLF~]" on-disk crlf)
           (is string= (crlf (format nil "id,name,place,amount~%~a" aroha))
-              (list-records-after (format nil "C-x / k a m o u n t RET ~a RET" (typed-keys "^12")) (crlf *records-over-lines*) :on-disk on-disk :crlf crlf)
+              (list-records-after (format nil "C-x / k a m o u n t RET ~a RET" (typed-keys "^12"))
+                (crlf *records-over-lines*)
+                :on-disk on-disk
+                :crlf crlf)
               "kept by the column after the line break~:[~;, on disk~]~:[~;, CRLF~]" on-disk crlf)
           (is string= (crlf (format nil "id,name,place,amount~%2,\"Tama \"\"T\"\" Rotorua\",Auckland,7.25~%3,Mere,auckland,19.99~%4,Eve,\"Wellington, NZ\",~%"))
-              (list-records-after (format nil "C-x / d p l a c e RET ~a RET" (typed-keys "Waikato")) (crlf *records-over-lines*) :on-disk on-disk :crlf crlf)
+              (list-records-after (format nil "C-x / d p l a c e RET ~a RET" (typed-keys "Waikato"))
+                (crlf *records-over-lines*)
+                :on-disk on-disk
+                :crlf crlf)
               "deleted whole~:[~;, on disk~]~:[~;, CRLF~]" on-disk crlf)))))
-  (let ((f (run-keys-in-turns (list (format nil "M-x c s v - m o d e RET C-x / k n a m e RET ~a RET" (typed-keys "^Aroha")) "")
+  (let ((f (run-keys-in-turns (list (format nil
+                                            "M-x c s v - m o d e RET C-x / k n a m e RET ~a RET"
+                                            (typed-keys "^Aroha")) "")
                               :text *records-over-lines* :width 100)))
     (true (tuatara.frontend.fake:fake-frame-showing f "Deleted 3 non-matching records"))))
 
@@ -461,3 +476,13 @@ the buffer killed."
     (true (>= (length classes) 8))
     (dolist (class classes)
       (true (tuatara.defaults::filters-hide-lines-p (make-instance class) nil) "~a" (class-name class)))))
+
+(define-test (modes csv-mode-line-follows-header-switch)
+  ;; C-x / t makes the first line a record: the mode line stops naming the column at once
+  (flet ((last-screen-has (f text)
+           (some (lambda (row) (search text row)) (tuatara.frontend.fake:fake-screen f))))
+    (let ((f (csv-spans "C-e" (format nil "id,name,town~%1,a,b~%"))))
+      (true (last-screen-has f "col 2 town")))
+    (let ((f (csv-spans "C-e C-x / t" (format nil "id,name,town~%1,a,b~%"))))
+      (true (last-screen-has f "col 2"))
+      (false (last-screen-has f "col 2 town")))))

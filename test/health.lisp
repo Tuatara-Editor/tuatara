@@ -26,11 +26,11 @@ a moment.")
       (true (tuatara.frontend.fake:fake-frame-showing f "Tuatara health"))
       (let ((text (health-text)))
         (true (search "Init file" text))
-        ;; the sandbox, found and working in the test toolbox
+        ;; the sandbox, found and working in the container the tests run in
         (true (search "bubblewrap" (health-line text "Sandbox")))
         (true (search "no network" (health-line text "Sandbox")))
         (true (search "(seccomp)" (health-line text "Sandbox")))
-        ;; and what decodes PDFs: poppler, installed in the test toolbox
+        ;; and what decodes PDFs: poppler, installed in the container the tests run in
         (true (search "PDF text by pdftotext and pdfinfo (poppler)" (health-line text "Decoders")))
         (true (search "the program that runs them and" text))
         ;; every language's grammar found and its rules working
@@ -153,24 +153,32 @@ a moment.")
   ;; the window's way of drawing to use, from what each way measured: GL, the
   ;; standard, unless another shows clearly more of the keys held, or as many sooner
   (flet ((figures (frames median) (list :renderer "r" :keys 180 :frames frames :median median :slowest (* 2 median))))
-    (is eq :gl (tuatara.defaults::drawing-choice (list (cons :gl (figures 180 15.0)) (cons :vulkan (figures 178 14.0)))))
-    (is eq :gl (tuatara.defaults::drawing-choice (list (cons :gl (figures 180 15.0)) (cons :vulkan (figures 180 14.0)))))
-    (is eq :vulkan (tuatara.defaults::drawing-choice (list (cons :gl (figures 150 23.0)) (cons :vulkan (figures 180 25.0)))))
-    (is eq :vulkan (tuatara.defaults::drawing-choice (list (cons :gl (figures 180 15.0)) (cons :vulkan (figures 180 12.0)))))
+    (is eq :gl
+        (tuatara.defaults::drawing-choice (list (cons :gl (figures 180 15.0)) (cons :vulkan (figures 178 14.0)))))
+    (is eq :gl
+        (tuatara.defaults::drawing-choice (list (cons :gl (figures 180 15.0)) (cons :vulkan (figures 180 14.0)))))
+    (is eq :vulkan
+        (tuatara.defaults::drawing-choice (list (cons :gl (figures 150 23.0)) (cons :vulkan (figures 180 25.0)))))
+    (is eq :vulkan
+        (tuatara.defaults::drawing-choice (list (cons :gl (figures 180 15.0)) (cons :vulkan (figures 180 12.0)))))
     ;; a millisecond sooner as a rule but slower at the slowest of twenty: alike, the standard kept
     (flet ((with (frames median slowest) (list :renderer "r" :keys 180 :frames frames :median median :slowest slowest)))
-      (is eq :gl (tuatara.defaults::drawing-choice (list (cons :gl (with 179 6.0 7.0)) (cons :vulkan (with 180 5.0 9.0)))))
-      (is eq :gl (tuatara.defaults::drawing-choice (list (cons :gl (with 180 3.0 4.0)) (cons :vulkan (with 180 2.5 3.0))))))
+      (is eq :gl
+        (tuatara.defaults::drawing-choice (list (cons :gl (with 179 6.0 7.0)) (cons :vulkan (with 180 5.0 9.0)))))
+      (is eq :gl
+        (tuatara.defaults::drawing-choice (list (cons :gl (with 180 3.0 4.0)) (cons :vulkan (with 180 2.5 3.0))))))
     ;; one not measured: the other; none: the standard
     (is eq :vulkan (tuatara.defaults::drawing-choice (list (cons :gl nil) (cons :vulkan (figures 120 30.0)))))
     (is eq :gl (tuatara.defaults::drawing-choice (list (cons :gl nil) (cons :vulkan nil))))
     ;; the report: each way's figures, then which to use, and how when it is not the one in use
-    (let ((words (tuatara.defaults::drawing-words (list (cons :gl (figures 150 23.0)) (cons :vulkan (figures 180 25.0))) :gl)))
+    (let ((words (tuatara.defaults::drawing-words (list (cons :gl (figures 150 23.0))
+                                                        (cons :vulkan (figures 180 25.0))) :gl)))
       (is = 3 (length words))
       (true (search "GL: 23.0 ms" (first words)))
       (true (search "150 frames for 180 keys" (first words)))
       (true (search "(setf *gui-renderer* :vulkan)" (third words))))
-    (true (search "the one in use" (third (tuatara.defaults::drawing-words (list (cons :gl (figures 180 15.0)) (cons :vulkan nil)) :gl))))
+    (true (search "the one in use"
+            (third (tuatara.defaults::drawing-words (list (cons :gl (figures 180 15.0)) (cons :vulkan nil)) :gl))))
     (false (tuatara.defaults::drawing-words '() :gl))))
 
 (define-test (health drawing-fallen-back)
@@ -194,11 +202,13 @@ a moment.")
 (define-test (health outside-programs-agree)
   ;; the software from outside, one table: the distribution packages recommend and suggest
   ;; what it names, and M-x check-health says what to install from it, git among them
-  (let* ((script (uiop:read-file-lines (merge-pathnames "tools/distro-packages.sh" (asdf:system-source-directory :tuatara))))
+  (let* ((script (uiop:read-file-lines (merge-pathnames "tools/distro-packages.sh"
+                                                        (asdf:system-source-directory :tuatara))))
          (programs tuatara.defaults::*outside-programs*))
     (flet ((field (prefix commas)
              ;; the packages of the line beginning with PREFIX, with commas between them or not
-             (let ((line (find-if (lambda (line) (and (uiop:string-prefix-p prefix line) (eq commas (and (find #\, line) t))))
+             (let ((line (find-if (lambda (line)
+                                    (and (uiop:string-prefix-p prefix line) (eq commas (and (find #\, line) t))))
                                   script)))
                (and line (sort (mapcar (lambda (word) (string-trim ", " word))
                                        (tuatara.text:split-words (subseq line (length prefix))))
@@ -214,7 +224,8 @@ a moment.")
       (is equal (table :debian :suggests) (field "Suggests: " t))
       ;; Arch's optional packages, each with what it is for
       (is equal (sort (loop for (nil . entry) in programs
-                            append (mapcar (lambda (package) (format nil "~a: ~a" package (getf entry :what))) (getf entry :arch)))
+                            append (mapcar (lambda (package) (format nil "~a: ~a" package (getf entry :what)))
+                                           (getf entry :arch)))
                       #'string<)
           (sort (loop for line in script
                       for start = (position #\' line)

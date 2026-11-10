@@ -112,11 +112,14 @@ return the text after, and the frontend."
   ;; a hyphen is part of a word in prose and Lisp, not in C
   (is string= "total-count total-count" (word-keys "M-/" :text "total-count total-cou"))
   (is string= "count total-count" (word-keys (list (lambda () (tuatara.defaults::set-major-mode
-                                                                    (tuatara.command:current-buffer) 'tuatara.defaults::python-mode))
+                                                                    (tuatara.command:current-buffer)
+                                                                    'tuatara.defaults::python-mode))
                                                        "M-/")
                                                  :text "count total-cou"))
   ;; the full case mapping
-  (is string= (format nil "stra~ce STRASSE" (code-char #xDF)) (word-keys "M-/" :text (format nil "stra~ce STR" (code-char #xDF)))))
+  (is string=
+      (format nil "stra~ce STRASSE" (code-char #xDF))
+      (word-keys "M-/" :text (format nil "stra~ce STR" (code-char #xDF)))))
 
 (define-test (word-completion undo)
   ;; all the words put in one after another are one step to undo

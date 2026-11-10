@@ -48,7 +48,8 @@ to ask questions (SSH-ASKING)."
                                                 exit 0; fi~%~
                                                 printf '%s\\n' \"$@\" > '~a'~%~@[~a~%~]umask 077~%~:[exec '~a'~;cat '~a'; ~
                                                 exec sleep 60~]~%"
-                                           ,before ,machine ,log ,before ,answers (if ,answers ,answers-file (sftp-server-program)))))
+                                           ,before ,machine ,log ,before ,answers
+                                           (if ,answers ,answers-file (sftp-server-program)))))
                 ,@body)
            (tuatara.defaults::close-remote-links)
            (setf tuatara.defaults::*ssh-program* ,old))))))
@@ -94,7 +95,9 @@ writes fields, an integer first being the request's number."
                 (sort (mapcar #'car (tuatara.defaults::remote-listing "box" there)) #'string<))
             (is eq :directory (tuatara.defaults::remote-kind
                                (cdr (assoc "sub" (tuatara.defaults::remote-listing "box" there) :test #'string=))))
-            (is string= (string-right-trim "/" there) (tuatara.defaults::remote-real-path "box" (concatenate 'string there "sub/..")))
+            (is string=
+                (string-right-trim "/" there)
+                (tuatara.defaults::remote-real-path "box" (concatenate 'string there "sub/..")))
             ;; read whole into a file here
             (let ((fd (tuatara.io:create-free-file there (constantly "copy"))))
               (unwind-protect
@@ -166,7 +169,9 @@ writes fields, an integer first being the request's number."
           (let ((fd (tuatara.io:create-free-file (namestring here) (constantly "copy"))))
             (unwind-protect
                  (true (search "where at most"
-                               (failure (server-octets version '(:handle 1 "h") '(:attrs 2 (:raw #(0 0 0 5 0 0 0 0 0 0 0 4 0 0 #o201 #o244)))
+                               (failure (server-octets version
+                                                       '(:handle 1 "h")
+                                                       '(:attrs 2 (:raw #(0 0 0 5 0 0 0 0 0 0 0 4 0 0 #o201 #o244)))
                                                        '(:data 3 "longer than four"))
                                         (lambda () (tuatara.defaults::remote-download "box" "/x" fd)))))
               (sb-posix:close fd))))))))
@@ -302,8 +307,10 @@ with a failure and nothing after it, the other writes sent on unanswered.")
                    (is equal '("first more") (list (file-text file)))
                    ;; changed there, read again from there
                    (alexandria:write-string-into-file "second text" file :if-exists :supersede)
-                   (remote-session (format nil "C-x b ~a RET" (typed-keys "notes.txt")) (format nil "M-x ~a RET" (typed-keys "revert-buffer"))
-                                   (list :until (lambda () (string= "second text" (tuatara.buffer:buffer-string buffer)))))
+                   (remote-session (format nil "C-x b ~a RET" (typed-keys "notes.txt"))
+                                   (format nil "M-x ~a RET" (typed-keys "revert-buffer"))
+                                   (list :until (lambda ()
+                                                  (string= "second text" (tuatara.buffer:buffer-string buffer)))))
                    (is string= "second text" (tuatara.buffer:buffer-string buffer))
                    (tuatara.buffer:kill-buffer buffer)
                    (true (tuatara.runtime:wait-until (lambda () (not (probe-file copy))) 10) "the copy taken away")))
@@ -329,7 +336,8 @@ with a failure and nothing after it, the other writes sent on unanswered.")
                                  (list :until (lambda () (search "is not written there" (messages-since-step)))))
                  (is string= "changed elsewhere" (file-text file))
                  (true (tuatara.buffer:buffer-modified-p (remote-buffer-of name)))
-                 (true (search "changed on the server" (tuatara.buffer:buffer-string (tuatara.command::messages-buffer)))))
+                 (true (search "changed on the server"
+                               (tuatara.buffer:buffer-string (tuatara.command::messages-buffer)))))
             (kill-remote-buffers))))))
 
 (define-test (remote-files new-file-made-there)
@@ -364,7 +372,9 @@ with a failure and nothing after it, the other writes sent on unanswered.")
                      (true (tuatara.defaults::remote-file-evidence (tuatara.defaults::buffer-remote buffer)))
                      (true (tuatara.defaults::remote-save-refusal buffer))
                      (setf (tuatara.buffer:buffer-read-only-p buffer) nil)
-                     (remote-session (format nil "C-x b ~a RET M->" (typed-keys "seized.log")) (typed-keys "x") "C-x C-s" (list :wait 0.3))
+                     (remote-session (format nil "C-x b ~a RET M->" (typed-keys "seized.log"))
+                                     (typed-keys "x") "C-x C-s"
+                                     (list :wait 0.3))
                      (is string= "kept" (file-text file))))
               (kill-remote-buffers)))))))
 
@@ -375,7 +385,8 @@ with a failure and nothing after it, the other writes sent on unanswered.")
       (with-stand-in-sftp (dir log)
         (let ((there (namestring dir)))
           (alexandria:write-string-into-file "x" (concatenate 'string there "alpha-file.txt"))
-          (alexandria:write-string-into-file "x" (concatenate 'string there (format nil "evil~cname" (code-char #x202E))))
+          (alexandria:write-string-into-file "x"
+                                             (concatenate 'string there (format nil "evil~cname" (code-char #x202E))))
           (let ((names (mapcar #'tuatara.command:candidate-string
                                (tuatara.defaults::remote-candidates (concatenate 'string "/ssh:box:" there)))))
             (true (member "alpha-file.txt" names :test #'string=))
@@ -431,13 +442,15 @@ with a failure and nothing after it, the other writes sent on unanswered.")
       (with-stand-in-sftp (dir log)
         (let ((there (namestring dir)))
           (alexandria:write-string-into-file "x" (concatenate 'string there "alpha.txt"))
-          (alexandria:write-string-into-file "x" (concatenate 'string there (format nil "evil~cname" (code-char #x202E))))
+          (alexandria:write-string-into-file "x"
+                                             (concatenate 'string there (format nil "evil~cname" (code-char #x202E))))
           (ensure-directories-exist (merge-pathnames "sub/" dir))
           (sb-posix:symlink "alpha.txt" (concatenate 'string there "link"))
           (unwind-protect
                (let ((f (remote-session (format nil "C-x C-f C-a C-k ~a C-j"
                                                 ;; the name as typed, without the / completion would add
-                                                (typed-keys (concatenate 'string "/ssh:box:" (string-right-trim "/" there))))
+                                                (typed-keys (concatenate 'string "/ssh:box:"
+                                                                         (string-right-trim "/" there))))
                                         (list :until #'remote-list-read))))
                  (true (tuatara.frontend.fake:fake-frame-showing f "alpha.txt"))
                  (true (tuatara.frontend.fake:fake-frame-showing f "<202E>") "the hiding character shown by its code")
@@ -501,7 +514,10 @@ with a failure and nothing after it, the other writes sent on unanswered.")
                      (is string= "photo.png" (tuatara.buffer:buffer-name buffer))
                      ;; the octets opened from the view keep the copy once the view is killed
                      (let ((tuatara-user:*modal-editing* nil))
-                       (auto-save-session (list (format nil "C-x b ~a RET M-x ~a RET" (typed-keys "photo.png") (typed-keys "hex-mode")))
+                       (auto-save-session (list (format nil
+                                                        "C-x b ~a RET M-x ~a RET"
+                                                        (typed-keys "photo.png")
+                                                        (typed-keys "hex-mode")))
                                           :width 120 :height 20 :cell-pixels '(10 20)))
                      (let ((octets (find-if (lambda (b)
                                               (let ((file (tuatara.buffer:buffer-file b)))
@@ -547,7 +563,8 @@ with a failure and nothing after it, the other writes sent on unanswered.")
       (skip "no sftp-server here" (true nil))
       (with-stand-in-sftp (dir log)
         (let* ((there (namestring dir))
-               (keys (format nil "C-x C-f C-a C-k ~a C-j" (typed-keys (concatenate 'string "/ssh:box:" (string-right-trim "/" there)))))
+               (keys (format nil "C-x C-f C-a C-k ~a C-j"
+                             (typed-keys (concatenate 'string "/ssh:box:" (string-right-trim "/" there)))))
                (most tuatara-user:*remote-preview-size-limit*))
           (alexandria:write-string-into-file "the-words-within" (concatenate 'string there "alpha.txt"))
           (flet ((previewing () (let ((state tuatara.defaults::*rimu-preview-state*))
@@ -601,7 +618,8 @@ with a failure and nothing after it, the other writes sent on unanswered.")
               (work :copy (concatenate 'string remote "tree") (concatenate 'string local "tree"))
               (is string= "first" (file-text (merge-pathnames "tree/a.txt" here)))
               (is string= "second" (file-text (merge-pathnames "tree/deep/b.txt" here)))
-              (is = #o600 (logand #o777 (sb-posix:stat-mode (sb-posix:stat (namestring (merge-pathnames "tree/a.txt" here))))))
+              (is = #o600
+                  (logand #o777 (sb-posix:stat-mode (sb-posix:stat (namestring (merge-pathnames "tree/a.txt" here))))))
               ;; here to there, and never over a file there
               (put-file (merge-pathnames "up.txt" here) "from here")
               (work :copy (concatenate 'string local "up.txt") (concatenate 'string remote "up.txt"))
@@ -1245,7 +1263,8 @@ through SSH_ASKPASS, writes the answer in said, and goes no further without one.
 (define-test (remote-files changed-host-key-said-plainly)
   ;; a changed key is never offered: ssh refuses it, and the failure says so
   (when (sftp-server-program)
-    (with-stand-in-sftp (dir log :before "echo '@@@ WARNING: REMOTE HOST IDENTIFICATION HAS CHANGED! @@@' >&2; exit 255")
+    (with-stand-in-sftp (dir log
+                             :before "echo '@@@ WARNING: REMOTE HOST IDENTIFICATION HAS CHANGED! @@@' >&2; exit 255")
       (let ((message (remote-failure (lambda () (tuatara.defaults::remote-attributes "box" "/")))))
         (true (search "differs from the one ssh knows" message))))))
 
@@ -1261,7 +1280,8 @@ through SSH_ASKPASS, writes the answer in said, and goes no further without one.
   (let ((prompt (tuatara.defaults::ssh-question-prompt "box" nil "Enter passphrase for key '/h/id': " "")))
     (true (search "Your key's passphrase, stays here" prompt)))
   (multiple-value-bind (prompt kind fingerprint details)
-      (tuatara.defaults::ssh-question-prompt "box" "gate" "(me@box) Code: " "Use your token." :warnings '("Not quantum safe."))
+      (tuatara.defaults::ssh-question-prompt "box" "gate" "(me@box) Code: " "Use your token."
+                                             :warnings '("Not quantum safe."))
     (declare (ignore kind fingerprint))
     (true (uiop:string-prefix-p "The server asks: " prompt) "a server's words are marked as such in the prompt")
     (true (search "what you type goes to the server" details))
@@ -1404,9 +1424,9 @@ Are you sure you want to continue connecting (yes/no/[fingerprint])? "))
 (defmacro with-arrival-held ((dir name release &key (lines 90000)) &body body)
   "Run BODY with the file NAME, /ssh:box:DIR/a.log of LINES numbered lines (more
 than *MEMORY-READ-LIMIT*, here 1 MB, so it opens before it has all come), to be
-visited, a transfer held after each lot (*ARRIVAL-HOOK*) until RELEASE, a
+visited. A transfer is held after each lot (*ARRIVAL-HOOK*) until RELEASE, a
 function of no arguments, is called, which lets the transfer run to its end
-\(a number given to it lets through that many lots); every remote buffer
+\(a number given to it lets through that many lots). Every remote buffer is
 killed after."
   (let ((gate (gensym "GATE")) (open (gensym "OPEN")) (old-limit (gensym "LIMIT")) (count (gensym "COUNT")))
     `(if (null (sftp-server-program))
@@ -1532,7 +1552,8 @@ killed after."
                       ;; the server goes while the transfer is held
                       (list :until (lambda ()
                                      (sb-alien:alien-funcall
-                                      (sb-alien:extern-alien "shutdown" (function sb-alien:int sb-alien:int sb-alien:int))
+                                      (sb-alien:extern-alien "shutdown"
+                                                             (function sb-alien:int sb-alien:int sb-alien:int))
                                       (tuatara.defaults::sftp-link-fd (tuatara.defaults::sftp-link "box")) 2)
                                      (release)
                                      t))
@@ -1575,7 +1596,8 @@ killed after."
                                                              (tuatara.defaults::buffer-remote buffer))))))
                       (list :until (lambda ()
                                      (setf other (tuatara.runtime:make-guarded-thread
-                                                  (lambda () (tuatara.defaults::remote-attributes "box" (namestring dir)))
+                                                  (lambda ()
+                                                    (tuatara.defaults::remote-attributes "box" (namestring dir)))
                                                   :name "other work"))
                                      t))
                       ;; the transfer goes on one lot at a time: the other work gets in between them
@@ -1601,7 +1623,8 @@ killed after."
                                      (setf (tuatara.buffer:buffer-point (remote-buffer-of name)) place)
                                      t))
                       (list :until (lambda ()
-                                     (setf saw-way (tuatara.frontend.fake:fake-frame-showing (arrival-frontend) "on its way"))
+                                     (setf saw-way
+                                           (tuatara.frontend.fake:fake-frame-showing (arrival-frontend) "on its way"))
                                      (let ((arrival (tuatara.defaults::remote-file-arrival
                                                      (tuatara.defaults::buffer-remote (remote-buffer-of name)))))
                                        (and saw-way (tuatara.defaults::arrival-wanted arrival))))
@@ -1626,7 +1649,8 @@ killed after."
                                      (setf (tuatara.buffer:buffer-point (remote-buffer-of name)) (+ place 200))
                                      t))
                       (list :until (lambda ()
-                                     (setf saw-text (tuatara.frontend.fake:fake-frame-showing (arrival-frontend) "line 0635"))
+                                     (setf saw-text
+                                           (tuatara.frontend.fake:fake-frame-showing (arrival-frontend) "line 0635"))
                                      saw-text)
                             60)
                       (list :until (lambda ()
@@ -1655,7 +1679,8 @@ killed after."
                                      t))
                       (list :until (lambda () (null (tuatara.runtime:jobs-of (remote-buffer-of name) :running t))))
                       (list :until (lambda ()
-                                     (setf stopped (tuatara.frontend.fake:fake-frame-showing (arrival-frontend) "incomplete"))
+                                     (setf stopped
+                                           (tuatara.frontend.fake:fake-frame-showing (arrival-frontend) "incomplete"))
                                      (setf tuatara.defaults::*arrival-hook* nil)
                                      stopped))
                       (format nil "M-x ~a RET" (typed-keys "revert-buffer"))

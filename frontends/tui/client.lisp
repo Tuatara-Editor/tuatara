@@ -112,13 +112,13 @@ no one asked (END-DAEMON-ON-TERMINATE). The exit code: 0 once it has stopped,
     0))
 
 (defun report-daemon-socket (name start)
-  "Say, for a client on another machine, where the daemon NAME listens and
-whether it runs, what gpg and sshd here do and where sshd brought the
-client's agent for this connection (WRITE-DAEMON-REPORT), with
-START having started it first when it did not, on the standard output: a
-client of a daemon on this machine asked ssh to run tuatara --daemon-socket
-here. The exit code: 0 once said, 1 when the daemons' folder is not safe or
-a daemon could not be started, why said on the error output."
+  "Say, on the standard output, where the daemon NAME listens and whether it
+runs, for a client on another machine. It also says what gpg and sshd here do
+and where sshd brought the client's agent for this connection
+\(WRITE-DAEMON-REPORT), with START having started the daemon first when it did
+not run. A client of a daemon on this machine asked ssh to run tuatara
+--daemon-socket here. The exit code is 0 once said, 1 when the daemons' folder
+is not safe or a daemon could not be started, why said on the error output."
   (handler-case
       (let* ((socket (tuatara.defaults::daemon-path name "socket"))
              (lock (tuatara.defaults::daemon-path name "lock"))
@@ -224,19 +224,21 @@ TUATARA.FRONTEND:REMOTE-REFUSED, says why."
 (defun run-client (options &key (terminal (keyboard-available-p)) (desktop (window-wanted-p)))
   "Be a client of the daemon OPTIONS name (READ-OPTIONS: --client or --stop),
 on this machine or on the one :HOST names, reached through ssh
-\(OPEN-SSH-LINK, closed as the client ends): in this terminal, or with --gui
-in a window of its own, as when started with no terminal on a desktop
-\(DESKTOP), its keys sent to the daemon and what it paints shown, until it
-lets the client go; --stop with no terminal shows nothing and asks nothing.
+\(OPEN-SSH-LINK, closed as the client ends). The client runs in this terminal,
+or with --gui in a window of its own, as when started with no terminal on a
+desktop (DESKTOP). Its keys are sent to the daemon and what it paints is
+shown, until the daemon lets the client go. --stop with no terminal shows
+nothing and asks nothing.
 A client on another machine whose terminal closes (SIGHUP) closes its ssh
 connection before it ends.
 Standard input, for -, is passed to a daemon here to read, the keys read
 from the terminal or the window; TERMINAL is true when there is a terminal.
-The exit code: the one the daemon gave, 1 when no daemon runs, it cannot be
+The exit code is the one the daemon gave, 1 when no daemon runs, it cannot be
 reached or it ended, as is said, or 2 when there is neither a terminal nor a
-window to show it in; :FALLBACK, nothing said, when no daemon runs and
---fallback asks for an editor of its own instead. A client in a window that
-fails shows what it said in a window of its own too (SHOWN-IN-A-WINDOW-TOO)."
+window to show it in. :FALLBACK, nothing said, is returned when no daemon
+runs and --fallback asks for an editor of its own instead. A client in a
+window that fails shows what it said in a window of its own too
+\(SHOWN-IN-A-WINDOW-TOO)."
   (let* ((name (or (getf options :client) (getf options :stop)))
          (host (getf options :host))
          (stop (getf options :stop))

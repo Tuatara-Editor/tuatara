@@ -9,7 +9,7 @@
   (:import-from #:tuatara.runtime #:jobs-of #:ignoring-errors-reported #:refusal #:refuse #:*secret-at-hand*)
   (:import-from #:tuatara.text #:word-char-p)
   (:import-from #:tuatara.defaults
-                #:*built-in-latex-templates* #:*export-languages* #:*org-hiding-call-re* #:*org-macro-call-re*
+                #:*built-in-latex-templates* #:*export-languages* #:*org-macro-call-re*
                 #:*pdf-views*
                 #:buffer-in-mode #:commands-for-mode #:copy-chosen-own-file #:docx-import #:docx-templates-directory
                 #:drop-selection #:end-safe-visit-words #:entry-lines #:entry-list-keys #:evidence-refusal
@@ -18,15 +18,17 @@
                 #:logos-directory #:new-empty-buffer #:note-templates-directory #:office-file-format #:office-reading
                 #:open-externally-file #:org-buffer-parse #:org-current-headline #:org-docx-document
                 #:org-export-file-name #:org-headline-property #:org-hidden-kinds #:org-hiding-kind
+                #:map-org-hiding-calls
                 #:org-insert-export-drawer #:org-latex-document #:org-macro-definitions #:org-mode #:org-node-begin
-                #:org-node-end #:org-node-post-blank #:org-node-type #:org-parse-char #:org-parse-point
+                #:org-html-document #:org-node-end #:org-node-post-blank #:org-node-type #:org-parse-char
+                #:org-parse-point
                 #:org-parse-text #:org-parse-tree #:org-path-beside-p #:org-property #:org-text-lines
                 #:org-walk-tree #:outside-program-install-words #:path-in-folders-p #:pdf-view-maker #:pdf-view-of
                 #:pdf-view-path #:pdf-view-reload #:pdf-view-visit #:private-cache-directory #:read-native-path
                 #:region-active-p #:render-pieces #:replaced-type #:save-buffer-with-care #:selection-range
                 #:set-search-filtering #:special-mode #:title-slug #:visit-entry #:visit-path
                 #:with-org-note-keywords)
-  (:documentation "Org notes and LaTeX files made into PDFs and Word documents in the
+  (:documentation "Org notes and LaTeX files made into PDFs, Word documents and web pages in the
 background, with the templates, the redactions checked and the macros that
 mark them. The rest of the editor installs it and asks, for the health
 report, what the LaTeX engines and languages are here.")

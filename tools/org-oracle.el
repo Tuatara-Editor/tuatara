@@ -74,7 +74,8 @@
             (append
              (cl-loop for key in org-oracle-common
                       for value = (org-element-property key node)
-                      when value append (list key (if (and (integerp value) (not (eq key :post-blank))) (1- value) value)))
+                      when value append (list key
+                                              (if (and (integerp value) (not (eq key :post-blank))) (1- value) value)))
              (cl-loop for key in (cdr (assq type org-oracle-properties))
                       for value = (org-element-property key node)
                       when value append (list key (org-oracle-value value)))

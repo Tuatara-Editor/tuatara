@@ -120,10 +120,10 @@ BLOCK-END, when it holds it."
 (defun joining-line (top bottom prefixes)
   "A function changing each line for START-LINE-JOB, so that the lines from the
 one starting at TOP to the one starting at BOTTOM become one, as
-JOIN-LINES-ABOVE joins them: every line but the first loses the blanks it
-begins with, every line but the last the blanks it ends with and its line end,
-blank lines go, and between two lines' texts goes a space unless
-FIXUP-WHITESPACE-AT would leave none (PREFIXES are the quote marks of Lisp)."
+JOIN-LINES-ABOVE joins them. Every line but the first loses the blanks it begins
+with, every line but the last the blanks it ends with and its line end. Blank
+lines go. Between two lines' texts goes a space unless FIXUP-WHITESPACE-AT would
+leave none (PREFIXES are the quote marks of Lisp)."
   (let ((space (tuatara.text:string-octets " "))
         (none (make-array 0 :element-type '(unsigned-byte 8)))
         (bound nil))
@@ -167,7 +167,9 @@ cores, a line at a time (JOINING-LINE); one change for undo."
                     ;; point at the first join, after the first line's text, as joining here leaves it
                     :goal (lambda (from)
                             (let ((end (loop with p = (tuatara.buffer:buffer-line-end buffer from)
-                                             while (and (> p from) (member (tuatara.buffer:buffer-char-at buffer (1- p)) '(#\Space #\Tab)))
+                                             while (and (> p from)
+                                                        (member (tuatara.buffer:buffer-char-at buffer (1- p))
+                                                                '(#\Space #\Tab)))
                                              do (decf p)
                                              finally (return p))))
                               (lambda (b) (declare (ignore b)) end)))
@@ -386,13 +388,18 @@ and at the mark change places."
                  (let ((second (tuatara.buffer:buffer-slice buffer (car pos2) (cdr pos2))))
                    (tuatara.buffer:buffer-splice
                     buffer (car pos1) (cdr pos2)
-                    (tuatara.text:splice-rope second (tuatara.text:rope-octet-length second) (tuatara.text:rope-octet-length second)
+                    (tuatara.text:splice-rope second
+                                              (tuatara.text:rope-octet-length second)
+                                              (tuatara.text:rope-octet-length second)
                                               (tuatara.buffer:buffer-slice buffer (cdr pos1) (car pos2))
                                               (tuatara.buffer:buffer-slice buffer (car pos1) (cdr pos1)))))
                  (let ((first (tuatara.buffer:buffer-string buffer :start (car pos1) :end (cdr pos1)))
                        (between (tuatara.buffer:buffer-string buffer :start (cdr pos1) :end (car pos2)))
                        (second (tuatara.buffer:buffer-string buffer :start (car pos2) :end (cdr pos2))))
-                   (tuatara.buffer:buffer-replace buffer (car pos1) (cdr pos2) (concatenate 'string second between first))))
+                   (tuatara.buffer:buffer-replace buffer
+                                                  (car pos1)
+                                                  (cdr pos2)
+                                                  (concatenate 'string second between first))))
              (values (car pos1) (- (cdr pos1) (car pos1)) (car pos2) (- (cdr pos2) (car pos2))))))
     (cond ((zerop arg)
            (let ((mark (tuatara.buffer:buffer-mark buffer)) (point (point)))
@@ -540,7 +547,8 @@ there is none, :FAR when none was found within *TEXT-SCAN-LIMIT* octets."
     (flet ((match-length (q)
              (loop for code in codes
                    when (and (<= (+ q (length code)) size)
-                             (loop for i below (length code) always (= (tuatara.text:rope-octet rope (+ q i)) (aref code i))))
+                             (loop for i below (length code)
+                                   always (= (tuatara.text:rope-octet rope (+ q i)) (aref code i))))
                      return (length code))))
       (if (plusp count)
           (let ((limit (min size (+ position *text-scan-limit*))))

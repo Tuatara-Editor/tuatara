@@ -52,7 +52,12 @@ closes.")
 of how many, its short hash, date, author and subject."
   (let ((revisions (tuatara.buffer:buffer-local buffer :git-rewind-revisions)))
     (let ((revision (svref revisions index)))
-      (format nil "~:d of ~:d: ~a ~a ~a: ~a" (1+ index) (length revisions) (git-commit-short revision) (git-commit-date revision)
+      (format nil
+              "~:d of ~:d: ~a ~a ~a: ~a"
+              (1+ index)
+              (length revisions)
+              (git-commit-short revision)
+              (git-commit-date revision)
               (escape-controls (git-commit-author revision)) (escape-controls (git-commit-subject revision))))))
 
 (defun git-rewind-buffer (top name mode)
@@ -84,7 +89,9 @@ from, if any."
                      ;; gone there follows another file)
                      (let* ((newer (and at (git-file-history
                                             (git-job-output job top (list "log" "--diff-filter=d" "--date=short" "--name-only" "-z"
-                                                                          *git-commit-format* "--end-of-options" (format nil "~a..HEAD" at)
+                                                                          *git-commit-format*
+                                                                          "--end-of-options"
+                                                                          (format nil "~a..HEAD" at)
                                                                           "--" path)))))
                             (revisions (concatenate 'simple-vector newer (git-rewind-file-log job top path at)))
                             ;; renamed in what is staged: its history is that of the name HEAD has
@@ -94,7 +101,8 @@ from, if any."
                                            revisions))
                             (index (min (length newer) (max 0 (1- (length revisions))))))
                        (values revisions index
-                               (and (plusp (length revisions)) (git-rewind-revision-octets job top (svref revisions index))))))
+                               (and (plusp (length revisions))
+                                    (git-rewind-revision-octets job top (svref revisions index))))))
                    (lambda (revisions index octets)
                      (cond ((zerop (length revisions))
                             (git-rewind-given-up buffer (format nil "~a has no history in git" (escape-controls path))))
@@ -152,7 +160,8 @@ later move asked for another before it came, that one is shown instead."
         (setf (tuatara.buffer:buffer-local buffer :git-rewind-wanted) index)
         (start-git-job "Reading a revision"
                        (lambda (job)
-                         (tuatara.text:octets->rope (coerce (git-rewind-revision-octets job top revision) 'tuatara.text:octets)))
+                         (tuatara.text:octets->rope (coerce (git-rewind-revision-octets job top revision)
+                                                            'tuatara.text:octets)))
                        (lambda (rope)
                          (when (eql index (tuatara.buffer:buffer-local buffer :git-rewind-wanted))
                            (show-list-text buffer rope nil nil)
@@ -186,8 +195,12 @@ left it, the latest first, by its hash, date, author or subject."
                 "Rewind to: "
                 (loop for revision across (tuatara.buffer:buffer-local (current-buffer) :git-rewind-revisions)
                       for i from 0
-                      collect (make-candidate (format nil "~a ~a ~a: ~a" (git-commit-short revision) (git-commit-date revision)
-                                                      (escape-controls (git-commit-author revision)) (escape-controls (git-commit-subject revision)))
+                      collect (make-candidate (format nil
+                                                      "~a ~a ~a: ~a"
+                                                      (git-commit-short revision)
+                                                      (git-commit-date revision)
+                                                      (escape-controls (git-commit-author revision))
+                                                      (escape-controls (git-commit-subject revision)))
                                               :value i))
                 :require-match t :keep-order t)))
     (when (integerp index) (git-rewind-show (current-buffer) index))))
@@ -242,21 +255,22 @@ there, said so."
 ;;; The command
 
 (define-command git-rewind ()
-  "Go back through git's history a commit at a time, and come back. In a
-file, or on a file's line of a status, the file is shown as its latest commit
-left it, in a buffer of its own in its mode, read only, on the line you were
-on. In a list of a directory (\\[rimu]), the folder is listed as its latest
-commit left it, as rimu lists it, in a list of its own: \\<rimu-mode>\\[rimu-open] on a folder
-lists it as that commit left it, on a file goes through the file's history
-from that commit (\\[quit-window] comes back to the folder), \\[rimu-up] goes up; the preview
-shows the files as they were then, and what changes files or reads them as
-they are now is refused there.
-In either, \\<*git-rewind-keymap*>\\[git-rewind-older] shows a commit older, \\[git-rewind-newer] a commit newer, \\[git-rewind-to] one
-chosen from its log; \\[git-rewind-show-commit] shows the commit, \\[git-rewind-copy-hash] copies its hash, and the mode
-line says which it is, Rewind and its hash lit up. Run again there, it goes
-back to the file or folder as it is now, on the same line or entry. A file
-is followed back across renames; changes not committed are not in it, nor is
-a file that is not text shown."
+  "Go back through git's history a commit at a time, and come back. In a file,
+or on a file's line of a status, the file is shown as its latest commit left
+it, in a buffer of its own in its mode, read only, on the line you were on. In
+a list of a directory (\\[rimu]), the folder is listed as its latest commit
+left it, as rimu lists it, in a list of its own. \\<rimu-mode>\\[rimu-open] on
+a folder lists it as that commit left it. On a file it goes through the file's
+history from that commit (\\[quit-window] comes back to the folder).
+\\[rimu-up] goes up. The preview shows the files as they were then, and what
+changes files or reads them as they are now is refused there. In either,
+\\<*git-rewind-keymap*>\\[git-rewind-older] shows a commit older,
+\\[git-rewind-newer] a commit newer, \\[git-rewind-to] one chosen from its log;
+\\[git-rewind-show-commit] shows the commit, \\[git-rewind-copy-hash] copies
+its hash, and the mode line says which it is, Rewind and its hash lit up. Run
+again there, it goes back to the file or folder as it is now, on the same line
+or entry. A file is followed back across renames; changes not committed are not
+in it, nor is a file that is not text shown."
   (let ((buffer (current-buffer)))
     (cond ((or (rimu-source buffer) (tuatara.buffer:buffer-local buffer 'git-rewind-path))
            (git-rewind-leave buffer))

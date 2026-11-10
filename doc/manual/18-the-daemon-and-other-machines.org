@@ -1,0 +1,465 @@
+#+title: The daemon and other machines
+#+language: en
+
+* The daemon and other machines
+
+One editor that keeps running, and the screens that show it.
+
+Until now each time you started =tuatara= you got an editor of its own. Its
+buffers lived as long as it did. When you closed the terminal they were gone,
+unless the session setting of chapter 7 brought them back. This chapter shows
+another way. You start one editor with no screen of its own, and then look at
+it through as many screens as you like. That editor is called a daemon. It
+keeps running when you close a screen, so your buffers, your undo history and
+your searches are still there when you come back.
+
+The same idea reaches further. The daemon can run on another computer, a
+server, and you can look at it from your own desk. The files, the programs and
+the work all stay on the server. Your computer draws the screen and sends your
+keys. This is not the same as opening a single file over ssh, which chapter 9
+covers. There the editor runs here and only the file is far away. Here the
+whole editor is far away.
+
+You will need a terminal for the commands at the start. Everything inside the
+editor is pressed in NORMAL state unless it starts with ~C-x~ or ~C-c~. ~i~
+starts INSERT state, and ~C-g~ or ~ESC~ returns to NORMAL state.
+
+** One editor in the background
+
+A daemon is useful when you work on the same things all day and open and close
+terminals as you go. You start it once, in the morning. Each terminal you open
+after that shows it. Close the terminal at lunch and the editor does not
+notice. Open another in the afternoon and everything is as you left it.
+
+*** The commands you type in a terminal
+
+These are not editor commands. You type them in your shell, the program that
+reads what you type in a terminal.
+
+- =tuatara --daemon= starts the editor in the background and gives you your
+  prompt back once it is ready. It reads your init file and loads your
+  packages first, which can take a moment, and then says that the daemon runs.
+- =tuatara --client= shows the daemon in this terminal. With file names after
+  it, those files are opened in the daemon. A client reads no init file of its
+  own, because the daemon has already read yours.
+- =tuatara --client --start= does the same, but starts the daemon first if
+  none is running. Many people use only this one.
+- =tuatara --client --gui= shows the daemon in a window of its own instead of
+  in the terminal.
+- =tuatara --stop= stops the daemon. It asks about any change you have not
+  saved, as described under "Stopping the daemon" below.
+
+Words that mean the same as for plain =tuatara= work after =--client= too: a
+line number such as =+40= before a file name, =--safe= and =--hex=. Chapter 12
+explains the safe visit.
+
+A /client/ is one screen showing the daemon, with a frame of its own and
+buffers of its own. When you close a client, its buffers stay in the daemon.
+Another client can take them up. A client started while the daemon is still
+starting waits for it and says so.
+
+*** Names for several daemons
+
+You can run more than one daemon. Give each a name, made of letters, digits,
+=-= and =_=, at most forty characters long. A daemon with no name is called
+=default=.
+
+#+begin_example
+tuatara --daemon=work
+tuatara --client=work
+tuatara --stop=work
+#+end_example
+
+One daemon for your work and another for your home projects keeps their
+buffers apart. =--start= goes with a name as well: =tuatara --client=work
+--start=.
+
+*** Closing a client
+
+~C-x C-c~ in a client closes that client. Its screen goes, your terminal is
+yours again, and the daemon carries on. Buffers with changes you have not
+saved stay as they are, ready for the next client. To end the daemon itself,
+use =daemon-quit= or =tuatara --stop=.
+
+A client also closes when its last buffer is closed. If you press ~C-x k~ on
+the only buffer a client has, the client ends as if you had pressed ~C-x C-c~.
+The scratch buffer that every new client starts with does not count while you
+have typed nothing in it.
+
+*** More than one window of a client
+
+~C-x 5 2~ opens another frame of the same client, with the same buffers. In a
+terminal it takes turns with the first in that terminal. In a window of the
+desktop it is a second window. ~C-x 5 0~ closes the frame you are in. The
+client ends when its last frame closes.
+
+*** The D in the mode line
+
+While your editor runs as a daemon, its mode line, and that of each client,
+shows a =D= after the other signs. The sign =P= before it is for work in the
+background that chapter 11 describes. The =D= is lit while there is a daemon
+and faint otherwise, and it never moves, so nothing after it jumps about. The
+setting =*daemon-indicator*= is the letter, and =nil= takes it away. The face
+=:mode-line-sign= is what it is drawn in.
+
+*** Commands, settings and faces for the daemon
+
+#+table: commands daemon-quit make-frame delete-frame
+
+#+table: settings *daemon-indicator*
+
+#+table: faces :mode-line-sign
+
+** Clients in the buffer list
+
+Each client has its own buffers. ~C-x b~ offers yours, and the buffers that
+belong to nobody, such as =*Messages*=. ~C-x C-b~ shows the list of chapter 7
+with a section for each client in place of the sections for projects, so you
+can see what each screen has open.
+
+Figure 18.1 shows the list in a client that was started at two o'clock, with
+one client that has already ended.
+
+#+caption: Figure 18.1. The buffer list of a daemon with two clients.
+#+name: fig-client-list
+#+begin_example
+ ▾ This client: client 2 since 14:02, ~/notes (persistent)
+   >*  todo.org         1,044  Org     ~/notes/todo.org
+       *scratch*            0  Lisp
+ ▸ client 3 since 14:40, ~/letters
+ ▸ Ended 15:47 - client 1 since 14:02, ~/notes
+ ▾ Every client's (1)
+       *Messages*       1,210  Text
+#+end_example
+
+Your own client comes first, marked =This client=, with the folder it was
+started in. Other running clients follow, folded. The clients that have ended
+come after them in a faint colour, the last to end first. Their buffers are
+still in the daemon, and the list keeps them until you take them up or kill
+them. The last section holds the buffers every client is offered.
+
+On the heading of a client that has ended, ~RET~ takes its buffers up into
+your client. ~d~ there marks every buffer of that folder for deletion, and ~x~
+kills them, asking first about unsaved changes. Starting =tuatara --client=
+with no file names does the same as ~RET~ for the client that ended last. The
+face =:list-dim= is the faint colour of the ended clients.
+
+*** The client that stays
+
+When the last buffer of a client is closed, the client closes. That would
+leave a daemon with no screen to show you. So one client may stay open, left
+on its scratch buffer. The setting =*client-kept-without-buffers*= says which:
+
+| Value   | The client that stays                                |
+|---------+------------------------------------------------------|
+| =:first= | the one opened first of those still running (standard) |
+| =:last=  | only the last one left                              |
+| =:all=   | every client                                         |
+| =nil=    | none; every client closes with its last buffer       |
+
+The heading of the client that stays says =(persistent)=, as in Figure 18.1.
+To choose another, put the cursor in that client's section of the buffer list
+and press ~K~. That client stays until it ends. With =:all= there is nothing to
+choose.
+
+The buffers of encrypted files are an exception. They close with their client,
+and what was copied from them goes too, so that their text does not outlive
+the person who opened them.
+
+*** Commands and settings for clients
+
+#+table: commands buffers-keep-client
+
+#+table: settings *client-kept-without-buffers*
+
+#+table: faces :list-dim
+
+#+begin_try Try it, with one editor kept running all day
+1. In a terminal, type =tuatara --client --start ~/notes.txt= and press
+   ~RET~. The daemon starts and the file opens. The mode line shows =D=.
+2. Press ~i~, type =buy stamps=, then ~C-g~ and ~C-x C-s~ to save. Press ~i~
+   and type =call Hemi= without saving. Press ~C-g~.
+3. Press ~C-x C-c~. The terminal is yours again. The editor is still running.
+4. In another terminal, type =tuatara --client= and press ~RET~. Press ~C-x
+   C-b~. The first client is listed as ended. Put the cursor on its heading
+   and press ~RET~. =notes.txt= is here with =call Hemi= still in it.
+5. Press ~C-x C-c~ again when you are done. The daemon stays for tomorrow.
+#+end_try
+
+** Stopping the daemon
+
+~M-x daemon-quit~ in any client, or =tuatara --stop= in a terminal, stops the
+daemon. It asks about every change you have not saved, in every buffer of
+every client, those of ended clients included, one folder at a time. For each
+folder you press one of three keys:
+
+- ~s~ saves the changes of that folder.
+- ~l~ leaves them unsaved. They are lost.
+- ~C-g~ stops the question and keeps the daemon running.
+
+The daemon ends only when the saves you chose have been written. If you press
+~C-g~ while it waits, it carries on running and says that saves are still
+under way. Every other client is told that the daemon ends, gives its terminal
+back and exits.
+
+=tuatara --stop= typed where there is no terminal, in a script, cannot ask. It
+stops the daemon only when no change would be lost. It writes unsaved changes
+as auto-saved copies, if the auto-save setting of chapter 7 allows it. When
+some change has no copy, the daemon goes on, and the message says how to stop
+it from a terminal. When the system itself asks the daemon to end, as at
+logout, there is also no one to ask. It writes its auto-saved copies first and
+waits up to thirty seconds for saves already begun.
+
+A daemon told to stop always ends. If it has not ended in 60 seconds, or in 90
+when there was no terminal to ask, the daemon is ended all the same, so that a
+new daemon of that name can start. Before it goes, it writes in its log
+(=~/.cache/tuatara/daemon-NAME.log=) which threads were running and the calls
+its editor was waiting in. The log names functions only, never what they were
+given. Read it when a daemon seems to have stopped late.
+
+** Sessions for each client
+
+The session setting =*keep-session*= of chapter 7 works for a daemon too. The
+daemon keeps one session file for each daemon name, written client by client,
+so the windows of one client are never mixed with another's. If the daemon is
+started again, each client's folder is there as one that ended, and =tuatara
+--client= with no file names takes up the one that ended last. Files opened
+safely are not opened again by themselves. They wait, closed, in their folder,
+and open safely when a client takes the folder up.
+
+#+begin_try Try it, with the daemon stopped and started again
+1. Add =(setf *keep-session* t)= to your init file and restart the daemon
+   with =tuatara --stop= followed by =tuatara --daemon=.
+2. Type =tuatara --client ~/notes.txt=, then press ~C-x C-c~. Type =tuatara
+   --stop= and answer ~s~ if asked.
+3. Start the daemon again and type =tuatara --client=. The folder of the
+   client that ended last is taken up, and =notes.txt= is open.
+#+end_try
+
+** A daemon on another machine
+
+Suppose you have a small server called =pinetree=, in a cupboard in Taupo,
+and you keep your notes and a few projects on it. With a daemon there you
+open your editor from any computer and find it as you left it, with the files
+next to the programs that build them. Language servers, git and terminal
+buffers all run on pinetree. Your computer draws the screen.
+
+#+caption: Figure 18.2. A client here, a daemon there, ssh between them.
+#+name: fig-client-daemon-ssh
+#+begin_example
+ your computer                              pinetree
+ +-------------------+                      +---------------------+
+ | tuatara --client= |    ssh (OpenSSH)     | tuatara daemon      |
+ | draws the screen  |<====================>| files, git, builds, |
+ | sends your keys   |    keys, screen      | language servers    |
+ +-------------------+                      +---------------------+
+   clipboard, agents and dropped files cross only for a trusted server
+#+end_example
+
+*** Starting, using and stopping
+
+Name the server before the daemon's name, with a colon between them:
+
+#+begin_example
+tuatara --client=pinetree:
+tuatara --client=aroha@pinetree.example:work
+tuatara --client=pinetree: --start todo.org
+tuatara --stop=pinetree:
+#+end_example
+
+The first shows the default daemon on pinetree. The second shows the daemon
+called =work= there, as the user =aroha=. The third starts a daemon on
+pinetree first if none runs, and opens =todo.org= there. The last stops it.
+
+A name with a dot or an =@= in it is taken as a server. A plain name such as
+=--client=work= is a daemon on this computer. A server named only by an alias
+from your =~/.ssh/config= file needs a colon after it, as in =pinetree:=.
+
+The files you name are the server's. A relative name such as =notes.org= is
+=notes.org= in your home folder on pinetree, and =/etc/hosts= is the file of
+that name there.
+
+*** What has to be in place
+
+The connection is made by the ssh program of your system, as if you had typed
+=ssh pinetree=, with your keys and your =~/.ssh/config=. If ssh needs a
+passphrase it asks in your terminal first. You need to have connected to the
+server once before, and checked its host key, because a host whose key is not
+known is refused. You also need =setpriv=, a small program from the util-linux
+package, which ties the connection to the client so that it ends when the
+client does, even if the client is killed.
+
+On the server you need the same build of Tuatara. If it is older, or not
+there, the client tells you and exits. If Tuatara is not on the server's
+=PATH=, name it in =M-x server-list= with ~T~, as shown below.
+
+The server has to run OpenSSH. A daemon takes a client from another machine
+only when OpenSSH's own server carries the connection. It refuses a
+connection through any other ssh server. The daemon must run under an ordinary
+account, directly on the server, not as root and not in a container.
+
+If the server removes your runtime folder when you log out, the daemon's
+socket goes with it. =--start= says so. On a server run by systemd, the
+command =loginctl enable-linger= keeps the folder.
+
+*** Keys limited with command=
+
+An entry in the server's =authorized_keys= file may be limited with a
+=command== setting. That does not stop the key from forwarding a connection to
+the daemon's socket. If you give such a key to someone, add =restrict= or
+=no-port-forwarding= to the same entry.
+
+*** What a server is given
+
+A server you have not trusted gets the keys you type, the size of your screen
+and the names of the files you open. Nothing else of your computer reaches it.
+Pictures are drawn on the server and sent to your window as small pictures of
+the size shown, so a page of a large scan does not cross the network whole.
+Whatever your =~/.ssh/config= says, ssh is told not to forward X11, Kerberos
+tickets, or an agent, and not to run local or remote commands.
+
+A client closes with ~C-x C-c~ and leaves the daemon on pinetree running. A
+client that is killed, or whose terminal is closed, takes its ssh connection
+with it.
+
+** The trusted servers
+
+Some things are useful across the connection: the clipboard, your keys for
+signing, files dropped on the window. Each is off until you trust a server
+with it. ~M-x server-list~ shows the trusted servers in a buffer called
+=*Servers*=, a line for each. A server not on the list is given nothing.
+
+~M-x server-trust~ adds a machine, written as =--client= takes it. Note that
+=pinetree.example= and =aroha@pinetree.example= are two entries. A new entry
+has nothing turned on. Each thing is then turned on by a key on its line,
+after Tuatara asks and says what the server will be given. Turning a thing
+off asks nothing.
+
+*** The columns
+
+#+begin_example
+ M Server            Agent Keys used for  GPG Clipboard Dropped files to Trusted
+   aroha@pinetree    yes   github.com     no  yes       Dropped          2026-11-04
+   napier.example    no                   no  no        no               2026-11-06
+#+end_example
+
+| Column           | What it says                                          |
+|------------------+-------------------------------------------------------|
+| M                | A mark (=>= or =D=) put on the line.                   |
+| Server           | The machine, as =--client= names it.                  |
+| Agent            | Whether your ssh agent is forwarded there.            |
+| Keys used for    | The machines the agent's keys may be used for from there; =any= when none is named. |
+| GPG              | Whether gpg-agent is forwarded there.                 |
+| Clipboard        | Whether the clipboard is shared with it.              |
+| Dropped files to | The folder there that dropped files are sent to, or =no=. |
+| Trusted          | The day you trusted the machine.                      |
+| Tuatara there    | The program to run there, if not the one on its =PATH=. |
+
+*** The keys of the list
+
+Each key acts on the servers marked with ~m~, or on the line the cursor is on
+when none is marked.
+
+| Modal | Non-modal | What it does                                                   |
+|-------+-----------+----------------------------------------------------------------|
+| none  | ~+~       | trust another machine, with nothing turned on                  |
+| none  | ~A~       | forward the ssh agent, or stop                                 |
+| none  | ~H~       | name the machines the agent's keys may be used for from there  |
+| none  | ~G~       | forward gpg-agent, or stop                                     |
+| none  | ~C~       | share the clipboard, or stop                                   |
+| none  | ~F~       | send dropped files to a folder there, or stop                  |
+| none  | ~T~       | name the tuatara to run there                                  |
+| none  | ~D~       | forget the server, after asking                                |
+
+The list is kept in a file named =ssh-servers= in Tuatara's state folder. A
+line it cannot read gives its server nothing.
+
+*** The ssh agent
+
+An ssh agent holds your private keys and signs for you, so a program that
+needs to log in somewhere does not have to ask for your passphrase. With ~A~ on
+for a server, the programs there, git for example, can sign with your keys
+while a client shows that daemon. Tuatara does not hand over the agent you
+keep your keys in. The client starts an agent of its own for this connection
+and puts in it only the keys your ssh configuration names for that server. Each
+key is added so that every use of it brings up a question on your screen, and
+nothing is signed until you say yes. If there is no program to ask the
+question, the client says so and does not connect.
+
+~H~ limits where the keys may be used from the server. With =github.com=
+named, the server can use them for github.com and nothing else. Write the
+names as they appear in your =known_hosts= file. This needs OpenSSH 8.9 or
+later on both machines. If the limit cannot be applied, the client refuses to
+connect. To forward the agent with no limit, name no machine.
+
+The agent reaches only the programs of that client's frames. Another client
+of the same daemon sees none of it, and it ends with the connection.
+
+*** The gpg agent
+
+GnuPG is a program for signing and encrypting, and gpg-agent holds its keys.
+With ~G~ on, gpg on the server signs and decrypts with your keys, which stay on
+your computer. The passphrase is asked here. The forwarded socket cannot export
+or change your keys, so nothing on the server can take them. While gpg-agent
+here keeps the passphrase, the server can use that key without asking again.
+
+Two things need setting on the server. gpg there must not start an agent of
+its own, so put the line =no-autostart= in =gpg.conf= in GnuPG's folder there
+(=gpgconf --list-dirs homedir= says where it is, usually =~/.gnupg=). And the
+ssh server should remove a leftover socket before forwarding a new one, which
+means adding =StreamLocalBindUnlink yes= to =/etc/ssh/sshd_config= as root.
+When the client cannot tell whether that is set, it says what to add.
+
+To encrypt a file on the server to someone else, gpg there needs their public
+key. In the list of your keys (=M-x gpg-list-keys=), mark the keys with ~m~ and
+run =M-x server-copy-keys=. It asks for the trusted server and sends the public
+keys over ssh in the background. Nothing secret is sent.
+
+*** The clipboard and dropped files
+
+With ~C~ on, the clipboard goes both ways while the client's window has the
+keyboard. What you copy in the daemon reaches the clipboard on your computer,
+and the daemon may read what you copied here. Text that comes from the server
+loses its control characters, so that pasting it into a terminal cannot carry
+a hidden escape sequence. Without ~C~, nothing of the clipboard crosses.
+
+With ~F~ on, a file you drop onto the window showing the server's daemon is
+sent into a folder there, =Dropped= in your home folder unless you give another
+name. A name beginning with =/= is taken from the root. The file is written
+for you alone under a name nothing else has, and nothing in it is run. Only
+files are sent, at most 100 MB each.
+
+*** A language server for a server
+
+A language server runs where the daemon runs. If pinetree has none installed
+and you cannot install one, =M-x server-bring-language-server= copies one from
+your computer, in the background, to a folder of the editor's own on the
+server. Nothing is fetched from the internet. It must be a program for the
+server's kind of machine that needs nothing but the usual system libraries.
+=M-x server-remove-language-server= takes it away again.
+
+*** Commands for the trusted servers
+
+#+table: commands server-list server-trust server-toggle-agent server-agent-destinations server-toggle-gpg server-toggle-clipboard server-toggle-files server-tuatara-program server-bring-language-server server-remove-language-server server-copy-keys
+
+#+begin_try Try it, with a daemon on pinetree
+1. On pinetree, over ssh, type =tuatara --daemon=. Then leave the ssh
+   session. Check that you can type =ssh pinetree= without a surprise.
+2. On your own computer, type =tuatara --client=pinetree: --start todo.org=.
+   The file opens, in the home folder on pinetree. The mode line shows =D=.
+3. Press ~C-x C-b~. The client is listed with the folder it started in.
+4. Press ~M-x~, type =server-trust=, press ~RET~, type =pinetree= and press
+   ~RET~. Answer the question. Press ~M-x~ and type =server-list=.
+5. Put the cursor on the =pinetree= line and press ~C~. Answer =y=. The
+   Clipboard column now says =yes=. Copy a line in the daemon with ~M-w~ and
+   paste it into a program of your own computer.
+6. Press ~C-x C-c~. The daemon on pinetree is still running. Type =tuatara
+   --stop=pinetree:= to end it.
+#+end_try
+
+#+begin_try Try it, with a key that may be used for one place only
+1. Open =M-x server-list=, put the cursor on a trusted server and press ~H~.
+2. Type =github.com= and press ~RET~. The Keys used for column shows it.
+3. Press ~A~ and answer =y=. The next client of that server forwards your
+   agent, each use confirmed on your screen, for github.com alone.
+#+end_try

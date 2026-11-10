@@ -24,7 +24,8 @@ under."))
   "The start and end of the definition of BUFFER that POSITION is in, or of
 the one after it when POSITION is between two, as \\[beginning-of-defun] and
 \\[end-of-defun] find them; NIL when there is none."
-  (multiple-value-bind (start found) (beginning-of-defun-position buffer (tuatara.buffer:buffer-line-end buffer position) 1)
+  (multiple-value-bind (start found)
+      (beginning-of-defun-position buffer (tuatara.buffer:buffer-line-end buffer position) 1)
     (let ((end (and (eq found t) (end-of-defun-position buffer start 1))))
       (when (or (null end) (<= end position))
         ;; between two definitions, or before the first: the one after

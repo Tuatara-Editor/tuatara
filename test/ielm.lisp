@@ -41,7 +41,8 @@ M-p and M-n bring back inputs; C-c C-b chooses the working buffer; Modal editing
   (let ((text (ielm-text (nth-value 1 (in-ielm (format nil "~a RET ~a RET" (key-string "(+ 1") (key-string "2)")))))))
     (true (search (format nil "2)~%3~%TUATARA-USER> ") text)))
   ;; what it printed, then its values, each on a line
-  (let ((text (ielm-text (nth-value 1 (in-ielm (format nil "~a RET" (key-string "(progn (print 'hi) (values 1 2))")))))))
+  (let ((text (ielm-text (nth-value 1
+                                    (in-ielm (format nil "~a RET" (key-string "(progn (print 'hi) (values 1 2))")))))))
     (true (search (format nil "~%HI~%1~%2~%TUATARA-USER> ") text)))
   ;; an error, said
   (let ((text (ielm-text (nth-value 1 (in-ielm (format nil "~a RET" (key-string "(car 5)")))))))
@@ -53,7 +54,11 @@ M-p and M-n bring back inputs; C-c C-b chooses the working buffer; Modal editing
   (let ((text (ielm-text (nth-value 1 (in-ielm (format nil "~a RET" (key-string "(in-package :cl-user)")))))))
     (true (search (format nil "~%COMMON-LISP-USER> ") text)))
   ;; *, **, *** as a Lisp REPL keeps them
-  (let ((text (ielm-text (nth-value 1 (in-ielm (format nil "~a RET ~a RET" (key-string "(+ 1 2)") (key-string "(* * 10)")))))))
+  (let ((text (ielm-text (nth-value 1
+                                    (in-ielm (format nil
+                                                     "~a RET ~a RET"
+                                                     (key-string "(+ 1 2)")
+                                                     (key-string "(* * 10)")))))))
     (true (search (format nil "~%30~%") text))))
 
 (define-test (ielm history-and-old-input)
@@ -75,7 +80,11 @@ M-p and M-n bring back inputs; C-c C-b chooses the working buffer; Modal editing
   ;; the Lisp typed sees the buffer M-x ielm was typed in as current, C-c C-b chooses another
   (let ((text (ielm-text (nth-value 1 (in-ielm (format nil "~a RET" (key-string "(buffer-name)")))))))
     (true (search (format nil "~%\"*lisp-scratch*\"~%") text)))
-  (let ((text (ielm-text (nth-value 1 (in-ielm (format nil "C-c C-b ~a RET ~a RET" (key-string "*org-scratch*") (key-string "(buffer-name)")))))))
+  (let ((text (ielm-text (nth-value 1
+                                    (in-ielm (format nil
+                                                     "C-c C-b ~a RET ~a RET"
+                                                     (key-string "*org-scratch*")
+                                                     (key-string "(buffer-name)")))))))
     (true (search (format nil "~%\"*org-scratch*\"~%") text))))
 
 (define-test (ielm modal-keys-leave-it-alone)
@@ -85,7 +94,11 @@ M-p and M-n bring back inputs; C-c C-b chooses the working buffer; Modal editing
 
 (define-test (ielm old-input-over-lines)
   ;; RET on any line of an earlier input evaluates all of it again
-  (let ((text (ielm-text (nth-value 1 (in-ielm (format nil "~a RET ~a RET C-p C-p RET" (key-string "(+ 1") (key-string "2)")))))))
+  (let ((text (ielm-text (nth-value 1
+                                    (in-ielm (format nil
+                                                     "~a RET ~a RET C-p C-p RET"
+                                                     (key-string "(+ 1")
+                                                     (key-string "2)")))))))
     (is = 2 (count-substrings (format nil "~%3~%") text))))
 
 (define-test (ielm tab-indents-or-completes)
@@ -95,12 +108,15 @@ M-p and M-n bring back inputs; C-c C-b chooses the working buffer; Modal editing
     ;; right after the prompt it does nothing, the prompt never indented
     (true (search (format nil "~%TUATARA-USER> ") (typed "TAB")))
     ;; on a line of the input with only blanks before point it indents the line
-    (true (search (format nil "(let ((a 1)~%      ") (typed (format nil "~a RET C-a TAB" (key-string "(let ((a 1)")))))))
+    (true (search (format nil "(let ((a 1)~%      ")
+            (typed (format nil "~a RET C-a TAB" (key-string "(let ((a 1)")))))))
 
 (define-test (ielm characters-of-any-size)
   ;; values and prompts beside text of characters wider than an octet are shown
   (multiple-value-bind (f editor)
-      (in-ielm (format nil "~a RET ~a RET" (key-string "(format nil \"~a\" (make-string 150 :initial-element (code-char 233)))")
+      (in-ielm (format nil
+                       "~a RET ~a RET"
+                       (key-string "(format nil \"~a\" (make-string 150 :initial-element (code-char 233)))")
                        (key-string "(princ (coerce (list (code-char 26085) (code-char 26412)) 'string))")))
     (declare (ignore editor))
     (false (showing f "cannot be shown"))

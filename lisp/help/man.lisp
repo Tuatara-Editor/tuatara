@@ -220,12 +220,12 @@ candidate for each."
 
 (defun start-man-page-list ()
   "Start finding the names of the system's pages in the background, man shut in
-the sandbox printing them; a GATHERING (TAKE-GATHERED) that gives the
-candidates at its end, and keeps them in *MAN-PAGES*, or, when man could not
-list them (it has no index: mandb makes it), the words saying so, which are
-kept as well, an empty list for the hour, so that it is not tried at every
-question. NIL, nothing started, when they were found less than
-*MAN-PAGE-LIST-AGE* seconds ago, or there is no man."
+the sandbox printing them. A GATHERING (TAKE-GATHERED) that gives the candidates
+at its end, and keeps them in *MAN-PAGES*, or, when man could not list them (it
+has no index: mandb makes it), the words saying so, which are kept as well, an
+empty list for the hour, so that it is not tried at every question. NIL, nothing
+started, when they were found less than *MAN-PAGE-LIST-AGE* seconds ago, or
+there is no man."
   (when (and (man-program)
              (not (and *man-pages* (< (- (get-universal-time) (car *man-pages*)) *man-page-list-age*))))
     (setf *man-pages-said* nil)
@@ -260,7 +260,8 @@ source of a page, that file is the default. Returns the answer, a string."
                                       :source (and listing
                                                    (gathering-source listing
                                                                      (lambda (new)
-                                                                       (when (stringp (first new)) (message "~a" (pop new)))
+                                                                       (when (stringp (first new))
+                                                                         (message "~a" (pop new)))
                                                                        (when new (setf offered (first new)))
                                                                        (length offered))))))))
 

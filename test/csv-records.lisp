@@ -55,7 +55,10 @@ newline outside double quotes, or the end."
 
 (define-test (csv-records rows-coloured-without-copying)
   ;; a long row of few fields is coloured from the text where it is kept: what is made is its colours alone
-  (let* ((row (format nil "~a,~a,\"~a\",~a~%" (make-string 600 :initial-element #\a) (make-string 600 :initial-element #\b)
+  (let* ((row (format nil
+                      "~a,~a,\"~a\",~a~%"
+                      (make-string 600 :initial-element #\a)
+                      (make-string 600 :initial-element #\b)
                       (make-string 600 :initial-element #\c) (make-string 400 :initial-element #\d)))
          (rope (tuatara.text:string->rope row))
          (end (1- (length row))))
@@ -75,7 +78,8 @@ newline outside double quotes, or the end."
                       (rows (tuatara.display:window-rows window))
                       (mode (tuatara.modes:buffer-major-mode buffer)))
                  (true (<= n (length rows)))
-                 (/ (least-seconds (lambda () (dotimes (i 5) (tuatara.defaults::mode-syntax-highlights mode buffer rows))))
+                 (/ (least-seconds (lambda ()
+                                     (dotimes (i 5) (tuatara.defaults::mode-syntax-highlights mode buffer rows))))
                     n))))))
     (let ((few (per-row 100)) (many (per-row 1000)))
       (true (< many (+ 0.00001 (* 3 few))) "~,2fµs a row of 100, ~,2fµs a row of 1,000" (* 1e6 few) (* 1e6 many)))))
@@ -88,12 +92,17 @@ newline outside double quotes, or the end."
          (line (tuatara.buffer:buffer-line-start buffer (floor (length text) 2))))
     (unwind-protect
          (let ((fresh (least-seconds (lambda ()
-                                       (setf (tuatara.buffer:buffer-local buffer 'tuatara.defaults::csv-record-start) nil)
-                                       (dotimes (i 10) (setf (tuatara.buffer:buffer-local buffer 'tuatara.defaults::csv-record-start) nil)
+                                       (setf (tuatara.buffer:buffer-local buffer
+                                                                          'tuatara.defaults::csv-record-start) nil)
+                                       (dotimes (i 10)
+                                         (setf (tuatara.buffer:buffer-local buffer
+                                                                            'tuatara.defaults::csv-record-start) nil)
                                          (tuatara.defaults::csv-record-start buffer line)))))
                (after-edit (least-seconds (lambda ()
                                             (dotimes (i 10)
-                                              (tuatara.buffer:buffer-insert buffer (tuatara.buffer:buffer-size buffer) "w")
+                                              (tuatara.buffer:buffer-insert buffer
+                                                                            (tuatara.buffer:buffer-size buffer)
+                                                                            "w")
                                               (tuatara.defaults::csv-record-start buffer line))))))
            (is = (tuatara.defaults::rope-record-start (tuatara.buffer:buffer-text buffer) line)
                (tuatara.defaults::csv-record-start buffer line))
@@ -107,7 +116,8 @@ newline outside double quotes, or the end."
     (is equal (list 41 81) (multiple-value-list (tuatara.defaults::csv-field-bounds text 0 length 44 1)))
     (is equal (list nil 256) (multiple-value-list (tuatara.defaults::csv-field-bounds text 0 length 44 300)))
     (let ((near (least-seconds (lambda () (dotimes (i 2000) (tuatara.defaults::csv-field-bounds text 0 length 44 1)))))
-          (far (least-seconds (lambda () (dotimes (i 2000) (tuatara.defaults::csv-field-bounds text 0 length 44 255))))))
+          (far (least-seconds (lambda ()
+                                (dotimes (i 2000) (tuatara.defaults::csv-field-bounds text 0 length 44 255))))))
       (true (< near (+ 0.001 (/ far 10))) "~,4fs for field 1, ~,4fs for field 255" near far))))
 
 (define-test (csv-records header-over-lines)
@@ -136,7 +146,8 @@ newline outside double quotes, or the end."
       (list-records-after "C-x h M-x s o r t - f i e l d s RET C I T Y RET"
                           (format nil "NAME,CITY~%Zed,\"Nelson~%North\"~%Amy,Auckland~%Bob,Nelson~%")))
   (is string= (format nil "N,V~%a,9~%b,10~%c,\"100\"~%")
-      (list-records-after "C-x h M-x s o r t - n u m e r i c - f i e l d s RET 1 RET" (format nil "N,V~%b,10~%c,\"100\"~%a,9~%")))
+      (list-records-after "C-x h M-x s o r t - n u m e r i c - f i e l d s RET 1 RET"
+                          (format nil "N,V~%b,10~%c,\"100\"~%a,9~%")))
   (is string= (format nil "N,V~%c,\"100\"~%b,10~%a,9~%")
       (list-records-after "C-x h M-x s o r t - n u m e r i c - f i e l d s - r e v e r s e RET V RET"
                           (format nil "N,V~%b,10~%c,\"100\"~%a,9~%")))

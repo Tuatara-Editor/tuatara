@@ -1,4 +1,5 @@
-;;;; lisp/gpg/rimu.lisp --- GnuPG on the files marked in a list of a directory: : e encrypts, : d decrypts, : s signs, : v verifies.
+;;;; lisp/gpg/rimu.lisp --- GnuPG on the files marked in a list of a directory: : e encrypts, : d decrypts, : s signs,
+;;;; : v verifies.
 ;;;; Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
 ;;;;
 ;;;; As Emacs's dired has them, on the files marked in a rimu list (or the one
@@ -70,4 +71,5 @@ in turn and kept in *Messages*."
 
 (defun install-rimu-gpg ()
   "Bind : e, : d, : s and : v in lists of directories."
-  (define-keys *rimu-keymap* '((": e" rimu-encrypt-files) (": d" rimu-decrypt-files) (": s" rimu-sign-files) (": v" rimu-verify-files))))
+  (define-keys *rimu-keymap*
+      '((": e" rimu-encrypt-files) (": d" rimu-decrypt-files) (": s" rimu-sign-files) (": v" rimu-verify-files))))

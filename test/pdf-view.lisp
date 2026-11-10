@@ -6,9 +6,9 @@
 (define-test pdf-view
   :description "Visiting a PDF shows its pages, each drawn in the sandbox as large as the window allows,
 l and h turning them, g l and g h to the last and the first, g p to one by number, j and k scrolling
-on from page to page, = - p w zooming, d dark, C-s finding text; T switches to its text, where the keys
-move as in any text; i says what it says of itself, a lists and saves its embedded files; the mode line
-says the page, the zoom and Sandboxed; the page and zoom are kept for the next time. Where pictures are
+on from page to page, = - p w zooming, d dark, C-s finding text. T switches to its text, where the keys
+move as in any text. I says what it says of itself, a lists and saves its embedded files. The mode line
+says the page, the zoom and Sandboxed. The page and zoom are kept for the next time. Where pictures are
 not shown, the text. A safe visit opens its octets.")
 
 (defun pdf-session (file first then &key cell-pixels (width 120) (height 30))
@@ -20,10 +20,15 @@ frontend show pictures. Returns the frontend and the editor."
     (let ((scratch (tuatara.buffer:find-buffer "*scratch*")))
       (when scratch (tuatara.buffer:kill-buffer scratch)))
     (tuatara.buffer:make-buffer "*scratch*" :text "")
-    (tuatara.frontend.fake:fake-queue-keys f (format nil "C-x C-f C-a C-k ~a RET~@[ ~a~]" (rimu-typed (namestring file)) first))
+    (tuatara.frontend.fake:fake-queue-keys f
+                                           (format nil
+                                                   "C-x C-f C-a C-k ~a RET~@[ ~a~]"
+                                                   (rimu-typed (namestring file)) first))
     (labels ((busy ()
                (or (some (lambda (b) (let ((view (tuatara.defaults::pdf-view-of b)))
-                                       (and view (or (tuatara.defaults::pdf-view-job view) (tuatara.defaults::pdf-view-text-job view)))))
+                                       (and view
+                                            (or (tuatara.defaults::pdf-view-job view)
+                                                (tuatara.defaults::pdf-view-text-job view)))))
                          tuatara.defaults::*pdf-views*)
                    (some #'tuatara.defaults::pdf-view-task-p tuatara.runtime:*jobs*)))
              (check ()
@@ -40,7 +45,9 @@ and zooms kept for the next time."
   (dolist (b (copy-list tuatara.defaults::*pdf-views*))
     (when (tuatara.buffer:live-buffer-p b) (tuatara.buffer:kill-buffer b)))
   (when places
-    (progn (tuatara.defaults::finish-state-writes) (uiop:delete-file-if-exists (tuatara.defaults::state-list-path tuatara.defaults::*pdf-places*)))))
+    (progn
+      (tuatara.defaults::finish-state-writes)
+      (uiop:delete-file-if-exists (tuatara.defaults::state-list-path tuatara.defaults::*pdf-places*)))))
 
 (defun last-images (f)
   "The pictures of the last frame F painted that had any, each (IMAGE ROW COLUMN COLUMNS ROWS)."
@@ -53,7 +60,8 @@ and zooms kept for the next time."
       ;; its first page, drawn for the window; the mode line says the page, PDF and Sandboxed
       (pdf-forget)
       (multiple-value-bind (f editor) (pdf-session file nil nil :cell-pixels '(10 20))
-        (is string= "report.pdf" (tuatara.buffer:buffer-name (tuatara.display:window-buffer (tuatara.command:editor-window editor))))
+        (is string= "report.pdf"
+            (tuatara.buffer:buffer-name (tuatara.display:window-buffer (tuatara.command:editor-window editor))))
         (true (tuatara.frontend.fake:fake-frame-showing f "Page 1 of 3"))
         (true (tuatara.frontend.fake:fake-frame-showing f "PDF"))
         (true (tuatara.frontend.fake:fake-frame-showing f "Sandboxed"))
@@ -91,7 +99,8 @@ and zooms kept for the next time."
              (images (remove-duplicates (loop for frame in (tuatara.frontend.fake:fake-image-history f)
                                               append (mapcar #'first frame)))))
         (true (>= (length images) 2)))
-      ;; T: its text, where <next> goes to where the next page begins, j a line as in any text; T again, the pages at that page
+      ;; T: its text, where <next> goes to where the next page begins, j a line as in any text; T again, the pages at
+      ;; that page
       (pdf-forget)
       (let ((f (pdf-session file nil "T <next>" :cell-pixels '(10 20))))
         (true (tuatara.frontend.fake:fake-frame-showing f "Hello from page one"))
@@ -130,7 +139,9 @@ and zooms kept for the next time."
       (multiple-value-bind (f editor) (pdf-session file nil "g p 5 RET" :cell-pixels '(10 20))
         (declare (ignore f))
         (let ((view (tuatara.defaults::pdf-view-of (tuatara.display:window-buffer (tuatara.command:editor-window editor)))))
-          (loop repeat 200 while (tuatara.defaults::pdf-view-job view) do (sleep 0.02) (tuatara.defaults::pdf-view-tick nil))
+          (loop repeat 200
+                while (tuatara.defaults::pdf-view-job view)
+                do (sleep 0.02) (tuatara.defaults::pdf-view-tick nil))
           (true (subsetp '(4 5 6 7 8) (mapcar #'first (tuatara.defaults::pdf-view-images view))))
           (is equal '(5 6 7 8 4) (tuatara.defaults::pdf-view-wanted-pages view))))
       ;; past the memory allowed: the farthest let go of, never the page shown
@@ -187,7 +198,11 @@ and zooms kept for the next time."
             (tuatara.defaults::text-page-starts text)))
       ;; k k before the page before is drawn: on to its end, then up from there, no error
       (pdf-forget)
-      (multiple-value-bind (f editor) (run-keys "l k k k" :file (namestring file) :width 120 :height 20 :cell-pixels '(10 20))
+      (multiple-value-bind (f editor) (run-keys "l k k k"
+                                                :file (namestring file)
+                                                :width 120
+                                                :height 20
+                                                :cell-pixels '(10 20))
         (declare (ignore editor))
         (false (tuatara.frontend.fake:fake-frame-showing f "error"))
         (false (tuatara.frontend.fake:fake-frame-showing f "is not of type")))
@@ -201,7 +216,10 @@ and zooms kept for the next time."
       (alexandria:write-byte-vector-into-file (pdf-octets '("one" "two")) file)
       (loop for (width height) in '((60 20) (200 12) (200 17) (200 23) (200 29) (200 34) (200 41))
             do (pdf-forget)
-               (multiple-value-bind (f editor) (pdf-session file nil "j" :cell-pixels '(10 20) :width width :height height)
+               (multiple-value-bind (f editor) (pdf-session file nil "j"
+                                                            :cell-pixels '(10 20)
+                                                            :width width
+                                                            :height height)
                  (let ((shown (first (last-images f)))
                        (rows (tuatara.display:window-height (tuatara.command:editor-window editor))))
                    (true (tuatara.frontend.fake:fake-frame-showing f "Page 2 of 2") "~dx~d" width height)
@@ -250,7 +268,10 @@ and zooms kept for the next time."
       ;; a safe visit opens its octets, not the view
       (pdf-forget)
       (multiple-value-bind (f editor)
-          (run-keys (format nil "C-u C-x C-f C-a C-k ~a RET" (rimu-typed (namestring file))) :width 120 :height 20 :cell-pixels '(10 20))
+          (run-keys (format nil "C-u C-x C-f C-a C-k ~a RET" (rimu-typed (namestring file)))
+                    :width 120
+                    :height 20
+                    :cell-pixels '(10 20))
         (declare (ignore f))
         (let ((buffer (tuatara.display:window-buffer (tuatara.command:editor-window editor))))
           (true (tuatara.buffer:buffer-file buffer))
@@ -336,7 +357,9 @@ and zooms kept for the next time."
         (false (eq first (tuatara.defaults::pdf-view-shown-image entry))))
       ;; the colours turned about: white the ground, black the ink, grey between, alpha kept
       (let ((dark (tuatara.defaults::dark-image
-                   (tuatara.frontend:make-image 3 1 4 (coerce '(255 255 255 9 0 0 0 200 255 0 51 255) '(simple-array (unsigned-byte 8) (*))))
+                   (tuatara.frontend:make-image 3 1 4
+                                                (coerce '(255 255 255 9 0 0 0 200 255 0 51 255)
+                                                        '(simple-array (unsigned-byte 8) (*))))
                    (list 0 200 210 220 10 20 30))))
         (is equalp #(10 20 30 9 200 210 220 200 10 210 182 255) (tuatara.frontend:image-pixels dark)))
       ;; a page drawn while pages are dark comes with its dark picture, made while it was drawn
@@ -404,7 +427,8 @@ and zooms kept for the next time."
   (with-test-directory (dir)
     (let ((file (merge-pathnames "report.pdf" dir)))
       (alexandria:write-byte-vector-into-file
-       (pdf-octets '("Hello") :attachments '(("budget.xlsx" "numbers") ("minutes.txt" "the minutes") ("photo.jpg" "picture")))
+       (pdf-octets '("Hello")
+                   :attachments '(("budget.xlsx" "numbers") ("minutes.txt" "the minutes") ("photo.jpg" "picture")))
        file)
       (flet ((listed (then)
                (pdf-forget)
@@ -513,3 +537,92 @@ and zooms kept for the next time."
          (is string= (format nil "Kea~chut" (code-char 233)) (tuatara.defaults::octets-text text 0 (length text)))
          (true (sb-concurrency:queue-empty-p tuatara.runtime:*debug-reports*)))
     (drain-debug-reports)))
+
+(define-test (pdf-view stopped-by-quit)
+  ;; a decoder that does not end: a job while it runs, ended with its sandbox by C-g, and said so
+  (with-test-directory (dir)
+    (let ((file (merge-pathnames "report.pdf" dir))
+          (mark "31.4159")
+          (listed nil)
+          (gone nil))
+      (alexandria:write-byte-vector-into-file (pdf-octets '("Hello")) file)
+      (pdf-forget)
+      (let ((tuatara.defaults::*pdf-decoders* (list (list :name "stuck" :info (list "sleep" mark)
+                                                          :text (list "sleep" mark) :page (list "sleep" mark))))
+            (tuatara-user:*sandbox-seconds* 60))
+        (unwind-protect
+             (multiple-value-bind (f editor)
+                 (run-keys (list (format nil "C-x C-f C-a C-k ~a RET" (rimu-typed (namestring file)))
+                                 (lambda ()
+                                   (loop repeat 500 until (plusp (processes-running mark)) do (sleep 0.02))
+                                   (setf listed (some (lambda (job) (and (typep job 'tuatara.defaults::pdf-view-job)
+                                                                         (tuatara.runtime:job-running-p job)))
+                                                      tuatara.runtime:*jobs*)))
+                                 "C-g"
+                                 (lambda () (setf gone (gone-within mark 3)) (sleep 0.2))
+                                 :tick :tick)
+                           :width 120 :height 20)
+               (true listed "the decoder listed as a job")
+               (true gone "the decoder ended by C-g")
+               (true (tuatara.frontend.fake:fake-frame-showing f "report.pdf was not read, stopped"))
+               (let ((view (tuatara.defaults::pdf-view-of (tuatara.display:window-buffer
+                                                          (tuatara.command:editor-window editor)))))
+                 (false (tuatara.defaults::pdf-view-job view))))
+          (pdf-forget)
+          (true (gone-within mark 5)))))))
+
+(define-test (pdf-view too-large-said)
+  ;; a file larger than a decoder is given opens as octets, and why is said
+  (with-test-directory (dir)
+    (let ((file (merge-pathnames "report.pdf" dir)))
+      (alexandria:write-byte-vector-into-file (pdf-octets '("Hello")) file)
+      (pdf-forget)
+      (let ((tuatara-user:*sandbox-input-limit* 100))
+        (multiple-value-bind (f editor) (pdf-session file nil nil :width 240)
+          (true (tuatara.frontend.fake:fake-frame-showing f "report.pdf opens as octets: it is "))
+          (true (tuatara.frontend.fake:fake-frame-showing
+                 f "more than a decoder is given (*sandbox-input-limit*, 100)"))
+          (let ((buffer (tuatara.display:window-buffer (tuatara.command:editor-window editor))))
+            (false (tuatara.defaults::pdf-view-of buffer))
+            (tuatara.buffer:kill-buffer buffer))))
+      (pdf-forget))))
+
+(define-test (pdf-view too-large-said-when-read-again)
+  ;; a PDF grown past what a decoder is given since it was opened: read again, it says why, in the
+  ;; buffer and the echo area, never only that it has no text
+  (with-test-directory (dir)
+    (let* ((file (merge-pathnames "report.pdf" dir))
+           (small (pdf-octets '("Hello")))
+           (limit (+ (length small) 10)))
+      (alexandria:write-byte-vector-into-file small file)
+      (pdf-forget)
+      (flet ((read-done ()
+               (tuatara.runtime:wait-until
+                (lambda () (notany (lambda (job) (and (typep job 'tuatara.defaults::pdf-view-job)
+                                                      (tuatara.runtime:job-running-p job)))
+                                   tuatara.runtime:*jobs*))
+                20)))
+        (let ((tuatara-user:*sandbox-input-limit* limit))
+          (multiple-value-bind (f editor)
+              (run-keys (list (format nil "C-x C-f C-a C-k ~a RET" (rimu-typed (namestring file)))
+                              (lambda () (read-done))
+                              :tick
+                              (lambda ()
+                                (alexandria:write-byte-vector-into-file
+                                 (pdf-octets (list (make-string (* 2 limit) :initial-element #\a))) file
+                                 :if-exists :supersede))
+                              (format nil "M-x ~a RET" (rimu-typed "revert-buffer"))
+                              (lambda () (read-done))
+                              :tick :tick)
+                        :width 240 :height 20)
+            (let* ((buffer (tuatara.display:window-buffer (tuatara.command:editor-window editor)))
+                   (text (tuatara.buffer:buffer-string buffer))
+                   (messages (tuatara.buffer:find-buffer "*Messages*")))
+              (true (search "report.pdf was not read: it is " text) text)
+              (true (search (format nil "more than a decoder is given (*sandbox-input-limit*, ~:d)" limit) text))
+              (false (search "has no text" text))
+              (true (tuatara.frontend.fake:fake-frame-showing f "report.pdf was not read: it is "))
+              (true (and messages (search "report.pdf was not read: it is "
+                                          (tuatara.buffer:buffer-string messages))))
+              (tuatara.buffer:kill-buffer buffer)))))
+      (pdf-forget))))

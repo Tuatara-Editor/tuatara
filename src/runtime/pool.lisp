@@ -129,8 +129,9 @@ signal DONE when the last task of the batch finishes."
             (let ((pool (%make-pool (worker-count))))
               (setf (pool-threads pool)
                     (loop for i below (pool-size pool)
-                          collect (tuatara.runtime:make-guarded-thread #'worker-loop :name (format nil "tuatara worker ~a" i)
-                                                                       :arguments (list pool))))
+                          collect
+                          (tuatara.runtime:make-guarded-thread #'worker-loop :name (format nil "tuatara worker ~a" i)
+                                                               :arguments (list pool))))
               (setf *pool* pool))))))
 
 (defvar *task-wrappers* '()

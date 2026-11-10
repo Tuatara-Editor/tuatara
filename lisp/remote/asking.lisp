@@ -42,12 +42,12 @@ variable of the shell. Any other first line ends it with a failure.")
   "How long a connection to a server has taken before the echo area says so.")
 
 (defstruct (ssh-asking (:constructor make-ssh-asking (host jump folder question answer)) (:copier nil))
-  "How ssh's questions for one connection reach you: HOST, the machine asked
-for; JUMP, the machines ssh goes through to it (ProxyJump), or NIL; FOLDER,
-the connection's private folder; QUESTION and ANSWER, this end of the named
-pipes the script uses, as file descriptors; ASKED, how many questions it has
-asked; SAID, how many octets of what ssh wrote on its error output have been
-shown."
+  "How ssh's questions for one connection reach you. HOST is the machine asked
+for. JUMP is the machines ssh goes through to it (ProxyJump), or NIL. FOLDER
+is the connection's private folder. QUESTION and ANSWER are this end of the
+named pipes the script uses, as file descriptors. ASKED is how many questions
+it has asked. SAID is how many octets of what ssh wrote on its error output
+have been shown."
   (host "" :type string :read-only t)
   (jump nil :read-only t)
   (folder "" :type string :read-only t)
@@ -77,11 +77,11 @@ can be answered: not one running in the background with no client."
 
 (defun ssh-can-ask-p (program)
   "True when questions of ssh, the program PROGRAM, can be put in the
-minibuffer: allowed (*SSH-MAY-ASK*), someone to answer them
-\(SOMEONE-TO-ASK-P), and OpenSSH 8.5 or later, which reads SSH_ASKPASS_REQUIRE,
-so never asks on the editor's terminal, and writes who a server's own question
-is for before it, so that a server cannot ask in the words of a question of
-ssh's."
+minibuffer. That needs them allowed (*SSH-MAY-ASK*), someone to answer them
+\(SOMEONE-TO-ASK-P), and OpenSSH 8.5 or later. That version reads
+SSH_ASKPASS_REQUIRE, so never asks on the editor's terminal. It also writes
+who a server's own question is for before it, so that a server cannot ask in
+the words of a question of ssh's."
   (and *ssh-may-ask*
        (someone-to-ask-p (running-editor))
        (let ((version (openssh-version program)))

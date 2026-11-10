@@ -181,7 +181,8 @@ grammar_inputs_of() {
   case "$name" in
     tree-sitter) grammar_inputs_hash "$dir" "$dir/lib/src" ;;
     */*) grammar_inputs_hash "$dir" "$dir/src" grammar.js ;;
-    *) grep -q "^diff --git a/grammar.js" "$root/syntax/patches/$name.patch" 2>/dev/null && extra=("${subpath:+$subpath/}grammar.js")
+    *) grep -q "^diff --git a/grammar.js" "$root/syntax/patches/$name.patch" 2>/dev/null &&
+      extra=("${subpath:+$subpath/}grammar.js")
        grammar_inputs_hash "$dir" "$dir/${subpath:+$subpath/}src" ${extra[@]+"${extra[@]}"} ;;
   esac
 }

@@ -1,4 +1,5 @@
-;;;; lisp/search/filters.lisp --- A list or a file of records narrowed to what searches match, the searches kept as filters.
+;;;; lisp/search/filters.lisp --- A list or a file of records narrowed to what searches match, the searches kept as
+;;;; filters.
 ;;;; Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
 ;;;;
 ;;;; Any list a command makes with RENDER-PIECES (or SHOW-LIST-TEXT, as
@@ -29,18 +30,19 @@
 
 (in-package #:tuatara.defaults)
 
-(defstruct (search-filter (:constructor %make-search-filter (string kind fold matcher where test part hide)) (:copier nil))
-  "A pattern narrowing a list: STRING as typed; KIND :REGEX for a regular
-expression, :LITERAL for literal text; FOLD true when it ignores case; MATCHER,
-how it is found in a text (MAKE-PATTERN-MATCHER), and SCANNER, it compiled to
-try on a string, made when first asked for (SEARCH-FILTER-SCANNER); WHERE, the
-part of each entry it looks at as the list names parts
-\(NIL for the line and all the list gives of the entry). In a file of
+(defstruct (search-filter (:constructor %make-search-filter (string kind fold matcher where test part hide))
+                          (:copier nil))
+  "A pattern narrowing a list. STRING is the pattern as typed. KIND is :REGEX
+for a regular expression or :LITERAL for literal text. FOLD is true when it
+ignores case. MATCHER says how it is found in a text (MAKE-PATTERN-MATCHER).
+SCANNER is it compiled to try on a string, made when first asked for
+\(SEARCH-FILTER-SCANNER). WHERE is the part of each entry it looks at as the list
+names parts (NIL for the line and all the list gives of the entry). In a file of
 records, TEST, when given, tries SCANNER on a record's line in its own way
-\(FILTER-LINE-MATCHER: a column), PART the words naming what it tries
-\(\"$2\"). HIDE true when it leaves the entries it does not match. KEPT,
-which of the list's entries it and the filters before it leave, a bit for
-each, worked out for the whole list SOURCE; COUNT, how many entries that is,
+\(FILTER-LINE-MATCHER: a column). PART is the words naming what it tries
+\(\"$2\"). HIDE is true when it leaves the entries it does not match. KEPT is
+which of the list's entries it and the filters before it leave, a bit for each,
+worked out for the whole list SOURCE. COUNT is how many entries that is,
 headings aside."
   string kind fold matcher (compiled nil) where test part hide (kept nil) (source nil) (count 0))
 
@@ -49,12 +51,17 @@ headings aside."
       (documentation 'search-filter-kind 'function) "How a search filter's pattern is read: :REGEX or :LITERAL."
       (documentation 'search-filter-fold 'function) "True when a search filter ignores case."
       (documentation 'search-filter-matcher 'function) "How a search filter's pattern is found in a text, a MATCHER."
-      (documentation 'search-filter-compiled 'function) "A search filter's pattern compiled for strings, once asked for, or NIL."
-      (documentation 'search-filter-where 'function) "The part of an entry a search filter looks at, or NIL for all of it."
-      (documentation 'search-filter-test 'function) "How a search filter tries its pattern on a record's line (a column), or NIL for the whole line."
-      (documentation 'search-filter-part 'function) "Words naming what of a record a search filter tries (\"$2\"), or NIL for the whole line."
+      (documentation 'search-filter-compiled 'function)
+      "A search filter's pattern compiled for strings, once asked for, or NIL."
+      (documentation 'search-filter-where 'function)
+      "The part of an entry a search filter looks at, or NIL for all of it."
+      (documentation 'search-filter-test 'function)
+      "How a search filter tries its pattern on a record's line (a column), or NIL for the whole line."
+      (documentation 'search-filter-part 'function)
+      "Words naming what of a record a search filter tries (\"$2\"), or NIL for the whole line."
       (documentation 'search-filter-hide 'function) "True when a search filter leaves the entries it does not match."
-      (documentation 'search-filter-kept 'function) "Which entries a search filter and those before it leave, a bit each, or NIL."
+      (documentation 'search-filter-kept 'function)
+      "Which entries a search filter and those before it leave, a bit each, or NIL."
       (documentation 'search-filter-source 'function) "The whole list a search filter's KEPT was worked out for."
       (documentation 'search-filter-count 'function) "How many entries a search filter and those before it leave.")
 
@@ -121,7 +128,8 @@ FIRST-LINE on, and LINES, the text of each entry's line, and TOTAL, how many
 entries it shows, headings aside, each worked out once."
   text spans buttons entries first-line (lines nil) (total nil))
 
-(setf (documentation 'make-list-source 'function) "A LIST-SOURCE of a list's TEXT, SPANS, BUTTONS, ENTRIES and FIRST-LINE."
+(setf (documentation 'make-list-source 'function)
+      "A LIST-SOURCE of a list's TEXT, SPANS, BUTTONS, ENTRIES and FIRST-LINE."
       (documentation 'list-source-p 'function) "True when OBJECT is a LIST-SOURCE."
       (documentation 'list-source-text 'function) "The whole text of a list, as made."
       (documentation 'list-source-spans 'function) "The parts of a list's whole text shown in a face."
@@ -129,22 +137,22 @@ entries it shows, headings aside, each worked out once."
       (documentation 'list-source-entries 'function) "The entries of a list, as made, a vector."
       (documentation 'list-source-first-line 'function) "The line of a list's whole text its first entry is on."
       (documentation 'list-source-lines 'function) "The text of each entry's line, or NIL until worked out."
-      (documentation 'list-source-total 'function) "How many entries a list shows, headings aside, or NIL until counted.")
+      (documentation 'list-source-total 'function)
+      "How many entries a list shows, headings aside, or NIL until counted.")
 
 (defstruct (list-filtering (:constructor make-list-filtering ()) (:copier nil))
-  "How a list is narrowed: FILTERS kept, the first first; TYPING, the filter
-being typed at the search prompt, or NIL; SOURCE, the whole list (a
-LIST-SOURCE) while filters narrow it; SHOWN, the bits of the entries shown,
-or NIL for all; JOB, the filters being worked out in the background; and what
-the list says of itself (SET-SEARCH-FILTERING), namely TEXT, NOUNS, HEADING,
-EMPTY-HEADINGS, DECORATION and SEARCHES. For a file of records (LINES, how
-many header lines it has, always shown: 0 for none), SOURCE is the version
-of its text the filters were worked out for, SHOWN the runs of lines shown
-and TOTAL how many records it has, once known. While
-JOB works the filters out, SHOWN is what they match from the window's top;
-SLOW is true when it works them out because a pattern was too slow on this
-text for the editor's thread. DUE holds the filters whose job waits for
-typing to pause."
+  "How a list is narrowed. FILTERS are those kept, the first first. TYPING is
+the filter being typed at the search prompt, or NIL. SOURCE is the whole list (a
+LIST-SOURCE) while filters narrow it. SHOWN is the bits of the entries shown, or
+NIL for all. JOB is the filters being worked out in the background. The rest is
+what the list says of itself (SET-SEARCH-FILTERING): TEXT, NOUNS, HEADING,
+EMPTY-HEADINGS, DECORATION and SEARCHES. For a file of records, LINES is how
+many header lines it has, always shown: 0 for none. There SOURCE is the version
+of its text the filters were worked out for, SHOWN the runs of lines shown and
+TOTAL how many records it has, once known. While JOB works the filters out,
+SHOWN is what they match from the window's top. SLOW is true when it works them
+out because a pattern was too slow on this text for the editor's thread. DUE
+holds the filters whose job waits for typing to pause."
   (filters '()) (typing nil) (source nil) (shown nil) (shown-count 0) (job nil)
   (text nil) (nouns "entries") (heading nil) (empty-headings t) (decoration nil) (searches nil)
   (lines nil) (total nil) (slow nil) (due nil))
@@ -156,16 +164,21 @@ typing to pause."
       (documentation 'list-filtering-shown 'function) "The bits of the entries shown, or NIL for all of them."
       (documentation 'list-filtering-shown-count 'function) "How many entries are shown, headings aside."
       (documentation 'list-filtering-job 'function) "The job working the filters out, or NIL."
-      (documentation 'list-filtering-text 'function) "A function of an entry and a part's name giving more text to match, or NIL."
+      (documentation 'list-filtering-text 'function)
+      "A function of an entry and a part's name giving more text to match, or NIL."
       (documentation 'list-filtering-nouns 'function) "What the list calls its entries, in the plural."
       (documentation 'list-filtering-heading 'function) "A function true of an entry that heads a section, or NIL."
-      (documentation 'list-filtering-empty-headings 'function) "True when a heading with nothing under it stays while filters narrow the list."
-      (documentation 'list-filtering-decoration 'function) "A function true of a line's entry that goes with its section's heading, or NIL."
+      (documentation 'list-filtering-empty-headings 'function)
+      "True when a heading with nothing under it stays while filters narrow the list."
+      (documentation 'list-filtering-decoration 'function)
+      "A function true of a line's entry that goes with its section's heading, or NIL."
       (documentation 'list-filtering-searches 'function) "True when the list's searches narrow it."
       (documentation 'list-filtering-lines 'function) "For a file of records whose lines the filters hide, how many header lines it has (0 for none); NIL for a list of entries."
-      (documentation 'list-filtering-total 'function) "How many records a file narrowed by filters has, or NIL until known."
+      (documentation 'list-filtering-total 'function)
+      "How many records a file narrowed by filters has, or NIL until known."
       (documentation 'list-filtering-due 'function) "The filters still to work out and what the ones before leave, (LEFT PREVIOUS), while their job waits for typing to pause; or NIL."
-      (documentation 'list-filtering-slow 'function) "True when the filters are worked out in the background because a pattern was slow on this text.")
+      (documentation 'list-filtering-slow 'function)
+      "True when the filters are worked out in the background because a pattern was slow on this text.")
 
 (defvar *buffers-filtered-by-lines* '()
   "The buffers whose lines search filters hide, looked at before each
@@ -188,17 +201,18 @@ entries called records, for a buffer whose mode says so (FILTERS-HIDE-LINES-P)."
 
 (defun set-search-filtering (buffer &key text (nouns "entries") heading (empty-headings t) decoration searches)
   "Say how BUFFER, a list made by RENDER-PIECES, is narrowed by search filters
-\(\\[search-filter-regex]): TEXT, a function of an entry and the name of a
-part of it (NIL for all), gives more of it to match than its line, as a
-string or NIL, called in the background (it must not touch the editor);
-NOUNS names its entries in the plural, for the line saying how many are
-shown; HEADING, a function of an entry, is true of one that heads a section,
-shown while an entry under it is and never matched itself, and, unless
-EMPTY-HEADINGS is NIL, while nothing at all is under it; DECORATION, a
-function of an entry, is true of a line that goes with the heading above it
-\(a time grid's line under a day); never matched nor counted, shown while
-that heading is; with SEARCHES, \\[regex-search-forward] and
-\\[regex-search-backward] there narrow it too. Returns BUFFER."
+\(\\[search-filter-regex]). TEXT is a function of an entry and the name of a part
+of it (NIL for all). It gives more of the entry to match than its line, as a
+string or NIL, and is called in the background (it must not touch the editor).
+NOUNS names the entries in the plural, for the line saying how many are shown.
+HEADING is a function of an entry, true of one that heads a section. A heading
+is shown while an entry under it is, and is never matched itself. Unless
+EMPTY-HEADINGS is NIL, it is also shown while nothing at all is under it.
+DECORATION is a function of an entry, true of a line that goes with the heading
+above it (a time grid's line under a day). Such a line is never matched nor
+counted, and is shown while that heading is. With SEARCHES,
+\\[regex-search-forward] and \\[regex-search-backward] there narrow the list
+too. Returns BUFFER."
   (let ((filtering (list-filtering-made buffer)))
     (setf (list-filtering-text filtering) text (list-filtering-nouns filtering) nouns
           (list-filtering-heading filtering) heading (list-filtering-empty-headings filtering) empty-headings
@@ -309,12 +323,12 @@ show the entry line INDEX shows: the next entry's first line."
 
 (defun list-lines-matched (filter lines low high candidate-p)
   "Which of LINES, the lines of a list (strings), from LOW below HIGH, FILTER's
-pattern matches, as bits from LOW: each run of lines in a row for which
-CANDIDATE-P, a function of a line's index, is true, is searched as one text,
-a line after another, and a line is matched when any part of a match lies
-on it, from the line holding the match's first character through the line
-holding its last, or an empty match is in it, as the lines of a file of
-records are matched (LINES-MATCHING)."
+pattern matches, as bits from LOW. Each run of lines in a row for which
+CANDIDATE-P, a function of a line's index, is true, is searched as one text, a
+line after another. A line is matched when any part of a match lies on it, from
+the line holding the match's first character through the line holding its last,
+or when an empty match is in it. The lines of a file of records are matched the
+same way (LINES-MATCHING)."
   (let ((bits (make-array (- high low) :element-type 'bit :initial-element 0))
         (scanner (search-filter-scanner filter))
         (k low))
@@ -428,19 +442,20 @@ typed; a larger list, or one that gives more text of its entries, is filtered
 in the background.")
 
 (defvar *search-filter-screen-seconds* 1/100
-  "Seconds a search filter typed in a large list or file (\\[search-filter-regex])
-spends at each key on the lines from the top of the window, so that what
-it matches there is shown at once; the rest is matched in the background
-on all but two cores, the mode line saying how far it has got, and the next
-key starts again: a hundredth of a second, within the time a frame is drawn
-in, so that typing never waits on it.")
+  "Seconds a search filter typed in a large list or file
+\(\\[search-filter-regex]) spends at each key on the lines from the top of the
+window, so that what it matches there is shown at once. The rest is matched in
+the background on all but two cores, the mode line saying how far it has got,
+and the next key starts again. The value is a hundredth of a second, within the
+time a frame is drawn in, so that typing never waits on it.")
 
 (defun filter-quickly-p (filtering &optional previous)
   "True when what FILTERING narrows is small enough to filter at once, on the
-editor's thread: for a list, no more text given of its entries than their
-lines, and no more text than *SEARCH-FILTER-QUICK-CHARACTERS* characters;
-for a file of records, no more octets to look at than that, namely those of the
-runs PREVIOUS leaves (LINES-MATCHING), or of every record when it is NIL."
+editor's thread. For a list, that means no more text given of its entries than
+their lines, and no more text than *SEARCH-FILTER-QUICK-CHARACTERS* characters.
+For a file of records, it means no more octets to look at than that, namely
+those of the runs PREVIOUS leaves (LINES-MATCHING), or of every record when it
+is NIL."
   (if (list-filtering-lines filtering)
       (< (if previous
              (runs-octets previous)
@@ -593,7 +608,9 @@ after: when the last stretch's last match runs past its end, (END . REACH)."
                    (when progress (sb-ext:atomic-incf (car progress) (max 0 (- high told))))
                    (unless ends
                      (setf units (+ (tuatara.text:rope-count-newlines rope low high)
-                                    (if (and (< low high) (= high total) (not (tuatara.text:rope-line-start-p rope high))) 1 0))))
+                                    (if (and (< low high)
+                                             (= high total)
+                                             (not (tuatara.text:rope-line-start-p rope high))) 1 0))))
                    (incf looked units)
                    (if hide
                        (progn (runs-turned-round runs first low high) (incf count (- units matched)))
@@ -633,7 +650,8 @@ not match."
                                       (leaves-p octets at (+ at (- (min end (+ line limit)) line)))
                                       ;; a line of a record over several lines: the record tried once, whole
                                       (record-verdict memo rope start text-end crlf limit holder
-                                                      (lambda (text length) (search-filter-leaves-line-p filter text length))))))
+                                                      (lambda (text length)
+                                                        (search-filter-leaves-line-p filter text length))))))
                      (when first (incf looked))
                      (when leaves
                        (when first (incf count))
@@ -648,7 +666,8 @@ not match."
               do (map-piece-lines
                   (lambda (line line-end rope block block-start block-end)
                     (declare (type fixnum line line-end))
-                    (multiple-value-bind (octets at) (line-octets rope line (min line-end (+ line limit)) block block-start block-end)
+                    (multiple-value-bind (octets at)
+                        (line-octets rope line (min line-end (+ line limit)) block block-start block-end)
                       (try line line-end (slice-next-line rope total crlf line-end block block-start block-end) octets at)))
                   rope (aref ranges i) (aref ranges (1+ i)) crlf))))
     (when progress (sb-ext:atomic-incf (car progress) since))
@@ -665,28 +684,27 @@ value), or each line decoded for a filter that tries it in its own way
                                                               :hide (search-filter-hide filter) :carry carry)))
 
 (defun lines-matching (filters rope ranges crlf &key progress halt most ends carries)
-  "The lines of ROPE starting in RANGES (a vector of fixnums, the start and
-end of each stretch in turn, each starting at a line's start) that every
-one of FILTERS leaves: three values, the runs of lines left, a vector of
-fixnums holding the start of each run's first line and the start of the
-line after its last; how many lines they are; and how many were looked at
-by the first filter. A filter tried on the whole line leaves every line on
-which any part of a match lies, as one scan of the stretch finds the
-matches: from the line holding a match's first octet through the line
-holding its last, a match running over several lines leaving them all; an
-empty match leaves the line it is in. Its pattern's text is skipped to at
-the speed of a search, and no line is read as text but where a regular
-expression is tried. A filter trying a column decodes each line
-\(LINES-DECODED). PROGRESS, a cons, has the octets looked at added to its
-car now and then; HALT, a function of none, stops the work when it answers
-true, asked now and then; MOST, when given, stops it once that many lines
-are left, the stretches then taken a megabyte at a time, a match running
-from one into the next as one scan finds it. With ENDS (RECORD-ENDS), the
-lines are those of records that may hold line breaks: a record over several
-lines is matched whole, its lines left or not with it, and counted once.
-CARRIES, one for each filter or NIL, and a fourth value, the same for the
-text after RANGES, carry a match running past the end of one part of the
-text into the next, as LINES-FOUND takes and gives them."
+  "The lines of ROPE starting in RANGES that every one of FILTERS leaves. RANGES
+is a vector of fixnums, the start and end of each stretch in turn, each starting
+at a line's start. Three values come back. They are the runs of lines left, a
+vector of fixnums holding the start of each run's first line and the start of
+the line after its last; how many lines they are; and how many were looked at by
+the first filter. A filter tried on the whole line leaves every line on which
+any part of a match lies, as one scan of the stretch finds the matches. That is
+from the line holding a match's first octet through the line holding its last, a
+match running over several lines leaving them all. An empty match leaves the
+line it is in. Its pattern's text is skipped to at the speed of a search, and no
+line is read as text but where a regular expression is tried. A filter trying a
+column decodes each line (LINES-DECODED). PROGRESS, a cons, has the octets
+looked at added to its car now and then. HALT, a function of none, stops the
+work when it answers true, asked now and then. MOST, when given, stops it once
+that many lines are left. The stretches are then taken a megabyte at a time, a
+match running from one into the next as one scan finds it. With ENDS
+\(RECORD-ENDS), the lines are those of records that may hold line breaks. A
+record over several lines is matched whole, its lines left or not with it, and
+counted once. CARRIES, one for each filter or NIL, and a fourth value, the same
+for the text after RANGES, carry a match running past the end of one part of the
+text into the next. LINES-FOUND takes and gives them."
   (flet ((through (ranges most carries)
            ;; every filter in turn, each on what the one before left
            (let ((count 0) (looked nil) (onward '()))
@@ -776,7 +794,8 @@ answers true. Counted on all but two cores, with EVERY on nine in ten."
         (count-in-stretches rope (search-filter-matcher filter) stretches :every t :stop stop)
         (let ((count (nth-value 1 (lines-matching-everywhere
                                    filter rope
-                                   (coerce (loop for (start . end) in stretches collect start collect end) '(simple-array fixnum (*)))
+                                   (coerce (loop for (start . end) in stretches collect start collect end)
+                                           '(simple-array fixnum (*)))
                                    (buffer-crlf-p buffer) nil stop nil ends))))
           (and (not (and stop (funcall stop))) count)))))
 
@@ -787,16 +806,18 @@ answers true. Counted on all but two cores, with EVERY on nine in ten."
 (defun all-records (rope header &optional ends)
   "Every record of ROPE as LINES-MATCHING takes stretches: from after its
 first HEADER records, ending as ENDS says (RECORDS-START), to its end."
-  (make-array 2 :element-type 'fixnum :initial-contents (list (records-start rope header ends) (tuatara.text:rope-octet-length rope))))
+  (make-array 2
+              :element-type 'fixnum
+              :initial-contents (list (records-start rope header ends) (tuatara.text:rope-octet-length rope))))
 
 (defun hidden-lines-bounds (rope runs crlf header &optional ends)
   "What to hide of ROPE (TUATARA.DISPLAY:HIDE-RANGES) so that only its first
 HEADER records (RECORDS-START, ENDS as it takes it) and the lines of RUNS
-\(LINES-MATCHING) are shown: from the
-line end of each line shown to the one ending the last line hidden after
-it, from the carriage return before a newline when carriage return and line
-feed (CRLF); the lines hidden at the very start, before any line shown, from
-the start to the first line shown. O(runs)."
+\(LINES-MATCHING) are shown. Each range hidden runs from the line end of each
+line shown to the one ending the last line hidden after it, from the carriage
+return before a newline when carriage return and line feed (CRLF). The lines
+hidden at the very start, before any line shown, run from the start to the first
+line shown. O(runs)."
   (let* ((total (tuatara.text:rope-octet-length rope))
          (out (make-array (+ 2 (length runs)) :element-type 'fixnum :fill-pointer 0))
          (shown-end (records-start rope header ends)))
@@ -840,7 +861,9 @@ many lines they hold."
                    (if window (tuatara.buffer:buffer-line-start buffer (tuatara.display:window-start window)) 0)))
          (deadline (screen-deadline)))
     (multiple-value-bind (runs count)
-        (lines-matching chain rope (make-array 2 :element-type 'fixnum :initial-contents (list top (tuatara.text:rope-octet-length rope)))
+        (lines-matching chain rope (make-array 2
+                                               :element-type 'fixnum
+                                               :initial-contents (list top (tuatara.text:rope-octet-length rope)))
                        (buffer-crlf-p buffer)
                        :ends (record-ends buffer)
                        :most (window-rows-of buffer)
@@ -870,7 +893,8 @@ looking at a part of them."
     (when (some #'search-filter-where chain)
       (return-from list-on-screen (values bits 0)))
     (loop while (and (< i total) (< count rows) (<= (get-internal-real-time) deadline))
-          do (let* ((high (let ((at (min total (+ i (max 256 (* 4 rows)))))) (if (< at total) (entry-end entries (1- at)) at)))
+          do (let* ((high (let ((at (min total (+ i (max 256 (* 4 rows))))))
+                            (if (< at total) (entry-end entries (1- at)) at)))
                     (left (make-array (- high i) :element-type 'bit :initial-element 0)))
                ;; the lines every filter so far leaves, from the entries' lines left before
                (loop for k from i below high
@@ -881,7 +905,8 @@ looking at a part of them."
                    (loop while (< k high)
                          do (let ((end (entry-end entries k)))
                               (when (= 1 (sbit left (- k i)))
-                                (unless (eq (not (search-filter-hide filter)) (and (find 1 matched :start (- k i) :end (- end i)) t))
+                                (unless (eq (not (search-filter-hide filter))
+                                            (and (find 1 matched :start (- k i) :end (- end i)) t))
                                   (fill left 0 :start (- k i) :end (- end i))))
                               (setf k end)))))
                (loop for k = i then (entry-end entries k)
@@ -892,15 +917,16 @@ looking at a part of them."
                (setf i high)))
     (values bits count)))
 
-(defstruct (search-filter-job (:include tuatara.runtime:job) (:constructor make-search-filter-job (buffer filtering source chain))
+(defstruct (search-filter-job (:include tuatara.runtime:job)
+                              (:constructor make-search-filter-job (buffer filtering source chain))
                               (:copier nil))
   "Filters of a list or a file of records worked out in the background for
-BUFFER: those of CHAIN, FILTERING's at the start, for SOURCE, its whole list
-or the version of its text; DONE of TOTAL entries looked at so far, or for
-records the octets looked at in PROGRESS's car of those in its cdr, on
-filter PASS of PASSES; RESULTS, what each filter worked out leaves, each
-\(FILTER KEPT COUNT LOOKED), kept in the filters when the job is taken in
-while they are still the list's; WHOLE true when the first of them looked at
+BUFFER. CHAIN is the filters it works out, FILTERING's at the start, for SOURCE,
+its whole list or the version of its text. DONE of TOTAL entries are looked at
+so far, or for records the octets looked at in PROGRESS's car of those in its
+cdr, on filter PASS of PASSES. RESULTS is what each filter worked out leaves,
+each (FILTER KEPT COUNT LOOKED), kept in the filters when the job is taken in
+while they are still the list's. WHOLE is true when the first of them looked at
 every record, so that its LOOKED is how many there are."
   filtering source chain (done 0) (total 1) (results '())
   (progress (cons 0 1)) (pass 0) (passes 1) (whole nil))
@@ -970,7 +996,8 @@ thread."
 ended, shown narrowed, and start the one waiting for typing to pause once it
 has (*TYPING-PAUSE*): true while one still runs, or the seconds still to
 wait."
-  (tuatara.runtime:take-in-jobs (lambda (job) (and (search-filter-job-p job) (eq (tuatara.runtime:job-buffer job) buffer))))
+  (tuatara.runtime:take-in-jobs (lambda (job)
+                                  (and (search-filter-job-p job) (eq (tuatara.runtime:job-buffer job) buffer))))
   (let ((filtering (list-filtering buffer)))
     (cond ((null filtering) nil)
           ((and (list-filtering-due filtering) (filter-pause-left filtering)))
@@ -1009,7 +1036,10 @@ in it (KEEP-WORKED-OUT), and returned."
   (if (list-filtering-lines filtering)
       (let ((rope (tuatara.text:version-rope source)))
         (multiple-value-bind (runs count looked)
-            (lines-matching (list filter) rope (or previous (all-records rope (list-filtering-lines filtering) (record-ends buffer)))
+            (lines-matching (list filter) rope (or previous
+                                                   (all-records rope
+                                                                (list-filtering-lines filtering)
+                                                                (record-ends buffer)))
                            (buffer-crlf-p buffer) :ends (record-ends buffer))
           (unless previous (setf (list-filtering-total filtering) looked))
           (keep-worked-out filter source runs count)))
@@ -1128,13 +1158,13 @@ all of them when it has none."
 
 (defun list-shown-lines (filtering source &optional folded)
   "Which lines of SOURCE's text FILTERING shows, as a function of a line's
-number: those before and after the entries, the entries its last worked out
-filter leaves, lines of no entry, the headings of sections with an entry
-shown, or with none at all unless the list says otherwise (EMPTY-HEADINGS),
-and the lines that go with a heading shown (DECORATION-ENTRY-P); but no line
-under the heading of a section of FOLDED
-\(its names, as LIST-FOLDED gives them), whose heading alone shows. An empty
-line of no entry, as between sections, is shown only between lines shown,
+number. Shown are the lines before and after the entries, the entries its last
+worked out filter leaves, and lines of no entry. Also shown are the headings of
+sections with an entry shown, or with none at all unless the list says otherwise
+\(EMPTY-HEADINGS), and the lines that go with a heading shown
+\(DECORATION-ENTRY-P). But no line is shown under the heading of a section of
+FOLDED (its names, as LIST-FOLDED gives them), whose heading alone shows. An
+empty line of no entry, as between sections, is shown only between lines shown,
 one of a run."
   (let* ((entries (list-source-entries source))
          (shown (list-filtering-shown filtering))
@@ -1598,10 +1628,10 @@ A list made again is narrowed again.
 In a file of records, a line each, the records are narrowed the same way:
 in a CSV or TSV file, a log, a JSON Lines file and the others
 *LINE-RECORD-MODES* names. A line, or an entry's line in a list, is matched
-when any part of a match lies on it, from the line holding the match's first
-character through the line holding its last, its line end counted with it:
-1\\ny keeps the line ending in 1 and the line starting with y, and a block
-wrapped over several lines keeps all of them. The lines left out are
+when any part of a match lies on it. That runs from the line holding the
+match's first character through the line holding its last, its line end
+counted with it. So 1\\ny keeps the line ending in 1 and the line starting
+with y, and a block wrapped over several lines keeps all of them. The lines left out are
 hidden, never deleted, a CSV's header line always shown, and the mode line
 says how many are left. Saving
 writes the whole file; editing the lines shown is allowed, and a line edited
@@ -1663,7 +1693,8 @@ line and \\[search-filter-remove-all] all of them."
   (let ((filtered (filtered-list-at-hand)))
     (if (null filtered)
         (message "Not a list: no filters to list")
-        (let ((list (buffer-in-mode (format nil "*Filters of ~a*" (tuatara.buffer:buffer-name filtered)) 'search-filters-mode)))
+        (let ((list (buffer-in-mode (format nil "*Filters of ~a*" (tuatara.buffer:buffer-name filtered))
+                                    'search-filters-mode)))
           (setf (tuatara.buffer:buffer-local list 'filtered-list) filtered)
           (search-filters-render list filtered)
           (show-buffer list)))))
@@ -1711,9 +1742,11 @@ messages."
               (if (and (not (filters-lines-p buffer)) (list-table-columns buffer))
                   ;; a table: a column asked for first, its cell tried alone
                   (multiple-value-bind (column title) (read-list-column buffer "Filter by the column: ")
-                    (multiple-value-bind (pattern regex) (read-pattern (format nil "~a~@[ whose ~a holds~]" words title))
+                    (multiple-value-bind (pattern regex)
+                        (read-pattern (format nil "~a~@[ whose ~a holds~]" words title))
                       (values pattern regex nil title column)))
-                  (multiple-value-bind (pattern regex matcher what) (read-line-filter buffer words 0 (tuatara.buffer:buffer-size buffer))
+                  (multiple-value-bind (pattern regex matcher what)
+                      (read-line-filter buffer words 0 (tuatara.buffer:buffer-size buffer))
                     (values pattern regex matcher what nil)))
             (if (zerop (length pattern))
                 (message "No pattern: ~(~a~) was not run" command)
@@ -1728,24 +1761,23 @@ messages."
                              (keep-typed-filter buffer))))))))))
 
 (define-command search-filter-show-records ()
-  "Show only the records whose line a regular expression matches, hiding
-the others, as \\[search-filter-regex] does, deleting nothing. In a file of
-records a column is asked for first, and the pattern tried on its value
-alone; nothing, \"whole record\" or $* for the whole line. Each column is
-offered with the first record's value beside it, by its name or by its
-number from 0 ($0, $1): a CSV or TSV by its separator, quotes taken off,
-named by its header; a log by its words, apart by spaces, named by its
-header when \\[list-toggle-header] makes its first line one; the hosts file
-by address and name; the password file by user, password, uid, gid, info,
-home and shell; an environment file (.env) by name and value; a Python
-requirements file by name, version and markers; todo.txt by done,
-priority, completed, created, text, project, context and the keys of its
-key:value tags; JSON Lines by its keys, strings read with their escapes
-undone, a path of keys apart by dots (user.id) reaching inside. A
-.gitignore and every list try the whole line. The filter is kept with the others, the next
-narrowing what it leaves; \\[search-filter-list] lists them and
-\\[search-filter-remove-all] takes them all away. \\[list-keep-records] deletes
-the others instead."
+  "Show only the records whose line a regular expression matches, hiding the
+others, as \\[search-filter-regex] does, deleting nothing. In a file of records
+a column is asked for first, and the pattern is tried on its value alone.
+Nothing, \"whole record\" or $* gives the whole line. Each column is offered
+with the first record's value beside it, by its name or by its number from 0
+\($0, $1). A CSV or TSV is split by its separator, quotes taken off, and named by
+its header. A log is split into words, apart by spaces, named by its header when
+\\[list-toggle-header] makes its first line one. The hosts file offers address
+and name. The password file offers user, password, uid, gid, info, home and
+shell. An environment file (.env) offers name and value. A Python requirements
+file offers name, version and markers. todo.txt offers done, priority,
+completed, created, text, project, context and the keys of its key:value tags.
+JSON Lines offers its keys, strings read with their escapes undone, a path of
+keys apart by dots (user.id) reaching inside. A .gitignore and every list try
+the whole line. The filter is kept with the others, the next narrowing what it
+leaves; \\[search-filter-list] lists them and \\[search-filter-remove-all] takes
+them all away. \\[list-keep-records] deletes the others instead."
   (filter-records-by 'search-filter-show-records nil))
 
 (define-command search-filter-hide-records ()
@@ -1884,10 +1916,10 @@ that look at one column of a record or of a table, light nothing. An empty
 (defun install-search-filters ()
   "Bind the keys of the search filters: \\[search-filter-regex],
 \\[search-filter-list] and \\[search-filter-remove-all] in every buffer, and
-those of the list of filters; in a file whose lines they hide, say in the
-mode line what they leave, keep the lines hidden from every edit, and work
-them out again after a change that reached into those lines, or once the
-file is read again."
+those of the list of filters. In a file whose lines they hide, say in the mode
+line what they leave, and keep the lines hidden from every edit. Work the
+filters out again after a change that reached into those lines, or once the file
+is read again."
   (pushnew 'filters-mode-line *mode-line-functions*)
   (pushnew 'refilter-touched *tick-functions*)
   (pushnew 'refilter-reloaded *after-reload-functions*)

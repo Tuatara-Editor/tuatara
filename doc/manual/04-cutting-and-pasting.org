@@ -1,0 +1,278 @@
+#+title: Cutting and pasting
+#+language: en
+
+* Cutting and pasting
+
+How to move text from one place to another, and to other programs.
+
+Cutting takes text out of the buffer and keeps it. Copying keeps text and
+leaves it where it is. Pasting puts the kept text in at the cursor. Emacs
+calls cutting "killing" and pasting "yanking", and Tuatara's command names
+use those words, so you will meet them here. This chapter shows the keys that
+cut, copy and paste in both states, where the cut text is kept, how it
+reaches other programs, how to keep several pieces of text at once and how to
+set lines aside so that one key takes them together.
+
+Chapter 5 teaches selecting, rectangles and many cursors. Here a selection is
+only a way to say which text a key acts on.
+
+** The kill ring
+
+Everything you cut or copy goes on the kill ring, a list of your latest cuts
+with the newest first. A paste puts the newest one in. Figure 4.1 shows the
+ring after three cuts.
+
+#+caption: Figure 4.1. The kill ring after three cuts. A paste uses the first.
+#+name: fig-ring
+#+begin_example
+ kill ring                          system clipboard
+ +-----------------------+          +-----------------------+
+ | 1  "milk"             | <------> | "milk"                |
+ | 2  "200 g flour"      |          +-----------------------+
+ | 3  "2 eggs"           |            other programs paste
+ +-----------------------+            from here
+   newest on top
+#+end_example
+
+The ring keeps =*kill-ring-max*= cuts. When it is full, the oldest is
+forgotten. Tuatara has no command that steps back through the older cuts, so
+a paste always gives you the newest. To keep a piece of text while you go on
+cutting and copying other things, put it in a register, described below.
+
+Two cuts in a row, with no other command between them, join into one. Press
+~C-k~ (modal: ~D~) twice and the second cut is added to the first, so that one
+paste brings both back, in order.
+
+A cut that is too large for the system clipboard (see =*clipboard-size-limit*=
+below) stays where it is in the buffer instead of being copied, and the echo
+area says so when you copy it. It stays good after you kill the buffer it came
+from. Text from an encrypted file never goes on the clipboard, and it leaves
+the ring when its buffer is closed.
+
+A cut that would take part of the text a folded heading hides shows the fold
+instead. Press the same key again to cut.
+
+** Cutting, copying and pasting with the Emacs keys
+
+These keys mean the same in NORMAL and INSERT state. They act on the region,
+the text between the cursor and the mark. A selection made with ~v~ is a
+region too. If you have not selected anything, ~C-SPC~ sets the mark at the
+cursor, and the region grows as you move away from it.
+
+#+begin_try Try it, with a shopping list
+1. Press ~C-x C-f~, type =~/shopping.txt= and press ~RET~. Press ~i~, then
+   type =eggs=, ~RET~, =bread=, ~RET~, =milk=, ~RET~, =butter=.
+2. Press ~M-<~ (modal: ~g g~) to go to the top. Press ~C-k~ (modal: ~D~). The
+   word =eggs= is cut and the line is empty. Press ~C-k~ again. The empty line
+   goes, and =bread= is now on the first line.
+3. Press ~C-y~. The cuts come back as one, =eggs= and its line end, in front
+   of =bread=. Press ~C-/~ (modal: ~u~) to undo that.
+4. Press ~C-SPC~, then ~C-n~ (modal: ~j~). The region covers the first line.
+   Press ~M-w~. The echo area says =Copied= and nothing is removed.
+5. Press ~M->~ (modal: ~g e~) to go to the end, then ~C-y~. The copied line is
+   pasted after =butter=, and as that line has no line end the two run together.
+   Press ~C-x C-s~ to save.
+#+end_try
+
+*** Commands
+
+| Modal | Non-modal         | Command              | What it does                    |
+|-------+-------------------+----------------------+---------------------------------|
+| none  | ~C-w~             | =kill-region=        | Cuts the region. A rectangle is cut as a block that ~C-y~ pastes as a block. |
+| none  | ~M-w~             | =kill-ring-save=     | Copies the region and leaves it in place. Lines that a search filter hides are left out of the copy. |
+| none  | ~C-y~             | =yank=               | Pastes the newest cut at the cursor, or what another program copied to the system clipboard since. The mark is left at the start of the pasted text, so ~C-x C-x~ selects it. |
+| ~D~   | ~C-k~             | =kill-line=          | Cuts from the cursor to the end of the line. At the end of a line it cuts the line end. |
+| none  | ~C-S-<backspace>~ | =kill-whole-line=    | Cuts the whole line and its line end. A number cuts that many lines, a negative number that many lines back, and 0 cuts the line without its line end. |
+| none  | ~M-z~             | =zap-up-to-char=     | Asks for a character, then cuts up to the next one of that kind and leaves it. A number takes the Nth one, and a negative number goes back. |
+| none  | ~M-x zap-to-char~ | =zap-to-char=        | The same, but the character is cut too. |
+| none  | ~M-x kill-sexp~   | =kill-sexp=          | Cuts the bracketed group, or the word, after the cursor. A number cuts that many. |
+| none  | ~C-M-DEL~         | =backward-kill-sexp= | Cuts the one before the cursor. |
+
+~C-d~ and ~DEL~ delete a character without keeping it. They are in chapter 3.
+
+** Cutting, copying and pasting in NORMAL state
+
+In NORMAL state the letter keys do the same work on one key each. With a
+selection they act on it. Without one they act on the character under the
+cursor, or on as many characters as the number you gave first.
+
+| Modal | Non-modal | Command                    | What it does                          |
+|-------+-----------+----------------------------+---------------------------------------|
+| ~d~   | none      | =delete-selection-or-char= | Cuts the selection and keeps it. With no selection it deletes the character and keeps nothing, because a character under the cursor is a typo being fixed. A line selection is widened to whole lines. |
+| ~c~   | none      | =tuatara-change=           | Cuts the selection and starts INSERT state. With no selection it deletes the character, unkept, and starts INSERT state. |
+| ~y~   | none      | =copy-selection-or-char=   | Copies the selection, or the character. A line selection is copied with its line end, so that it pastes as a line of its own. |
+| ~p~   | none      | =yank-over-selection=      | Pastes the newest cut, or what another program copied since. It replaces the selection if there is one. A number pastes that many copies. The replaced text is not kept. |
+| ~D~   | ~C-k~     | =kill-line=                | Cuts to the end of the line, as ~C-k~ does. |
+| ~P~   | ~C-x r y~ | =yank-rectangle=           | Pastes the last rectangle cut or copied from a rectangle. See chapter 5. |
+
+If the kill ring is empty, ~p~ says so and changes nothing.
+
+#+begin_try Try it, with a letter
+1. Press ~C-x C-f~, type =~/letter.txt= and press ~RET~. Press ~i~ and type
+   four lines: =Dear Hana,=, =See you at Easter.=,
+   =Thanks for the weekend in Raglan.= and =Love, Aroha=, each followed by
+   ~RET~ except the last. Press ~C-g~ to go back to NORMAL state.
+2. The thanks should come before the other line. Press ~g g j j~ to go to the
+   third line, then ~V~ to select it and ~d~ to cut it. The line is gone.
+3. Press ~k~ (non-modal: ~C-p~) to go up, ~g h~ (non-modal: ~C-a~) to go to the
+   start of the line, then ~p~. The thanks line is pasted above
+   =See you at Easter.= Press ~u~ (non-modal: ~C-/~) to undo it.
+4. Press ~V~, then ~y~. The echo area says =Copied=. Press ~g g p~. The copy
+   is pasted above =Dear Hana,=. Press ~u~ to undo it.
+5. Press ~g g D~. The text of the first line is cut and the line stays,
+   empty. Press ~u~ to bring it back. The text that ~D~ (non-modal: ~C-k~) cut
+   is on the kill ring, and ~p~ would paste it.
+#+end_try
+
+** The system clipboard and the primary selection
+
+The system clipboard is the one every program on your desktop shares. What you
+cut or copy in Tuatara goes there as well, so you can paste it in another
+program. When another program has copied something since, ~C-y~ and ~p~ paste
+that instead and put it first on the kill ring.
+
+The primary selection is a second place that many Linux programs have. It
+holds whatever text was selected last, with no copy command. In Tuatara, a
+selection you make by dragging with the mouse becomes the primary selection
+when you let go. Clicking the middle mouse button in another program pastes it.
+In Tuatara, the middle button pastes the primary selection of any program at
+the place you clicked, with the mark left at its start. If nothing is selected
+anywhere, the echo area says =Nothing is selected anywhere=. A selection made
+with the keys does not become the primary selection.
+
+The same limits apply to both. Text larger than =*clipboard-size-limit*= is
+not sent, and neither is any text from an encrypted file, and with
+=*use-system-clipboard*= set to =nil= nothing is sent or taken.
+
+| Modal | Non-modal                   | Command                   | What it does                      |
+|-------+-----------------------------+---------------------------+-----------------------------------|
+| none  | ~<mouse-2>~                 | =mouse-yank-primary=      | Pastes the primary selection where the middle button was pressed. |
+| none  | ~M-x gpg-copy-to-clipboard~ | =gpg-copy-to-clipboard=   | Puts the text copied last on the system clipboard even when it came from an encrypted file. Other programs, a clipboard manager among them, can then read and keep it. |
+| none  | ~C~, ~C-c C~                | =server-toggle-clipboard= | In the list of servers, shares the clipboard with the server on the line, or stops sharing it. See chapter 18. |
+
+*** Settings
+
+| Setting                   | Standard      | What it changes                  |
+|---------------------------+---------------+----------------------------------|
+| =*use-system-clipboard*=  | =t=           | Whether cuts and copies go on the system clipboard, and whether a paste takes in what another program copied. =nil= keeps them in Tuatara. |
+| =*clipboard-size-limit*=  | =8388608=     | The most characters a cut may have and still go on the clipboard and the primary selection. That is 8 MB. A larger cut stays in the buffer's own text. |
+| =*kill-ring-max*=         | =120=         | How many cuts the kill ring keeps. The oldest go first. |
+
+** Registers
+
+A register keeps one thing under one character, for as long as Tuatara runs.
+The character is a letter, a digit or a sign. A capital letter and a small
+letter name different registers. A register can hold text, a block of columns,
+a place in a file or a whole number. Keeping something in a register does not
+touch the kill ring, so a register is where to put what you want to paste
+later, however much you cut in between.
+
+Every register command asks for its character with one key and no ~RET~. ~C-g~
+gives up. Keeping again under the same character replaces what was there.
+
+#+begin_try Try it, with a recipe
+1. Press ~C-x C-f~, type =~/pancakes.txt= and press ~RET~. Press ~i~ and type
+   =2 eggs, 200 g flour, milk=, ~RET~, =Mix, rest, fry.=, ~RET~.
+2. Press ~M-<~ (modal: ~g g~), ~C-SPC~, ~C-e~ (modal: ~g l~) to select the first
+   line without its line end. Press ~C-x r s~, then ~e~. The echo area says
+   =Register e keeps text=.
+3. Press ~C-n C-a C-k~ to cut the text of the second line. Press ~C-x r i~,
+   then ~e~. The ingredients are written in at the cursor, although the kill
+   ring holds the method.
+4. Press ~C-u 4 C-x r n~, then ~n~. Register =n= keeps the number 4. Press
+   ~C-x r +~, then ~n~. It now keeps 5. Press ~C-x r i~, then ~n~ to write =5=
+   into the text.
+5. Press ~C-x r l~. The list shows each register with what it keeps. Press ~q~
+   to close it.
+#+end_try
+
+| Modal | Non-modal              | Command            | What it does                           |
+|-------+------------------------+--------------------+----------------------------------------|
+| none  | ~C-x r s~              | =register-copy=    | Keeps the selected text under a character, or the block of columns when a rectangle is selected. |
+| none  | ~C-x r p~              | =register-point=   | Keeps the place of the cursor. It follows the text through edits, and it is found again after the buffer is closed when the buffer had a file. |
+| none  | ~C-x r n~              | =register-number=  | Keeps a whole number: the number you gave first, or one it asks for. |
+| none  | ~C-x r +~              | =register-add=     | Adds to a number register: the number you gave first, or 1. A negative number takes away. For a text register it puts the selected text after what is kept. |
+| none  | ~M-x register-prepend~ | =register-prepend= | Puts the selected text before the text a register keeps. |
+| none  | ~C-x r i~              | =register-insert=  | Writes what a register keeps at the cursor. Text goes in as it was, with the mark before it. A block goes in as a block, each row as many times as the number you gave first. A number goes in as digits. |
+| none  | ~C-x r j~              | =register-jump=    | Goes to the place a register keeps.    |
+| none  | ~C-x r l~              | =register-list=    | Lists the registers in a buffer, one per line. ~RET~ on a place goes there, and ~q~ or ~h~ closes the list. |
+
+A register that keeps something that is not the right kind says what it
+keeps instead. A place worth keeping beyond this session is a bookmark rather
+than a register.
+
+** Banked lines
+
+Banking sets whole lines aside, wherever they are in the text, and shows them
+in a colour of their own. Then ~y~, ~d~ or ~p~ takes all the banked lines at
+once, together with the lines of any selection you have made. This is the
+easy way to gather lines that are far apart. Banking works in NORMAL state.
+
+You can bank a line, move away and bank another. Banked lines follow the text
+through edits, and they stay banked until you take them out of the bank or
+until ~y~, ~d~ or ~p~ uses them. ~C-g~ leaves them as they are, and ~c~ does
+not act on them.
+
+#+begin_try Try it, with a shopping list
+1. Open =~/shopping.txt= from the first try, or make a new file with six
+   lines: =eggs=, =bread=, =milk=, =apples=, =tea=, =butter=. Press ~C-g~ so
+   that you are in NORMAL state.
+2. Press ~g g j~ to go to =bread=, then ~m l~. The line changes colour and
+   the echo area says =Banked this line (1 total)=, then what to do next.
+3. Press ~j j j~ to go to =tea=, then ~m l~ again. Now two lines are banked.
+4. Press ~m u~ on =tea=. It leaves the bank. Press ~m l~ to bank it again.
+5. Press ~d~. Both lines are cut together and leave the bank, and the echo
+   area says =Deleted 2 lines=.
+6. Press ~g g p~. =bread= and =tea= are pasted above =eggs=, as one cut. Press
+   ~C-x C-s~ to save.
+#+end_try
+
+| Modal                 | Non-modal | Command                | What it does                   |
+|-----------------------+-----------+------------------------+--------------------------------|
+| ~m l~                 | none      | =bank-lines=           | Banks the line, or the lines the selection touches, and drops the selection. On lines that are all banked already it takes them out again, and on lines partly banked it banks the rest. A number banks that many lines from the cursor. A line whose end a fold hides is banked with all that the fold hides. Lines a search filter hides are not banked. |
+| ~m u~                 | none      | =bank-release-line=    | Takes the line at the cursor out of the bank and keeps the others. |
+| ~m U~                 | none      | =bank-release-section= | Takes out the whole run of banked lines the cursor is on, the lines beside each other at once. Banked lines elsewhere stay. |
+| ~m DEL~, ~m <delete>~ | none      | =bank-clear=           | Lets go of every banked line in the buffer. The text is not changed. |
+
+With lines banked, ~y~ copies them as one cut and ~d~ cuts them as one cut and
+one change, so that one ~u~ (non-modal: ~C-/~) puts them back. ~p~ puts the
+newest cut in place of them, as one change. Each of the three takes the banked
+lines out of the bank. A cut too large to paste over banked lines is refused,
+and the echo area gives its size.
+
+*** Faces
+
+| Face             | Standard | What it paints                            |
+|------------------+----------+-------------------------------------------|
+| =:banked-line=   | theme    | The banked lines, across the full width of the window. |
+
+** Pasting into prompts
+
+When Tuatara asks you a question in the minibuffer, you can paste the answer.
+
+| Modal | Non-modal                  | Command            | What it does                |
+|-------+----------------------------+--------------------+-----------------------------|
+| none  | ~C-y~, ~C-V~, ~S-<insert>~ | =minibuffer-paste= | Writes in the system clipboard's text, without the line end after it. With nothing on the clipboard it writes the text cut last. A suggested answer that is highlighted is replaced. |
+
+~C-V~ is Control, Shift and v together, the paste key of most terminals. Typing
+in a prompt does not touch the kill ring: ~C-k~ (modal: ~D~) deletes the rest of
+the answer and ~C-u~ clears all of it, and neither keeps what it removed. A
+password prompt takes only what is on the clipboard, puts it in the answer and
+nowhere else, and never in the kill ring.
+
+#+begin_try Try it, with a file name
+1. In another program, such as your file manager, copy a file name, for
+   example =shopping.txt=.
+2. In Tuatara press ~C-x C-f~. The prompt asks for a file.
+3. Press ~C-y~. The name is written after the prompt. Press ~RET~ to open it.
+#+end_try
+
+In a terminal buffer, =terminal-paste= pastes into the program that runs
+there, and a middle click does the same with the primary selection
+(=terminal-paste-primary=). Chapter 17 describes both, with the setting
+=*terminal-paste-keys*=.
+
+When you paste into the terminal that Tuatara itself runs in, with that
+terminal's own paste key, =insert-pasted-text= puts the text in at the cursor
+as text. None of it is taken for keys or commands. Its line ends become the
+buffer's, and one ~u~ (non-modal: ~C-/~) takes it all back. It has no key.

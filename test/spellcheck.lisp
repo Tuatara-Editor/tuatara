@@ -37,7 +37,9 @@ each of them and at the end, the editor woken to redraw."
                                 "Teh fox's den, http://x.org/wrnog a_b me@x.org x86abc don't I e-mail" 0 :text))))
     (is equal '("Teh" "fox's" "den" "don't" "mail") words))
   ;; octets counted: a word after a two-octet letter starts where its octets do
-  (is equal '((0 3 "éa") (4 6 "bc")) (mapcar (lambda (w) (subseq w 0 3)) (tuatara.defaults::spelling-words "éa bc" 0 :text)))
+  (is equal
+      '((0 3 "éa") (4 6 "bc"))
+      (mapcar (lambda (w) (subseq w 0 3)) (tuatara.defaults::spelling-words "éa bc" 0 :text)))
   ;; in code, camelCase is a name, not a word to spell
   (is equal '("plain") (mapcar #'third (tuatara.defaults::spelling-words "fooBar plain" 0 :code)))
   (true (tuatara.defaults::face-among-p :markup.raw.block '(:markup.raw)))
@@ -69,7 +71,10 @@ each of them and at the end, the editor woken to redraw."
             (text (format nil "(defun badnaem () \"A strnig.\") ; a comentt~%")))
         (flet ((marked (modes &optional (keys "M-x l i s p - m o d e RET"))
                  (let ((tuatara.defaults::*spellcheck-modes* modes))
-                   (spelt-wrong (run-keys (list keys #'speller-idle :tick #'speller-idle :tick) :text text :width 70 :height 6)))))
+                   (spelt-wrong (run-keys (list keys #'speller-idle :tick #'speller-idle :tick)
+                                          :text text
+                                          :width 70
+                                          :height 6)))))
           (is equal '("strnig" "comentt") (marked '((lisp-mode . t))))
           (is equal '("comentt") (marked '((prog-mode . :comments))))
           (is equal '("strnig") (marked '((lisp-mode . :strings))))
@@ -80,7 +85,9 @@ each of them and at the end, the editor woken to redraw."
           (is equal '("teh") (let ((text (format nil "Not teh same.~%")))
                                (declare (ignorable text))
                                (let ((tuatara.defaults::*spellcheck-modes* '((text-mode . :comments))))
-                                 (spelt-wrong (run-keys (list "M-x t e x t - m o d e RET" #'speller-idle :tick #'speller-idle :tick)
+                                 (spelt-wrong (run-keys (list "M-x t e x t - m o d e RET" #'speller-idle
+                                                              :tick #'speller-idle
+                                                              :tick)
                                                         :text (format nil "Not teh same.~%") :width 70 :height 6)))))))))
 
 (define-test (spellcheck said-when-on)
@@ -88,7 +95,9 @@ each of them and at the end, the editor woken to redraw."
   (let ((tuatara.defaults::*spellcheck-languages* '("en_US")))
     (flet ((said (mode words)
              (true (tuatara.frontend.fake:fake-frame-showing
-                    (run-keys (list (format nil "M-x ~{~a~^ ~} RET M-x s p e l l c h e c k - m o d e RET" (coerce mode 'list))
+                    (run-keys (list (format nil
+                                            "M-x ~{~a~^ ~} RET M-x s p e l l c h e c k - m o d e RET"
+                                            (coerce mode 'list))
                                     #'speller-idle :tick)
                               :text (format nil "Some words.~%") :width 70 :height 6)
                     words))))
@@ -102,15 +111,23 @@ each of them and at the end, the editor woken to redraw."
         ;; z n goes to the next word spelt wrong, also past the window; z p back
         (multiple-value-bind (f editor)
             (run-keys (spellcheck-keys "z n")
-                      :text (format nil "Good words here.~%~{~a~%~}A mistaek at the end.~%" (loop repeat 30 collect "Fine line."))
+                      :text (format nil
+                                    "Good words here.~%~{~a~%~}A mistaek at the end.~%"
+                                    (loop repeat 30 collect "Fine line."))
                       :width 60 :height 6)
           (declare (ignore f))
           (is = (search "mistaek" (session-text editor)) (session-point editor)))
-        (multiple-value-bind (f editor) (run-keys (spellcheck-keys "g e z p") :text (format nil "A wrnog one.~%Right.~%") :width 60 :height 6)
+        (multiple-value-bind (f editor) (run-keys (spellcheck-keys "g e z p")
+                                                  :text (format nil "A wrnog one.~%Right.~%")
+                                                  :width 60
+                                                  :height 6)
           (declare (ignore f))
           (is = 2 (session-point editor)))
         ;; z = with the first suggestion taken
-        (multiple-value-bind (f editor) (run-keys (spellcheck-keys "z =" "RET") :text (format nil "The cat sat on teh mat.~%") :width 60 :height 12)
+        (multiple-value-bind (f editor) (run-keys (spellcheck-keys "z =" "RET")
+                                                  :text (format nil "The cat sat on teh mat.~%")
+                                                  :width 60
+                                                  :height 12)
           (declare (ignore f))
           (is string= (format nil "The cat sat on the mat.~%") (session-text editor)))
         ;; or kept while the editor runs: the mark goes
@@ -128,7 +145,10 @@ each of them and at the end, the editor woken to redraw."
         ;; the tests never write to the developer's own lists
         (true (and directory (search "test" directory)))
         ;; z g adds the word at point to the language's list, kept on disk
-        (multiple-value-bind (f editor) (run-keys (spellcheck-keys "z g") :text (format nil "zqxwvlist here~%") :width 60 :height 6)
+        (multiple-value-bind (f editor) (run-keys (spellcheck-keys "z g")
+                                                  :text (format nil "zqxwvlist here~%")
+                                                  :width 60
+                                                  :height 6)
           (declare (ignore editor))
           (true (tuatara.frontend.fake:fake-frame-showing f "Added “zqxwvlist” to the en_US word list"))
           (is equal '() (spelt-wrong f)))
@@ -245,7 +265,8 @@ each of them and at the end, the editor woken to redraw."
                                        (blank (search (format nil "~%~%") (tuatara.buffer:buffer-string b))))
                                   (unless (tuatara.defaults::spellcheck-p b) (tuatara.defaults::spellcheck-mode))
                                   (setf (tuatara.display:window-start w) (1+ blank)
-                                        (tuatara.buffer:buffer-point b) (search "More" (tuatara.buffer:buffer-string b)))))
+                                        (tuatara.buffer:buffer-point b)
+                                        (search "More" (tuatara.buffer:buffer-string b)))))
                               #'speller-idle :tick #'speller-idle :tick)
                         :file file :width 70 :height 8)
             (declare (ignore editor))
@@ -263,7 +284,8 @@ each of them and at the end, the editor woken to redraw."
                           (if (string= word "boom") (error "the speller failed") (funcall function languages word))))
     (unwind-protect
          (progn
-           (setf tuatara.defaults::*spelling-wanted* (list (list* '() table nil '("boom")) (list* '() table nil '("fine"))))
+           (setf tuatara.defaults::*spelling-wanted*
+                 (list (list* '() table nil '("boom")) (list* '() table nil '("fine"))))
            (tuatara.defaults::spelling-drain)
            (is eq :right (gethash "boom" table))
            (is eq :right (gethash "fine" table))
@@ -273,7 +295,9 @@ each of them and at the end, the editor woken to redraw."
 (define-test (spellcheck words-of-every-script)
   ;; a decomposed accent is part of its word; scripts without spaces give no words to spell
   (flet ((words (text) (mapcar #'third (tuatara.defaults::spelling-words text 0 :prose))))
-    (is equal (list (format nil "cafe~c" (code-char #x301)) "noir") (words (format nil "cafe~c noir" (code-char #x301))))
+    (is equal
+        (list (format nil "cafe~c" (code-char #x301)) "noir")
+        (words (format nil "cafe~c noir" (code-char #x301))))
     (is equal '() (words "東京タワー"))
     (is equal '() (words "สวัสดีครับ"))
     (is equal '("hello") (words "hello 世界")))
@@ -299,14 +323,19 @@ each of them and at the end, the editor woken to redraw."
       (skip "enchant is not installed" (true nil))
       (let ((tuatara.defaults::*spellcheck-languages* '("xx_NOPE"))
             (tuatara.defaults::*spelling-reports* (make-hash-table :test 'equal)))
-        (let ((f (run-keys (append (spellcheck-keys) (list (lambda () (sleep 0.3)) "")) :text (format nil "Some words.~%") :width 100 :height 6)))
+        (let ((f (run-keys (append (spellcheck-keys) (list (lambda () (sleep 0.3)) ""))
+                           :text (format nil "Some words.~%")
+                           :width 100
+                           :height 6)))
           (true (tuatara.frontend.fake:fake-frame-showing f "Spellcheck: no dictionary for xx_NOPE"))))))
 
 (define-test (spellcheck file-word-list-kept-past-edits-above)
   ;; an edit further up leaves the file's own word list as read, nothing of its end copied;
   ;; an edit to the list is read
   (let ((b (tuatara.buffer:make-buffer "*local words*"
-                                       :text (format nil "~a~%LocalWords: Qwzxk~%" (make-string 200000 :initial-element #\a)))))
+                                       :text (format nil
+                                                     "~a~%LocalWords: Qwzxk~%"
+                                                     (make-string 200000 :initial-element #\a)))))
     (unwind-protect
          (flet ((consed-after-edit (reach)
                   (let ((tuatara.defaults::*local-words-reach* reach))

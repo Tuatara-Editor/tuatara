@@ -9,7 +9,8 @@
 (define-test (config bind-key)
   (let ((file (merge-pathnames (format nil "tuatara-init-~a.lisp" (random 1000000)) (uiop:temporary-directory)))
         ;; what the leader's ; is before "; ;" makes it a prefix, put back after
-        (semicolon (tuatara.command:lookup-key tuatara.defaults::*tuatara-leader-keymap* (tuatara.frontend:parse-key-sequence ";"))))
+        (semicolon (tuatara.command:lookup-key tuatara.defaults::*tuatara-leader-keymap*
+                                               (tuatara.frontend:parse-key-sequence ";"))))
     (unwind-protect
          (progn
            (with-open-file (o file :direction :output)
@@ -139,12 +140,14 @@
          (is = 3 (session-point (nth-value 1 (run-keys "M-x o r g - m o d e RET , o y" :text "abc"))))
          (true (tuatara.frontend.fake:fake-frame-showing (run-keys "," :text "abc" :width 140 :height 20) "o +"))
          (false (eq tuatara.defaults::*tuatara-leader-keymap*
-                    (tuatara.command:lookup-key tuatara.defaults::*tuatara-normal-keymap* (tuatara.frontend:parse-key-sequence "SPC")))))
+                    (tuatara.command:lookup-key tuatara.defaults::*tuatara-normal-keymap*
+                                                (tuatara.frontend:parse-key-sequence "SPC")))))
     (tuatara-user:unbind-key "o" :map :leader)
     (tuatara-user:unbind-key "o" :map :leader :mode 'org-mode)
     (tuatara.defaults::put-leader-on "SPC")
     (true (eq tuatara.defaults::*tuatara-leader-keymap*
-              (tuatara.command:lookup-key tuatara.defaults::*tuatara-normal-keymap* (tuatara.frontend:parse-key-sequence "SPC"))))))
+              (tuatara.command:lookup-key tuatara.defaults::*tuatara-normal-keymap*
+                                          (tuatara.frontend:parse-key-sequence "SPC"))))))
 
 (define-test (config leader-on-c-x-spc)
   ;; C-x SPC opens the leader's keys, with their key hints, in NORMAL and INSERT state, with modal
@@ -360,7 +363,8 @@ commented inside another one commented (;;   ;; (setf ...) in a load-package's
 (define-test (config bind-key-a-mode-either-way)
   ;; :map 'csv-mode and :map :global :mode 'csv are the same keys: the mode's own
   (is equal (tuatara.defaults::mode-keymaps 'csv-mode nil) (tuatara.defaults::mode-keymaps :global 'csv))
-  (is eq (tuatara.defaults::mode-keymap 'tuatara.defaults::csv-mode) (first (tuatara.defaults::mode-keymaps 'csv-mode nil))))
+  (is eq (tuatara.defaults::mode-keymap 'tuatara.defaults::csv-mode)
+      (first (tuatara.defaults::mode-keymaps 'csv-mode nil))))
 
 (define-test (config init-file-read-past-an-error)
   ;; a form that fails is said with its line, and the forms after it are read all the same
@@ -388,7 +392,8 @@ commented inside another one commented (;;   ;; (setf ...) in a load-package's
   (let ((said nil) (*package* (find-package :tuatara-user)))
     (tuatara.defaults::map-text-forms (format nil "(a)~%#| one~%two |#~%(b c d)~%")
                                       (lambda (form line) (push (cons form line) said)))
-    (is equal '((tuatara-user::a . 1) (tuatara-user::b . 4)) (mapcar (lambda (each) (cons (first (car each)) (cdr each))) (reverse said)))))
+    (is equal '((tuatara-user::a . 1) (tuatara-user::b . 4))
+        (mapcar (lambda (each) (cons (first (car each)) (cdr each))) (reverse said)))))
 
 (define-test (config bind-key-maps-said-exist)
   ;; every map the help of bind-key names is one it takes
@@ -510,7 +515,9 @@ commented inside another one commented (;;   ;; (setf ...) in a load-package's
 " out))
            (with-open-file (out init :direction :output :if-exists :supersede)
              (format out "(cl:load (cl:compile-file ~s :output-file ~s))~%(cl:load ~s)~%"
-                     (namestring compiled) (namestring (merge-pathnames "compiled-helper.fasl" dir)) (namestring plain)))
+                     (namestring compiled)
+                     (namestring (merge-pathnames "compiled-helper.fasl" dir))
+                     (namestring plain)))
            (let ((tuatara.defaults:*config-file* init))
              (run-keys "" :text "abc"))
            (loop for name in names

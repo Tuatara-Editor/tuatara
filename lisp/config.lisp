@@ -101,20 +101,20 @@ mode's own keys, as with MAP :global and MODE that mode."
 (defun tuatara-user:bind-key (keys command &key (map :global) mode label)
   "Bind KEYS (keys apart by spaces, C- for Control, M- for Meta and S- for
 Shift, as help writes them: \"C-c t\", \"SPC ,\") to COMMAND (a command name
-from any package, matched by name) in MAP: :global (both states), :normal,
-:insert, :support, :leader (keys under the leader key, \\`SPC' or
-*LEADER-KEY*, and under \\`C-x SPC' everywhere), a special buffer's map such
-as :buffers, :help, :search, :pattern (every question that takes a pattern, a
-search of files as you type among them) or :minibuffer, :popup (the list of
-completions beside the cursor), or a major mode's name ('csv-mode) for keys
-only in that mode and the modes derived from it. The main configuration call
-of an init file.
+from any package, matched by name) in MAP. MAP is :global (both states),
+:normal, :insert, :support or :leader (keys under the leader key, \\`SPC' or
+*LEADER-KEY*, and under \\`C-x SPC' everywhere). It can be a special buffer's
+map such as :buffers, :help, :search, :pattern (every question that takes a
+pattern, a search of files as you type among them) or :minibuffer. It can be
+:popup (the list of completions beside the cursor). It can also be a major
+mode's name ('csv-mode) for keys only in that mode and the modes derived from
+it. The main configuration call of an init file.
 
-MODE, a major mode's name or a list of them, binds KEYS only in those modes
-and the modes made from them, MAP then :global, :normal, :insert, :support or
-:leader: (bind-key \"o l\" 'org-store-link :map :leader :mode '(org-mode
-markdown-mode)) makes \\`SPC o l' that in Org and Markdown, and the same key
-bound without MODE stays as it is everywhere else.
+MODE, a major mode's name or a list of them, binds KEYS only in those modes and
+the modes made from them. MAP is then :global, :normal, :insert, :support or
+:leader. For example, (bind-key \"o l\" 'org-store-link :map :leader :mode
+'(org-mode markdown-mode)) makes \\`SPC o l' that in Org and Markdown. The same
+key bound without MODE stays as it is everywhere else.
 
 LABEL, a string, is what the key hints show for the key instead of the
 command's name: (bind-key \"t h\" 'hl-line-mode :map :leader :label \"toggle
@@ -138,18 +138,18 @@ binding left as it is: (bind-key \"t\" nil :map :leader :label \"toggle\") shows
     (define-key keymap keys nil)))
 
 (defun tuatara-user:set-face (name &rest attributes)
-  "Change face NAME (a keyword such as :comment, :keyword or :csv-column-1)
-with ATTRIBUTES: :fg and :bg take a colour (:red, :bright-blue ..., a number
-0-255, or \"#rrggbb\"), :bold :italic :reverse :dim take T or NIL,
-:underline T (a straight line), :wave, :dotted, :box (a box round each
-character; a terminal draws a line) or NIL, :underline-colour a
-colour (NIL for the text's), :inherit names a face; in a window of its own (tuatara --gui), :font names a
-font and its weight (\"Adwaita Mono Bold\"), drawn at the window's size,
-and :height 1.25, 1.5, 2 (up to 3) draws a line beginning in the face that
+  "Change face NAME (a keyword such as :comment, :keyword or :csv-column-1) with
+ATTRIBUTES. :fg and :bg take a colour (:red, :bright-blue ..., a number 0-255,
+or \"#rrggbb\"). :bold :italic :reverse :dim take T or NIL. :underline takes T
+\(a straight line), :wave, :dotted, :box (a box round each character; a terminal
+draws a line) or NIL. :underline-colour takes a colour (NIL for the text's).
+:inherit names a face. In a window of its own (tuatara --gui), :font names a
+font and its weight (\"Adwaita Mono Bold\"), drawn at the window's size. In that
+window :height 1.25, 1.5, 2 (up to 3) draws a line beginning in the face that
 many rows tall and its letters as wide (an Org headline level's face,
-:org-level-1). Attributes not given keep their
-value. Your settings stay on top of any theme. Examples: (set-face :comment :fg :cyan),
-\(set-face :spellcheck :underline :dotted)."
+:org-level-1). Attributes not given keep their value. Your settings stay on top
+of any theme. Examples: (set-face :comment :fg :cyan), (set-face :spellcheck
+:underline :dotted)."
   (apply #'tuatara.display:set-user-face name attributes))
 
 (defun tuatara-user:load-theme (name)
@@ -201,16 +201,16 @@ not, and why as a second value when it could not be."
 text that could not be read on.")
 
 (defun start-bare ()
-  "Have the editor start without the init file, so without packages, and with
-a state folder of its own, new and empty, in bare-state/ in the cache folder,
-held by this session (MAKE-OWNED-FOLDER) and deleted when the editor ends, once
-the last of what is kept has been written (FINISH-STATE-WRITES): what the
-editor keeps between sessions (the files visited lately, the session,
+  "Have the editor start without the init file, so without packages, and with a
+state folder of its own, new and empty, in bare-state/ in the cache folder. This
+session holds the folder (MAKE-OWNED-FOLDER), and it is deleted when the editor
+ends, once the last of what is kept has been written (FINISH-STATE-WRITES). What
+the editor keeps between sessions (the files visited lately, the session,
 auto-saved text, bookmarks) is neither read nor written, so that nothing of the
-real state is changed or lost. Those of earlier bare starts left behind by
-sessions that ended are deleted (FORGET-ABANDONED-FOLDERS). The configuration
-folder (snippets, templates) is read as always. Call it before the editor
-starts."
+real state is changed or lost. The folders of earlier bare starts, left behind
+by sessions that ended, are deleted (FORGET-ABANDONED-FOLDERS). The
+configuration folder (snippets, templates) is read as always. Call it before the
+editor starts."
   (forget-abandoned-folders "bare-state/")
   (multiple-value-bind (folder lock) (make-owned-folder "bare-state/")
     (setf *config-file* (merge-pathnames "no-init-file.lisp" folder)

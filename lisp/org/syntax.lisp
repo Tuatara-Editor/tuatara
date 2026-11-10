@@ -17,12 +17,12 @@
 (defstruct (org-node (:constructor make-org-node (type &key begin end contents-begin contents-end
                                                        (post-blank 0) post-affiliated properties)))
   "A node of a parsed Org document: TYPE (headline, paragraph, bold...); BEGIN
-and END, where it is in the text, END past the blank lines after it; where
-its contents are (CONTENTS-BEGIN, CONTENTS-END), when it has any; POST-BLANK,
-how many blank lines (for an object, spaces) follow it; POST-AFFILIATED, where
-it begins after the keywords naming or captioning it; PROPERTIES, a plist of
-what else is known of it (a headline's level, a link's path...); CHILDREN,
-the nodes in it, in order; and PARENT."
+and END, where it is in the text, END past the blank lines after it. Where its
+contents are (CONTENTS-BEGIN, CONTENTS-END), when it has any; POST-BLANK, how
+many blank lines (for an object, spaces) follow it; POST-AFFILIATED, where it
+begins after the keywords naming or captioning it; PROPERTIES, a plist of what
+else is known of it (a headline's level, a link's path...); CHILDREN, the nodes
+in it, in order. And PARENT."
   type begin end contents-begin contents-end (post-blank 0) post-affiliated properties
   (children '()) parent)
 
@@ -77,10 +77,11 @@ nothing but nesting cannot exhaust the parser.")
 emphasis mark (*, /, _...) and where on no closing one is to be found before
 the stretch's end: each opening mark looks no further than once.")
 
-(defvar *org-close-misses* '()
-  "While the objects of a stretch of text are parsed, each (NEEDLE . FROM):
-where on the closing NEEDLE (\\), @@, ]]) is not to be found before the
-stretch's end (ORG-SEARCH-CLOSE).")
+(defvar *org-closes-seen* '()
+  "While the objects of a stretch of text are parsed, each (NEEDLE FROM .
+FOUND): the last search for the closing NEEDLE (\\), @@, ]], )}}}) went from
+FROM and found it first at FOUND, or, FOUND NIL, not before the stretch's end
+\(ORG-SEARCH-CLOSE).")
 
 (defvar *org-standard-todo-keywords* '(("TODO" "WAIT") . ("DONE" "CANCELLED"))
   "The TODO keywords of an Org file with no #+TODO: line of its own, as
@@ -434,10 +435,12 @@ is no clock line."
 (defparameter *org-dual-keywords* '("CAPTION" "RESULTS")
   "The affiliated keywords that take a second value in brackets.")
 
-(defparameter *org-affiliated-keywords* '("CAPTION" "DATA" "HEADER" "HEADERS" "LABEL" "NAME" "PLOT" "RESNAME" "RESULT" "RESULTS" "SOURCE" "SRCNAME" "TBLNAME")
+(defparameter *org-affiliated-keywords*
+  '("CAPTION" "DATA" "HEADER" "HEADERS" "LABEL" "NAME" "PLOT" "RESNAME" "RESULT" "RESULTS" "SOURCE" "SRCNAME" "TBLNAME")
   "The keywords that name, caption or otherwise go with the element after them.")
 
-(defparameter *org-attribute-keywords* '(:attr_latex :attr_html :attr_odt :attr_org :attr_beamer :attr_texinfo :attr_md :attr_ascii)
+(defparameter *org-attribute-keywords*
+  '(:attr_latex :attr_html :attr_odt :attr_org :attr_beamer :attr_texinfo :attr_md :attr_ascii)
   "The #+ATTR_...: lines whose settings are kept with the element after them,
 one for each kind of export. Other #+ATTR_...: lines still go with the element,
 and what they say is passed over.")
@@ -502,7 +505,8 @@ the objects of headlines' titles looked in too, each given its headline as
 parent. NIL when there is none."
   (let ((found nil))
     (labels ((walk (node)
-               (when (and (<= (org-node-begin node) position) (< position (max (org-node-end node) (1+ (org-node-begin node)))))
+               (when (and (<= (org-node-begin node) position)
+                          (< position (max (org-node-end node) (1+ (org-node-begin node)))))
                  (when (funcall test node)
                    (if innermost (setf found node) (return-from org-node-at node)))
                  (when (and titles (eq (org-node-type node) 'headline))
@@ -646,10 +650,12 @@ element, the objects of one that holds text; none deeper than *ORG-DEPTH-LIMIT*.
             (declare (ignore ok))
             (cond ((org-looking-at "(?i)BEGIN_(\\S+)" after) (org-block-parser position start limit affiliated))
                   ((org-looking-at "(?i)CALL:" after) (org-babel-call-parser position start limit affiliated))
-                  ((org-looking-at *org-dynamic-block-re* start) (org-dynamic-block-parser position start limit affiliated))
+                  ((org-looking-at *org-dynamic-block-re* start)
+                   (org-dynamic-block-parser position start limit affiliated))
                   ((org-looking-at "\\S+?:" after) (org-keyword-parser position start limit affiliated))
                   (t (org-paragraph-parser position limit start affiliated)))))
-         ((org-looking-at *org-footnote-definition-re* start) (org-footnote-definition-parser position start limit affiliated))
+         ((org-looking-at *org-footnote-definition-re* start)
+          (org-footnote-definition-parser position start limit affiliated))
          ((org-looking-at "[ \\t]*-{5,}[ \\t]*$" start) (org-horizontal-rule-parser position start limit affiliated))
          ((org-looking-at "%%\\(" start) (org-diary-sexp-parser position start limit affiliated))
          ((or (org-looking-at "[ \\t]*\\|" start)
@@ -679,7 +685,9 @@ plist of their values (:name, :caption, :attr_html...), NIL when there are none.
             (let ((value (string-trim " 	" (subseq *org-text* match-end (org-line-end p)))))
               (setf matched t)
               (let* ((upper (string-upcase key))
-                     (name (cond ((member upper '("DATA" "LABEL" "RESNAME" "SOURCE" "SRCNAME" "TBLNAME") :test #'string=) :name)
+                     (name (cond ((member upper
+                                          '("DATA" "LABEL" "RESNAME" "SOURCE" "SRCNAME" "TBLNAME")
+                                          :test #'string=) :name)
                                  ((string= upper "RESULT") :results)
                                  ((string= upper "HEADERS") :header)
                                  ((uiop:string-prefix-p "ATTR_" upper)
@@ -729,7 +737,8 @@ its END past them and its POST-BLANK, the lines from COUNT-FROM to there."
     ;; the TODO keyword, followed by a space or the line's end
     (let ((keyword (find-if (lambda (k) (and (<= (+ p (length k)) line-end)
                                              (string= k *org-text* :start2 p :end2 (+ p (length k)))
-                                             (or (= (+ p (length k)) line-end) (eql (org-char (+ p (length k))) #\Space))))
+                                             (or (= (+ p (length k)) line-end)
+                                                 (eql (org-char (+ p (length k))) #\Space))))
                             (append (car *org-todo-keywords*) (cdr *org-todo-keywords*)))))
       (when keyword
         (setf (getf properties :todo-keyword) keyword
@@ -869,7 +878,8 @@ blank lines its own."
   (multiple-value-bind (start end rs re) (cl-ppcre:scan "^([^()\\[\\] \\t]+)(?:\\[([^]]*)\\])?\\(([^)]*)\\)(?:[ \\t]*\\[([^]]*)\\]|[ \\t]+(.*?))?[ \\t]*$" value)
     (declare (ignore end))
     (if start
-        (flet ((group (i) (and (aref rs i) (let ((s (subseq value (aref rs i) (aref re i)))) (and (plusp (length s)) s)))))
+        (flet ((group (i)
+                 (and (aref rs i) (let ((s (subseq value (aref rs i) (aref re i)))) (and (plusp (length s)) s)))))
           (append (list :call (group 0))
                   (and (group 1) (list :inside-header (group 1)))
                   (and (group 2) (list :arguments (group 2)))
@@ -923,11 +933,13 @@ blank lines its own."
                            (list :value (org-unescape-block contents)))))
             (export-block
              (setf (org-node-properties node)
-                   (list :type (string-upcase (or (first (uiop:split-string parameters)) "")) :value (org-unescape-block contents))))
+                   (list :type (string-upcase (or (first (uiop:split-string parameters)) ""))
+                         :value (org-unescape-block contents))))
             (comment-block
              (setf (org-node-properties node) (list :value (org-unescape-block contents))))
             (special-block
-             (setf (org-node-properties node) (list :type name))))
+             (setf (org-node-properties node)
+                   (append (list :type name) (and (plusp (length parameters)) (list :parameters parameters))))))
           (when (or greater (eq element-type 'verse-block))
             (when (< contents-begin end-line)
               (setf (org-node-contents-begin node) contents-begin
@@ -953,7 +965,8 @@ heading or a keyword."
          (language (let ((first (first (uiop:split-string words :separator '(#\Space #\Tab)))))
                      (and (plusp (length first)) first)))
          (rest (if language (string-trim " 	" (subseq words (length language))) "")))
-    (multiple-value-bind (start end) (cl-ppcre:scan "^(?:[-+][A-Za-z](?:[ \\t]+(?:\"[^\"]*\"|[^-+ \\t:]\\S*))?[ \\t]*)+" rest)
+    (multiple-value-bind (start end)
+        (cl-ppcre:scan "^(?:[-+][A-Za-z](?:[ \\t]+(?:\"[^\"]*\"|[^-+ \\t:]\\S*))?[ \\t]*)+" rest)
       (let ((switches (and start (string-trim " 	" (subseq rest start end))))
             (params (string-trim " 	" (if start (subseq rest end) rest))))
         (values language (and (plusp (length switches)) switches) (and (plusp (length params)) params))))))
@@ -978,7 +991,8 @@ heading or a keyword."
         (let* ((contents-begin (org-next-line start))
                (node (make-org-node 'dynamic-block)))
           (org-scan (name arguments) *org-dynamic-block-re* start
-            (setf (org-node-properties node) (append (list :block-name name) (and arguments (list :arguments arguments)))))
+                    (setf (org-node-properties node)
+                          (append (list :block-name name) (and arguments (list :arguments arguments)))))
           (when (< contents-begin end-line)
             (setf (org-node-contents-begin node) contents-begin (org-node-contents-end node) end-line))
           (org-finish (org-element-with-affiliated node position start affiliated) (org-next-line end-line) limit)))))
@@ -1082,7 +1096,8 @@ are never closed."
                         (unless open (finish (org-end-of-content p start)))))
              ;; blocks and drawers are skipped whole
              (let ((skip (or (let ((name (org-scan (n) "(?i)[ \\t]*#\\+BEGIN(:|_\\S+)" p n)))
-                               (and name (org-closing-line :block (if (string= name ":") "" name) (org-next-line p) limit)))
+                               (and name
+                                    (org-closing-line :block (if (string= name ":") "" name) (org-next-line p) limit)))
                              (and (org-looking-at *org-drawer-re* p)
                                   (org-search-line *org-drawer-end-re* (org-next-line p) limit)))))
                (setf p (org-next-line (or skip p)))))))))))
@@ -1112,7 +1127,8 @@ are never closed."
       (declare (ignore indent item-end))
       (let* ((contents-begin
                (org-scan () *org-full-item-re* begin
-                 (let ((after (cond (tag (multiple-value-bind (ok e) (org-looking-at "[ \\t]*\\S.*?[ \\t]+::(?:[ \\t]+|$)" begin)
+                         (let ((after (cond (tag (multiple-value-bind (ok e)
+                                                     (org-looking-at "[ \\t]*\\S.*?[ \\t]+::(?:[ \\t]+|$)" begin)
                                            (declare (ignore ok)) e))
                                     (t match-end))))
                    (org-skip-blanks-forward after end))))
@@ -1144,7 +1160,9 @@ are never closed."
       (loop while (and (< p limit) (org-looking-at "(?i)[ \\t]*#\\+TBLFM:" p))
             do (push (string-trim " 	" (subseq *org-text* (+ (search ":" *org-text* :start2 p) 1) (org-line-end p))) formulas)
                (setf p (org-next-line p)))
-      (let ((node (make-org-node 'table :contents-begin (if table-el nil start) :contents-end (if table-el nil contents-end)
+      (let ((node (make-org-node 'table
+                                 :contents-begin (if table-el nil start)
+                                 :contents-end (if table-el nil contents-end)
                                         :properties (append (list :type (if table-el 'table.el 'org))
                                                             (and formulas (list :tblfm (reverse formulas)))))))
         (org-finish (org-element-with-affiliated node position start affiliated) p limit)))))
@@ -1157,7 +1175,8 @@ are never closed."
          (line-end (org-line-end position))
          (node (make-org-node 'table-row :begin position :end (org-next-line position) :post-affiliated position
                                          :contents-begin contents-begin
-                                         :contents-end (and contents-begin (let ((e (org-skip-blanks-backward line-end contents-begin))) e))
+                                         :contents-end (and contents-begin
+                                                            (let ((e (org-skip-blanks-backward line-end contents-begin))) e))
                                          :properties (list :type (if rule 'rule 'standard)))))
     node))
 
@@ -1180,18 +1199,24 @@ are never closed."
 
 (defun org-search-close (needle start)
   "Where NEEDLE, what closes an object, first is from START below the end of
-the stretch whose objects are parsed, or NIL: once it is not found from a
-place on, it is not looked for again after that place (*ORG-CLOSE-MISSES*)."
-  (let ((miss (cdr (assoc needle *org-close-misses* :test #'string=))))
-    (unless (and miss (>= start miss))
-      (or (search needle *org-text* :start2 start :end2 *org-object-limit*)
-          (progn (push (cons needle start) *org-close-misses*) nil)))))
+the stretch whose objects are parsed, or NIL. What the last search for it
+found, a place or none, answers each search from a place between its start
+and that place too (*ORG-CLOSES-SEEN*): many openings never closed, or closed
+far on, make one pass through the stretch."
+  (let ((seen (assoc needle *org-closes-seen* :test #'string=)))
+    (if (and seen (<= (second seen) start) (or (null (cddr seen)) (<= start (cddr seen))))
+        (cddr seen)
+        (let ((found (search needle *org-text* :start2 start :end2 *org-object-limit*)))
+          (if seen
+              (setf (cdr seen) (cons start found))
+              (push (list* needle start found) *org-closes-seen*))
+          found))))
 
 (defun org-parse-objects (begin end types)
   "The objects from BEGIN below END that TYPES allow, in order, each with its
 contents parsed; none deeper than *ORG-DEPTH-LIMIT*."
   (let ((objects '()) (p begin) (*org-object-begin* begin) (*org-object-limit* end)
-        (*org-emphasis-misses* '()) (*org-close-misses* '()) (*org-depth* (1+ *org-depth*)))
+        (*org-emphasis-misses* '()) (*org-closes-seen* '()) (*org-depth* (1+ *org-depth*)))
     (when (> *org-depth* *org-depth-limit*)
       (return-from org-parse-objects '()))
     (loop
@@ -1202,7 +1227,8 @@ contents parsed; none deeper than *ORG-DEPTH-LIMIT*."
           (org-adopt object (org-parse-objects (org-node-contents-begin object) (org-node-contents-end object)
                                                (org-object-types (org-node-type object)))))
         (when (eq (org-node-type object) 'table-cell)
-          (when (and (org-node-contents-begin object) (< (org-node-contents-begin object) (org-node-contents-end object)))
+          (when (and (org-node-contents-begin object)
+                     (< (org-node-contents-begin object) (org-node-contents-end object)))
             (org-adopt object (org-parse-objects (org-node-contents-begin object) (org-node-contents-end object)
                                                  (org-object-types 'table-cell)))))
         (push object objects)
@@ -1247,12 +1273,15 @@ tells."
   (let ((c (org-char p)))
     (flet ((try (type parser) (and (member type types) (funcall parser p))))
       (cond
-        ((org-looking-at "(?i)call_" p (min (length *org-text*) (+ p 5))) (try 'inline-babel-call #'org-inline-babel-call-parser))
-        ((org-looking-at "(?i)src_" p (min (length *org-text*) (+ p 4))) (try 'inline-src-block #'org-inline-src-block-parser))
+        ((org-looking-at "(?i)call_" p (min (length *org-text*) (+ p 5)))
+         (try 'inline-babel-call #'org-inline-babel-call-parser))
+        ((org-looking-at "(?i)src_" p (min (length *org-text*) (+ p 4)))
+         (try 'inline-src-block #'org-inline-src-block-parser))
         (t
          (case c
            (#\^ (try 'superscript #'org-superscript-parser))
-           (#\_ (or (try 'subscript #'org-subscript-parser) (try 'underline (lambda (p) (org-emphasis-parser p #\_ 'underline)))))
+           (#\_ (or (try 'subscript #'org-subscript-parser)
+                    (try 'underline (lambda (p) (org-emphasis-parser p #\_ 'underline)))))
            (#\* (try 'bold (lambda (p) (org-emphasis-parser p #\* 'bold))))
            (#\/ (try 'italic (lambda (p) (org-emphasis-parser p #\/ 'italic))))
            (#\~ (try 'code (lambda (p) (org-emphasis-parser p #\~ 'code))))
@@ -1272,7 +1301,8 @@ tells."
                   (#\f (try 'footnote-reference #'org-footnote-reference-parser))
                   (#\c (try 'citation #'org-citation-parser))
                   ((#\% #\/) (try 'statistics-cookie #'org-statistics-cookie-parser))
-                  (t (or (try 'timestamp #'org-timestamp-parser) (try 'statistics-cookie #'org-statistics-cookie-parser)))))
+                  (t (or (try 'timestamp #'org-timestamp-parser)
+                         (try 'statistics-cookie #'org-statistics-cookie-parser)))))
            (t (try 'link #'org-link-parser))))))))
 
 (defun org-object-finish (node end)
@@ -1301,7 +1331,10 @@ line's end."
                 for c = (org-char q)
                 when (and (eql c mark) (not (org-space-p (org-char (1- q))))
                           (let ((after (org-char (1+ q))))
-                            (or (null after) (>= (1+ q) *org-object-limit*) (org-space-p after) (find after "-.,;:!?'\")}\\["))))
+                            (or (null after)
+                                (>= (1+ q) *org-object-limit*)
+                                (org-space-p after)
+                                (find after "-.,;:!?'\")}\\["))))
                   return (let ((node (make-org-node type :begin p)))
                            (if (member type '(code verbatim))
                                (setf (org-node-properties node) (list :value (subseq *org-text* (1+ p) q)))
@@ -1378,7 +1411,8 @@ back end named as ORG-EXPORT-SNIPPET-PARSER reads one.")
     (let ((close (org-search-close "@@" match-end)))
       (when close
         (org-object-finish (make-org-node 'export-snippet :begin p
-                                                          :properties (list :back-end back-end :value (subseq *org-text* match-end close)))
+                                          :properties (list :back-end back-end
+                                                            :value (subseq *org-text* match-end close)))
                            (+ close 2))))))
 
 (defparameter *org-hiding-macros* '(("redact" "r") ("protect" "p"))
@@ -1391,11 +1425,39 @@ or {{{P(...)}}}, in any case.")
 short name R or P too, any case, *ORG-HIDING-MACROS*); NIL for another macro."
   (first (find-if (lambda (names) (member name names :test #'string-equal)) *org-hiding-macros*)))
 
-(defparameter *org-hiding-call-re*
-  (format nil "(?i)\\{\\{\\{(~{~a~^|~})\\(((?:.|\\n)*?)\\)\\}\\}\\}" (reduce #'append *org-hiding-macros*))
-  "A call of a macro that hides its text (*ORG-HIDING-MACROS*), over lines as
-ORG-MACRO-PARSER reads one: the name as written, then the text, as its two
-groups.")
+(defun org-hiding-name-end (text from)
+  "Where the ( after a name of *ORG-HIDING-MACROS* stands, the name beginning at
+FROM of TEXT, in any case; NIL when no such name and ( begin there."
+  (dolist (names *org-hiding-macros*)
+    (dolist (name names)
+      (let ((paren (+ from (length name))))
+        (when (and (< paren (length text))
+                   (char= (char text paren) #\()
+                   (string-equal name text :start2 from :end2 paren))
+          (return-from org-hiding-name-end paren))))))
+
+(defun map-org-hiding-calls (function text &key every-opening)
+  "Call FUNCTION on each call in TEXT of a macro that hides its text
+\(*ORG-HIDING-MACROS*), over lines as ORG-MACRO-PARSER reads one and in the
+order of the text, with five arguments: where the call begins, where it ends,
+its name as written, and where its text begins and ends. The next call is looked
+for after the end of the last, or with EVERY-OPENING after its opening, so that
+calls begun inside another are found too. One pass through TEXT, however many
+calls are opened and never closed."
+  (let ((at 0) (closer nil))
+    (loop
+      (let ((open (search "{{{" text :start2 at)))
+        (unless open (return))
+        (let* ((name (+ open 3))
+               (paren (org-hiding-name-end text name)))
+          (if paren
+              (let ((inside (1+ paren)))
+                (unless (and closer (>= closer inside))
+                  (setf closer (search ")}}}" text :start2 inside)))
+                (unless closer (return))
+                (funcall function open (+ closer 4) (subseq text name paren) inside closer)
+                (setf at (if every-opening (1+ open) (+ closer 4))))
+              (setf at (1+ open))))))))
 
 (defparameter *org-macro-call-re* "\\{\\{\\{([a-zA-Z][-\\w]*)\\(((?:.|\\n)*?)\\)\\}\\}\\}"
   "A call of a macro with arguments, as ORG-MACRO-PARSER reads one: its name
@@ -1403,12 +1465,19 @@ and what is between its parentheses as its two groups.")
 
 (defun org-macro-parser (p)
   "The macro call at P: {{{NAME}}} or {{{NAME(ARGUMENTS)}}}."
-  (org-scan (key args) ("\\{\\{\\{([a-zA-Z][-\\w]*)(?:\\(((?:.|\\n)*?)\\))?\\}\\}\\}" :end *org-object-limit*) p
-    (org-object-finish (make-org-node 'macro :begin p
-                                             :properties (list :key (string-downcase key)
-                                                               :args (and args (mapcar (lambda (a) (string-trim " 	" a))
-                                                                                       (cl-ppcre:split "(?<!\\\\)," args :limit most-positive-fixnum)))))
-                       match-end)))
+  (org-scan (key) "\\{\\{\\{([a-zA-Z][-\\w]*)" p
+    (let* ((paren (eql (org-char match-end) #\())
+           (close (if paren
+                      (org-search-close ")}}}" (1+ match-end))
+                      (and (org-looking-at "\\}\\}\\}" match-end) match-end)))
+           (args (and paren close (subseq *org-text* (1+ match-end) close))))
+      (when close
+        (org-object-finish (make-org-node 'macro :begin p
+                                                 :properties (list :key (string-downcase key)
+                                                                   :args (and args
+                                                                              (mapcar (lambda (a) (string-trim " 	" a))
+                                                                                      (cl-ppcre:split "(?<!\\\\)," args :limit most-positive-fixnum)))))
+                           (+ close (if paren 4 3)))))))
 
 (defun org-target-parser (p)
   "The target at P: <<TEXT>>."
@@ -1467,7 +1536,8 @@ and what is between its parentheses as its two groups.")
           (when close
             (org-object-finish (make-org-node 'inline-src-block :begin p
                                                                 :properties (append (list :language language)
-                                                                                    (and parameters (list :parameters parameters))
+                                                                                    (and parameters
+                                                                                         (list :parameters parameters))
                                                                                     (list :value (subseq *org-text* (1+ after) (1- close)))))
                                close)))))))
 
@@ -1487,9 +1557,14 @@ and what is between its parentheses as its two groups.")
                 (when close (setf end-header (subseq *org-text* (1+ after) (1- close)) after close))))
             (org-object-finish (make-org-node 'inline-babel-call :begin p
                                                                  :properties (append (list :call name)
-                                                                                     (and inside (plusp (length inside)) (list :inside-header inside))
-                                                                                     (and (plusp (length arguments)) (list :arguments arguments))
-                                                                                     (and end-header (plusp (length end-header)) (list :end-header end-header))))
+                                                                                     (and inside
+                                                                                          (plusp (length inside))
+                                                                                          (list :inside-header inside))
+                                                                                     (and (plusp (length arguments))
+                                                                                          (list :arguments arguments))
+                                                                                     (and end-header
+                                                                                          (plusp (length end-header))
+                                                                                          (list :end-header end-header))))
                                after)))))))
 
 (defun org-footnote-reference-parser (p)
@@ -1503,7 +1578,8 @@ and what is between its parentheses as its two groups.")
         (#\: (let ((close (org-balanced-end p #\[ #\])))
                (when close
                  (org-object-finish (make-org-node 'footnote-reference :begin p :contents-begin (1+ after) :contents-end (1- close)
-                                                                       :properties (append (and (plusp (length label)) (list :label label))
+                                                   :properties (append (and (plusp (length label))
+                                                                            (list :label label))
                                                                                            (list :type 'inline)))
                                     close))))))))
 
@@ -1522,7 +1598,8 @@ and what is between its parentheses as its two groups.")
 (defun org-citation-reference-at (start end)
   "The citation reference from START below END: to just past its ;, or END."
   (when (< start end)
-    (multiple-value-bind (key-start key-end rs re) (cl-ppcre:scan *org-citation-key-re* *org-text* :start start :end end)
+    (multiple-value-bind (key-start key-end rs re)
+        (cl-ppcre:scan *org-citation-key-re* *org-text* :start start :end end)
       (declare (ignore key-start))
       (when rs
         (let* ((separator (position #\; *org-text* :start key-end :end end))

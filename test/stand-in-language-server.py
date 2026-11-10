@@ -77,7 +77,8 @@ def found_in(text, words):
         for word, severity in words:
             at = line.find(word)
             while at >= 0:
-                found.append({'range': {'start': {'line': n, 'character': at}, 'end': {'line': n, 'character': at + len(word)}},
+                found.append({'range': {'start': {'line': n, 'character': at},
+                                        'end': {'line': n, 'character': at + len(word)}},
                               'severity': severity, 'source': 'stand-in', 'message': f'{word.decode()} found'})
                 at = line.find(word, at + 1)
     return found
@@ -97,7 +98,8 @@ def check_saved(uri):
     def said():
         CHECKED[uri] = found_in(saved, ((b'oops', 1),))
         send({'jsonrpc': '2.0', 'method': 'textDocument/publishDiagnostics',
-              'params': {'uri': uri, 'version': version, 'diagnostics': found_in(text, ((b'bad', 1), (b'meh', 2))) + CHECKED[uri]}})
+              'params': {'uri': uri, 'version': version,
+                         'diagnostics': found_in(text, ((b'bad', 1), (b'meh', 2))) + CHECKED[uri]}})
         if LOG: LOG.write('checked\n'); LOG.flush()
     timer = threading.Timer(1.0, said)
     timer.daemon = True
@@ -126,7 +128,8 @@ def definition(params):
     for n, line in enumerate(lines(uri)):
         m = re.search(rb'def (' + re.escape(word.encode()) + rb')\b', line) if word else None
         if m:
-            return {'uri': uri, 'range': {'start': {'line': n, 'character': m.start(1)}, 'end': {'line': n, 'character': m.end(1)}}}
+            return {'uri': uri, 'range': {'start': {'line': n, 'character': m.start(1)},
+                                          'end': {'line': n, 'character': m.end(1)}}}
     return None
 
 def completion(params):
@@ -142,7 +145,8 @@ def layout(params):
     text = TEXTS[params['textDocument']['uri']]
     new = re.sub(r'(?<=\S) {2,}', ' ', text)
     end = len(lines(params['textDocument']['uri'])) - 1
-    return [] if new == text else [{'range': {'start': {'line': 0, 'character': 0}, 'end': {'line': end + 1, 'character': 0}}, 'newText': new}]
+    return [] if new == text else [{'range': {'start': {'line': 0, 'character': 0},
+                                              'end': {'line': end + 1, 'character': 0}}, 'newText': new}]
 
 def call_sites(uri, word):
     """Each place WORD is called in URI: (line, column, the function it stands in)."""
@@ -169,8 +173,10 @@ def incoming(params):
     target = params['item']
     calls = []
     for n, at, inside in call_sites(target['uri'], target['name']):
-        caller = item(target['uri'], inside[0], inside[1].start(1), inside[1].group(1).decode()) if inside else item(target['uri'], n, 0, 'top')
-        calls.append({'from': caller, 'fromRanges': [{'start': {'line': n, 'character': at}, 'end': {'line': n, 'character': at + len(target['name'])}}]})
+        caller = item(target['uri'], inside[0], inside[1].start(1),
+                      inside[1].group(1).decode()) if inside else item(target['uri'], n, 0, 'top')
+        calls.append({'from': caller, 'fromRanges': [{'start': {'line': n, 'character': at},
+                                                      'end': {'line': n, 'character': at + len(target['name'])}}]})
     return calls
 
 def outgoing(params):
@@ -196,7 +202,8 @@ def symbols(params):
             m = re.match(rb'def (\w+)', line)
             if m and params['query'] in m.group(1).decode():
                 found.append({'name': m.group(1).decode(), 'kind': 12, 'containerName': 'stand-in',
-                              'location': {'uri': uri, 'range': item(uri, n, m.start(1), m.group(1).decode())['range']}})
+                              'location': {'uri': uri, 'range': item(uri, n, m.start(1),
+                                                                     m.group(1).decode())['range']}})
     return found
 
 def tokens(params):
@@ -242,7 +249,8 @@ def describe(params):
 def ask_to_edit(uri):
     root = ROOT[0].rstrip('/')
     one = {'range': {'start': {'line': 0, 'character': 0}, 'end': {'line': 0, 'character': 0}}, 'newText': 'edited '}
-    send({'jsonrpc': '2.0', 'id': 'edit', 'method': 'workspace/applyEdit', 'params': {'label': 'stand-in edit', 'edit': {'changes': {
+    send({'jsonrpc': '2.0', 'id': 'edit', 'method': 'workspace/applyEdit',
+          'params': {'label': 'stand-in edit', 'edit': {'changes': {
         root + '/inside.txt': [one], root + '/../outside.txt': [one], 'file://otherhost/x.txt': [one],
         root + '/missing.txt': [one]}}}})
 
@@ -288,11 +296,13 @@ def selection(params):
     for p in params['positions']:
         line = lines(uri)[p['line']]
         whole = {'range': {'start': {'line': 0, 'character': 0}, 'end': {'line': len(lines(uri)) - 1, 'character': 0}}}
-        own = {'range': {'start': {'line': p['line'], 'character': 0}, 'end': {'line': p['line'], 'character': len(line)}}, 'parent': whole}
+        own = {'range': {'start': {'line': p['line'], 'character': 0},
+                         'end': {'line': p['line'], 'character': len(line)}}, 'parent': whole}
         word = own
         for m in re.finditer(rb'\w+', line):
             if m.start() <= p['character'] <= m.end():
-                word = {'range': {'start': {'line': p['line'], 'character': m.start()}, 'end': {'line': p['line'], 'character': m.end()}}, 'parent': own}
+                word = {'range': {'start': {'line': p['line'], 'character': m.start()},
+                                  'end': {'line': p['line'], 'character': m.end()}}, 'parent': own}
         out.append(word)
     return out
 
@@ -303,7 +313,8 @@ def lenses(params):
 
 def resolve_lens(lens):
     name = lens['data']
-    calls = sum(len(re.findall(rb'\b' + name.encode() + rb'\(', l)) for t in TEXTS.values() for l in t.encode().split(b'\n'))
+    calls = sum(len(re.findall(rb'\b' + name.encode() + rb'\(',
+                               l)) for t in TEXTS.values() for l in t.encode().split(b'\n'))
     return dict(lens, command={'title': f'{calls} calls', 'command': 'stand-in.count', 'arguments': [name]})
 
 def run(params):
@@ -321,7 +332,8 @@ INDEXING = [True]
 def implementations(params):
     uri, word = params['textDocument']['uri'], word_at(params) or ''
     return [{'uri': uri, 'range': item(uri, n, m.start(1), word)['range']}
-            for n, line in enumerate(lines(uri)) for m in [re.match(rb'\s*def (' + re.escape(word.encode()) + rb')\b', line)] if m]
+            for n, line in enumerate(lines(uri)) for m in [re.match(rb'\s*def (' + re.escape(word.encode()) + rb')\b',
+                                                                    line)] if m]
 
 def type_definition(params):
     uri = params['textDocument']['uri']
@@ -341,7 +353,8 @@ def organise(uri):
         return []
     new = b'\n'.join(ordered).decode() + '\n'
     return [{'title': 'Organise imports', 'kind': 'source.organizeImports',
-             'edit': {'changes': {uri: [{'range': {'start': {'line': 0, 'character': 0}, 'end': {'line': top, 'character': 0}}, 'newText': new}]}}}]
+             'edit': {'changes': {uri: [{'range': {'start': {'line': 0, 'character': 0},
+                                                   'end': {'line': top, 'character': 0}}, 'newText': new}]}}}]
 
 def code_actions(params):
     uri = params['textDocument']['uri']
@@ -353,7 +366,8 @@ def code_actions(params):
 ANSWERS = {
     'textDocument/completion': completion,
     'textDocument/definition': definition,
-    'textDocument/references': lambda p: [{'uri': p['textDocument']['uri'], 'range': r} for r in places(p['textDocument']['uri'], word_at(p) or '')],
+    'textDocument/references': lambda p: [{'uri': p['textDocument']['uri'],
+                                           'range': r} for r in places(p['textDocument']['uri'], word_at(p) or '')],
     'textDocument/hover': describe,
     'textDocument/signatureHelp': signature,
     'textDocument/prepareCallHierarchy': prepare_calls,
@@ -369,11 +383,14 @@ ANSWERS = {
     'textDocument/codeLens': lenses,
     'codeLens/resolve': resolve_lens,
     'workspace/executeCommand': run,
-    'completionItem/resolve': lambda item: dict(item, documentation={'kind': 'markdown', 'value': f"The word `{item['label']}`."}),
+    'completionItem/resolve': lambda item: dict(item, documentation={'kind': 'markdown',
+                                                                     'value': f"The word `{item['label']}`."}),
     'textDocument/typeDefinition': type_definition,
-    'textDocument/documentHighlight': lambda p: [{'range': r, 'kind': 1} for r in places(p['textDocument']['uri'], word_at(p) or '')],
+    'textDocument/documentHighlight': lambda p: [{'range': r, 'kind': 1} for r in places(p['textDocument']['uri'],
+                                                                                         word_at(p) or '')],
     'textDocument/rename': lambda p: {'changes': {p['textDocument']['uri']: [{'range': r, 'newText': p['newName']}
-                                                                              for r in places(p['textDocument']['uri'], word_at(p) or '')]}},
+                                                                              for r in places(p['textDocument']['uri'],
+                                                                                              word_at(p) or '')]}},
     'textDocument/formatting': layout,
     'textDocument/codeAction': code_actions,
     'textDocument/inlayHint': lambda p: [{'position': {'line': n, 'character': m.end(1)}, 'label': ': int'}
@@ -404,7 +421,8 @@ while True:
             'diagnosticProvider': {'interFileDependencies': False, 'workspaceDiagnostics': False},
             'foldingRangeProvider': True, 'selectionRangeProvider': True,
             'codeLensProvider': {'resolveProvider': True}, 'executeCommandProvider': {'commands': ['stand-in.count']},
-            'semanticTokensProvider': {'legend': {'tokenTypes': ['variable', 'function'], 'tokenModifiers': []}, 'full': True}}}})
+            'semanticTokensProvider': {'legend': {'tokenTypes': ['variable', 'function'], 'tokenModifiers': []},
+                                       'full': True}}}})
     elif method is None and 'id' in message:
         if LOG and message['id'] == 'unknown':
             LOG.write(f"answered unknown {message.get('error', {}).get('code')}\n"); LOG.flush()

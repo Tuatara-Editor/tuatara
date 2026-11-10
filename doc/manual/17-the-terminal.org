@@ -1,0 +1,437 @@
+#+title: The terminal
+#+language: en
+
+* The terminal
+
+A shell inside the editor, with its output kept as text you can search and copy.
+
+Sooner or later you want to run a command while you are writing: check what
+is in a folder, rename a batch of files, run a script, look at what a program
+is doing. You can switch to another window on your desktop and back. Tuatara
+offers another way. =M-x terminal= runs your shell in a buffer, so the shell
+sits next to your text and what it prints can be read, searched and copied
+like any other text.
+
+This chapter shows how to open a terminal and where it appears, how typing
+there differs from typing in a file, how to look back through what a program
+printed, how to paste, how to use links and pictures, and what to do with a
+program that wants a key Tuatara would keep for itself. The last part is about
+the other direction: Tuatara running inside a terminal, which is how many
+people start it, and what that changes for you.
+
+A word on names. A /shell/ is the program that reads the commands you type
+(=ls=, =cd=, =grep=) and runs them. It is bash unless you use another. A
+/terminal/ in this chapter is a buffer that shows a shell, or any other
+program, running on a screen of its own. The first part of the chapter is about
+that. The last part is about the terminal your own desktop gives you, in which
+Tuatara itself can run.
+
+The state keys from chapter 1 apply as always, with one twist. In a terminal
+you are typing into a program, so most keys do not mean what they mean in a
+file. The sections below say which do.
+
+** Opening a terminal
+
+=M-x terminal= opens one. It starts your shell in the folder of the buffer you
+came from, in a window across the bottom of the screen, about a third of the
+screen high. If you were looking at =~/letters/council.txt=, the shell starts
+in =~/letters/=. Type =ls= and you see your letters.
+
+Each =M-x terminal= opens another terminal, with a name of its own:
+=*terminal*=, =*terminal*<2>=, and so on. When the program ends, for example
+when you type =exit=, the buffer and its window go with it. Killing the
+buffer with =C-x k= ends the program too, without asking.
+
+A terminal opened from a file you opened safely (chapter 12), or from a folder
+you listed as safe or as evidence, starts in your home folder instead. The
+shell's prompt and its helpers then read nothing from that folder, which could
+hold a hostile =.envrc= or =.git=. The echo area says so when it happens.
+
+Figure 17.1 shows the screen with a letter above and a shell below.
+
+#+caption: Figure 17.1. A letter above, a terminal across the bottom.
+#+name: fig-terminal-layout
+#+begin_example
+ Dear Aroha,
+ Thank you for the books. I will bring
+ them on Saturday.
+
+ TUATARA[N]  council.txt                 L3  C1  Text
+ ~/letters$ ls
+ council.txt  thanks.txt
+ ~/letters$ wc -w council.txt
+ 41 council.txt
+ ~/letters$ _
+ TUATARA[I] P *terminal*  L5 C13  Terminal  ~/letters
+#+end_example
+
+The lower window is the terminal. Its mode line says =Terminal=, and
+=TUATARA[I]= says you are in INSERT state, typing into the program. The text
+after =Terminal= is the title the shell gave its window, if it gave one (many
+set =user@host:~/dir=).
+
+*** Where it appears
+
+The bottom is the standard place. =*terminal-place*= says where terminals
+show: =:bottom=, =:top=, =:left=, =:right= or =:full=. The first four give a
+window along that whole side of the screen. =:full= uses the window you are in,
+and when you quit that terminal, the window shows what it showed before.
+
+=*terminal-size*= is how high the window is at the top or bottom, as a
+fraction of the screen (=0.3=) or a number of rows (=15=). =*terminal-width*=
+is how wide it is at the left or right, as a fraction (=0.5=, half the screen)
+or a number of columns (=80=).
+
+Five commands open a terminal in a place of your choosing, whatever
+=*terminal-place*= says: =terminal-bottom=, =terminal-top=, =terminal-left=,
+=terminal-right= and =terminal-full=. Use them when you want a terminal beside
+a long document today, and your usual place is the bottom.
+
+By default the shell is your own: =$SHELL=, or =/bin/sh= if that is not set.
+=*terminal-program*= names another program with its arguments, for example
+=("bash" "-l")= or =("fish")=.
+
+*** Showing and hiding
+
+You often want the terminal for a few seconds. =M-x terminal-toggle= is made
+for that. It shows the terminal you opened last and types into it. Run it again
+from inside the terminal and the window closes. The program goes on while it
+is hidden, and when you show it again, the screen is as you left it. If there
+is no terminal yet, it opens one.
+
+=terminal-toggle= has no key to begin with. If you use a terminal often, give
+it one in your init file (chapter 20).
+
+#+table: commands terminal terminal-bottom terminal-top terminal-left terminal-right terminal-full terminal-toggle
+
+#+table: settings *terminal-place* *terminal-size* *terminal-width* *terminal-program*
+
+#+begin_try Try it, running a command while you write
+1. Press =C-x C-f=, type =~/letter.txt= and press =RET=. Press =i= and type
+   =Dear Aroha,=. Press =C-g= and save with =C-x C-s=.
+2. Run =M-x terminal=. A window opens across the bottom with a prompt.
+3. Type =ls= and press =RET=. Your files are listed, =letter.txt= among them.
+4. Press =C-x o=. You are back in the letter. The shell is still there.
+5. Run =M-x terminal-toggle=. The terminal is selected and you are typing
+   into it again.
+6. Run =M-x terminal-toggle= once more. The window closes, and the letter has
+   the whole screen.
+7. Run =M-x terminal-toggle= again. The shell comes back as it was, with your
+   =ls= still on its screen.
+8. Type =exit= and press =RET=. The terminal and its window are gone.
+#+end_try
+
+** Typing into a terminal
+
+While you type into a terminal, every key goes to the program. That includes
+Escape and =C-c=, which a shell uses to give up on a command, and the arrow
+keys, which walk back through the commands you have typed. The text you type
+does not go into the buffer. It goes to the program, and the program prints the
+result.
+
+A handful of keys stay the editor's, so that you can always leave. The
+setting =*terminal-editor-keys*= lists them. As standard they are:
+
+| Modal | Non-modal | What it does in a terminal                                        |
+|-------+-----------+-------------------------------------------------------------------|
+| none  | =C-x=     | The same as everywhere: windows, buffers, files and the rest      |
+| none  | =M-x=     | Run a command by name                                             |
+| none  | =C-g=     | Stop typing and look at the history (next section)                |
+| none  | =C-\=     | The same as =C-g=, and also types into the terminal again         |
+| none  | =C-q=     | Send the next key to the program, whatever it is                  |
+| none  | =C-s=     | Search the terminal's history                                     |
+
+Everything else goes to the program. If your program needs one of these keys
+itself, you have two ways out. =C-q= sends one key, once. Taking the key out of
+=*terminal-editor-keys*= frees it for good. The next sections show both.
+
+Each key is written as you would write it for =bind-key= in chapter 20:
+="C-x"=, ="M-x"=, and so on. Your init file can change the list.
+
+Programs that fill the screen, such as =less=, =htop= and =nvim=, work as they
+do in any terminal. The mouse works too, when the program asks for it. Hold
+=Shift= while you click if you would rather the editor take the mouse.
+
+#+table: settings *terminal-editor-keys*
+
+*** Sending a key the editor keeps
+
+You are running =nano= in a terminal, and it uses =C-x= to exit. Pressing
+=C-x= would start an editor key sequence instead. Press =C-q= first. The echo
+area says =Key for the program:=. The next key you press goes to =nano=,
+whatever it is. =C-q C-x= gives =nano= its =C-x=. =C-q C-g= gives the program
+its =C-g=, which bash takes as "give up what you were doing" without leaving
+what you typed.
+
+If a program needs =C-g= all the time, as another editor does, take it out of
+the list in your init file:
+
+#+begin_src lisp
+(setf *terminal-editor-keys*
+      (remove "C-g" *terminal-editor-keys* :test #'string=))
+#+end_src
+
+=C-g= then goes to the program, and =C-\= alone stops typing.
+
+#+table: commands terminal-send-key
+
+** The history view
+
+A program prints more than fits on a screen. A long =ls= scrolls off the top.
+A build prints hundreds of lines. In an ordinary terminal you scroll back with
+the mouse. In Tuatara, press =C-g= or =C-\=. The terminal turns into its
+/history view/: everything the program printed, including what went up off its
+screen, shown as plain text with its colours. The program keeps running behind
+it. The mode line says =Terminal history=, and the echo area says which key
+types into it again.
+
+In the history view you have the keys of any text. You can move with =j=, =k=,
+=h= and =l=, search with =C-s= and =C-r=, and select with =V= (chapter 3).
+You press =y= to copy (chapter 4). Nothing you press goes to the program, so
+there is no danger of typing a command by accident.
+
+Figure 17.2 shows what you can do, with a build log as the example.
+
+#+caption: Figure 17.2. Typing, and the history view.
+#+name: fig-terminal-history
+#+begin_example
+   typing                              history view
+   ------                              ------------
+   keys go to the program              keys move, search, select, copy
+   mode line: Terminal                 mode line: Terminal history
+
+        C-g or C-\  ------------------>
+        <------------------  i, a or C-\
+        <------------------  RET  (copies the selection first)
+#+end_example
+
+To go back to typing, press =i= or =a=, or =C-\= again. =RET= does the same,
+and copies first whatever you selected, so that what you found is ready to
+paste.
+
+The history keeps 100,000 lines of what went off the screen as standard.
+=*terminal-scrollback*= changes the number. A terminal that has not printed
+anything for ten seconds has its older history packed away in the background,
+a little at a time, so that a long history costs a fraction of the memory.
+Reading it unpacks it again without you noticing. =*terminal-compress-after*=
+sets the ten seconds, and =nil= turns the packing off.
+
+If you scroll the mouse wheel up while a program that does not read the wheel
+is on the screen, Tuatara shows the history view for you, so that scrolling
+back works as you expect. A pager such as =less= gets the wheel as the up and
+down keys instead.
+
+*** Searching the history
+
+=C-s= while you type does not go to the program. It opens the history view and
+starts a search, back from where the program's cursor is. Look for the line
+you want, press =RET= to leave the search, and carry on in the history view.
+In the history view, =C-s= and =C-r= search forward and back as in any text
+(chapter 3).
+
+This is the quickest way to find an error message in a long build.
+
+#+table: commands terminal-stop-typing terminal-start-typing terminal-copy-and-type terminal-search
+
+#+table: settings *terminal-scrollback* *terminal-compress-after*
+
+#+begin_try Try it, looking back through output
+1. Run =M-x terminal=. Type =ls -l /usr/bin= and press =RET=. Most of the
+   list has gone off the top of the window.
+2. Press =C-g=. The mode line says =Terminal history=.
+3. Press =k= a few times to move up. You are reading the whole list as text,
+   and the lines that went off the top are there.
+4. Press =C-r=, type =bash= and press =RET=. The cursor moves to the nearest
+   line above with =bash= in it.
+5. Press =V= to select the line, then =RET=. The line is copied and you are
+   typing into the shell again.
+6. Type =echo= and a space, then press =C-V= (Control, Shift and =v=). The line
+   is pasted after =echo=. It is not run. Press =C-u= to clear the line.
+#+end_try
+
+** Pasting
+
+Pasting into a terminal is different from pasting into a file. What you paste
+goes to a program that may run it. A shell, given three lines, may run all
+three at once, and a line that holds a hidden command could do harm.
+
+Tuatara pastes carefully. The text is marked as pasted, which a shell such as
+bash understands. It shows the lines at the prompt and runs none of them until
+you press =RET=. Control characters in the text become spaces, so that pasted
+text cannot send commands to the terminal itself. A program that does not mark
+pastes would run each line as it arrives, so Tuatara asks first when the text
+has more than one line.
+
+While you type into the terminal, =C-V= and =S-<insert>= paste the text you
+copied last, in Tuatara or in another program. =C-V= is Control, Shift and =v=
+together, which is the paste key in most terminals. =*terminal-paste-keys*=
+lists the keys, and you can change it. In the history view, =p= and =C-y= paste
+and go back to typing. The middle mouse button pastes whatever you selected
+last in any program, the way it does in a desktop terminal.
+
+#+table: commands terminal-paste terminal-paste-primary
+
+#+table: settings *terminal-paste-keys*
+
+#+begin_try Try it, pasting a command from a note
+1. Open =~/notes.txt=, press =i= and type =ls -l ~=. Press =C-g=.
+2. Put the cursor on the line, press =V= and =y= to copy it. It says =Copied=.
+3. Run =M-x terminal=. Press =C-V=. The command appears at the prompt. It has
+   not run.
+4. Press =RET=. The shell lists your home folder.
+#+end_try
+
+** Links
+
+Programs print web addresses and file names. A terminal buffer shows them
+underlined, as =:link=. Press =C-c C-o= with the cursor on one, or hold
+=Control= and click it with the mouse. Tuatara asks before doing anything, and
+the question names where the link leads, because a link can show one thing and
+go to another.
+
+A file on your computer opens in Tuatara, in another window. A web or mail
+address opens in your desktop's own program. Programs can also write links of
+their own (=ls --hyperlink=), and Tuatara follows those the same way.
+
+The history view works the same: put the cursor on a link and press =C-c C-o=.
+
+#+table: commands terminal-open-link
+
+#+table: faces :link
+
+** Pictures and colours from programs
+
+A program that draws pictures with the kitty graphics protocol, such as
+=timg= or =kitten icat=, can draw them in a terminal buffer, if Tuatara itself
+can show pictures where it runs (chapter 16). In a window of your desktop it
+can. In a terminal it can when that terminal can, such as kitty or Ghostty.
+Where it cannot, such a program draws with text, as it would anywhere else.
+
+Pictures take memory. =*terminal-picture-memory*= is the most a terminal keeps,
+64 MiB as standard. Set it to =0= and programs always draw with text. A file
+meant to slow a terminal down, by drawing a picture thousands of times, has
+its pictures dropped when you print it with =cat=. The text stays.
+
+Programs choose colours and styles, and Tuatara shows them as faces. Bold,
+italic, underlined, faint and reversed text have a face each, listed below. The
+sixteen basic colours a program may choose follow your theme, so the output of
+=ls --color= looks at home next to your text. Colours beyond those sixteen
+are shown as the program asked, rounded to the nearest of 4,096.
+
+#+table: settings *terminal-picture-memory*
+
+#+table: faces :terminal-bold :terminal-dim :terminal-italic :terminal-reverse :terminal-underline
+
+** The title
+
+Many shells set a title for their window, usually your name, the machine and
+the folder. Tuatara shows it in the terminal's mode line, after =Terminal=.
+It is cut at 40 columns. =*terminal-title-limit*= changes that, and =nil= hides
+the title. When you have several terminals open, the title tells you which is
+in which folder.
+
+#+table: settings *terminal-title-limit*
+
+** Escape, nvim and the shell
+
+Escape is the awkward key. A shell uses it for editing the line, and a
+full-screen editor such as =nvim= uses it all the time to leave insert mode.
+Tuatara, in its own state keys, may use Escape to go back to NORMAL state.
+
+As standard, =*escape-quits*= is off (chapter 8), and in a terminal Escape goes
+to the program. In =nvim=, Escape does what you expect. To stop typing and
+look at the history, press =C-g= or =C-\=.
+
+If you turned =*escape-quits*= on, Escape stops typing in a terminal, as =C-g=
+does, and the program never sees it. Two things then help. =C-q= followed by
+Escape sends one Escape to the program. And =*terminal-send-escape*=, set to
+=t=, gives Escape to a full-screen program (one on the alternate screen, such
+as =nvim=, =less= or =htop=) while a shell at its prompt still lets Escape stop
+typing. That is usually what you want with both settings on: Escape works
+inside =nvim=, and at a shell it takes you to the history. =C-g= stops typing
+in either case.
+
+#+begin_src lisp
+(setf *escape-quits* t
+      *terminal-send-escape* t)
+#+end_src
+
+=M-x terminal-send-escape= sends Escape to the program whatever it is, at a
+shell prompt too. It has no key. If you want one that works while you type,
+add it to the list of editor keys and bind it for terminals:
+
+#+begin_src lisp
+(push "C-;" *terminal-editor-keys*)
+(bind-key "C-;" 'terminal-send-escape :mode 'terminal)
+#+end_src
+
+#+table: commands terminal-send-escape
+
+#+table: settings *terminal-send-escape*
+
+#+begin_try Try it, with a program like top
+1. Run =M-x terminal=. Type =top= and press =RET=. The screen fills with the
+   list of programs, updating as you watch.
+2. Press =C-g=. Typing stops. The mode line says =Terminal history=, and the
+   screen text stands still to read, while =top= goes on behind it.
+3. Press =i=. You are typing into =top= again and the screen is current.
+4. Press =C-q=, then =q=. The echo area asks =Key for the program:= and the =q=
+   goes to =top=, which ends. You are back at the shell.
+#+end_try
+
+** The terminal library
+
+The terminal buffer reads what programs print with a library from Ghostty.
+=M-x terminal-version= says which version your Tuatara runs on. It is useful
+when you report a problem. If the library is missing, =M-x terminal= says so
+instead of opening a terminal.
+
+#+table: commands terminal-version
+
+** Running Tuatara inside a terminal
+
+Many people start Tuatara from the shell of their desktop terminal with
+=tuatara=, and edit in that window. It works the same as the window version.
+A few things depend on the terminal you use.
+
+*** Keys
+
+Old terminals cannot tell some key presses apart. Escape and the start of an Alt
+key both send an escape character, so a program has to wait a moment to see
+whether another character follows. Tab and =C-i= are the same byte, and so are
+=RET= and =C-m=.
+
+Newer terminals, among them kitty, foot, WezTerm and Ghostty, can send keys
+whole, using the kitty keyboard protocol. With it, Tuatara knows that Escape is
+Escape, that =M-x= is =M-x=, and nothing waits 25 milliseconds. The setting
+=*kitty-keyboard*= decides whether Tuatara uses the protocol. The standard,
+=:auto=, asks the terminal when Tuatara starts and uses it if the answer is yes.
+Set it to =t= to use it always, or to =nil= never. You only need the setting if
+your terminal says it speaks the protocol but does not work with it, or the
+other way round.
+
+If your terminal does not speak it, everything works, with one small delay
+after Escape while Tuatara waits to see what follows.
+
+#+table: settings *kitty-keyboard*
+
+*** Colours and pictures
+
+=*tui-colours*= says how many colours Tuatara uses. The standard, =:auto=,
+goes by what the terminal says. If the =COLORTERM= variable says =truecolor=
+or =24bit=, your theme's colours show exactly. Otherwise Tuatara uses as many as
+=TERM= allows, and none where =NO_COLOR= is set. Setting it to =:24-bit=, =256=,
+=16= or =8= overrides that, which helps when a terminal is wrong about itself,
+for instance over a remote connection that does not pass =COLORTERM= on.
+
+Pictures (chapter 16) need a terminal that speaks the kitty graphics protocol.
+Under tmux or screen they stay off. The setting =*tui-pictures*= is described
+in chapter 16.
+
+*** Terminal inside the terminal
+
+You can run =M-x terminal= while Tuatara runs in a terminal. A shell in a
+terminal buffer in Tuatara in a terminal of your desktop is quite normal, and
+works.
+
+#+table: settings *tui-colours*

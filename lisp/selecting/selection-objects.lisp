@@ -135,7 +135,9 @@ word. With a count, that many words; a negative count, words before."
           (let ((start (object-start-at b on #'word-char-p)))
             (if (plusp n)
                 (select-bounds (current-buffer) start (words-forward b start n))
-                (select-bounds (current-buffer) (words-backward b start (- n)) (words-forward b (words-backward b start 1) 1))))))
+                (select-bounds (current-buffer)
+                               (words-backward b start (- n))
+                               (words-forward b (words-backward b start 1) 1))))))
     (message "Word marked")))
 
 (defun select-backward (motion forward label)
@@ -231,8 +233,12 @@ expression. With a count, that many."
                                   do (setf s (tuatara.buffer:buffer-forward-char b s -1))))
                           s)))
             (if (plusp n)
-                (select-bounds (current-buffer) start (if (> n 1) (symbols-forward b end (1- n)) (trim-trailing-punctuation b start end)))
-                (select-bounds (current-buffer) (symbols-backward b start (- n)) (symbols-forward b (symbols-backward b start 1) 1))))))
+                (select-bounds (current-buffer) start (if (> n 1)
+                                                          (symbols-forward b end (1- n))
+                                                          (trim-trailing-punctuation b start end)))
+                (select-bounds (current-buffer)
+                               (symbols-backward b start (- n))
+                               (symbols-forward b (symbols-backward b start 1) 1))))))
     (message "Symbol marked")))
 
 (define-command select-symbol-backward ()
@@ -244,7 +250,9 @@ gap between two, the one behind."
 
 (defun blank-line-at-p (buffer position)
   "True when the line holding POSITION has nothing but spaces and tabs."
-  (blank-range-p buffer (tuatara.buffer:buffer-line-start buffer position) (tuatara.buffer:buffer-line-end buffer position)))
+  (blank-range-p buffer
+                 (tuatara.buffer:buffer-line-start buffer position)
+                 (tuatara.buffer:buffer-line-end buffer position)))
 
 (defun paragraph-too-far ()
   "Signal that no paragraph break was found within *TEXT-SCAN-LIMIT*."

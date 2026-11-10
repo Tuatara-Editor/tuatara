@@ -4,9 +4,9 @@
 (in-package #:tuatara.tests)
 
 (define-test rimu-operations
-  :description "In a rimu list, m u U t mark, d marks for deletion and x puts those in the trash; C copies and
+  :description "In a rimu list, m u U t mark, d marks for deletion and x puts those in the trash. C copies and
 R moves the marked or the one on the line to the other list's directory or a name asked for, asking
-before replacing (the old to the trash); D puts in the trash (the freedesktop.org one, with its
+before replacing (the old to the trash). D puts in the trash (the freedesktop.org one, with its
 .trashinfo), C-u D deletes for good; + makes directories. rename-formatted gives files formatted
 names, their headers written and saved, visiting buffers following.")
 
@@ -81,7 +81,9 @@ for rimu's operations to finish. Returns the frontend and the editor."
     (multiple-value-bind (f editor)
         (ops-session dir (list "g f a . t x t RET" (lambda () (tuatara.defaults::rimu-mark-and-go-on #\M)) "t"))
       (let ((lines (rimu-lines editor))
-            (row (loop for row from 0 below 20 when (search "a.txt" (tuatara.frontend.fake:fake-screen-line f row)) return row)))
+            (row (loop for row from 0 below 20
+                       when (search "a.txt" (tuatara.frontend.fake:fake-screen-line f row))
+                       return row)))
         (true (find-if (lambda (l) (and (uiop:string-prefix-p "M " l) (search "a.txt" l))) lines))
         (true (find-if (lambda (l) (and (uiop:string-prefix-p "> " l) (search "b.txt" l))) lines))
         (true (find :list-marked-other (aref (tuatara.frontend.fake:fake-spans f) row)
@@ -96,7 +98,8 @@ for rimu's operations to finish. Returns the frontend and the editor."
     (multiple-value-bind (f editor)
         (ops-session dir "g f a . t x t RET m g f s u b RET RET g f c . t x t RET m" :width 140)
       (true (tuatara.frontend.fake:fake-frame-showing f "1 marked in other directories"))
-      (is equal (list (tuatara.io:native (merge-pathnames "sub/c.txt" dir)) (tuatara.io:native (merge-pathnames "a.txt" dir)))
+      (is equal
+          (list (tuatara.io:native (merge-pathnames "sub/c.txt" dir)) (tuatara.io:native (merge-pathnames "a.txt" dir)))
           (tuatara.defaults::rimu-chosen-paths (session-buffer editor)))
       ;; or only those of the directory shown
       (is equal (list (tuatara.io:native (merge-pathnames "sub/c.txt" dir)))
@@ -131,29 +134,39 @@ for rimu's operations to finish. Returns the frontend and the editor."
       (true (tuatara.frontend.fake:fake-frame-showing f "Nothing to copy: the files marked in other directories are gone")))
     (alexandria:write-string-into-file "alpha" (here dir "a.txt"))
     ;; K is about this list's lines: with marks only elsewhere it takes out the line's entry
-    (multiple-value-bind (f editor) (ops-session dir "g f a . t x t RET m g f s u b RET RET g f c . t x t RET K" :width 140)
+    (multiple-value-bind (f editor) (ops-session dir
+                                                 "g f a . t x t RET m g f s u b RET RET g f c . t x t RET K"
+                                                 :width 140)
       (true (tuatara.frontend.fake:fake-frame-showing f "1 line taken out of the list"))
       (false (find-if (lambda (l) (search "c.txt" l)) (rimu-lines editor)))
       (true (probe-file (here dir "sub/c.txt"))))
     ;; R and g w name where a file marked in another directory is
     (let ((f (ops-session dir "g f b . t x t RET m g f s u b RET RET g f c . t x t RET R C-g" :width 300)))
-      (true (tuatara.frontend.fake:fake-frame-showing f (format nil "Rename ~ab.txt to:" (tuatara.command::abbreviated-path (namestring dir))))))
+      (true (tuatara.frontend.fake:fake-frame-showing f
+                                                      (format nil "Rename ~ab.txt to:"
+                                                              (tuatara.command::abbreviated-path (namestring dir))))))
     (let ((f (ops-session dir "g f b . t x t RET m g f s u b RET RET g f c . t x t RET g w n RET" :width 300)))
-      (true (tuatara.frontend.fake:fake-frame-showing f (format nil "Wipe ~ab.txt for good?" (tuatara.command::abbreviated-path (namestring dir)))))
+      (true (tuatara.frontend.fake:fake-frame-showing f
+                                                      (format nil "Wipe ~ab.txt for good?"
+                                                              (tuatara.command::abbreviated-path (namestring dir)))))
       (true (probe-file (here dir "b.txt"))))
     (let ((f (ops-session dir "g f b . t x t RET m g f s u b RET RET m g w n RET" :width 300)))
       (true (tuatara.frontend.fake:fake-frame-showing f "Wipe 2 files in 2 directories for good?")))
     ;; files of one name from two directories copied into one: asked first, only the first copied
     (let ((there (namestring (here dir "there/"))))
       (ensure-directories-exist there)
-      (let ((f (ops-session dir (format nil "g f b . t x t RET m g f s u b RET RET g f b . t x t RET m C C-a C-k ~a C-j n RET"
-                                        (rimu-typed there))
+      (let ((f (ops-session dir
+                            (format nil
+                                    "g f b . t x t RET m g f s u b RET RET g f b . t x t RET m C C-a C-k ~a C-j n RET"
+                                    (rimu-typed there))
                             :width 300)))
         (true (tuatara.frontend.fake:fake-frame-showing f "2 files named b.txt: only one can be there; copy the one in"))
         (true (tuatara.frontend.fake:fake-frame-showing f "Nothing copied"))
         (false (probe-file (here there "b.txt"))))
-      (let ((f (ops-session dir (format nil "g f b . t x t RET m g f s u b RET RET g f b . t x t RET m C C-a C-k ~a C-j y RET"
-                                        (rimu-typed there))
+      (let ((f (ops-session dir
+                            (format nil
+                                    "g f b . t x t RET m g f s u b RET RET g f b . t x t RET m C C-a C-k ~a C-j y RET"
+                                    (rimu-typed there))
                             :width 300)))
         (true (tuatara.frontend.fake:fake-frame-showing f "Copied 1 file"))
         (true (tuatara.frontend.fake:fake-frame-showing f "b.txt (another of its name goes there)"))
@@ -208,8 +221,10 @@ for rimu's operations to finish. Returns the frontend and the editor."
 
 (define-test (rimu-operations questions-and-order)
   ;; what is asked names one file, or how many, and where they are when that is not here
-  (is string= "Move a to the trash" (tuatara.defaults::rimu-question "Move" '("/d/a") :here "/d/" :after "to the trash"))
-  (is string= "Move /e/a to the trash" (tuatara.defaults::rimu-question "Move" '("/e/a") :here "/d/" :after "to the trash"))
+  (is string= "Move a to the trash"
+      (tuatara.defaults::rimu-question "Move" '("/d/a") :here "/d/" :after "to the trash"))
+  (is string= "Move /e/a to the trash"
+      (tuatara.defaults::rimu-question "Move" '("/e/a") :here "/d/" :after "to the trash"))
   (is string= "Copy 2 files to:" (tuatara.defaults::rimu-question "Copy" '("/d/a" "/d/b") :here "/d/" :after "to:"))
   (true (search "Copy 2 files in /e" (tuatara.defaults::rimu-question "Copy" '("/e/a" "/e/b") :here "/d/" :after "to:")))
   (is string= "Copy 2 files in 2 directories to:"
@@ -260,10 +275,16 @@ for rimu's operations to finish. Returns the frontend and the editor."
         (is string= "a.txt" (sb-posix:readlink (namestring (here there "link"))))
         (true (probe-file (here dir "b.txt"))))
       ;; the question completes on directories, as C-x C-f does; the first line takes what is typed
-      (let ((f (ops-session dir (format nil "g f b . t x t RET C C-a C-k ~a t h" (rimu-typed (namestring dir))) :height 30)))
+      (let ((f (ops-session dir
+                            (format nil "g f b . t x t RET C C-a C-k ~a t h" (rimu-typed (namestring dir)))
+                            :height 30)))
         (true (tuatara.frontend.fake:fake-frame-showing f "there/")))
-      ;; TAB on the line typed (selected, a directory) leaves it as it is, again and again; C-j then takes there/ (b.txt is in it)
-      (let ((f (ops-session dir (format nil "g f b . t x t RET C C-a C-k ~a TAB TAB C-j" (rimu-typed (namestring (here dir "there/"))))
+      ;; TAB on the line typed (selected, a directory) leaves it as it is, again and again; C-j then takes there/ (b.txt
+      ;; is in it)
+      (let ((f (ops-session dir
+                            (format nil
+                                    "g f b . t x t RET C C-a C-k ~a TAB TAB C-j"
+                                    (rimu-typed (namestring (here dir "there/"))))
                             :width 300)))
         (true (tuatara.frontend.fake:fake-frame-showing f "b.txt is there already")))
       ;; again: asked whether to replace; no leaves them; a directory there is not merged
@@ -289,14 +310,21 @@ for rimu's operations to finish. Returns the frontend and the editor."
       (let ((f (ops-session dir "g f b . t x t RET m m R")))
         (true (tuatara.frontend.fake:fake-frame-showing f "2 marked: R renames one")))
       ;; M: into a directory, navigated to; what is no directory is refused
-      (let ((f (ops-session dir (format nil "g f r e n a m e d . t x t RET M C-a C-k ~a C-j" (rimu-typed there)) :width 300)))
+      (let ((f (ops-session dir
+                            (format nil "g f r e n a m e d . t x t RET M C-a C-k ~a C-j" (rimu-typed there))
+                            :width 300)))
         (true (tuatara.frontend.fake:fake-frame-showing f "Moved 1 file to"))
         (true (probe-file (here there "renamed.txt"))))
-      (let ((f (ops-session dir (format nil "g f b . t x t RET M C-a C-k ~a C-j" (rimu-typed (namestring (here dir "nowhere.txt")))) :width 300)))
+      (let ((f (ops-session dir
+                            (format nil
+                                    "g f b . t x t RET M C-a C-k ~a C-j"
+                                    (rimu-typed (namestring (here dir "nowhere.txt"))))
+                            :width 300)))
         (true (tuatara.frontend.fake:fake-frame-showing f "is no directory: nothing moved"))
         (true (probe-file (here dir "b.txt"))))
       ;; a directory is not moved into itself
-      (let ((f (ops-session dir (format nil "g f s u b RET M C-a C-k ~a C-j" (rimu-typed (namestring (here dir "sub/")))))))
+      (let ((f (ops-session dir
+                            (format nil "g f s u b RET M C-a C-k ~a C-j" (rimu-typed (namestring (here dir "sub/")))))))
         (true (tuatara.frontend.fake:fake-frame-showing f "sub (itself)"))
         (true (probe-file (here dir "sub/c.txt")))))))
 
@@ -352,9 +380,12 @@ for rimu's operations to finish. Returns the frontend and the editor."
       (sb-posix:mkfifo fifo #o600)
       (sb-posix:symlink "/dev/zero" (namestring (here dir "data/Trash/info/zero.trashinfo")))
       (alexandria:write-string-into-file
-       (format nil "[Trash Info]~%Path=/big~%DeletionDate=2026-10-07T10:00:00~%~a" (make-string 70000 :initial-element #\x))
+       (format nil
+               "[Trash Info]~%Path=/big~%DeletionDate=2026-10-07T10:00:00~%~a"
+               (make-string 70000 :initial-element #\x))
        (here dir "data/Trash/info/big.trashinfo"))
-      (let* ((reader (sb-thread:make-thread (lambda () (tuatara.defaults::trash-contents)) :name "tuatara test trash reader"))
+      (let* ((reader (sb-thread:make-thread (lambda () (tuatara.defaults::trash-contents))
+                                            :name "tuatara test trash reader"))
              (things (sb-thread:join-thread reader :default :hung :timeout 20)))
         (when (eq things :hung)
           ;; a reader held on the pipe let go: opened for writing and closed, it reads its end
@@ -437,12 +468,18 @@ for rimu's operations to finish. Returns the frontend and the editor."
     ;; a directory into itself through a symbolic link to it: left alone, never copied on and on
     (sb-posix:symlink "sub" (namestring (here dir "sublink")))
     (ensure-directories-exist (here dir "sub/inner/"))
-    (let ((f (ops-session dir (format nil "g f s u b RET C C-a C-k ~a C-j" (rimu-typed (namestring (here dir "sublink/inner/"))))
+    (let ((f (ops-session dir
+                          (format nil
+                                  "g f s u b RET C C-a C-k ~a C-j"
+                                  (rimu-typed (namestring (here dir "sublink/inner/"))))
                           :width 300)))
       (true (tuatara.frontend.fake:fake-frame-showing f "sub (itself)"))
       (false (probe-file (here dir "sub/inner/sub/"))))
     ;; a link itself copied into the directory it leads to: a copy of the link, not itself
-    (let ((f (ops-session dir (format nil "g f s u b l i n k RET C C-a C-k ~a C-j" (rimu-typed (namestring (here dir "sub/"))))
+    (let ((f (ops-session dir
+                          (format nil
+                                  "g f s u b l i n k RET C C-a C-k ~a C-j"
+                                  (rimu-typed (namestring (here dir "sub/"))))
                           :width 300)))
       (true (tuatara.frontend.fake:fake-frame-showing f "Copied 1 file"))
       (is string= "sub" (sb-posix:readlink (namestring (here dir "sub/sublink")))))
@@ -450,7 +487,8 @@ for rimu's operations to finish. Returns the frontend and the editor."
     (sb-posix:mkfifo (namestring (here dir "sub/pipe")) #o600)
     (false (tuatara.io:copy-path-tree (namestring (here dir "sub/")) (namestring (here dir "copy"))))
     (true (probe-file (here dir "copy/c.txt")))
-    (let ((f (ops-session dir (format nil "g f s u b RET C C-a C-k ~a C-j" (rimu-typed (namestring (here dir "there/"))))
+    (let ((f (ops-session dir
+                          (format nil "g f s u b RET C C-a C-k ~a C-j" (rimu-typed (namestring (here dir "there/"))))
                           :width 300)))
       (true (tuatara.frontend.fake:fake-frame-showing f "left out: pipe (a named pipe)")))
     ;; a move that fails: the buffer visiting the file stays with it, where it still is
@@ -458,7 +496,10 @@ for rimu's operations to finish. Returns the frontend and the editor."
     (sb-posix:chmod (namestring (here dir "shut/")) #o500)
     (let ((visiting (tuatara.io:visit-file (namestring (here dir "a.txt")))))
       (unwind-protect
-           (let ((f (ops-session dir (format nil "g f a . t x t RET M C-a C-k ~a C-j" (rimu-typed (namestring (here dir "shut/"))))
+           (let ((f (ops-session dir
+                                 (format nil
+                                         "g f a . t x t RET M C-a C-k ~a C-j"
+                                         (rimu-typed (namestring (here dir "shut/"))))
                                  :width 300)))
              (true (tuatara.frontend.fake:fake-frame-showing f "not done: a.txt"))
              (true (probe-file (here dir "a.txt")))
@@ -474,11 +515,17 @@ for rimu's operations to finish. Returns the frontend and the editor."
         (ensure-directories-exist shm)
         (unwind-protect
              (progn
-               (alexandria:write-byte-vector-into-file (make-array (* 3 1024 1024) :element-type '(unsigned-byte 8) :initial-element 1)
+               (alexandria:write-byte-vector-into-file (make-array (* 3 1024 1024)
+                                                                   :element-type '(unsigned-byte 8)
+                                                                   :initial-element 1)
                                                        (concatenate 'string shm "half.bin"))
-               (false (tuatara.io:copy-path-tree (concatenate 'string shm "half.bin") (concatenate 'string shm "half-copy.bin")
-                                                 :cancel cancel :progress (lambda (n) (declare (ignore n)) (setf (car cancel) t))))
-               (is equal (list (concatenate 'string shm "half.bin")) (mapcar #'namestring (directory (concatenate 'string shm "*.*")))))
+               (false (tuatara.io:copy-path-tree (concatenate 'string shm "half.bin")
+                                                 (concatenate 'string shm "half-copy.bin")
+                                                 :cancel cancel
+                                                 :progress (lambda (n) (declare (ignore n)) (setf (car cancel) t))))
+               (is equal
+                   (list (concatenate 'string shm "half.bin"))
+                   (mapcar #'namestring (directory (concatenate 'string shm "*.*")))))
           (ignore-errors (tuatara.io:delete-tree shm)))))
     ;; a move across file systems that cannot be whole: nothing of it left there, the file where it was
     (when (and (probe-file "/dev/shm/") (not (eql (tuatara.io:stamp-dev (tuatara.io:path-stamp "/dev/shm/"))
@@ -497,14 +544,17 @@ for rimu's operations to finish. Returns the frontend and the editor."
           (ignore-errors (tuatara.io:delete-tree there)))))
     ;; and in a list, taken away, never left holding part of the file
     (let ((from (namestring (here dir "big.bin"))) (to (namestring (here dir "big-copy.bin"))))
-      (alexandria:write-byte-vector-into-file (make-array (* 4 1024 1024) :element-type '(unsigned-byte 8) :initial-element 7) from)
+      (alexandria:write-byte-vector-into-file (make-array (* 4 1024 1024)
+                                                          :element-type '(unsigned-byte 8)
+                                                          :initial-element 7) from)
       (true (search "stopped" (handler-case (progn (tuatara.defaults::rimu-work :copy (cons from to) (list t)) "")
                                 (error (e) (princ-to-string e)))))
       (false (probe-file to))))
   ;; the operations under way are asked about before exiting, and stopped only once the exit is certain
   (let ((tuatara.runtime:*jobs*
           (list (tuatara.defaults::make-rimu-operation :copy (list (cons "/a" "/b")) nil nil))))
-    (sb-int:encapsulate 'tuatara.command:y-or-n-p* 'test (lambda (f prompt &rest how) (declare (ignore f prompt how)) t))
+    (sb-int:encapsulate 'tuatara.command:y-or-n-p* 'test
+                        (lambda (f prompt &rest how) (declare (ignore f prompt how)) t))
     (unwind-protect
          (let ((answer (tuatara.defaults::jobs-quit-query)))
            (true (functionp answer))
@@ -517,7 +567,9 @@ for rimu's operations to finish. Returns the frontend and the editor."
   (is string= "srv/x" (tuatara.io::trash-info-path "/srv/x" "/"))
   (is string= "/home/u/x" (tuatara.io::trash-info-path "/home/u/x" nil))
   ;; a mount point with a space, a tab or a backslash in its name, as /proc/self/mounts writes it
-  (is string= (format nil "/run/media/u/My Disk~c\\x" #\Tab) (tuatara.defaults::mount-field "/run/media/u/My\\040Disk\\011\\134x"))
+  (is string=
+      (format nil "/run/media/u/My Disk~c\\x" #\Tab)
+      (tuatara.defaults::mount-field "/run/media/u/My\\040Disk\\011\\134x"))
   ;; a drive's trash is used only when it is made of directories themselves, yours: a link in it could lead
   ;; deleting or putting back anywhere; a shared .Trash needs the sticky bit
   (with-operations-tree (dir)
@@ -570,7 +622,8 @@ for rimu's operations to finish. Returns the frontend and the editor."
       (alexandria:write-byte-vector-into-file octets (here dir "latin.org"))
       (let ((f (ops-session dir "g f l a t i n RET SPC d r C-a C-k L a t i n RET RET" :width 300)))
         (true (tuatara.frontend.fake:fake-frame-showing f "is not all text"))
-        (let ((renamed (find-if (lambda (name) (search "--latin.org" name)) (mapcar #'first (tuatara.io:directory-entries dir)))))
+        (let ((renamed (find-if (lambda (name) (search "--latin.org" name))
+                                (mapcar #'first (tuatara.io:directory-entries dir)))))
           (true renamed)
           (is equalp octets (alexandria:read-file-into-byte-vector (here dir renamed))))))))
 
@@ -586,7 +639,8 @@ for rimu's operations to finish. Returns the frontend and the editor."
       (declare (ignore f))
       (let ((buffer (tuatara.display:window-buffer (tuatara.command:editor-window editor))))
         (is string= (namestring dir) (tuatara.buffer:buffer-local buffer 'tuatara.defaults::rimu-directory))
-        (is string= "b.txt" (tuatara.io:listed-name (tuatara.defaults::rimu-entry-at buffer (tuatara.buffer:buffer-point buffer))))))
+        (is string= "b.txt"
+            (tuatara.io:listed-name (tuatara.defaults::rimu-entry-at buffer (tuatara.buffer:buffer-point buffer))))))
     (multiple-value-bind (f editor) (ops-session dir "g h g l g l")
       (declare (ignore f))
       (is string= (tuatara.io:directory-name (tuatara.io:native (tuatara.io:home-directory)) :clean t)
@@ -610,7 +664,10 @@ it did."
         (tuatara-user:*rimu-follow-changes* follow)
         (f (tuatara.frontend.fake:make-fake-frontend :width 120 :height 20))
         (start nil) (seen nil))
-    (tuatara.frontend.fake:fake-queue-keys f (format nil "C-x d C-a C-k ~a C-j~@[ ~a~]" (rimu-typed (namestring directory)) before))
+    (tuatara.frontend.fake:fake-queue-keys f
+                                           (format nil
+                                                   "C-x d C-a C-k ~a C-j~@[ ~a~]"
+                                                   (rimu-typed (namestring directory)) before))
     (labels ((check ()
                (let ((list (find-if (lambda (b) (and (tuatara.defaults::rimu-list-p b)
                                                      (equal (tuatara.buffer:buffer-local b 'tuatara.defaults::rimu-directory)
@@ -633,10 +690,16 @@ it did."
 (define-test (rimu-operations follows-the-disk)
   (with-operations-tree (dir)
     ;; a file made, one deleted, one renamed by another program: the list shows it by itself
-    (true (nth-value 2 (disk-change-session dir (lambda () (alexandria:write-string-into-file "x" (here dir "made-elsewhere.txt")))
-                                            "made-elsewhere.txt")))
+    (true (nth-value 2
+                     (disk-change-session dir
+                                          (lambda ()
+                                            (alexandria:write-string-into-file "x" (here dir "made-elsewhere.txt")))
+                                          "made-elsewhere.txt")))
     (false (nth-value 2 (disk-change-session dir (lambda () (delete-file (here dir "b.txt"))) "no-such-name")))
-    (multiple-value-bind (f editor) (disk-change-session dir (lambda () (rename-file (here dir "a.txt") (here dir "renamed-elsewhere.txt")))
+    (multiple-value-bind (f editor) (disk-change-session dir
+                                                         (lambda ()
+                                                           (rename-file (here dir "a.txt")
+                                                                        (here dir "renamed-elsewhere.txt")))
                                                          "renamed-elsewhere.txt")
       (declare (ignore f))
       (let ((text (tuatara.buffer:buffer-string (tuatara.display:window-buffer (tuatara.command:editor-window editor)))))
@@ -644,31 +707,41 @@ it did."
         (false (search "a.txt" text))
         (false (search "b.txt" text))))
     ;; with *rimu-follow-changes* NIL, the list stays as it was read
-    (false (nth-value 2 (disk-change-session dir (lambda () (alexandria:write-string-into-file "x" (here dir "quiet.txt")))
-                                             "quiet.txt" :follow nil)))))
+    (false (nth-value 2
+                      (disk-change-session dir
+                                           (lambda () (alexandria:write-string-into-file "x" (here dir "quiet.txt")))
+                                           "quiet.txt" :follow nil)))))
 
 (define-test (rimu-operations symbolic-and-hard-links)
   (with-operations-tree (dir)
     (let ((there (namestring (merge-pathnames "there/" dir))))
       (ensure-directories-exist there)
       ;; S: links to the marked entries in the directory given, each to its entry's whole name
-      (let ((f (ops-session dir (format nil "g f b . t x t RET m g f s u b RET m Y C-a C-k ~a C-j" (rimu-typed there)) :width 300)))
+      (let ((f (ops-session dir
+                            (format nil "g f b . t x t RET m g f s u b RET m Y C-a C-k ~a C-j" (rimu-typed there))
+                            :width 300)))
         (true (tuatara.frontend.fake:fake-frame-showing f "Symlink 2 files to:"))
         (true (tuatara.frontend.fake:fake-frame-showing f "Symlinked 2 files to"))
         (is string= (namestring (here dir "b.txt")) (sb-posix:readlink (namestring (here there "b.txt"))))
         (is string= (namestring (here dir "sub")) (sb-posix:readlink (namestring (here there "sub"))))
         (is string= "gamma" (alexandria:read-file-into-string (here there "sub/c.txt"))))
       ;; one link given a new name
-      (ops-session dir (format nil "g f a . t x t RET Y C-a C-k ~a C-j" (rimu-typed (namestring (here there "alias.txt")))))
+      (ops-session dir
+                   (format nil "g f a . t x t RET Y C-a C-k ~a C-j" (rimu-typed (namestring (here there "alias.txt")))))
       (is string= "alpha" (alexandria:read-file-into-string (here there "alias.txt")))
       ;; L: a second name of one file; writing to one is seen by the other
-      (let ((f (ops-session dir (format nil "g f a . t x t RET L C-a C-k ~a C-j" (rimu-typed (namestring (here there "second.txt"))))
+      (let ((f (ops-session dir
+                            (format nil
+                                    "g f a . t x t RET L C-a C-k ~a C-j"
+                                    (rimu-typed (namestring (here there "second.txt"))))
                             :width 300)))
         (true (tuatara.frontend.fake:fake-frame-showing f "Hard linked 1 file to")))
       (is = (sb-posix:stat-ino (sb-posix:stat (namestring (here dir "a.txt"))))
           (sb-posix:stat-ino (sb-posix:stat (namestring (here there "second.txt")))))
       ;; a directory has no second name: said, nothing made
-      (let ((f (ops-session dir (format nil "g f s u b RET L C-a C-k ~a C-j" (rimu-typed (namestring (here there "sub2")))) :width 300)))
+      (let ((f (ops-session dir
+                            (format nil "g f s u b RET L C-a C-k ~a C-j" (rimu-typed (namestring (here there "sub2"))))
+                            :width 300)))
         (true (tuatara.frontend.fake:fake-frame-showing f "not done: sub"))
         (false (tuatara.io:path-stamp (namestring (here there "sub2")) :follow nil)))
       ;; a name there: asked whether to replace, as a copy asks
@@ -707,13 +780,22 @@ it did."
           (tuatara.buffer:kill-buffer shown)))
       (false (probe-file (here there "b.txt")))
       ;; the name says how it is compressed; the contents say how it is extracted
-      (ops-session dir (format nil "g f a . t x t RET c C-a C-k ~a C-j" (rimu-typed (namestring (here there "one.tar.bz2")))))
+      (ops-session dir
+                   (format nil
+                           "g f a . t x t RET c C-a C-k ~a C-j"
+                           (rimu-typed (namestring (here there "one.tar.bz2")))))
       (is eq :bzip2 (nth-value 1 (tuatara.defaults::file-kind (namestring (here there "one.tar.bz2")))))
       (rename-file (here there "one.tar.bz2") (here there "renamed.tar"))
-      (ops-session there (format nil "g f r e n a m e d . t a r RET Z C-a C-k ~a C-j" (rimu-typed (namestring (here there "x/")))))
+      (ops-session there
+                   (format nil
+                           "g f r e n a m e d . t a r RET Z C-a C-k ~a C-j"
+                           (rimu-typed (namestring (here there "x/")))))
       (is string= "alpha" (alexandria:read-file-into-string (here there "x/a.txt")))
       ;; a name of no archive: said, nothing made
-      (let ((f (ops-session dir (format nil "g f a . t x t RET c C-a C-k ~a C-j" (rimu-typed (namestring (here there "a.zip"))))
+      (let ((f (ops-session dir
+                            (format nil
+                                    "g f a . t x t RET c C-a C-k ~a C-j"
+                                    (rimu-typed (namestring (here there "a.zip"))))
                             :width 300)))
         (true (tuatara.frontend.fake:fake-frame-showing f "Name the archive .tar, .tar.gz"))
         (false (probe-file (here there "a.zip"))))
@@ -723,7 +805,10 @@ it did."
       (uiop:run-program (list "tar" "-C" (namestring (here dir "evil/inner/")) "-cPf" (namestring (here dir "evil.tar"))
                               "../victim.txt"))
       (delete-file (here dir "evil/victim.txt"))
-      (ops-session dir (format nil "g f e v i l . t a r RET Z C-a C-k ~a C-j" (rimu-typed (namestring (here dir "evil/inner/")))))
+      (ops-session dir
+                   (format nil
+                           "g f e v i l . t a r RET Z C-a C-k ~a C-j"
+                           (rimu-typed (namestring (here dir "evil/inner/")))))
       (false (probe-file (here dir "evil/victim.txt"))))))
 
 (define-test (rimu-operations differences)
@@ -761,14 +846,18 @@ it did."
             (true (search "-new" text)))))
       ;; a file against a folder: with the file of its name there, none made up when there is none
       (ops-session dir "g f a . t x t RET m g f o t h e r RET m =")
-      (true (or (shown "*Diff: a.txt and other*" "could not be compared") (shown "*Diff: other and a.txt*" "could not be compared")))
+      (true (or (shown "*Diff: a.txt and other*" "could not be compared")
+                (shown "*Diff: other and a.txt*" "could not be compared")))
       ;; two comparisons of files of the same names: the second leaves the first be
       (dolist (folder '("p/" "q/" "r/" "s/"))
         (ensure-directories-exist (here dir folder))
         (alexandria:write-string-into-file folder (here dir (concatenate 'string folder "x.txt"))))
-      (ops-session (here dir "p/") (format nil "g f x . t x t RET = C-a C-k ~a C-j" (rimu-typed (namestring (here dir "q/x.txt")))))
-      (ops-session (here dir "r/") (format nil "g f x . t x t RET = C-a C-k ~a C-j" (rimu-typed (namestring (here dir "s/x.txt")))))
-      (let ((both (remove-if-not (lambda (b) (search "*Diff: x.txt and x.txt*" (tuatara.buffer:buffer-name b))) tuatara.buffer:*buffers*)))
+      (ops-session (here dir "p/")
+                   (format nil "g f x . t x t RET = C-a C-k ~a C-j" (rimu-typed (namestring (here dir "q/x.txt")))))
+      (ops-session (here dir "r/")
+                   (format nil "g f x . t x t RET = C-a C-k ~a C-j" (rimu-typed (namestring (here dir "s/x.txt")))))
+      (let ((both (remove-if-not (lambda (b) (search "*Diff: x.txt and x.txt*" (tuatara.buffer:buffer-name b)))
+                                 tuatara.buffer:*buffers*)))
         (is = 2 (length both))
         (mapc #'tuatara.buffer:kill-buffer both))
       ;; three marked: said, nothing compared
@@ -781,7 +870,8 @@ it did."
   (with-operations-tree (dir)
     (sb-posix:symlink (namestring (here dir "b.txt")) (namestring (here dir "sub/b.txt")))
     (dolist (key '("C" "Y"))
-      (let ((f (ops-session (here dir "sub/") (format nil "g f b . t x t RET ~a C-a C-k ~a C-j y RET" key (rimu-typed (namestring dir)))
+      (let ((f (ops-session (here dir "sub/")
+                            (format nil "g f b . t x t RET ~a C-a C-k ~a C-j y RET" key (rimu-typed (namestring dir)))
                             :width 300)))
         (true (tuatara.frontend.fake:fake-frame-showing f "the very same file") "~a" key))
       (is string= "beta" (alexandria:read-file-into-string (here dir "b.txt")))
@@ -797,7 +887,9 @@ it did."
     (with-open-file (out (here dir "zeros/zero") :direction :output :element-type '(unsigned-byte 8))
       (let ((block (make-array (* 1024 1024) :element-type '(unsigned-byte 8) :initial-element 0)))
         (loop repeat 24 do (write-sequence block out))))
-    (uiop:run-program (list "tar" "-C" (namestring (here dir "zeros/")) "-czf" (namestring (here dir "zeros.tar.gz")) "zero"))
+    (uiop:run-program (list "tar" "-C"
+                            (namestring (here dir "zeros/")) "-czf"
+                            (namestring (here dir "zeros.tar.gz")) "zero"))
     (delete-file (here dir "zeros/zero"))
     (let* ((free (tuatara.io:free-octets (namestring dir)))
            (tuatara.defaults::*archive-free-reserve* (- free (* 4 1024 1024)))
@@ -810,7 +902,8 @@ it did."
         (true (or (null size) (< size (* 24 1024 1024))))))
     ;; a broken archive: the folder made for it taken away again
     (alexandria:write-string-into-file "not an archive at all" (here dir "broken.tar"))
-    (false (ignore-errors (tuatara.defaults::extract-archive (namestring (here dir "broken.tar")) (namestring (here dir "never/")))))
+    (false (ignore-errors
+             (tuatara.defaults::extract-archive (namestring (here dir "broken.tar")) (namestring (here dir "never/")))))
     (false (tuatara.io:path-stamp (namestring (here dir "never/"))))
     ;; sub/ and sub/c.txt marked: c.txt packed once
     (tuatara.defaults::write-archive (list (namestring (here dir "sub/")) (namestring (here dir "sub/c.txt")))
@@ -1152,7 +1245,8 @@ alone (made by 7z a -psecret -mhe=on, and without -mhe=on).")
     (ensure-directories-exist (here dir "again/"))
     (alexandria:write-string-into-file "mine" (here dir "again/notes.txt"))
     (is equal '("notes.txt (in linked.cpio)")
-        (tuatara.defaults::rimu-work :extract (cons (namestring (here dir "linked.cpio")) (namestring (here dir "again/")))
+        (tuatara.defaults::rimu-work :extract (cons (namestring (here dir "linked.cpio"))
+                                                    (namestring (here dir "again/")))
                                      (list nil)))
     (is string= "mine" (alexandria:read-file-into-string (here dir "again/notes.txt")))
     (dolist (folder '("target/" "again/"))
@@ -1281,7 +1375,8 @@ alone (made by 7z a -psecret -mhe=on, and without -mhe=on).")
   (when (tuatara.defaults::seven-zip)
     (is eq :7zz (tuatara.defaults::archive-program (assoc :7z tuatara.defaults::*archive-kinds*))))
   ;; a technical list in the columns of the others
-  (is string= (format nil "-rw-r--r-- -/- ~12@a 2026-11-03 21:33:46 a.txt~%drwxr-xr-x -/- ~12@a 2026-11-03 21:33:46 sub~%" 6 0)
+  (is string=
+      (format nil "-rw-r--r-- -/- ~12@a 2026-11-03 21:33:46 a.txt~%drwxr-xr-x -/- ~12@a 2026-11-03 21:33:46 sub~%" 6 0)
       (tuatara.defaults::seven-zip-listing
        (format nil "Listing archive: x.7z~%~%--~%Path = x.7z~%Type = 7z~%~%----------~%Path = a.txt~%Size = 6~%~
                     Modified = 2026-11-03 21:33:46.1675118~%Attributes = A -rw-r--r--~%Encrypted = -~%~%~
@@ -1306,7 +1401,8 @@ alone (made by 7z a -psecret -mhe=on, and without -mhe=on).")
                       (out (here dir (format nil "out-~(~a~)-~a/" program name)))
                       (said (extract-failure (here dir name) out :password password)))
                  (true (search "*archive-free-reserve*" (or said "")) "~a ~a: ~a" program name said)
-                 (let ((size (ignore-errors (tuatara.io:stamp-size (tuatara.io:path-stamp (namestring (here out "zero")))))))
+                 (let ((size (ignore-errors
+                               (tuatara.io:stamp-size (tuatara.io:path-stamp (namestring (here out "zero")))))))
                    (true (or (null size) (< size (* 24 1024 1024))) "~a ~a" program name)))))))
 
 (define-test (rimu-operations keys-listed)
@@ -1399,8 +1495,16 @@ alone (made by 7z a -psecret -mhe=on, and without -mhe=on).")
         (true (< large (* 2.5 (max small 1/1000000))) "each name: ~,2e s of 2000, ~,2e s of 8000" small large)))
     ;; a name given twice, and one another file has, are still refused
     (alexandria:write-string-into-file "x" (merge-pathnames "kept.jpg" dir))
-    (true (search "given twice" (tuatara.defaults::rimu-names-refusal (tuatara.io:native dir) '("a" "b") '("c" "c") '(("a" . "c") ("b" . "c")))))
-    (true (search "there already" (tuatara.defaults::rimu-names-refusal (tuatara.io:native dir) '("a") '("kept.jpg") '(("a" . "kept.jpg")))))))
+    (true (search "given twice"
+                  (tuatara.defaults::rimu-names-refusal (tuatara.io:native dir)
+                                                        '("a" "b")
+                                                        '("c" "c")
+                                                        '(("a" . "c") ("b" . "c")))))
+    (true (search "there already"
+                  (tuatara.defaults::rimu-names-refusal (tuatara.io:native dir)
+                                                        '("a")
+                                                        '("kept.jpg")
+                                                        '(("a" . "kept.jpg")))))))
 
 (define-test (rimu-operations new-files)
   (with-operations-tree (dir)
@@ -1410,7 +1514,8 @@ alone (made by 7z a -psecret -mhe=on, and without -mhe=on).")
       (true (tuatara.frontend.fake:fake-frame-showing f "Made"))
       (is = 0 (length (alexandria:read-file-into-string (here dir "fresh.txt"))))
       (let ((list (tuatara.display:window-buffer (tuatara.command:editor-window editor))))
-        (is string= "fresh.txt" (tuatara.io:listed-name (tuatara.defaults::rimu-entry-at list (tuatara.buffer:buffer-point list))))))
+        (is string= "fresh.txt"
+            (tuatara.io:listed-name (tuatara.defaults::rimu-entry-at list (tuatara.buffer:buffer-point list))))))
     ;; a name there already, a file or a directory, is touched: its times now, its text kept
     (flet ((age (name)
              (let ((path (here dir name)))
@@ -1512,7 +1617,8 @@ alone (made by 7z a -psecret -mhe=on, and without -mhe=on).")
   (with-operations-tree (dir)
     (ops-session dir "g f b . t x t RET D y")
     ;; marks drawn from what was read: a thing put in the trash meanwhile shows only once it is read again
-    (let ((f (ops-session dir (list "g t" (lambda () (tuatara.io:trash-path (namestring (here dir "a.txt")))) "m u TAB TAB")
+    (let ((f (ops-session dir
+                          (list "g t" (lambda () (tuatara.io:trash-path (namestring (here dir "a.txt")))) "m u TAB TAB")
                           :width 200)))
       (true (tuatara.frontend.fake:fake-frame-showing f "1 thing in the trash"))
       (false (tuatara.frontend.fake:fake-frame-showing f "2 things in the trash")))
@@ -1556,13 +1662,19 @@ alone (made by 7z a -psecret -mhe=on, and without -mhe=on).")
   (with-operations-tree (dir)
     (rimu-forget)
     (let ((tuatara-user:*rimu-preview* nil))
-      (multiple-value-bind (f editor) (run-keys (format nil "C-x d C-a C-k ~a RET" (rimu-typed (namestring dir))) :width 300 :height 20)
+      (multiple-value-bind (f editor) (run-keys (format nil "C-x d C-a C-k ~a RET" (rimu-typed (namestring dir)))
+                                                :width 300
+                                                :height 20)
         (true (tuatara.frontend.fake:fake-frame-showing f "*/"))
         (is string= (namestring dir)
             (tuatara.buffer:buffer-local (tuatara.display:window-buffer (tuatara.command:editor-window editor))
                                          'tuatara.defaults::rimu-directory)))
       (rimu-forget)
-      (multiple-value-bind (f editor) (run-keys (format nil "C-x d C-a C-k ~a C-n RET RET" (rimu-typed (namestring dir))) :width 300 :height 20)
+      (multiple-value-bind (f editor) (run-keys (format nil
+                                                        "C-x d C-a C-k ~a C-n RET RET"
+                                                        (rimu-typed (namestring dir)))
+                                                :width 300
+                                                :height 20)
         (declare (ignore f))
         (is string= (namestring (here dir "sub/"))
             (tuatara.buffer:buffer-local (tuatara.display:window-buffer (tuatara.command:editor-window editor))
@@ -1574,7 +1686,8 @@ alone (made by 7z a -psecret -mhe=on, and without -mhe=on).")
     ;; C-x C-f on a directory, the line typed selected: RET lists it, as Emacs's dired does
     (rimu-forget)
     (let ((tuatara-user:*rimu-preview* nil))
-      (multiple-value-bind (f editor) (run-keys (format nil "C-x C-f C-a C-k ~a RET" (rimu-typed (namestring (here dir "sub/"))))
+      (multiple-value-bind (f editor) (run-keys (format nil "C-x C-f C-a C-k ~a RET"
+                                                        (rimu-typed (namestring (here dir "sub/"))))
                                                 :width 300 :height 20)
         (declare (ignore f))
         (is string= (namestring (here dir "sub/"))
@@ -1598,7 +1711,11 @@ alone (made by 7z a -psecret -mhe=on, and without -mhe=on).")
     (tuatara.defaults::note-chosen-path (namestring (here dir "zeta/notes.txt")))
     (let ((tuatara-user:*last-used-first* t))
       (rimu-forget)
-      (multiple-value-bind (f editor) (run-keys (format nil "C-x d C-a C-k ~a C-n RET RET" (rimu-typed (namestring dir))) :width 300 :height 20)
+      (multiple-value-bind (f editor) (run-keys (format nil
+                                                        "C-x d C-a C-k ~a C-n RET RET"
+                                                        (rimu-typed (namestring dir)))
+                                                :width 300
+                                                :height 20)
         (declare (ignore f))
         (is string= (namestring (here dir "zeta/"))
             (tuatara.buffer:buffer-local (tuatara.display:window-buffer (tuatara.command:editor-window editor))
@@ -1609,7 +1726,11 @@ alone (made by 7z a -psecret -mhe=on, and without -mhe=on).")
     (tuatara.defaults::note-chosen-path (namestring (here dir "zeta/notes.txt")))
     (let ((tuatara-user:*last-used-first* nil))
       (rimu-forget)
-      (multiple-value-bind (f editor) (run-keys (format nil "C-x d C-a C-k ~a C-n RET RET" (rimu-typed (namestring dir))) :width 300 :height 20)
+      (multiple-value-bind (f editor) (run-keys (format nil
+                                                        "C-x d C-a C-k ~a C-n RET RET"
+                                                        (rimu-typed (namestring dir)))
+                                                :width 300
+                                                :height 20)
         (declare (ignore f))
         (is string= (namestring (here dir "sub/"))
             (tuatara.buffer:buffer-local (tuatara.display:window-buffer (tuatara.command:editor-window editor))
@@ -1622,12 +1743,17 @@ alone (made by 7z a -psecret -mhe=on, and without -mhe=on).")
       (ensure-directories-exist outside)
       (alexandria:write-string-into-file "keep" (merge-pathnames "precious.txt" outside))
       (flet ((outside-whole () (and (probe-file (merge-pathnames "precious.txt" outside))
-                                    (equal '("precious.txt") (mapcar #'first (tuatara.io:directory-entries (namestring outside))))))
+                                    (equal '("precious.txt")
+                                           (mapcar #'first (tuatara.io:directory-entries (namestring outside))))))
              (fill-tree ()
                (ensure-directories-exist (merge-pathnames "sub/deeper/" tree))
                (dotimes (i 20)
-                 (alexandria:write-string-into-file "x" (merge-pathnames (format nil "sub/f~d" i) tree) :if-exists :supersede)
-                 (alexandria:write-string-into-file "y" (merge-pathnames (format nil "sub/deeper/g~d" i) tree) :if-exists :supersede))))
+                 (alexandria:write-string-into-file "x"
+                                                    (merge-pathnames (format nil "sub/f~d" i) tree)
+                                                    :if-exists :supersede)
+                 (alexandria:write-string-into-file "y"
+                                                    (merge-pathnames (format nil "sub/deeper/g~d" i) tree)
+                                                    :if-exists :supersede))))
         ;; a directory swapped for a link to another between being examined and opened: not opened through it
         (sb-posix:symlink (namestring outside) (namestring (merge-pathnames "swapped" dir)))
         (tuatara.io::call-with-parent (namestring (merge-pathnames "swapped" dir))
@@ -1672,13 +1798,15 @@ alone (made by 7z a -psecret -mhe=on, and without -mhe=on).")
       (ensure-directories-exist deep)
       (ensure-directories-exist shallow)
       (alexandria:write-string-into-file "x" (merge-pathnames "file" deep))
-      (fail (tuatara.io:copy-path-tree (namestring (merge-pathnames "deep" dir)) (namestring (merge-pathnames "copy" dir)))
+      (fail (tuatara.io:copy-path-tree (namestring (merge-pathnames "deep" dir))
+                                       (namestring (merge-pathnames "copy" dir)))
           'tuatara.io:file-system-error)
       (is equal '("deep" "shallow") (sort (mapcar #'first (tuatara.io:directory-entries (namestring dir))) #'string<))
       (fail (tuatara.io:delete-tree (namestring (merge-pathnames "deep" dir))) 'tuatara.io:file-system-error)
       (true (probe-file (merge-pathnames "file" deep)))
       ;; within the depth, both are done
-      (true (tuatara.io:copy-path-tree (namestring (merge-pathnames "shallow" dir)) (namestring (merge-pathnames "copy" dir))))
+      (true (tuatara.io:copy-path-tree (namestring (merge-pathnames "shallow" dir))
+                                       (namestring (merge-pathnames "copy" dir))))
       (true (tuatara.io:delete-tree (namestring (merge-pathnames "copy" dir))))
       (let ((tuatara.io::*folder-tree-depth-limit* 20))
         (true (tuatara.io:delete-tree (namestring (merge-pathnames "deep" dir))))))))
@@ -1694,7 +1822,10 @@ alone (made by 7z a -psecret -mhe=on, and without -mhe=on).")
       (true (tuatara.frontend.fake:fake-frame-showing f "3 things in the trash")))
     ;; sub, then b, marked (the last to go first), put back after one question
     (let ((f (ops-session dir "g t m m R y" :width 200)))
-      (true (tuatara.frontend.fake:fake-frame-showing f (format nil "Put back the 2 things to ~a?" (tuatara.command::abbreviated-path (namestring dir)))))
+      (true (tuatara.frontend.fake:fake-frame-showing f
+                                                      (format nil
+                                                              "Put back the 2 things to ~a?"
+                                                              (tuatara.command::abbreviated-path (namestring dir)))))
       (true (probe-file (here dir "b.txt")))
       (true (probe-file (here dir "sub/c.txt")))
       (true (tuatara.frontend.fake:fake-frame-showing f "1 thing in the trash")))
@@ -1750,7 +1881,8 @@ alone (made by 7z a -psecret -mhe=on, and without -mhe=on).")
     (multiple-value-bind (f editor) (ops-session dir "C-x / s b RET g f b . t x t RET")
       (declare (ignore f))
       (let ((list (session-buffer editor)))
-        (is string= "b.txt" (tuatara.io:listed-name (tuatara.defaults::rimu-entry-at list (tuatara.buffer:buffer-point list))))
+        (is string= "b.txt"
+            (tuatara.io:listed-name (tuatara.defaults::rimu-entry-at list (tuatara.buffer:buffer-point list))))
         (is equal (list (tuatara.io:native (here dir "b.txt"))) (tuatara.defaults::rimu-chosen-paths list))))
     ;; read again, or laid out anew, the list is narrowed again
     (dolist (keys '("g r" "I" "s" "H"))
@@ -1866,7 +1998,9 @@ alone (made by 7z a -psecret -mhe=on, and without -mhe=on).")
       (declare (ignore f))
       (let ((buffer (session-buffer editor)))
         (true (find-if (lambda (l) (and (uiop:string-prefix-p "M " l) (search "a.txt" l))) (rimu-lines editor)))
-        (multiple-value-bind (masters chosen) (tuatara.defaults::rimu-paths-marked-apart #\M :files-only t :buffer buffer)
+        (multiple-value-bind (masters chosen) (tuatara.defaults::rimu-paths-marked-apart #\M
+                                                                                         :files-only t
+                                                                                         :buffer buffer)
           (is equal (list (tuatara.io:native (here dir "a.txt"))) masters)
           (is equal (list (tuatara.io:native (here dir "b.txt"))) chosen)))))
   (true (tuatara.defaults::fraction-p 1))

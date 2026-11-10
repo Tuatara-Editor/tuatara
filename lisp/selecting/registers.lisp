@@ -251,12 +251,13 @@ following), so that the register still leads there."
 (define-major-mode registers-mode marked-list-mode
   "The list of registers (\\[register-list]): a line for each, with the
 character that names it, what it keeps and a look at that.
-\\<registers-mode>\\[list-visit] or \\`RET' goes to the place on the line (a message for the
-others, \\[list-visit-other] in another window), \\[list-mark-entry] marks a register (>),
-\\[list-mark-for-deletion] marks it for deletion (D), \\[list-unmark-entry] and
-\\[list-unmark-all] unmark, \\[list-delete-marked] empties the marked registers (the one on the
-line when none is) after asking, \\[list-execute] those marked for deletion;
-\\[revert-buffer] lists them again; \\[quit-window] or \\`h' returns."
+\\<registers-mode>\\[list-visit] or \\`RET' goes to the place on the line (a
+message for the others, \\[list-visit-other] in another window).
+\\[list-mark-entry] marks a register (>), \\[list-mark-for-deletion] marks it
+for deletion (D), \\[list-unmark-entry] and \\[list-unmark-all] unmark.
+\\[list-delete-marked] empties the marked registers (the one on the line when
+none is) after asking, \\[list-execute] those marked for deletion.
+\\[revert-buffer] lists them again, and \\[quit-window] or \\`h' returns."
   :lighter "Registers" :interactive nil)
 
 (defparameter *registers-title-lines* 2

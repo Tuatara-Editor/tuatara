@@ -148,7 +148,8 @@ region is filled (*VERBATIM-CARRIED*)."
                        (let ((verbatim (cdr kept)))
                          (loop for p = from then (tuatara.buffer:buffer-forward-char buffer (tuatara.buffer:buffer-line-end buffer p))
                                while (< p line)
-                               do (setf verbatim (mode-verbatim-after mode (tuatara.buffer:buffer-line-text buffer p) verbatim)))
+                               do (setf verbatim
+                                        (mode-verbatim-after mode (tuatara.buffer:buffer-line-text buffer p) verbatim)))
                          verbatim)
                        (mode-verbatim-line-p mode buffer line))))
     (when kept
@@ -217,11 +218,11 @@ paragraph of its own, as Org fills one."
 
 (defun paragraph-lines (buffer line low high separator-p &optional item-start-p)
   "Two values: the starts of the first and the last line of the paragraph of
-BUFFER about LINE, a line start; the lines above it back to LOW and below it
-up to HIGH, up to a line SEPARATOR-P, a function of a line's start, is true
-of, and, with ITEM-START-P given, up to a line it is true of, which begins a
-paragraph of its own. An error when the paragraph is larger than
-*FILL-PARAGRAPH-LIMIT*."
+BUFFER about LINE, a line start. The lines are looked at above it back to LOW
+and below it up to HIGH. The paragraph reaches up to a line SEPARATOR-P, a
+function of a line's start, is true of. With ITEM-START-P given, it also
+reaches up to a line ITEM-START-P is true of, which begins a paragraph of its
+own. An error when the paragraph is larger than *FILL-PARAGRAPH-LIMIT*."
   (let ((from line) (to line))
     (flet ((too-large ()
              (refuse "The paragraph is larger than ~d KB, *fill-paragraph-limit*: it is not filled"
@@ -288,7 +289,8 @@ mark. NIL when POSITION is in no string, or the major mode fills none
     (multiple-value-bind (start end) (string-at buffer position)
       (when start
         (let ((text-start (tuatara.buffer:buffer-forward-char buffer start))
-              (text-end (max (tuatara.buffer:buffer-forward-char buffer start) (tuatara.buffer:buffer-forward-char buffer end -1)))
+              (text-end (max (tuatara.buffer:buffer-forward-char buffer start)
+                             (tuatara.buffer:buffer-forward-char buffer end -1)))
               (first-end (tuatara.buffer:buffer-line-end buffer start)))
           (if (<= position first-end)
               (values text-start (min text-end (tuatara.buffer:buffer-forward-char buffer first-end)))
@@ -327,25 +329,40 @@ or more, or the line's end, follow it."
                       (let ((next (position-if-not (lambda (c) (member c '(#\Space #\Tab))) line :start to)))
                         (or (null next) (>= (- next to) 2))))))
 
+(defparameter *item-mark-re* "(?:[-+•‣◦⁃·–*]|[0-9]+[.)]|[A-Za-z]\\))[ \t]+$"
+  "A list item's mark at the end of the text before its words: -, +, a bullet
+sign, 1. or 1), a), and the blanks after it.")
+
+(defparameter *item-head-re* "^(.*?)((?:[-+•‣◦⁃·–*]|[0-9]+[.)]|[A-Za-z]\\))[ \t]+(?:\\[[ xX-]\\][ \t]+)?)$"
+  "The text before a list item's words: what comes before its mark (an
+indentation, a comment's marker), then the mark, its blanks and any check box.")
+
 (defun fill-lines (lines column characters &key double-space)
   "LINES of one paragraph filled to COLUMN: the words re-flowed, each line
-starting with the first line's prefix (made of CHARACTERS) or the second
-line's after it; a paragraph of one line whose prefix is a list's mark (-,
-1., a), after a comment's marker too) continues under its words. With
+starting with the first line's prefix (made of CHARACTERS) or the second line's
+after it. A paragraph whose first line begins with a list's mark (-, 1., a),
+after a comment's marker too), and a check box after it ([ ], [X], [-]),
+continues under its words. This holds whatever its other lines began with. With
 DOUBLE-SPACE, a word ending a sentence that had two blanks or a line end after
 it is followed by two spaces. A list of strings."
-  (let* ((first (let* ((prefix (fill-prefix-of (first lines) characters))
-                        ;; a number or letter marking an item belongs to the prefix as a - does
-                        (number (nth-value 1 (cl-ppcre:scan "^(?:[0-9]+[.)]|[A-Za-z]\\))[ \t]+" (first lines) :start (length prefix)))))
-                   (if number (subseq (first lines) 0 number) prefix)))
-         (rest (cond ((second lines) (fill-prefix-of (second lines) characters))
-                     (t (multiple-value-bind (match groups)
-                            (cl-ppcre:scan-to-strings "^(.*?)((?:[-+•‣◦⁃·–*]|[0-9]+[.)]|[A-Za-z]\\))[ \t]+)$" first)
-                          (if match
-                              ;; an item's lines go on under its words: its mark as spaces, a comment's marker kept
-                              (concatenate 'string (aref groups 0)
-                                           (make-string (- (text-columns first) (text-columns (aref groups 0))) :initial-element #\Space))
-                              first)))))
+  (let* ((first (let* ((line (first lines))
+                       (prefix (fill-prefix-of line characters))
+                       ;; a number or letter marking an item belongs to the prefix as a - does
+                       (head (or (nth-value 1 (cl-ppcre:scan "^(?:[0-9]+[.)]|[A-Za-z]\\))[ \t]+" line :start (length prefix)))
+                                 (length prefix)))
+                       ;; and so does a check box after the mark
+                       (box (and (cl-ppcre:scan *item-mark-re* (subseq line 0 head))
+                                 (nth-value 1 (cl-ppcre:scan "^\\[[ xX-]\\][ \t]+" line :start head)))))
+                  (subseq line 0 (or box head))))
+         (item (multiple-value-bind (match groups) (cl-ppcre:scan-to-strings *item-head-re* first)
+                 (and match
+                      ;; an item's lines go on under its words: its mark as spaces, a comment's marker kept
+                      (concatenate 'string (aref groups 0)
+                                   (make-string (- (text-columns first) (text-columns (aref groups 0)))
+                                                :initial-element #\Space)))))
+         (rest (cond (item)
+                     ((second lines) (fill-prefix-of (second lines) characters))
+                     (t first)))
          (words (loop for line in lines
                       for i from 0
                       append (line-words line (length (if (zerop i) first (fill-prefix-of line characters))))))
@@ -384,11 +401,11 @@ between its marks (SUBSTITUTE-COMMAND-KEYS) is one word, spaces and all."
     (nreverse words)))
 
 (defun write-filled (stream head text &key (indent (length head)) (column *help-column*))
-  "Write HEAD, then the words of TEXT filled after it into lines no longer
-than COLUMN (TUATARA.DISPLAY:FILL-WORDS), the lines after the first set in by
-INDENT, to STREAM; the keys TEXT names written in and marked to show as keys
-\(SUBSTITUTE-COMMAND-KEYS), each word as wide as it is shown; a word longer
-than a line has a line of its own."
+  "Write HEAD, then the words of TEXT filled after it into lines no longer than
+COLUMN (TUATARA.DISPLAY:FILL-WORDS), the lines after the first set in by
+INDENT, to STREAM. The keys TEXT names are written in and marked to show as
+keys \(SUBSTITUTE-COMMAND-KEYS), each word as wide as it is shown. A word
+longer than a line has a line of its own."
   (let* ((gap (and (plusp (length head)) (char/= (char head (1- (length head))) #\Space)))
          (lines (tuatara.display:fill-words (marked-words (substitute-command-keys text :marks t)) column
                                             :start (+ (length head) (if gap 1 0)) :indent indent
@@ -400,13 +417,14 @@ than a line has a line of its own."
     (terpri stream)))
 
 (defun write-documentation (stream doc &key (column *help-column*))
-  "Write DOC, a docstring, to STREAM filled to COLUMN (WRITE-FILLED), its
-parts as TUATARA.DISPLAY:DOCSTRING-PARAGRAPHS finds them, as the completion
-popup shows them too: the lines of a paragraph joined and filled; a line
+  "Write DOC, a docstring, to STREAM filled to COLUMN (WRITE-FILLED), its parts
+as TUATARA.DISPLAY:DOCSTRING-PARAGRAPHS finds them, as the completion popup
+shows them too. The lines of a paragraph are joined and filled. A line
 beginning at its start with - or * or a number and a full stop begins a list
-item, the lines after it its words until a blank line or the next item, filled
-under its first word; any other line set in (a table, an example; under an
-item, set in further than its words) and the blank lines kept as written."
+item. The lines after it are its words until a blank line or the next item,
+filled under its first word. Any other line is set in (a table, an example;
+under an item, set in further than its words), and the blank lines are kept as
+written."
   (let ((keymap ""))
     (flet ((keep-keymap (line)
              ;; a \\<KEYMAP> names the keymap for the keys after it, in the later parts too
@@ -425,9 +443,10 @@ item, set in further than its words) and the blank lines kept as written."
 (defun fill-paragraph-at (buffer position &key (from 0) to)
   "Fill the paragraph of BUFFER at POSITION (STRING-PARAGRAPH-BOUNDS in a
 string, else PARAGRAPH-BOUNDS) to its fill column, as one change, only the
-part of it from FROM to TO when they cut it; point stays by the same word. The column is counted from the window's margin, so that in
-Org's indented view, which shows text under a headline further in, the lines
-end at the fill column as shown. True when there was a paragraph."
+part of it from FROM to TO when they cut it; point stays by the same word. The
+column is counted from the window's margin, so that in Org's indented view,
+which shows text under a headline further in, the lines end at the fill column
+as shown. True when there was a paragraph."
   (multiple-value-bind (start end) (multiple-value-bind (start end) (string-paragraph-bounds buffer position)
                                      (if start (values start end) (paragraph-bounds buffer position)))
     (when start
@@ -444,9 +463,11 @@ end at the fill column as shown. True when there was a paragraph."
                            (if marker (concatenate 'string *fill-prefix-characters* marker) *fill-prefix-characters*)))
              (filled (with-output-to-string (out)
                        (loop for (line . more) on (let ((*tab-columns* (buffer-tab-width buffer)))
-                                                    ;; counted from the window's margin: less what the view shows before the lines
+                                                    ;; counted from the window's margin: less what the view shows
+                                                    ;; before the lines
                                                     (fill-lines lines (max 1 (- (buffer-fill-column buffer) (tuatara.display:line-prefix-columns buffer start)))
-                                                                characters :double-space (sentence-end-double-space-p buffer)))
+                                                                characters
+                                                                :double-space (sentence-end-double-space-p buffer)))
                              do (write-string line out)
                                 (when (or more ends-with-newline) (write-string newline out)))))
              (point (point))

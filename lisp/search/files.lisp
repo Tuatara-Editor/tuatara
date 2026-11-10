@@ -24,7 +24,9 @@ more in memory, (* 4 1024 1024 1024) for 4 GB.")
   "How many characters search-in-files and search-in-formatted wait for before searching.")
 
 (defvar *search-files-lines-limit* 2000
-  "The most matching lines search-in-files and search-in-formatted list.")
+  "The most matching lines search-in-files and search-in-formatted list, 2000
+as standard. Raise it to see more of a pattern that matches widely, at the
+cost of time and memory to list them; lower it for a quicker list.")
 
 (defstruct (file-corpus (:constructor make-file-corpus (rope paths starts root)) (:copier nil))
   "The text of files read for searching: ROPE holds them one after another,
@@ -43,18 +45,19 @@ offset in ROPE where each begins, in the same order."
       (documentation 'file-corpus-root 'function) "The directory the paths of a FILE-CORPUS are from.")
 
 (defun read-text-file (path &key most)
-  "The octets of the file at PATH, or NIL when it cannot be read, is no
-regular file, looks binary (a zero octet among its first 64 KB, as pictures,
-video and programs have: TUATARA.IO:BINARY-HEAD-P, as opening a file tells
-it), is of a kind its first octets tell (TUATARA.IO:OCTETS-KIND: a PDF, a
-picture, an archive, a disk image; a drawing written as text, SVG, is text, and so is UTF-8 with a byte order mark),
-or is encrypted, as its name or its header says (ENCRYPTED-FILE-P), so that
-only text is read for searching and the text of an encrypted file never is.
+  "The octets of the file at PATH, or NIL when it cannot be read or is no
+regular file. NIL too when it looks binary (a zero octet among its first 64 KB,
+as pictures, video and programs have: TUATARA.IO:BINARY-HEAD-P, as opening a
+file tells it). NIL also when it is of a kind its first octets tell
+\(TUATARA.IO:OCTETS-KIND: a PDF, a picture, an archive, a disk image; a drawing
+written as text, SVG, is text, and so is UTF-8 with a byte order mark). NIL as
+well when it is encrypted, as its name or its header says (ENCRYPTED-FILE-P).
+So only text is read for searching, and the text of an encrypted file never is.
 With MOST, a file larger than MOST octets is not read beyond its first 64 KB,
-its size known from the system: NIL, with :TOO-LARGE as a second value, so
-that a gigantic file never passes through memory for a search that would not
-keep it. Its access time is left alone where the system allows, and a named
-pipe cannot hold it up."
+its size known from the system: NIL, with :TOO-LARGE as a second value, so that
+a gigantic file never passes through memory for a search that would not keep
+it. Its access time is left alone where the system allows, and a named pipe
+cannot hold it up."
   (unless (encrypted-name-p (tuatara.io:native-file-name path))
     (ignoring-errors-reported ("reading ~a to search" path)
       (handler-case
@@ -115,7 +118,8 @@ same input is searched in, from any thread."
                     ;; a word that is no regular expression finds nothing, so neither do they all
                     (let ((matchers (mapcar (lambda (word) (search-word-matcher word crlf))
                                             (stable-sort (tuatara.text:split-words input " ")
-                                                         ;; the longest word, likely the rarest, finds the lines to look at
+                                                         ;; the longest word, likely the rarest, finds the lines to
+                                                         ;; look at
                                                          #'> :key #'length))))
                       (and (notany #'null matchers) matchers))
                     (list (make-pattern-matcher input :regex nil))))))))
@@ -143,31 +147,31 @@ file tells it."
   "The least octets of text each thread searches at once for the lines of a
 search (CORPUS-LINES); a text smaller than two of them is searched on one.")
 
-(defun corpus-lines (corpus input &key (regex t) stop (most *search-files-lines-limit*) (start 0) end (parallel t) carry)
+(defun corpus-lines
+    (corpus input &key (regex t) stop (most *search-files-lines-limit*) (start 0) end (parallel t) carry)
   "The lines of CORPUS matching INPUT: with REGEX, its words (separated by
 spaces) each a regular expression, all found on the line, in any order; else
-the whole of it as literal text. A line is matched by the longest word when
-any part of a match of it lies on the line, from the line holding the
-match's first octet through the line holding its last, a match never running
-from one file into the next; each such line is given once, when the other
-words are found on it too. A list of (INDEX LINE OFFSET TEXT), the file's
-index, the line's number in it (from 1), the offset in the line where the
-longest word's first match on it begins (0 for a match coming from the line
-before), and the line, in file order, at most MOST
+the whole of it as literal text. A line is matched by the longest word when any
+part of a match of it lies on the line, from the line holding the match's first
+octet through the line holding its last, a match never running from one file
+into the next; each such line is given once, when the other words are found on
+it too. A list of (INDEX LINE OFFSET TEXT) in file order, at most MOST
 \(*SEARCH-FILES-LINES-LIMIT*), between the octets START and END of its text
-\(all of it by default). A file whose lines end with a carriage return and a
-newline is searched as such (CORPUS-CRLF): $ matches before the carriage
-return, and the line given leaves it off. The text is cut at line starts
-into chunks, at most four for each core, each searched on its own and their
-lines joined in order, a chunk into which a match of the one before runs
-searched again from where that match ends, so that a search of words found on
-many lines takes no longer than one of a rare word and finds what one scan
-finds; with PARALLEL false, on this thread alone. The text past END is seen by
-a match running on into it, and a third value is where the last such match
-ends; CARRY, when given, is where one of the text before START ended, the
-lines from START through it matched and the search going on from there. NIL at
-once when STOP, asked every few milliseconds on each thread, answers true, and
-a second value true then."
+\(all of it by default). INDEX is the file's index and LINE the line's number
+in it (from 1). OFFSET is the offset in the line where the longest word's first
+match on it begins (0 for a match coming from the line before). TEXT is the
+line. A file whose lines end with a carriage return and a newline is searched
+as such (CORPUS-CRLF): $ matches before the carriage return, and the line given
+leaves it off. The text is cut at line starts into chunks, at most four for
+each core. Each is searched on its own and their lines joined in order. A chunk
+into which a match of the one before runs is searched again from where that
+match ends. So a search of words found on many lines takes no longer than one
+of a rare word and finds what one scan finds. With PARALLEL false, the search
+runs on this thread alone. The text past END is seen by a match running on into
+it, and a third value is where the last such match ends; CARRY, when given, is
+where one of the text before START ended, the lines from START through it
+matched and the search going on from there. NIL at once when STOP, asked every
+few milliseconds on each thread, answers true, and a second value true then."
   (let* ((rope (file-corpus-rope corpus))
          (crlf (corpus-crlf corpus))
          (starts (file-corpus-starts corpus))
@@ -280,31 +284,32 @@ a second value true then."
 
 (defparameter *search-disk-piece* (* 4 1024 1024)
   "How many octets of a file too large to be kept in memory for a search are
-searched at a time (LINES-ON-DISK); as many again are read after it, or as
-far as a match may reach (TUATARA.SYNTAX:*REGEX-LONGEST-MATCH*) when that is
-more, so that a match running on past a piece's end is seen as one scan of
-the whole file sees it.")
+searched at a time (LINES-ON-DISK). As many again are read after it, or as far
+as a match may reach (TUATARA.SYNTAX:*REGEX-LONGEST-MATCH*) when that is more.
+That way a match running on past a piece's end is seen as one scan of the whole
+file sees it.")
 
 (defparameter *search-disk-longest-line* (* 64 1024 1024)
   "The longest line of a file searched from disk that is searched whole, and
 how much further than the octets read ahead a match is followed
-\(LINES-ON-DISK): what is read at a time grows by up to this to hold such a
-line or such a match; a longer line is searched in pieces of this size, a
-match across their edge missed.")
+\(LINES-ON-DISK). What is read at a time grows by up to this to hold such a
+line or such a match. A longer line is searched in pieces of this size, and a
+match across their edge is missed.")
 
-(defun lines-on-disk (path relative root input &key (regex t) cancel (most *search-files-lines-limit*) (inside "") (parallel t))
+(defun lines-on-disk
+    (path relative root input &key (regex t) cancel (most *search-files-lines-limit*) (inside "") (parallel t))
   "Completion candidates for the lines of the file at PATH matching INPUT (a
 regular expression's words with REGEX, else literal text: CORPUS-LINES), as
 LINE-CANDIDATES makes them (RELATIVE its path from ROOT, a directory's path
-INSIDE left off), the file read from disk and searched a piece of
+INSIDE left off). The file is read from disk and searched a piece of
 *SEARCH-DISK-PIECE* octets at a time, each ending at a line end and let go of
 before the next, so that a gigantic file is never held in memory whole. The
-octets after a piece are read with it, a match running on into them seen
-whole and the next piece searched on from where it ends, so that the lines
-are those one scan of the whole file finds (what is read grows for a longer
-line or match, up to *SEARCH-DISK-LONGEST-LINE* more). Nothing for a file that is
-no text (READ-TEXT-FILE). At most MOST; CANCEL, a cons, stops it when its
-car turns true."
+octets after a piece are read with it, a match running on into them seen whole
+and the next piece searched on from where it ends, so that the lines are those
+one scan of the whole file finds (what is read grows for a longer line or
+match, up to *SEARCH-DISK-LONGEST-LINE* more). Nothing for a file that is no
+text (READ-TEXT-FILE). At most MOST; CANCEL, a cons, stops it when its car
+turns true."
   (let ((found '()) (count 0))
     (when (and (uiop:string-prefix-p inside relative)
                (multiple-value-bind (octets why) (read-text-file path :most 0)
@@ -318,7 +323,8 @@ car turns true."
                       (ahead (max *search-disk-piece* tuatara.syntax:*regex-longest-match*))
                       (limit (+ *search-disk-longest-line* ahead))
                       ;; no larger than the file, so that a small one costs little
-                      (buffer (make-array (max 1 (min (+ *search-disk-piece* ahead) size)) :element-type '(unsigned-byte 8)))
+                      (buffer (make-array (max 1 (min (+ *search-disk-piece* ahead) size))
+                                          :element-type '(unsigned-byte 8)))
                       (offset 0) (lines-before 0) (carry nil))
                  (loop
                    (when (or (car cancel) (>= count most)) (return))
@@ -406,15 +412,15 @@ the corpus's root, only those of files in it, their paths from it."
 holds: each is searched as soon as it is read.")
 
 (defstruct (corpus-gatherer (:constructor make-corpus-gatherer (limit piece give-piece give-large)) (:copier nil))
-  "How the text of files is taken in for searching, in pieces, by the search
-of many files and by the directories kept read alike: LIMIT, the most octets
-kept in all; PIECE, about how many each piece holds; GIVE-PIECE, a function
+  "How the text of files is taken in for searching, in pieces, by the search of
+many files and by the directories kept read alike. LIMIT is the most octets
+kept in all. PIECE is about how many each piece holds. GIVE-PIECE is a function
 given each piece as it is full, its TEXTS, each (RELATIVE OCTETS STAMP), in
-order, and its SIZE, their octets with a newline after each; GIVE-LARGE, one
+order, and its SIZE, their octets with a newline after each. GIVE-LARGE is one
 given the RELATIVE and PATH of each text file too large for what is left of
-LIMIT, to be searched from disk (LINES-ON-DISK). TOTAL, the octets kept so
-far; TEXTS and SIZE, the piece being filled."
-  limit piece give-piece give-large (total 0) (texts '()) (size 0))
+LIMIT, to be searched from disk (LINES-ON-DISK). TOTAL is the octets kept so
+far. TEXTS and SIZE are the piece being filled." limit piece give-piece
+give-large (total 0) (texts '()) (size 0))
 
 (setf (documentation 'make-corpus-gatherer 'function) "Return a CORPUS-GATHERER."
       (documentation 'corpus-gatherer-p 'function) "True when OBJECT is a CORPUS-GATHERER.")
@@ -422,7 +428,9 @@ far; TEXTS and SIZE, the piece being filled."
 (defun gather-piece (gatherer)
   "Give the piece GATHERER is filling, when it holds any text, and begin another."
   (when (corpus-gatherer-texts gatherer)
-    (funcall (corpus-gatherer-give-piece gatherer) (nreverse (corpus-gatherer-texts gatherer)) (corpus-gatherer-size gatherer))
+    (funcall (corpus-gatherer-give-piece gatherer)
+             (nreverse (corpus-gatherer-texts gatherer))
+             (corpus-gatherer-size gatherer))
     (setf (corpus-gatherer-texts gatherer) '()
           (corpus-gatherer-size gatherer) 0)))
 
@@ -564,7 +572,8 @@ last, and WORDS, what was searched for."
 (setf (documentation 'found-lines-p 'function) "True when OBJECT is a FOUND-LINES."
       (documentation 'found-lines-lines 'function) "The lines a search of files found, each (PATH LINE OFFSET)."
       (documentation 'found-lines-index 'function) "The line of a FOUND-LINES gone to last."
-      (documentation 'found-lines-words 'function) "What the search of files that found a FOUND-LINES' lines searched for.")
+      (documentation 'found-lines-words 'function)
+      "What the search of files that found a FOUND-LINES' lines searched for.")
 
 (defmethod places-name ((places found-lines))
   "The search for what was searched for, shortened to a few words: the search for kiwi."
@@ -619,17 +628,17 @@ without all it may find, or NIL when they are all: the search stopped at MOST
 background meanwhile (GATHER-FILE-TEXTS), or kept read already
 \(*INDEXED-DIRECTORIES*): the lines that have them listed as they are typed,
 and as more files are read; visit the chosen line's file there. Each input is
-searched on a thread of its own, the lines coming in as they are found, a new
-key stopping it and starting the next, so that typing never waits; what is
-typed is a regular expression's words, \\<pattern>\\[search-toggle-regex] switching to
-literal text and back, PROMPT shown after the kind (Regex search files in
-~/x/: , Literal search files in ~/x/: , PATTERN-KIND-WORDS); in a
-directory under one kept read, only its files' text is searched, unless the
-limits cut that one's text short, when the directory is read from disk. Choosing,
-or leaving the question, stops the reading and the search. LEFT-OUT-WORDS
-says, with how many files were read, that the limit left some out. With
-PREVIEW, the file of the line selected is shown meanwhile, at that line,
-opened safely (CALL-WITH-WINDOW-PREVIEW)."
+searched on a thread of its own, the lines coming in as they are found. A new
+key stops it and starts the next, so that typing never waits. What is typed is
+a regular expression's words, \\<pattern>\\[search-toggle-regex] switching to
+literal text and back, and PROMPT is shown after the kind (Regex search files
+in ~/x/: , Literal search files in ~/x/: , PATTERN-KIND-WORDS). In a directory
+under one kept read, only its files' text is searched, unless the limits cut
+that one's text short, when the directory is read from disk. Choosing, or
+leaving the question, stops the reading and the search. LEFT-OUT-WORDS says,
+with how many files were read, that the limit left some out. With PREVIEW, the
+file of the line selected is shown meanwhile, at that line, opened safely
+\(CALL-WITH-WINDOW-PREVIEW)."
   (declare (notinline directory-index-left-out directory-index-corpora directory-index-large directory-index-root))
   (multiple-value-bind (index inside) (index-for root)
     ;; a directory under one kept read whose text was cut short by the limits may
@@ -774,7 +783,9 @@ opened safely (CALL-WITH-WINDOW-PREVIEW)."
                (when (consp chosen)
                  ;; the lines found, for M-g n and M-g p to go on from the one chosen
                  (let ((lines (map 'vector #'candidate-value found)))
-                   (use-places (make-found-lines lines (or (position chosen lines :test #'eq) 0) (or (first searched-input) ""))))
+                   (use-places (make-found-lines lines
+                                                 (or (position chosen lines :test #'eq) 0)
+                                                 (or (first searched-input) ""))))
                  (destructuring-bind (path line offset &optional text) chosen
                    (declare (ignore text))
                    (show-file-line path line :offset offset))))
@@ -798,20 +809,20 @@ there is none."
   "Find text in the files of the project the current buffer's file is in (see
 *PROJECT-ROOT-MARKERS*), or under its directory when it is in none, or under
 the directory it lists (\\[rimu]), or *DEFAULT-DIRECTORY* for another buffer
-with no file; with a prefix argument, in a directory asked for. As you
-type, every line with all the words typed (each a regular expression, in any
-order, ignoring case unless it has a capital) is listed as path:line: text,
-after three characters, the files read in the background as you type and
-searched as they are read; \\<pattern>\\[search-toggle-regex] switches to literal text, what
-is typed found as it stands, spaces and all, and back.
-\\<minibuffer>\\[minibuffer-finish] visits the file at that line (the first, once all are
-read, unless you moved to one), and then \\[next-place] and \\[previous-place] go to the
-lines listed after it and before it; with *preview-file-search*, the file of the line
-selected is shown meanwhile, at that line, opened safely. \\<search-files>\\[search-files-list] lists
-the lines found in a buffer instead, to change them and write them back into
-their files. Hidden files and directories, backups, binary files and what
-.gitignore files exclude are left out; the access times of those read are not
-changed."
+with no file; with a prefix argument, in a directory asked for. As you type,
+every line with all the words typed (each a regular expression, in any order,
+ignoring case unless it has a capital) is listed as path:line: text, after
+three characters. The files are read in the background as you type and searched
+as they are read. \\<pattern>\\[search-toggle-regex] switches to literal text,
+what is typed found as it stands, spaces and all, and back.
+\\<minibuffer>\\[minibuffer-finish] visits the file at that line (the first,
+once all are read, unless you moved to one), and then \\[next-place] and
+\\[previous-place] go to the lines listed after it and before it; with
+*preview-file-search*, the file of the line selected is shown meanwhile, at
+that line, opened safely. \\<search-files>\\[search-files-list] lists the lines
+found in a buffer instead, to change them and write them back into their files.
+Hidden files and directories, backups, binary files and what .gitignore files
+exclude are left out; the access times of those read are not changed."
   (let* ((here (buffer-directory (current-buffer)))
          (root (if (prefix-argument)
                    (read-directory-path "Search files in: " :initial (abbreviated-path here))

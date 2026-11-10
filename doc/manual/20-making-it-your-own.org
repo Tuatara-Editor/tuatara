@@ -1,0 +1,771 @@
+#+title: Making it your own
+#+language: en
+
+* Making it your own
+
+Changing Tuatara to suit you, and keeping the changes.
+
+Every chapter so far has said "as standard" about something: the font, the
+colours, the keys, the way a journal entry is named. This chapter is about
+changing those. You do it with a small file of your own, called the init
+file, which Tuatara reads each time it starts. Nothing you put in it is ever
+overwritten by an update.
+
+The chapter shows what the file is and where Tuatara keeps it, how to change
+a setting, how to give a key to a command, how to move or turn off the modal
+states, how to pick a theme and a font, and how to write snippets of your
+own. Two things that nothing else in the manual covers, the calendar and the
+journal, have a short section each. The last section holds the odds and ends
+that have no better home.
+
+You do not need to know Lisp. Every change in this chapter is one line that
+you copy, with a word or two changed.
+
+** The init file
+
+The init file is a plain text file called =init.lisp= in a folder of its own,
+=~/.config/tuatara/=. The first time Tuatara runs and finds no file there, it
+writes one for you. The message =Wrote a starter init file= says so. After
+that Tuatara never writes it again. It is yours.
+
+The starter file lists every setting there is. Each one sits in a comment (a
+line that starts with =;;= is a comment, and Tuatara skips it), with a few
+words saying what the setting does and, after =Not set:=, what it is when you
+leave it alone. To use a setting you take away the =;;= and the space after
+it. To go back to the standard, you put them back.
+
+#+begin_example
+  ;; Two keys typed quickly one after the other in INSERT state leave it for
+  ;; NORMAL state, and neither stays in the text. Not set: nil.
+  ;; (setf *insert-escape-keys* "jk")
+#+end_example
+
+The block above is as the starter file has it. With the last line's =;;=
+taken away, it reads =(setf *insert-escape-keys* "jk")= and the setting is on.
+Everything is in groups, each begun by a banner of equals signs. Search for
+three of them with ~C-s~ to jump from one group to the next.
+
+Tuatara reads the file once, from the top, each time it starts. A change you
+make is therefore there the next time you start. You do not have to start
+again to try it. Put the cursor just after the closing bracket of the line
+and press ~C-x C-e~. That runs the line in the editor you are using, and the
+echo area shows what it returned. The line stays in the file, so the change
+is still there tomorrow.
+
+If a line in the file is wrong, say a bracket is missing or a name is
+misspelt, Tuatara tells you on the echo row, with the line, and goes on to
+read the rest. It always starts. You can open the file and mend it.
+
+To open the file, press ~C-x C-f~, type =~/.config/tuatara/init.lisp= and
+press ~RET~.
+
+#+begin_try Try it, with the init file
+1. Press ~C-x C-f~, type =~/.config/tuatara/init.lisp= and press ~RET~.
+2. Press ~g g~ (non-modal: ~M-<~), then ~C-s~, type =fill-column= and press
+   ~RET~. The search stops on the line =;; (setf *fill-column* 72)=, which has a
+   comment above it about the column that ~M-q~ (modal: ~g Q~) fills to.
+3. Press ~g h~ (non-modal: ~C-a~) to go to the start of the line, then ~l~ until
+   you are on the first =;=. Press ~d~ three times to take away both semicolons
+   and the space.
+4. Press ~g l~ (non-modal: ~C-e~) to go to the end of the line, then ~C-x C-e~.
+   The echo area shows =72=.
+5. Press ~C-h v~, type =*fill-column*= and press ~RET~. The help says the
+   value is 72.
+6. Press ~C-x C-s~ to save. Starting Tuatara again keeps the 72.
+#+end_try
+
+** Where Tuatara keeps its files
+
+Tuatara keeps what it makes in three places, each with a different job. The
+division follows the standard that most programs on Linux follow, so a tool
+that backs up or cleans your home folder already knows about them.
+
+- The configuration folder, =~/.config/tuatara/=, holds what you wrote or
+  chose. This is the init file, your snippets, your note and export
+  templates, and your logos. If you lose it you lose your choices.
+- The state folder, =~/.local/state/tuatara/=, holds what Tuatara
+  remembers about how you work: the files you opened lately, where you were
+  in each, your bookmarks, the session, and the copies of unsaved changes.
+  If you lose it nothing you wrote is gone, but Tuatara forgets its habits.
+- The cache folder, =~/.cache/tuatara/=, holds things Tuatara can make
+  again: previews, pages drawn from documents, copies of files opened
+  safely, compiled packages and the log of what happened. You can delete it
+  at any time.
+
+Fetched packages are kept in a fourth place, =~/.local/share/tuatara/=,
+described in chapter 19.
+
+Figure 20.1 shows the folders and what each holds.
+
+#+caption: Figure 20.1. The folders Tuatara uses, and what is in each.
+#+name: fig-where-files-live
+#+begin_example
+ ~/.config/tuatara/            what you wrote
+   init.lisp                     your settings and keys
+   snippets/                     your snippets, a folder for each mode
+   note-templates/ ...           templates and logos for notes and exports
+   logos/
+
+ ~/.local/state/tuatara/       what Tuatara remembers
+   recent-files   places   bookmarks   session
+   auto-save/                    copies of changes not yet saved
+
+ ~/.cache/tuatara/             what can be made again
+   debug.log   stderr.log        what Tuatara said
+   previews, pages, compiled packages ...
+
+ ~/.local/share/tuatara/       what was fetched
+   packages/                     packages from other people
+#+end_example
+
+If your computer sets =XDG_CONFIG_HOME=, =XDG_STATE_HOME=, =XDG_CACHE_HOME= or
+=XDG_DATA_HOME=, Tuatara uses a folder called =tuatara= inside each of them
+instead of the ones in the figure. You can also set the folders yourself,
+which is useful when you keep them on an encrypted drive. The three settings
+below do it. Make the folder first, with =mkdir -m 700=, so that only you can
+read it. While the folder is not there, because the drive is not mounted,
+Tuatara keeps those things in memory and says so.
+
+#+begin_src lisp
+(setf *state-directory* "/run/media/aroha/Data/tuatara/state/")
+#+end_src
+
+*** What to copy to another computer
+
+To have your Tuatara on another computer, copy the configuration folder,
+=~/.config/tuatara/=, and nothing else. It holds the init file and everything
+you wrote. Packages are fetched again on the new computer when the init file
+asks for them.
+
+Copy the state folder as well if you want the new computer to know your
+recent files and bookmarks. Do not copy the cache. It is rebuilt as you
+work, and parts of it are only right for the computer that made them.
+
+Paths in the init file, such as a folder for your journal, must exist on
+the new computer too.
+
+*** Settings for the folders
+
+#+table: settings *state-directory* *cache-directory* *packages-directory*
+
+#+begin_try Try it, with the folders
+1. In a terminal, type =ls ~/.config/tuatara/ ~/.local/state/tuatara/=. The
+   first list holds =init.lisp=. The second holds files such as =bookmarks=
+   and =recent-files=, and the folder =auto-save=.
+2. In Tuatara, press ~C-h v~, type =*state-directory*= and press ~RET~. The
+   value is =NIL=, which means the standard folder of the figure.
+#+end_try
+
+** Changing a setting
+
+A setting is a name that holds a value. Its name starts and ends with a star,
+=*fill-column*=, so that it is easy to tell from a command. You change one
+with =setf=, which means "set to":
+
+#+begin_src lisp
+(setf *fill-column* 72)
+#+end_src
+
+The line reads: set =*fill-column*= to 72. The value can be a number, a word
+in quotes, =t= for yes, =nil= for no, or a name that starts with a colon, such
+as =:bar=. The help of each setting says which it takes.
+
+~C-h v~ asks for a setting's name and shows its value, what it means, and
+where it was defined. It is the quickest way to find out what you can put
+after the name. ~M-:~ lets you type a line without opening the init file,
+which is useful to try a value out before you save it.
+
+Some settings hold a list of things, for example the modes that do something.
+To add to one instead of replacing it, put your item in front of what it
+holds:
+
+#+begin_src lisp
+(push "C-;" *terminal-editor-keys*)
+#+end_src
+
+A few settings are better said with a function than with =setf=, because
+they take a mode and a value. The starter file has these written out, for
+example =(set-tab-width 'c-mode 8)=. Keep to the form the starter file shows.
+
+Chapter 21 lists every setting and what it is as standard.
+
+** Keys of your own
+
+~bind-key~ gives a key to a command. It is the main command of the init file.
+You give it the keys and the command's name, which is the name that ~C-h f~
+and ~M-x~ show. Keys are written as the help writes them: =C-= is Control,
+=M-= is Meta (Alt on most keyboards) and =S-= is Shift. Keys that you press one
+after the other are separated by a space.
+
+#+begin_src lisp
+(bind-key "C-c t" 'toggle-light-dark-theme)
+#+end_src
+
+After that line, ~C-c t~ switches between the light and the dark theme in
+every buffer and in both states. The mark before the command's name is a
+single quote, and it belongs there.
+
+Where a key goes depends on the map you name with =:map=. Table 20.1 lists the
+forms you will use. In all of them you can put any command in place of the one
+shown.
+
+#+caption: Table 20.1. The ways to bind a key.
+| Form                                            | What it does                      |
+|-------------------------------------------------+-----------------------------------|
+| =(bind-key "C-c t" 'command)=                   | The key works in every buffer and both states |
+| =(bind-key "o" 'command :map :leader)=          | ~SPC o~ in NORMAL state, and ~C-x SPC o~ everywhere |
+| =(bind-key "e" 'command :map :normal)=          | ~e~ in NORMAL state only |
+| =(bind-key "C-c e" 'command :map 'csv-mode)=    | The key in CSV buffers only |
+| =(bind-key "m l" 'command :map :leader :mode '(org-mode markdown-mode))= | ~SPC m l~ in Org and Markdown only |
+| =(bind-key "t n" '("numbers" . command) :map :leader)= | ~SPC t n~, shown as "numbers" in the key hints |
+| =(bind-key "t" nil :map :leader :label "toggles")= | The label of a prefix: ~SPC~ then shows =t +toggles= |
+| =(unbind-key "C-c t")=                          | Takes a key away |
+
+Three more things about the table. First, the maps. =:global= is the standard,
+every buffer in both states. =:normal=, =:insert= and =:support= are the keys of
+the NORMAL state, the INSERT state and the buffers that Tuatara makes itself,
+such as lists and help. =:leader= is the leader, described in the next
+section. Other maps are named after one kind of question: =:pattern=, for
+instance, is every question that asks for a pattern to search for. A map can
+also be the name of a major mode, as the CSV line shows. Then the key is
+only there in buffers of that mode and the modes made from it.
+
+Second, =:mode= is a quicker way to say the same. It takes one mode or a
+list. A key bound for a mode never changes what the same key does in other
+modes, so you can give ~SPC m l~ one meaning in Org and another in code
+without either getting in the other's way.
+
+Third, labels. The key hints (chapter 8) show the name of a command beside
+each key. A label is a name of your own to show instead. The two ways to give
+one are in the table: put the label and the command together in a pair, or
+bind a prefix to =nil= and give it a label.
+
+Which keys are free? ~C-h k~ followed by a key says what the key does now. A key
+with nothing bound says so. ~C-c~ followed by a letter is a good place to start,
+and ~C-c t~ is free as standard. The letters ~h j k l~ only ever move the cursor
+in NORMAL state. Do not give them another job.
+
+#+begin_try Try it, with a key of your own
+1. Open the init file with ~C-x C-f~ and go to its end with ~g e~ (non-modal:
+   ~M->~).
+2. Press ~o~ to open a new line and type this line.
+   =(bind-key "C-c t" 'toggle-light-dark-theme)=
+3. Press ~C-g~ to go back to NORMAL state, then ~C-x C-e~. The echo area
+   shows the name of the command.
+4. Press ~C-c t~. The colours turn light. Press it again and they are dark
+   again.
+5. Press ~C-x C-s~ to save. To take the key away again, put =(unbind-key
+   "C-c t")= under the line, or put =;;= in front of it.
+#+end_try
+
+** A leader key of your own
+
+The leader is a map of keys that belong to you. As Tuatara comes, nothing is
+under it, so there is nothing to learn that you did not put there. In NORMAL
+state, in lists and in the calendar, ~SPC~ opens it. ~C-x SPC~ opens it in
+every buffer and state, INSERT state and a session with modal editing off
+too, so a leader key works wherever you are.
+
+The starter file lists, commented out, a set of leader keys that suit many
+people: ~SPC f~ to find a file, ~SPC b~ to go to the other buffer, ~SPC w~ for
+a family of window keys, and so on. Take away the =;;= in front of the ones you
+want, or write your own with =:map :leader=.
+
+#+begin_src lisp
+(bind-key "o" 'find-file :map :leader)
+(bind-key "t" nil :map :leader :label "toggles")
+(bind-key "t l" 'soft-wrap-mode :map :leader)
+(bind-key "t h" 'hl-line-mode :map :leader)
+#+end_src
+
+The four lines make ~SPC o~ open a file. They also make ~SPC t~ a prefix with
+the label "toggles", with ~SPC t l~ to wrap long lines and ~SPC t h~ to
+highlight the line the cursor is on. After you press ~SPC~, the key hints
+show what is under it, so you do not have to remember.
+
+If ~SPC~ is a key you would like for something else, move the leader.
+
+#+begin_src lisp
+(setf *leader-key* ",")
+#+end_src
+
+Now the leader is on =,= in NORMAL state, and ~SPC~ is free again. ~C-x SPC~
+does not move. Chapter 8 lists the leader's settings with the settings for
+modal editing.
+
+** Modal editing, and turning it off
+
+Tuatara comes with modal editing on. A file opens in NORMAL state, where
+letters are commands. ~i~ starts INSERT state, where letters are typed, and
+~C-g~ goes back. Chapter 1 introduced it.
+
+Some people would rather type at once and use the keys with Control and Meta
+for commands, as other editors do. If that is you, turn modal editing off:
+
+#+begin_src lisp
+(setf *modal-editing* nil)
+#+end_src
+
+Every buffer then takes the keys of its mode and the global keys. Typing puts
+letters in the text. The states are gone from the mode line. Every command
+is still there, to run with ~M-x~ or to bind to a key. The leader stays,
+under ~C-x SPC~.
+
+#+begin_try Try it, with modal editing off
+1. In the init file, press ~g e~ (non-modal: ~M->~) and ~o~, and type
+   =(setf *modal-editing* nil)=. Press ~C-g~, then ~C-x C-e~. The echo area
+   shows =NIL=.
+2. Open another file with ~C-x C-f~. The mode line no longer shows a state
+   and the letters you type go into the text.
+3. To go back, change the line to =(setf *modal-editing* t)= and press
+   ~C-x C-e~ again. You can also take the line out of the file.
+#+end_try
+
+You can keep modal editing and make leaving INSERT state easier. ~C-g~ is
+the key that does it as standard, and so does ~ESC~. If you would rather type
+two letters, set a pair that hardly ever follows one another in your
+writing.
+
+#+begin_src lisp
+(setf *insert-escape-keys* "jk")
+#+end_src
+
+Typing =j= puts a =j= in the text at once, like any key. If =k= comes within a
+fifth of a second, the =j= is taken out again and you are in NORMAL state.
+Slower, or with another key between, both letters stay. It works while you
+type in an ordinary buffer. It does not work in the minibuffer, in a terminal
+or with several cursors.
+
+Chapter 8 describes =*escape-quits*=, which makes ~ESC~ do all that ~C-g~ does.
+
+#+table: settings *insert-escape-keys*
+
+** Themes and faces
+
+A theme is a set of colours for everything Tuatara draws. A face is the look
+of one kind of thing: how a comment is drawn, or the line you are on, or the
+mode line. A theme gives every face its look.
+
+*** Choosing a theme
+
+~M-x load-theme~ lists the themes, each with a line saying what it is like,
+and puts the one you choose in force. There are four.
+
+- =ao-dark= is the standard: a deep navy ground with an amber accent.
+- =ao-light= is the same palette worked for a white ground.
+- =terminal= uses the sixteen colours of your terminal, so Tuatara follows
+  whatever colours the terminal uses.
+- =plain= uses no colours at all, only bold, underline, reverse video and
+  dim. It is for terminals that cannot show colour.
+
+The theme you choose with ~M-x load-theme~ lasts until you leave. To keep it,
+put it in the init file:
+
+#+begin_src lisp
+(load-theme 'ao-light)
+#+end_src
+
+In a window of its own, Tuatara follows the desktop. If the desktop turns
+dark in the evening, Tuatara switches to its dark theme, and back again in
+the morning. =*follow-desktop-style*= set to =nil= stops that and keeps one
+theme. ~M-x toggle-light-dark-theme~ switches between the dark and the light
+theme by hand. =*light-theme*= and =*dark-theme*= say which two themes it,
+and the desktop, switch between.
+
+#+begin_src lisp
+(setf *light-theme* 'plain)
+(setf *dark-theme* 'terminal)
+#+end_src
+
+#+begin_try Try it, with a theme
+1. Press ~M-x~, type =load-theme= and press ~RET~. Choose =ao-light= with
+   the arrow keys and ~RET~. The colours turn light.
+2. Press ~M-x~ and run =toggle-light-dark-theme=. They turn dark again.
+3. To keep the light theme, open the init file and add
+   =(load-theme 'ao-light)= on a line of its own. Press ~C-g~, then
+   ~C-x C-e~ and ~C-x C-s~.
+#+end_try
+
+*** Changing one face
+
+~M-x list-faces~ shows every face, each with a sample drawn as the theme in
+force draws it, and a line saying what it colours. ~M-x describe-face~ shows
+all that is known of one face, including what the theme and your init file
+set for it. Both are covered in chapter 8.
+
+~set-face~ changes a face. It takes the face's name and then pairs of an
+attribute and a value:
+
+#+begin_src lisp
+(set-face :comment :fg :cyan :italic t)
+(set-face :hl-line :bg "#1a2a3a")
+#+end_src
+
+The first line draws comments in cyan italics. The second gives the line you are
+on a dark blue ground. A colour is a name such as =:red=, a number from 0 to
+255, or a six-digit code in quotes. The attributes are =:fg= and =:bg= for the
+text and the ground, =:bold=, =:italic=, =:dim= and =:reverse=, which each take
+=t= or =nil=, and =:underline=. In a window of its own a face can also have a
+=:font= and a =:height=.
+
+What you set stays on top of any theme. Choose another theme and your comment
+colour is still yours.
+
+*** A theme of your own
+
+When a theme is nearly right, define one of your own that changes only what
+you do not like. Name it, say in a few words what it is, say which theme to
+start from, and give the colours that differ:
+
+#+begin_src lisp
+(define-theme my-ao
+  "Ao on black."
+  :faces-from ao-dark
+  :palette ((ground "#000000")))
+(load-theme 'my-ao)
+#+end_src
+
+The colours of a theme go by role: =ground= is the background, =text= the
+text, =comment= the comments, =blue= and =green= and so on. The palette says
+what each role is. In the example only =ground= changes, from navy to black,
+and everything drawn on the ground follows. After =define-theme=, ~M-x
+load-theme~ lists =my-ao= with the others.
+
+*** The faces
+
+The faces in the table below are the ones the other chapters do not
+describe. =:default= is the text and the ground, the face under all others.
+The next four colour the lines of a log or a message when they say error,
+warning, information or a hint.
+
+#+table: faces :default :error :warning :info :hint
+
+Syntax colouring is the colour a language's words get as you write code in
+it: keywords, strings, numbers, the names of functions and so on. The faces
+below name the kinds of word a language has. Chapter 13 explains how a file
+is coloured. A theme gives each of these faces a colour, and you can
+change any with =set-face=. Their names are the ones tree-sitter, the
+parser that finds the words, gives them.
+
+#+table: faces :attribute :constant.character.escape :constant.numeric :constructor :escape :function.macro :function.method :function.special :keyword.directive :keyword.operator :keyword.storage.modifier :label :namespace :property :punctuation.special :string.regexp :variable.other
+
+Markdown, Org and the other languages for writing text have faces for the
+parts of a page: headings, emphasis, links, quotations, code and lists.
+
+#+table: faces :heading :emphasis :strong :tag :markup.bold :markup.italic :markup.strikethrough :markup.heading :markup.heading.1 :markup.heading.2 :markup.heading.3 :markup.heading.4 :markup.heading.5 :markup.heading.6 :markup.link :markup.link.label :markup.link.text :markup.link.url :markup.list :markup.quote :markup.raw :markup.raw.block
+
+** Fonts
+
+In a window of its own (=tuatara --gui=), Tuatara draws the text in a font you
+choose. In a terminal the font is the terminal's own, and these commands
+say so and change nothing.
+
+To make the text larger or smaller for the moment, press ~C-x C-+~. That makes
+it a step larger, about a fifth. Each press of ~+~ after it goes on. ~-~ makes
+it smaller, and ~0~ returns to the size it started with. Holding Ctrl and
+turning the mouse wheel does the same. The size is for this session. When
+you want a size for good, change the font in the init file.
+
+~M-x font-list~ shows every font installed on the computer, the ones whose
+letters are all the same width first, each with a sample written in it. Move
+to a line and press ~RET~ to see the window in that font now. Press ~w~ to
+copy the line that chooses it for good. Then paste it into your init file
+with ~C-y~.
+
+#+begin_src lisp
+(setf *gui-font* "Adwaita Mono 14")
+#+end_src
+
+A font is a family, an optional style and a size in points. The text window
+works best with a font whose letters are all one width, since the text is
+laid in columns. ~M-x set-frame-font~ is another way to the same change by
+name: type a family and a size after it. ~<f11>~ makes the window fill the
+screen, and ~M-<f10>~ makes it as large as the screen allows with its
+title bar. Press either again to go back.
+
+#+begin_try Try it, with a bigger font
+1. In a window (=tuatara --gui=), press ~C-x C-+~. The text grows by a step.
+   Press ~+~ twice more, then ~0~ to go back to the standard size.
+2. Press ~M-x~, type =font-list= and press ~RET~. Move to a line of a font
+   you like with ~j~ and ~k~ and press ~RET~. The window changes at once.
+3. Press ~w~. The echo area says the line is copied.
+4. Open the init file, press ~g e~ (non-modal: ~M->~), ~o~, and paste with
+   ~C-y~. Change the size in the quotes to 14. Press ~C-g~, ~C-x C-e~, then
+   ~C-x C-s~.
+#+end_try
+
+*** Commands and faces for fonts and the window
+
+#+table: commands font-list font-list-use font-list-copy set-frame-font text-scale-adjust text-scale-increase text-scale-decrease mouse-wheel-text-scale toggle-frame-fullscreen toggle-frame-maximized
+
+#+table: faces :font-list-line :list-name
+
+** Your name
+
+Some of what Tuatara writes carries your name: the author line of an
+exported document, a note template and a snippet. As standard it uses the
+full name your account has on the computer, or else the login name. To use
+another, set it:
+
+#+begin_src lisp
+(setf *user-full-name* "Aroha Smith")
+#+end_src
+
+Its table is in chapter 13, with the snippets that use it.
+
+** Snippets of your own
+
+A snippet is a piece of text with places to fill in. You type its short key
+and press ~TAB~, and the text goes in with the cursor on the first place.
+Chapter 13 tells all about the places. This section is about making a snippet
+that no one else has, for something you write often.
+
+A snippet is a file. It lives in =~/.config/tuatara/snippets/=, in a folder
+named for the mode that it is for. =fundamental-mode= is for every buffer.
+=org-mode= is for Org notes. The file starts with three lines: the name, the
+key you type, and a line with two dashes. Everything after the dashes is the
+text that goes in. In the text, =$1=, =$2= and so on are places that ~TAB~ moves
+through, =$0= is where the cursor ends, and =${1:text}= is a place that begins
+with text you can type over. =$AUTHOR= is your name, and =$CURRENT_DATE=,
+=$CURRENT_MONTH= and =$CURRENT_YEAR= are today's date.
+
+~C-c y~ (=insert-snippet=) chooses one from a list by name. ~M-x copy-snippet~
+copies one of Tuatara's own into your folder, so that you can change it. Yours
+then takes its place.
+
+#+begin_try Try it, with a snippet for a letter's greeting
+1. In a terminal, type these two commands.
+   #+begin_src sh
+   mkdir -p ~/.config/tuatara/snippets/fundamental-mode
+   printf '# name: Greeting\n# key: dear\n# --\nKia ora ${1:Aroha},\n\n$0\n\nKind regards,\n$AUTHOR\n' > ~/.config/tuatara/snippets/fundamental-mode/greeting
+   #+end_src
+2. In Tuatara, open a new file with ~C-x C-f~ and the name =~/letter.txt=.
+   Press ~i~, type =dear= and press ~TAB~. The greeting goes in, with the name
+   ready to type over.
+3. Type =Hemi=, press ~TAB~, and the cursor moves to the empty line for your
+   letter. Your name is at the bottom.
+4. Press ~C-g~, then ~u~ until the text is gone. Delete the snippet file if
+   you do not want it.
+#+end_try
+
+** How lines are shown
+
+Tuatara can show the same text in several ways without changing a character
+of it: the line the cursor is on painted across the window, long lines
+wrapped onto several rows, a line down the window at the fill column, the
+column the cursor is in painted down the window, the text in a column in the
+middle of the window, and the characters that draw nothing shown as their
+codes. Each is a mode you switch on or off. They all work the same way.
+
+A command with =-mode= at the end switches the thing for the buffer you are
+in. That buffer keeps its choice. Most have a key under ~C-x T~, for "toggle".
+The same command with =global-= in front switches it for every buffer that has
+not chosen for itself, while Tuatara runs. A setting in the init file says
+what every buffer has from the start. A list of modes, such as
+=*soft-wrap-modes*=, says it for one kind of buffer, all Org notes or all code,
+whatever the setting for every buffer says.
+
+A buffer's own choice counts first, then the list of modes, then the setting
+for every buffer. Each switch says what it did on the echo row. With a count
+before it, ~C-u 1~, a command switches on whatever it was, and ~C-u 0~
+switches it off.
+
+The commands and what they show, with the keys they have, are in the table
+below. Some of them are shown in other chapters. Here they are together.
+
+#+table: commands hl-line-mode cursor-column-mode soft-wrap-mode visual-line-mode centred-text-mode invisible-characters-mode text-direction-mode global-hl-line-mode global-soft-wrap-mode global-visual-line-mode global-centred-text-mode global-cursor-column-mode global-invisible-characters-mode global-text-direction-mode
+
+Text that is written from right to left, such as Hebrew and Arabic, is
+shown in the order it is read. =text-direction-mode= is for the rare text
+where you want each line's letters in the order they are stored instead.
+
+The settings below say, in the init file, what every buffer has, which modes
+differ, how wide a centred column is and whether a wrapped line wraps at the
+fill column.
+
+#+table: settings *global-hl-line-mode* *hl-line-modes* *global-soft-wrap-mode* *soft-wrap-modes* *soft-wrap-at-fill-column* *global-visual-line-mode* *visual-line-modes* *global-centred-text-mode* *centred-text-modes* *centred-text-width* *global-cursor-column-mode* *cursor-column-modes* *global-invisible-characters-mode* *invisible-characters-modes* *global-text-direction-mode* *text-direction-modes*
+
+The faces paint the line, the column and the characters. The first three
+are the same colour unless you set them apart.
+
+#+table: faces :hl-line :cursor-column :soft-wrap-row :visual-line :invisible-character :current-line-number :raw-byte :right-to-left :stored-order
+
+** The calendar
+
+~C-x n a~ shows the calendar in a window below the one you are in: the month
+of today and the month before and after it, with the cursor on today.
+~C-x n A~ shows it in the window you are in instead, in place of its buffer.
+~q~ closes it and brings your buffer back.
+
+The arrow keys, or ~h~ ~l~ for a day back or on and ~k~ ~j~ for a week back or
+on, move through the days. ~H~ and ~L~ show the month before and after, and ~J~
+and ~K~ move the cursor a month. ~.~ goes to today, and ~g l~ goes back to where
+you were before you moved. ~g d~ asks for a date and goes to it. You can
+answer with =2026-12-24=, with =tomorrow=, =fri= or =+3d=, or as any date is
+asked for in Tuatara. ~o~ shows the months around one you name, such as =jan 27=
+for January 2027.
+
+Days that have something on them are marked. An agenda entry (chapter 14) marks
+its day, and a journal entry (the next section) underlines it. ~RET~ on a day
+opens what it is marked for. When a day has both, Tuatara asks which, and each
+answer is one key. ~n~ opens the journal entry for the day at the cursor, or
+makes it. ~m~ marks the days that have agenda entries and ~u~ takes the marks
+off. ~p d~ says which day of the year the cursor is on, and ~p c~ says the week
+and the ISO date.
+
+Three settings change how the calendar looks. By default it shows three months
+and weeks begin on Monday. =*calendar-months*= set to 12 shows a whole year.
+=*calendar-week-start-day*= set to 0 begins weeks on Sunday.
+=*calendar-months-per-row*= says how many months stand side by side. It is as
+many as fit when it is =nil=.
+
+#+begin_src lisp
+(setf *calendar-week-start-day* 0)
+(setf *calendar-months* 12)
+(setf *calendar-months-per-row* 3)
+#+end_src
+
+*** Commands, settings and faces for the calendar
+
+#+table: commands calendar-forward-day calendar-backward-day calendar-forward-week calendar-backward-week calendar-forward-month calendar-backward-month calendar-forward-year calendar-backward-year calendar-goto-today calendar-goto-date calendar-jump-back calendar-other-month calendar-open-day calendar-journal-entry calendar-mark-days calendar-unmark calendar-beginning-of-week calendar-end-of-week calendar-beginning-of-month calendar-end-of-month calendar-beginning-of-year calendar-end-of-year calendar-scroll-left calendar-scroll-right calendar-scroll-left-three-months calendar-scroll-right-three-months calendar-print-day-of-year calendar-iso-print-date calendar-here
+
+#+table: settings *calendar-months* *calendar-months-per-row* *calendar-week-start-day* *calendar-mark-days*
+
+#+table: faces :calendar-journal :calendar-marked :calendar-month-header :calendar-selected :calendar-today :calendar-weekday-header :calendar-weekend-header
+
+** The journal
+
+A journal is a note for each day: what you did, what you thought, what to
+remember. ~C-x n j~ opens today's entry, or makes it when there is none. A new
+entry is a file with a formatted name (chapter 9), in a folder called
+=journal= inside the folder of your notes, with the day as its title, such as
+=Friday 20 March 2026=, and the word =journal= among its keywords. It is saved
+at once, so there is a file to find later. ~M-x journal-new-entry~ always
+makes a new one, even when there is one for today. With ~C-u~ before it, it
+asks for a date.
+
+When there is more than one entry for the day, Tuatara asks which you want.
+In the calendar, an entry marks its day, and ~n~ opens or makes the entry for
+the day at the cursor. You can look back through the month and open any
+day.
+
+The journal is a set of ordinary notes, so you can search them, link to
+them and export them like any others. Everything about how they are named
+and written is a setting.
+
+The folder is =*journal-directory*=. The word that marks an entry, so that
+entries can be told from your other notes, is =*journal-keyword*=. An entry
+lasts a day as standard. =*journal-interval*= makes it a week, a month or a
+year. The kind of file is =*journal-file-type*=, one of =:org=, =:markdown= or
+=:text=. =*journal-title-format*= says what the title looks like. It may add
+the time, or ask each time. =*journal-file-name*=, when set, gives entries plain
+names such as =2026-03-20.org= in place of formatted ones.
+=*journal-org-header*= is the text an Org entry starts with.
+
+#+begin_src lisp
+(setf *journal-directory* "~/journal/")
+(setf *journal-interval* :weekly)
+(setf *journal-file-type* :markdown)
+#+end_src
+
+The three lines put the entries in =~/journal/=, one for each week, as
+Markdown files.
+
+#+table: commands journal-new-or-existing-entry journal-new-entry
+
+#+table: settings *journal-directory* *journal-keyword* *journal-title-format* *journal-interval* *journal-file-type* *journal-file-name* *journal-org-header*
+
+** Odds and ends
+
+The rest of the names that belong to this chapter are small. They are
+grouped by what they do.
+
+*** Changing case, and what a character is
+
+Three commands change the case of a word or a selection. They act on the
+selection when there is one, and on the next word when there is not.
+=capitalize-region= is the same for a selection alone.
+=delete-trailing-whitespace= takes the spaces and tabs from the ends of lines.
+It works on the selection if there is one and on the whole buffer if not. ~C-x
+=~ says which character the cursor is on, with its code in three bases.
+
+#+table: commands upcase-dwim downcase-dwim capitalize-dwim capitalize-region delete-trailing-whitespace what-cursor-position new-empty-buffer
+
+*** Buttons and the mouse
+
+A button is a piece of text that does something when you press ~RET~ on it:
+a link in a help page, a name in a list. ~TAB~ goes to the next one in a
+buffer and ~S-TAB~ goes back. Moving past the last goes round to the first.
+~push-button~ does what the button at the cursor does. It is on ~RET~ and ~l~,
+and on ~C-c l~. Links in Markdown are followed with a command of their own.
+
+The mouse works as in other programs. A click puts the cursor, a drag
+selects, two clicks select a word and three a line. Letting go of the
+button makes what you selected the desktop's primary selection, which the
+middle button pastes in Tuatara and in other programs.
+
+#+table: commands forward-button backward-button push-button push-button-at-click markdown-follow-link-at-point mouse-drag-region mouse-release mouse-select-word mouse-select-line
+
+*** Modes for other kinds of text
+
+Tuatara picks a mode for a file from its name and what is in it. When it
+picks wrong, or you want another, run the mode by name: ~M-x markdown-mode~
+switches the buffer to Markdown. The commands below are the modes of
+written languages, data and system files that no other chapter lists, and a
+few for note-taking formats such as todo.txt and Ledger. A mode that is on
+as soon as you open a file has a name ending in =-mode= like these.
+
+#+table: commands beancount-mode bibtex-mode djot-mode eml-mode etc-passwd-generic-mode gemini-mode ghostty-mode hosts-generic-mode jj-description-mode klog-mode latex-mode ldif-mode ledger-mode markdoc-mode markdown-mode mediawiki-mode pem-mode po-mode pod-mode poly-markdown+r-mode quarto-mode robots-txt-mode rst-mode strace-mode task-mode todotxt-mode xit-mode
+
+Grammars are what colour and parse a language. Tuatara turns on those of the
+common languages by itself. For another, a file asks whether to turn its
+grammar on, and ~M-x turn-on-grammar~ does it later. ~M-x turn-off-grammar~
+stops a language being coloured or parsed, in later sessions too.
+
+#+table: commands turn-on-grammar turn-off-grammar
+
+*** Lists and the cursor's popups
+
+When Tuatara lists completions beside the cursor with ~C-M-i~, the faces
+below say how the list is drawn. In a buffer you can also have the entries
+of a directory listed as you type a path, after the slash.
+
+#+table: settings *complete-paths* *complete-paths-modes* *relative-age-limit* *preview-buffers*
+
+#+table: faces :popup :popup-annotation :popup-bar :popup-current :popup-heading :completion-mode-directory :completion-mode-link :input-method-pending
+
+Reports and lists, such as the health report of ~M-x check-health~, have faces
+for the name of a field and for what cannot be changed:
+
+#+table: faces :list-label :list-read-only
+
+*** Limits and safety
+
+Four settings are limits that keep a mistake from filling your computer. Each
+has a sensible standard, and a reason to change it is rare.
+
+- =*insert-file-limit*= is how much of another file ~M-x
+  insert-formatted-note-template~ reads. A larger file is refused.
+- =*program-output-limit*= is how much of what a program writes Tuatara
+  takes. A program that writes more is stopped.
+- =*wipe-passes*= is how many times a file that you wipe is overwritten with
+  random octets before it is deleted. Once is enough for a drive that writes
+  in place.
+- =*markdown-toc-on-save*= makes the table of contents of a Markdown file
+  again each time you save, under the heading tagged =:TOC:=.
+
+#+table: settings *insert-file-limit* *program-output-limit* *wipe-passes* *markdown-toc-on-save*
+
+*** About, the tutor and Lisp
+
+~C-h C-a~ shows =*About Tuatara*=, the page that introduces the program. The
+tutor, a buffer of lessons, teaches the modal keys by editing it. They have
+faces of their own, so that a theme can colour them.
+
+#+table: faces :about-heading :about-name :tutor-arrow :tutor-key :tutor-state
+
+~C-c M-m~ shows what a macro call in Lisp code expands to, which is useful when
+you write your own functions in the init file. =pattern-finish= takes what you
+typed in a question that asks for a pattern, and says why when it cannot.
+
+#+table: commands pp-macroexpand-all-last-expression pattern-finish

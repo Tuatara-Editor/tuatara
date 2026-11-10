@@ -49,7 +49,8 @@ text left out."
     (dolist (child (xml-children item))
       (let ((local (xml-local-name child)))
         (cond ((equal local "t") (write-string (xml-all-text child) s))
-              ((equal local "r") (dolist (run-text (xml-local-children child "t")) (write-string (xml-all-text run-text) s))))))))
+              ((equal local "r")
+               (dolist (run-text (xml-local-children child "t")) (write-string (xml-all-text run-text) s))))))))
 
 (defun sheet-shared-strings (relations)
   "The shared strings of the workbook being read, a vector, from the part its
@@ -125,18 +126,21 @@ given as written."
 
 (defun sheet-cell-value (cell strings styles date1904)
   "The value of CELL, a cell of a workbook's sheet, as text: as last saved with
-the file (a formula's last result, never worked out here); a string from
-STRINGS (the shared strings) or its own; TRUE or FALSE; an error as written
-\(#DIV/0!); a number as written, or the day or time it stands for when its
-style among STYLES (SHEET-DATE-STYLES) shows a date or a time
-\(SHEET-DATE-TEXT, DATE1904 as there)."
+the file (a formula's last result, never worked out here). A string from STRINGS
+\(the shared strings) or its own; TRUE or FALSE. An error as written \(#DIV/0!).
+A number as written, or the day or time it stands for when its style among
+STYLES (SHEET-DATE-STYLES) shows a date or a time \(SHEET-DATE-TEXT, DATE1904 as
+there)."
   (let ((type (or (xml-attribute cell "t") "n"))
         (value (let ((v (first (xml-local-children cell "v")))) (and v (xml-all-text v)))))
-    (cond ((equal type "inlineStr") (let ((own (first (xml-local-children cell "is")))) (if own (sheet-string-text own) "")))
+    (cond ((equal type "inlineStr")
+           (let ((own (first (xml-local-children cell "is")))) (if own (sheet-string-text own) "")))
           ((null value) "")
           ((equal type "s")
            (let ((i (whole-number value)))
-             (if (and i (< -1 i (length strings))) (aref strings i) (format nil "[string ~a, which the workbook does not hold]" value))))
+             (if (and i (< -1 i (length strings)))
+                 (aref strings i)
+                 (format nil "[string ~a, which the workbook does not hold]" value))))
           ((equal type "b") (if (equal (string-trim " " value) "1") "TRUE" "FALSE"))
           ((member type '("str" "e" "d") :test #'equal) value)
           (t (let* ((style (whole-number (or (xml-attribute cell "s") "")))
@@ -195,10 +199,13 @@ DATE1904, formulas as written, at most LEFT cells, each no longer than
                   (incf count)
                   (push (cons column value) cells)
                   (when formula
-                    (let ((text (office-value (xml-all-text formula *office-value-length-limit*))) (shared (xml-attribute formula "si")))
+                    (let ((text (office-value (xml-all-text formula *office-value-length-limit*)))
+                          (shared (xml-attribute formula "si")))
                       (when (and shared (plusp (length text))) (setf (gethash shared masters) place))
                       (push (cons place (cond ((plusp (length text)) (format nil "=~a" (org-safe-line text)))
-                                              (shared (format nil "as ~a's, shared" (or (gethash shared masters) "another cell")))
+                                              (shared (format nil
+                                                              "as ~a's, shared"
+                                                              (or (gethash shared masters) "another cell")))
                                               (t "a formula of no text")))
                             formulas)))))))
           (when cells (push (list number hidden (nreverse cells)) rows)))))
@@ -224,7 +231,11 @@ stopped (*SHEET-MOST-CELLS*), is said, or NIL."
              (format out "Its cells, too far apart for a table:~%")
              (loop for (number hidden cells) in rows
                    do (loop for (c . value) in cells
-                            do (format out "- ~a, row ~a :: ~a~%" (column-words c) (row-words number hidden) (org-safe-line value))))
+                            do (format out
+                                       "- ~a, row ~a :: ~a~%"
+                                       (column-words c)
+                                       (row-words number hidden)
+                                       (org-safe-line value))))
              (terpri out))
             (t (org-write-table-rows
                 (cons (cons "" (mapcar #'column-words columns))
@@ -233,7 +244,8 @@ stopped (*SHEET-MOST-CELLS*), is said, or NIL."
                                           ;; the row's cells in the order of the columns, each place once
                                           (let ((sorted (stable-sort (copy-list cells) #'< :key #'car)))
                                             (loop for c in columns
-                                                  collect (progn (loop while (and sorted (< (caar sorted) c)) do (pop sorted))
+                                                  collect (progn (loop while (and sorted (< (caar sorted) c))
+                                                                       do (pop sorted))
                                                                  (if (and sorted (= (caar sorted) c)) (org-safe-line (cdr (pop sorted))) "")))))))
                 out))))
     (when formulas
@@ -246,17 +258,16 @@ stopped (*SHEET-MOST-CELLS*), is said, or NIL."
 
 (defun xlsx-read-note (path &key octets cancel)
   "The Excel workbook at PATH as an Org note, from its OCTETS when they are
-given: what the file says of itself, then each sheet in its order, a
-section named as the sheet, marked when hidden or very hidden (hidden so
-that only a program can show it again), a chart or a sheet of macros (never
-run); its cells as an Org table and its formulas as written, as
-SHEET-WRITE writes them. Values are those last saved with the file, no
-formula worked out; a number is shown as written, or as the day or time it
-stands for when its cell's format shows a date or a time; at most
-*SHEET-MOST-CELLS* cells, the note no larger than *OFFICE-NOTE-SIZE-LIMIT*
-characters. Sheets the file holds that its list of sheets does not name are
-read at the end. CANCEL, a cons, stops the reading when its car turns true.
-Signals ZIP-ERROR or an error when it cannot be read."
+given: what the file says of itself, then each sheet in its order, a section
+named as the sheet, marked when hidden or very hidden (hidden so that only a
+program can show it again), a chart or a sheet of macros (never run). Its cells
+as an Org table and its formulas as written, as SHEET-WRITE writes them. Values
+are those last saved with the file, no formula worked out; a number is shown as
+written, or as the day or time it stands for when its cell's format shows a date
+or a time; at most *SHEET-MOST-CELLS* cells, the note no larger than
+*OFFICE-NOTE-SIZE-LIMIT* characters. Sheets the file holds that its list of
+sheets does not name are read at the end. CANCEL, a cons, stops the reading when
+its car turns true. Signals ZIP-ERROR or an error when it cannot be read."
   (let* ((*docx-reading* (docx-reading-of path octets cancel))
          (workbook (docx-main-tree path "xl/workbook.xml" "workbook" "Excel workbook"))
          (main (docx-main-part))
@@ -271,8 +282,12 @@ Signals ZIP-ERROR or an error when it cannot be read."
          (hidden 0) (very-hidden 0))
     (flet ((read-sheet (part out)
              (let ((tree (and part (docx-reading-part part))))
-               (cond ((null tree) (format out "Its part~@[ ~a~] is not in the file.~%~%" (and part (org-safe-line part))))
-                     ((<= left 0) (format out "Not read: the workbook's first ~:d cells were (*sheet-most-cells*).~%~%" *sheet-most-cells*))
+               (cond ((null tree)
+                      (format out "Its part~@[ ~a~] is not in the file.~%~%" (and part (org-safe-line part))))
+                     ((<= left 0)
+                      (format out
+                              "Not read: the workbook's first ~:d cells were (*sheet-most-cells*).~%~%"
+                              *sheet-most-cells*))
                      (t (decf left (sheet-write tree out strings styles date1904 left)))))))
       (let ((body (office-written-text
                    (lambda (s)
@@ -287,26 +302,32 @@ Signals ZIP-ERROR or an error when it cannot be read."
                                       ((equal state "veryHidden") (incf very-hidden)))
                                 (format s "* Sheet ~d: ~a~@[ ~a~]~%" n (org-safe-line (or (xml-attribute sheet "name") ""))
                                         (cond ((equal state "hidden") "(hidden)")
-                                              ((equal state "veryHidden") "(very hidden: only a program can show it again)")))
+                                              ((equal state "veryHidden")
+                                               "(very hidden: only a program can show it again)")))
                                 (cond ((uiop:string-suffix-p type "/chartsheet") (format s "A chart, no cells.~%~%"))
                                       (t (when (search "acrosheet" type)
                                            (format s "A sheet of macros (Excel 4.0): its formulas are a program, never run.~%~%"))
                                          (when (uiop:string-suffix-p type "/dialogsheet")
                                            (format s "A dialogue sheet.~%~%"))
                                          (read-sheet part s)))))
-                     (dolist (part (append (docx-unlisted-parts "xl/worksheets/" listed) (docx-unlisted-parts "xl/macrosheets/" listed)))
+                     (dolist (part (append (docx-unlisted-parts "xl/worksheets/" listed)
+                                           (docx-unlisted-parts "xl/macrosheets/" listed)))
                        (format s "* Sheet part ~a (in the file, named by no list of sheets)~%" (org-safe-line part))
                        (read-sheet part s))))))
         (office-note path
                      (docx-read-about path :what "workbook" :program "Excel" :usual "xl/workbook.xml"
                                            :more (with-output-to-string (s)
                                                    (format s "- Sheets :: ~d~@[, ~d hidden~]~@[, ~d very hidden~]~%"
-                                                           (length sheets) (and (plusp hidden) hidden) (and (plusp very-hidden) very-hidden))
+                                                           (length sheets) (and (plusp hidden) hidden)
+                                                           (and (plusp very-hidden) very-hidden))
                                                    (let ((connections (let ((tree (docx-reading-part "xl/connections.xml")))
-                                                                        (and tree (xml-find-all tree "connection" :local t)))))
+                                                                        (and tree
+                                                                             (xml-find-all tree "connection" :local t)))))
                                                      (when connections
                                                        (format s "- Data connections :: ~{~a~^, ~} (none made)~%"
-                                                               (mapcar (lambda (c) (org-safe-line (or (xml-attribute c "name") "unnamed"))) connections))))
+                                                               (mapcar (lambda (c)
+                                                                         (org-safe-line (or (xml-attribute c "name")
+                                                                                            "unnamed"))) connections))))
                                                    (format s "- Values :: as last saved with the file; no formula is worked out here~%")))
                      body)))))
 
@@ -367,10 +388,12 @@ of those shapes alone (body, a notes page's notes)."
                      ((equal local "pic")
                       (let* ((names (first (xml-find-all node "cNvPr" :local t)))
                              (words (and names (find-if (lambda (w) (and w (plusp (length w))))
-                                                        (list (xml-attribute names "descr") (xml-attribute names "name"))))))
+                                                        (list (xml-attribute names "descr")
+                                                              (xml-attribute names "name"))))))
                         (format out "- [picture~@[: ~a~]]~%" (and words (org-safe-line words)))))
                      ;; the same content more than one way: the first, what a program that reads it shows
-                     ((equal local "AlternateContent") (let ((choice (first (xml-local-children node "Choice")))) (when choice (walk choice))))
+                     ((equal local "AlternateContent")
+                      (let ((choice (first (xml-local-children node "Choice")))) (when choice (walk choice))))
                      (t (mapc #'walk (xml-children node)))))))
     (walk tree)))
 
@@ -387,7 +410,9 @@ order, HIDDEN when it is hidden: a heading with its title, its text
                                                        when (plusp (length text)) collect text)))))
          (hidden (or hidden (and tree (member (xml-attribute (xml-root tree) "show") '("0" "false") :test #'equal)))))
     (format out "* ~a~:[~; (hidden)~]~@[: ~a~]~%"
-            (if number (format nil "Slide ~d" number) (format nil "Slide part ~a (in the file, named by no list of slides)" (org-safe-line part)))
+            (if number
+                (format nil "Slide ~d" number)
+                (format nil "Slide part ~a (in the file, named by no list of slides)" (org-safe-line part)))
             hidden (and title (plusp (length title)) (org-safe-line title)))
     (if (null tree)
         (format out "Its part is not in the file.~%~%")
@@ -401,16 +426,15 @@ order, HIDDEN when it is hidden: a heading with its title, its text
           (terpri out)))))
 
 (defun pptx-read-note (path &key octets cancel)
-  "The PowerPoint presentation at PATH as an Org note, from its OCTETS when
-they are given: what the file says of itself, then each slide in its order,
-a heading with its number and title, marked (hidden) when it is not shown in
-the show; its text in the order of its shapes, as SLIDE-WRITE-SHAPES writes
-it; its speaker notes under a heading of their own. A slide its list names
-again is said to be the one named before, not written again. Slides the file
-holds that its list of slides does not name are read at the end. The note is
-no larger than *OFFICE-NOTE-SIZE-LIMIT* characters; CANCEL, a cons, stops the
-reading when its car turns true. Signals ZIP-ERROR or an error when it
-cannot be read."
+  "The PowerPoint presentation at PATH as an Org note, from its OCTETS when they
+are given: what the file says of itself, then each slide in its order, a heading
+with its number and title, marked (hidden) when it is not shown in the show. Its
+text in the order of its shapes, as SLIDE-WRITE-SHAPES writes it. Its speaker
+notes under a heading of their own. A slide its list names again is said to be
+the one named before, not written again. Slides the file holds that its list of
+slides does not name are read at the end. The note is no larger than
+*OFFICE-NOTE-SIZE-LIMIT* characters; CANCEL, a cons, stops the reading when its
+car turns true. Signals ZIP-ERROR or an error when it cannot be read."
   (let* ((*docx-reading* (docx-reading-of path octets cancel))
          (presentation (docx-main-tree path "ppt/presentation.xml" "presentation" "PowerPoint presentation"))
          (main (docx-main-part))
@@ -426,7 +450,8 @@ cannot be read."
                              (cond (before (format s "* Slide ~d: slide ~d again (~a)~%~%" n before (org-safe-line part)))
                                    (t (when part (setf (gethash part listed) n))
                                       (slide-write (or part "") n nil s)))))
-                  (dolist (part (docx-unlisted-parts "ppt/slides/" (loop for part being the hash-keys of listed collect part)))
+                  (dolist (part (docx-unlisted-parts "ppt/slides/"
+                                                     (loop for part being the hash-keys of listed collect part)))
                     (slide-write part nil nil s))))))
     (office-note path
                  (docx-read-about path :what "presentation" :program "PowerPoint" :usual "ppt/presentation.xml")

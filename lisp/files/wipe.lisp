@@ -1,4 +1,5 @@
-;;;; lisp/files/wipe.lisp --- Files wiped: overwritten with random octets, then deleted, so that they are not found again.
+;;;; lisp/files/wipe.lisp --- Files wiped: overwritten with random octets, then deleted, so that they are not found
+;;;; again.
 ;;;; Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
 ;;;;
 ;;;; M-x wipe-file wipes the file shown (g w in a list of a directory, the
@@ -135,7 +136,8 @@ one of your own keys among its :KEYS."
   "The question whether to wipe WHAT once encrypted as ENCRYPTION says, CAVEAT
 said: the passphrase is asked again first; to keys none of which is yours, it
 cannot be opened again."
-  (format nil "Wipe ~a~:[~; (passphrase asked again)~]?~:[ None of the keys is yours: it cannot be opened again.~;~] (~a)"
+  (format nil
+          "Wipe ~a~:[~; (passphrase asked again)~]?~:[ None of the keys is yours: it cannot be opened again.~;~] (~a)"
           what (getf encryption :symmetric) (encryption-yours-p encryption) caveat))
 
 (defun wipe-original (path target encryption &key (passphrase nil passphrase-p))
@@ -162,13 +164,17 @@ wiped once gpg has it."
                     :passphrase (if passphrase-p
                                     passphrase
                                     (and (gpg-minibuffer-p)
-                                         (gpg-read-passphrase (format nil "The passphrase again, to check it opens ~a: " (tuatara.io:native-file-name target))))))))
+                                         (gpg-read-passphrase (format nil
+                                                                      "The passphrase again, to check it opens ~a: "
+                                                                      (tuatara.io:native-file-name target))))))))
 
 (defun offer-wipe-original (path target encryption)
   "Ask, as the editor's next command, whether to wipe the file at PATH now
 encrypted as TARGET (WIPE-ORIGINAL)."
   (defer-action (lambda ()
                   (when (and (tuatara.io:path-stamp path)
-                             (yes-or-no-p* (wipe-original-question (format nil "the original ~a" (tuatara.io:native-file-name path))
+                             (yes-or-no-p* (wipe-original-question (format nil
+                                                                           "the original ~a"
+                                                                           (tuatara.io:native-file-name path))
                                                                    encryption (wipe-caveat (list path)))))
                     (wipe-original path target encryption)))))

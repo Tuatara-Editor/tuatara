@@ -365,7 +365,9 @@ first frontend."
                   first (lambda ()
                           (let ((frame (nth index (tuatara.command:editor-frames tuatara.command:*editor*))))
                             (dolist (spec (reverse (tuatara.frontend:parse-key-sequence keys)))
-                              (push (tuatara.frontend:make-event :key :key (tuatara.frontend:spec-key spec) :frame frame)
+                              (push (tuatara.frontend:make-event :key
+                                                                 :key (tuatara.frontend:spec-key spec)
+                                                                 :frame frame)
                                     (car (tuatara.frontend.fake::fake-source first)))))))))))
     (let ((editor (without-grammar-questions
                     (tuatara.command:run-editor first :files files :setup #'tuatara.defaults:install-defaults
@@ -701,7 +703,8 @@ second frame waiting its turn on it."
           (list '(1 "C-x b k i w i C-j")
                 '(0 "i")
                 (list 0 (lambda ()
-                          (push #'note-paints (tuatara.command:editor-post-command-functions tuatara.command:*editor*))))
+                          (push #'note-paints
+                                (tuatara.command:editor-post-command-functions tuatara.command:*editor*))))
                 '(0 "a b c d e f")
                 (list 0 (lambda ()
                           (setf (tuatara.command:editor-post-command-functions tuatara.command:*editor*)
@@ -725,7 +728,8 @@ second frame waiting its turn on it."
           (list '(1 "C-x b k i w i C-j")
                 '(0 "i")
                 (list 0 (lambda ()
-                          (push #'note-paints (tuatara.command:editor-post-command-functions tuatara.command:*editor*))))
+                          (push #'note-paints
+                                (tuatara.command:editor-post-command-functions tuatara.command:*editor*))))
                 '(0 "a")
                 ;; each of these wakes the editor, as work in the background does, with nothing to take in
                 (list 0 (lambda ()))
@@ -806,7 +810,8 @@ second frame waiting its turn on it."
               '(1 "C-x b")
               (frames-probe 0 (lambda (frames)
                                 (setf during
-                                      (append during (list (tuatara.command::frame-minibuffer-active (second frames)))))))
+                                      (append during
+                                              (list (tuatara.command::frame-minibuffer-active (second frames)))))))
               '(1 "C-g")
               (frames-probe 0 (lambda (frames)
                                 (setf after-quit (list (tuatara.command::frame-minibuffer-active (first frames))
@@ -1011,8 +1016,9 @@ second frame waiting its turn on it."
                     (lambda () (sb-thread:signal-semaphore go) (wait-for-job job))
                     (note-shown seen)
                     (lambda ()
-                      (setf during (list answer (and (tuatara.command::editor-minibuffer-active tuatara.command:*editor*)
-                                                     t))))
+                      (setf during
+                            (list answer
+                                  (and (tuatara.command::editor-minibuffer-active tuatara.command:*editor*) t))))
                     "C-g k e a" (note-shown seen) "RET" (note-shown seen)))
     (is equal '(nil t) during)
     (is equal "kea" answer)
@@ -1071,7 +1077,8 @@ second frame waiting its turn on it."
                   (list 0 (lambda () (sleep 0.2)))
                   (frames-probe 0 (lambda (frames)
                                     (declare (ignore frames))
-                                    (setf during (tuatara.buffer:buffer-string (tuatara.buffer:find-buffer "lines.txt")))))
+                                    (setf during
+                                          (tuatara.buffer:buffer-string (tuatara.buffer:find-buffer "lines.txt")))))
                   '(0 "C-g")
                   (list 0 (lambda () (sleep 0.5))))
           (is equal (format nil "l1~%") during)

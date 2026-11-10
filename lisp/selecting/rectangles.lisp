@@ -17,11 +17,12 @@ first, or a RECTANGLE-SOURCE for one over more text than *REWRITE-THRESHOLD*.")
 
 (defstruct (rectangle-source (:constructor make-rectangle-source (rope top bottom left right crlf rows tab-width))
                              (:copier nil))
-  "A rectangle kept by where it is: in ROPE, the text as it was then (a text
-never changes), the lines from the one starting at TOP to the one starting at
-BOTTOM, between the columns LEFT and RIGHT on the screen, a tab TAB-WIDTH
-columns at most; carriage return and line feed (CRLF) when a carriage return
-before a newline ends its lines; ROWS how many lines it has."
+  "A rectangle kept by where it is. It holds ROPE, the text as it was then (a
+text never changes), and the lines from the one starting at TOP to the one
+starting at BOTTOM. It lies between the columns LEFT and RIGHT on the screen,
+a tab TAB-WIDTH columns at most. CRLF (carriage return and line feed) is true
+when a carriage return before a newline ends its lines. ROWS is how many lines
+it has."
   rope (top 0 :type fixnum) (bottom 0 :type fixnum) (left 0 :type fixnum) (right 0 :type fixnum)
   crlf (rows 0 :type fixnum) (tab-width 8 :type fixnum))
 
@@ -249,7 +250,8 @@ were left out is the second value."
           (flet ((last-line (start end)
                    (if (>= end high) bottom (tuatara.buffer:buffer-line-start buffer (max start (1- end)))))
                  (lines (start last)
-                   (1+ (- (tuatara.buffer:buffer-line-number buffer last) (tuatara.buffer:buffer-line-number buffer start)))))
+                   (1+ (- (tuatara.buffer:buffer-line-number buffer last)
+                          (tuatara.buffer:buffer-line-number buffer start)))))
             (let ((sources (loop for (start . end) in parts
                                  for last = (last-line start end)
                                  collect (make-rectangle-source (tuatara.buffer:buffer-text buffer) start last left right
@@ -344,10 +346,10 @@ one change for undo with what is typed. One row high, INSERT state begins
 there; taller, a cursor stands on every row, the real one on point's, and what
 is typed appears on them all: \\<insert>\\[tuatara-normal] comes back to the cursors, and
 \\<*cursor-keymap*>\\[split-quit] again ends them. A block taller than
-*RECTANGLE-CURSORS-LIMIT* (or than the memory has room for) is the same to type
-at: the rows in sight are emptied and hold a cursor each, and the others are
-emptied and written in the background as the typing ends (HOLD-VIRTUAL-BLOCK);
-with *SPLIT-LIMIT-ASK* true, you are asked first whether to hold them all, as
+*RECTANGLE-CURSORS-LIMIT* (or than the memory has room for) is the same to
+type at. The rows in sight are emptied and hold a cursor each. The others are
+emptied and written in the background as the typing ends (HOLD-VIRTUAL-BLOCK).
+With *SPLIT-LIMIT-ASK* true, you are asked first whether to hold them all, as
 \\[split-selection] and \\[add-cursor-below] ask. The rows are counted before
 any is read."
   (let* ((b (current-buffer))
@@ -373,7 +375,8 @@ any is read."
       (if (rectangle-source-p kept) (setf *killed-rectangle* kept) (store-rectangle kept))
       (setf (tuatara.buffer:buffer-mark-active-p b) nil)
       ;; no line was made or taken away: each row is still its line
-      (flet ((row-at-line (line) (tuatara.display:buffer-move-to-screen-column b (tuatara.buffer:buffer-goto-line b line) left)))
+      (flet ((row-at-line (line)
+               (tuatara.display:buffer-move-to-screen-column b (tuatara.buffer:buffer-goto-line b line) left)))
         (goto (row-at-line here))
         (if (rest rows)
             (let ((split (start-cursors left)))
@@ -385,12 +388,12 @@ any is read."
             (tuatara-insert))))))
 
 (defun insert-rectangle-at (buffer position texts &key group)
-  "Put the rows TEXTS into BUFFER one above another: the first at POSITION,
-each other at POSITION's column on the screen on the line below the last (a
-short line padded out to it with spaces, a tab across it made spaces), new
-lines made at the end as needed; refused when that would be past the part
-shown of a narrowed buffer. One change, joining the newest with GROUP.
-Returns the byte offset after the last row."
+  "Put the rows TEXTS into BUFFER one above another. The first goes at
+POSITION, each other at POSITION's column on the screen on the line below the
+last (a short line padded out to it with spaces, a tab across it made spaces).
+New lines are made at the end as needed. It is refused when that would be past
+the part shown of a narrowed buffer. One change, joining the newest with
+GROUP. Returns the byte offset after the last row."
   (let* ((column (tuatara.display:buffer-screen-column buffer position))
          ;; the end of the text, or of the part shown of a narrowed buffer
          (size (tuatara.buffer:buffer-end buffer))
@@ -672,10 +675,13 @@ around, when it stands around every row in sight."
     (multiple-value-bind (open close) (wrap-pair char)
       (if (large-rectangle-p b)
           (let ((in-sight (loop for (from . to) in (sight-ranges b) append (region-rectangle-rows b :from from :to to))))
-            (when (start-rectangle-job b (if (and in-sight (every (lambda (row) (already-wrapped-p b (first row) (second row) open close))
-                                                                  in-sight))
-                                             :unwrap
-                                             :wrap)
+            (when (start-rectangle-job b
+                                       (if (and in-sight
+                                                (every (lambda (row)
+                                                         (already-wrapped-p b (first row) (second row) open close))
+                                                       in-sight))
+                                           :unwrap
+                                           :wrap)
                                        :open (string open) :close (string close))
               (setf (tuatara.buffer:buffer-mark-active-p b) nil)))
           (let* ((kind (if (every (lambda (row) (already-wrapped-p b (first row) (second row) open close))
@@ -694,32 +700,33 @@ around, when it stands around every row in sight."
 ;;; positions through the change) and made by its own writer (the text itself)
 
 (defstruct (rows-job (:constructor make-rows-job) (:copier nil))
-  "What a background job over a rectangle's rows changes: in ROPE, the lines
-from the one starting at TOP (line number TOP-LINE) to the one starting at
-BOTTOM, the job's text ending at HIGH and the whole text at TOTAL, between the
-columns LEFT and RIGHT, carriage return and line feed (CRLF) when a carriage
-return before a newline ends the lines. The columns are on the screen, a tab
-TAB-WIDTH columns at most, a tab across an edge made spaces outside it as its
-row changes; with TAB-WIDTH NIL, they count characters. KIND says what
-changes: :CUT and :DELETE empty each row; :CHANGE puts TEXT (octets) in its
-place, a row short of the block padded out to it with spaces unless PAD is
-false (with LEFT = RIGHT, TEXT goes in at that column, or at the end of a
-shorter line); :APPEND puts TEXT at the end of each line; :WRAP puts OPEN
-before and CLOSE after it, and :UNWRAP takes them off where they stand just
-outside it (WRAPPED-MATCH); :PASTE puts SOURCE's rows, each REPEAT times
-across, in place of its rows, or with LEFT = RIGHT in at that column, the rows
-past the text's end on new lines (NEWLINE) at its end; :CLEAR blanks each row,
-a line ending inside the block cut at its left column and one shorter than the
-block left alone; :NUMBER puts in place of each row what NUMBERING, a function
-of the row's index from 0, gives (octets), a short row padded out to the
-block, and :NUMBER-IN puts it in at the block's left column, replacing
-nothing; :TYPE writes what was typed at a cursor on each row (TYPED-ROW), TEXT
-in place of the columns, or at the line's end with AT-END, the BACK characters
-before them and the FORWARD after them deleted too. The rows starting at the
-offsets SKIP holds (a hash table) are left as they are; REFUSED counts, in its
-car, the rows :TYPE could not change. FOLDS are the folds of the text as the
-job began (FOLDS-NOW): a row whose change would take part of the text one
-hides, but not all of it, is left as it is, and counted in the car of HIDDEN."
+  "What a background job over a rectangle's rows changes. It works in ROPE, on
+the lines from the one starting at TOP (line number TOP-LINE) to the one
+starting at BOTTOM, the job's text ending at HIGH and the whole text at TOTAL,
+between the columns LEFT and RIGHT. CRLF (carriage return and line feed) is
+true when a carriage return before a newline ends the lines. The columns are
+on the screen, a tab TAB-WIDTH columns at most, a tab across an edge made
+spaces outside it as its row changes. With TAB-WIDTH NIL, they count
+characters. KIND says what changes. :CUT and :DELETE empty each row. :CHANGE
+puts TEXT (octets) in its place, a row short of the block padded out to it
+with spaces unless PAD is false (with LEFT = RIGHT, TEXT goes in at that
+column, or at the end of a shorter line). :APPEND puts TEXT at the end of each
+line. :WRAP puts OPEN before and CLOSE after it, and :UNWRAP takes them off
+where they stand just outside it (WRAPPED-MATCH). :PASTE puts SOURCE's rows,
+each REPEAT times across, in place of its rows, or with LEFT = RIGHT in at
+that column. The rows past the text's end go on new lines (NEWLINE) at its
+end. :CLEAR blanks each row, a line ending inside the block cut at its left
+column and one shorter than the block left alone. :NUMBER puts in place of
+each row what NUMBERING, a function of the row's index from 0, gives (octets),
+a short row padded out to the block. :NUMBER-IN puts it in at the block's left
+column, replacing nothing. :TYPE writes what was typed at a cursor on each row
+\(TYPED-ROW). TEXT goes in place of the columns, or at the line's end with
+AT-END. The BACK characters before them and the FORWARD after them are deleted
+too. The rows starting at the offsets SKIP holds (a hash table) are left as
+they are. REFUSED counts, in its car, the rows :TYPE could not change. FOLDS
+are the folds of the text as the job began (FOLDS-NOW). A row whose change
+would take part of the text one hides, but not all of it, is left as it is,
+and counted in the car of HIDDEN."
   rope (top 0 :type fixnum) (bottom 0 :type fixnum) (top-line 0 :type fixnum) (high 0 :type fixnum)
   (total 0 :type fixnum) (left 0 :type fixnum) (right 0 :type fixnum) crlf kind text open close source
   (repeat 1 :type fixnum) newline (pad t) skip at-end (back 0 :type fixnum) (forward 0 :type fixnum)
@@ -763,11 +770,12 @@ the spaces it shows inside it."
     (row-octets before (tuatara.text:rope-octets (rows-job-rope spec) :start from :end to) after)))
 
 (defun typed-row (spec line s e sc ec line-end)
-  "What the typing SPEC describes (the :TYPE kind) makes of the row of its text
-starting at LINE, whose columns run from S to E (at the columns SC to EC) and
-whose text ends at LINE-END: three values, where the change starts and ends and the octets
-put there, a row short of the columns padded out to them first when SPEC pads;
-NIL when the characters deleted beside the cursor are not there on this row."
+  "What the typing SPEC describes (the :TYPE kind) makes of the row of its
+text starting at LINE, whose columns run from S to E (at the columns SC to EC)
+and whose text ends at LINE-END. It gives three values: where the change
+starts and ends and the octets put there, a row short of the columns padded
+out to them first when SPEC pads. It gives NIL when the characters deleted
+beside the cursor are not there on this row."
   (let* ((rope (rows-job-rope spec))
          (at-end (rows-job-at-end spec))
          (from (if at-end line-end s))
@@ -789,7 +797,7 @@ NIL when the characters deleted beside the cursor are not there on this row."
   "True when the change the job SPEC makes to its row K, the row of its text
 starting at LINE (columns S to E, at the columns SC to EC, the text ending at
 LINE-END), would take part of the text one of its folds hides, but not all of
-it (ROWS-JOB-FOLDS); NIL at once when the text had no folds."
+it (ROWS-JOB-FOLDS). It gives NIL at once when the text had no folds."
   (let ((folds (rows-job-folds spec)))
     (when folds
       (multiple-value-bind (from to)
@@ -803,7 +811,8 @@ it (ROWS-JOB-FOLDS); NIL at once when the text had no folds."
             (t (values nil nil)))
         (and from (< from to) (tuatara.display:folds-cut folds from to) t)))))
 
-(setf (documentation 'make-rows-job 'function) "Return a ROWS-JOB: what a background job over a rectangle's rows changes."
+(setf (documentation 'make-rows-job 'function)
+      "Return a ROWS-JOB: what a background job over a rectangle's rows changes."
       (documentation 'rows-job-p 'function) "True when OBJECT is a ROWS-JOB.")
 
 (defparameter *no-octets* (tuatara.text:make-octets 0)
@@ -909,22 +918,29 @@ starting in [FROM, TO), in order, as RECTANGLE-PIECE-RUN makes them."
                    (:type (multiple-value-bind (from to octets) (typed-row spec line s e sc ec line-end)
                             (when from (change from to octets))))
                    ((:cut :delete) (when (< s e) (change s e (padded-octets (+ (row-lead spec s e sc) (row-tail spec ec)) *no-octets*))))
-                   (:unwrap (multiple-value-bind (a z) (wrapped-match rope s e (rows-job-open spec) (rows-job-close spec))
+                   (:unwrap (multiple-value-bind (a z)
+                                (wrapped-match rope s e (rows-job-open spec) (rows-job-close spec))
                               (when a
                                 (change a s *no-octets*)
                                 (change e z *no-octets*))))
-                   (:change (change s e (padded-octets (row-lead spec s e sc) (rows-job-text spec) :after (row-tail spec ec))))
+                   (:change (change s e (padded-octets (row-lead spec s e sc)
+                                                       (rows-job-text spec)
+                                                       :after (row-tail spec ec))))
                    (:append (change line-end line-end (rows-job-text spec)))
                    (:clear (cond ((or (= s e) (= s line-end)))
                                  ((= e line-end) (change s e *no-octets*))
                                  (t (change s e (padded-octets (- ec sc) *no-octets*)))))
-                   (:number (change s e (padded-octets (- left sc) (funcall (rows-job-numbering spec) k) :after (row-tail spec ec))))
+                   (:number (change s e (padded-octets (- left sc)
+                                                       (funcall (rows-job-numbering spec) k)
+                                                       :after (row-tail spec ec))))
                    (:number-in (if (left-tab-p spec s e sc)
                                    (change s (1+ s) (padded-octets (- left sc) (funcall (rows-job-numbering spec) k)
                                                                    :after (left-tab-inside spec sc)))
                                    (change s s (padded-octets (- left sc) (funcall (rows-job-numbering spec) k)))))
                    (:wrap (if (row-straddled-p spec s e sc ec)
-                              (change s e (row-octets (- left sc) (rows-job-open spec) (row-inside-octets spec s e sc ec)
+                              (change s e (row-octets (- left sc)
+                                                      (rows-job-open spec)
+                                                      (row-inside-octets spec s e sc ec)
                                                       (- right (max (min ec right) left)) (rows-job-close spec)
                                                       (row-tail spec ec)))
                               (progn (change s s (padded-octets (- left sc) (rows-job-open spec)))
@@ -965,7 +981,8 @@ looks anything up in the text."
     (flet ((emit-inside (s e sc ec block block-start block-end)
              ;; the row's text inside the block, a tab across an edge as its spaces inside it
              (if (row-straddled-p spec s e sc ec)
-                 (multiple-value-bind (before from to after) (row-inside rope s e sc ec left right (rows-job-tab-width spec))
+                 (multiple-value-bind (before from to after)
+                     (row-inside rope s e sc ec left right (rows-job-tab-width spec))
                    (tuatara.io:writer-spaces writer before)
                    (write-text writer rope from to block block-start block-end)
                    (tuatara.io:writer-spaces writer after))
@@ -1129,11 +1146,11 @@ one, the whole line where text goes at its end, until the result is taken in."
 (defun rows-job-goal (buffer kind top bottom left source repeat text open)
   "Where point goes when a rows job of KIND over BUFFER's lines from TOP to
 BOTTOM is taken in, as the same command done at once leaves it, a function of
-the buffer with the job's text in it: after the text written on the last row
-(TEXT for a change, SOURCE's last row REPEAT times across for a paste), at
-the column LEFT of the last row cleared, after OPEN on the first row wrapped,
-where OPEN stood on the first row unwrapped;
-NIL for the others."
+the buffer with the job's text in it. It is after the text written on the last
+row (TEXT for a change, SOURCE's last row REPEAT times across for a paste). It
+is at the column LEFT of the last row cleared. It is after OPEN on the first
+row wrapped. It is where OPEN stood on the first row unwrapped. It is NIL for
+the others."
   (let* ((top-line (tuatara.buffer:buffer-line-number buffer top))
          (rows (if (and (eq kind :paste) source)
                    (rectangle-source-rows source)
@@ -1150,7 +1167,10 @@ NIL for the others."
         (:change (after (1- rows) (tuatara.text:string-octet-length text)))
         (:clear (after (1- rows) 0))
         (:wrap (after 0 (tuatara.text:string-octet-length open)))
-        (:unwrap (lambda (b) (tuatara.display:buffer-move-to-screen-column b (tuatara.buffer:buffer-goto-line b top-line) (max 0 (1- left)))))
+        (:unwrap (lambda (b)
+                   (tuatara.display:buffer-move-to-screen-column b
+                                                                 (tuatara.buffer:buffer-goto-line b top-line)
+                                                                 (max 0 (1- left)))))
         (:paste (and last-row (after (1- rows) last-row)))))))
 
 (defun start-rows-job (buffer kind top bottom left right rows
@@ -1159,20 +1179,19 @@ NIL for the others."
                          (tab-width (tuatara.display:tab-width-of buffer)))
   "Start the background job that rewrites ROWS lines of BUFFER from the one
 starting at TOP to the one starting at BOTTOM between the columns LEFT and
-RIGHT, columns on the screen (a tab TAB-WIDTH columns at most; with TAB-WIDTH
-NIL, characters), as KIND says (ROWS-JOB), SOURCE's rows REPEAT times across for a
-paste, a short row padded out to the block unless PAD is false, NUMBERING
-for :NUMBER; for :TYPE,
-AT-END, BACK and FORWARD as ROWS-JOB has them, the rows REFUSED counted in its
-car. The rows starting at the offsets SKIP holds (a hash table) are left alone,
-and so are those where the change would take part of the text a fold hides,
-but not all of it, counted in the car of HIDDEN.
-REPORT (see REWRITE), ANNOUNCE (the work in words, said to go on in the
-background as it starts, or :NONE for nothing), WHAT (what it does, for the
-list of jobs, said as it starts unless ANNOUNCE says otherwise), VERB and
-LEAVES (REWRITE) are the rectangle's unless given (JOB-WORDS, JOB-REPORT);
-JOINS, the undo stack of a change the job's joins (REWRITE).
-Returns the job."
+RIGHT, as KIND says (ROWS-JOB). The columns are on the screen (a tab TAB-WIDTH
+columns at most; with TAB-WIDTH NIL, characters). SOURCE's rows are put REPEAT
+times across for a paste. A short row is padded out to the block unless PAD is
+false. NUMBERING is used for :NUMBER. For :TYPE, AT-END, BACK and FORWARD are
+as ROWS-JOB has them, the rows REFUSED counted in its car. The rows starting
+at the offsets SKIP holds (a hash table) are left alone, and so are those
+where the change would take part of the text a fold hides, but not all of it,
+counted in the car of HIDDEN. REPORT (see REWRITE), ANNOUNCE (the work in
+words, said to go on in the background as it starts, or :NONE for nothing),
+WHAT (what it does, for the list of jobs, said as it starts unless ANNOUNCE
+says otherwise), VERB and LEAVES (REWRITE) are the rectangle's unless given
+\(JOB-WORDS, JOB-REPORT). JOINS is the undo stack of a change the job's joins
+\(REWRITE). Returns the job."
   (tuatara.buffer:ensure-indexed buffer)
   (let* ((rope (tuatara.buffer:buffer-text buffer))
          (total (tuatara.text:rope-octet-length rope))
@@ -1182,7 +1201,13 @@ Returns the job."
          (what (or what (job-words kind :doing (rectangle-rows-words rows))))
          (spec (make-rows-job :rope rope :top top :bottom bottom :top-line (tuatara.text:byte->line rope top)
                               :high high :total total :left left :right right :crlf (buffer-crlf-p buffer)
-                              :tab-width tab-width :kind kind :pad pad :skip skip :at-end at-end :back back :forward forward
+                              :tab-width tab-width
+                              :kind kind
+                              :pad pad
+                              :skip skip
+                              :at-end at-end
+                              :back back
+                              :forward forward
                               :refused refused :hidden hidden :folds (tuatara.display:folds-now buffer)
                               :text (and text (tuatara.text:string-octets text))
                               :open (and open (tuatara.text:string-octets open))
@@ -1191,18 +1216,22 @@ Returns the job."
                               :newline (tuatara.text:string-octets (tuatara.buffer:buffer-newline buffer))))
          (job (%make-rewrite :session t :buffer buffer :base (tuatara.buffer:buffer-version buffer) :rope rope
                              :low top :high high :words "on the rectangle's rows" :what what :joins joins
-                             :verb (or verb (job-words kind :verb "the rectangle")) :leaves (or leaves "the rectangle is as it was")
+                             :verb (or verb (job-words kind :verb "the rectangle"))
+                             :leaves (or leaves "the rectangle is as it was")
                              :goal (rows-job-goal buffer kind top bottom left source repeat text open)
                              :point (tuatara.buffer:buffer-point buffer)
                              :mapper (rectangle-mapper spec)
                              :runner (lambda (job piece) (rectangle-piece-run spec job piece))
                              :expand (lambda (m g) (declare (ignore m)) g)
                              :all t :doing (job-words kind :doing)
-                             :report (or report (job-report kind (lambda (n) (declare (ignore n)) (rectangle-rows-words rows))
-                                                            "the rectangle" :refused refused :hidden hidden))
+                             :report (or report
+                                         (job-report kind (lambda (n) (declare (ignore n)) (rectangle-rows-words rows))
+                                                     "the rectangle" :refused refused :hidden hidden))
                              :shade (rows-job-shade spec)
                              ;; a paste at the very end of the text still has a piece, of no length
-                             :pieces (if (< top high) (rewrite-pieces-for rope top high) (vector (make-rewrite-piece top top)))
+                             :pieces (if (< top high)
+                                         (rewrite-pieces-for rope top high)
+                                         (vector (make-rewrite-piece top top)))
                              :checkpoint *rewrite-checkpoint* :hook *rewrite-piece-hook*
                              :directory (tuatara.io:buffer-scratch-directory buffer))))
     (launch-rewrite job "tuatara rectangle" (format nil "~:d row~:p, octets ~:d to ~:d" rows top high))

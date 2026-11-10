@@ -144,7 +144,8 @@ bracket, the brackets are counted within *SHOW-PAREN-REACH* octets."
          (size (tuatara.text:rope-octet-length rope))
          (before (and (plusp point) (tuatara.text:rope-octet rope (1- point))))
          (after (and (< point size) (tuatara.text:rope-octet rope point)))
-         (at (cond ((and (member before tuatara.text:*closing-octets*) (not (tuatara.text:rope-escaped-p rope (1- point)))) (1- point))
+         (at (cond ((and (member before tuatara.text:*closing-octets*)
+                         (not (tuatara.text:rope-escaped-p rope (1- point)))) (1- point))
                    ((and (member after tuatara.text:*opening-octets*) (not (tuatara.text:rope-escaped-p rope point))) point))))
     (when at
       (multiple-value-bind (partner same) (bracket-partner buffer at (= at point))

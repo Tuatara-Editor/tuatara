@@ -73,13 +73,13 @@ the day DAY, that window staying selected; true when a window was made for it."
 (defvar *org-read-date-in-calendar* t
   "True for Org's date question (\\[org-schedule], \\[org-deadline],
 \\[org-time-stamp], a capture template's %^T) to begin in the calendar shown
-below it (*ORG-READ-DATE-POPUP-CALENDAR*): \\`h' \\`l' and the arrows move its
-day a day, \\`j' \\`k' a week, \\`m' marks the day, \\`u' takes the mark off, and
+below it (*ORG-READ-DATE-POPUP-CALENDAR*). \\`h' \\`l' and the arrows move its
+day a day, \\`j' \\`k' a week, \\`m' marks the day, \\`u' takes the mark off.
 \\`RET' writes the days chosen at the prompt, where a time (14:00-15:00) or a
 repeat is added, \\`RET' then taking it. Several days are marked where the
-question takes several (\\[org-time-stamp], %^T): days one after another
-make a range, the others a timestamp each. Any other key begins the date at
-the prompt (fri, +3d). NIL to begin at the prompt.")
+question takes several (\\[org-time-stamp], %^T): days one after another make a
+range, the others a timestamp each. Any other key begins the date at the prompt
+\(fri, +3d). NIL to begin at the prompt.")
 
 (defstruct (org-date-choice (:copier nil))
   "The days chosen in the calendar while Org's date question begins there:
@@ -192,13 +192,13 @@ repeat to; RET there takes it."
               (editor-minibuffer-point *editor*) (length text))))))
 
 (defun org-read-several-dates (text today)
-  "TEXT, days apart by commas and runs of days FIRST--LAST, as the date
-question writes them from the calendar (2026-11-02, 2026-11-09--2026-11-11
-14:00-15:00), or as timestamps one after another as a note has them
-(<2026-11-02 Mon 09:00> <2026-11-09 Mon>--<2026-11-11 Wed>), as the
-timestamps it makes, one after another: a run a range <FIRST>--<LAST>, the
-time written after the last day given to every day written without one;
-TODAY is the day number of today. NIL when TEXT is one day alone, or not such."
+  "TEXT, days apart by commas and runs of days FIRST--LAST, as the date question
+writes them from the calendar (2026-11-02, 2026-11-09--2026-11-11 14:00-15:00),
+or as timestamps one after another as a note has them (<2026-11-02 Mon 09:00>
+<2026-11-09 Mon>--<2026-11-11 Wed>), as the timestamps it makes, one after
+another. A run is a range <FIRST>--<LAST>, the time written after the last day
+given to every day written without one. TODAY is the day number of today. NIL
+when TEXT is one day alone, or not such."
   ;; timestamps side by side are days apart, as commas part them
   (setf text (cl-ppcre:regex-replace-all "([>\\]])\\s+([<\\[])" text "\\1, \\2"))
   (when (or (find #\, text) (search "--" text))
@@ -247,7 +247,8 @@ or of several timestamps, or NIL when what was typed is no date."
                                :shown (lambda (&rest parts) (org-ts-text (apply #'org-date-ts parts)))
                                :follow (lambda (&rest parts)
                                          ;; the calendar's day is the answer while it is chosen there
-                                         (unless *org-date-choosing* (org-date-calendar-follow (apply #'org-date-ts parts))))
+                                         (unless *org-date-choosing*
+                                           (org-date-calendar-follow (apply #'org-date-ts parts))))
                                ;; a key typed while the calendar is answered in begins the date at the prompt;
                                ;; nothing is offered to take till then
                                :typed (lambda (input)
@@ -294,7 +295,8 @@ order, or NIL when they name anything else: weekday or workday (Monday to
 Friday), weekend, a day to a day (friday to monday too), or days listed,
 and between them passed over."
   (let ((words (remove "and" words :test #'string=)))
-    (cond ((and (= (length words) 1) (member (first words) '("weekday" "weekdays" "workday" "workdays") :test #'string=))
+    (cond ((and (= (length words) 1)
+                (member (first words) '("weekday" "weekdays" "workday" "workdays") :test #'string=))
            (list 1 2 3 4 5))
           ((and (= (length words) 1) (member (first words) '("weekend" "weekends") :test #'string=))
            (list 0 6))
@@ -317,18 +319,22 @@ INPUT says neither."
       (flet ((after (at) (let ((space (position-if (lambda (c) (member c '(#\Space #\Tab))) input :start (1+ at))))
                            (if space (string-trim " " (subseq input space)) ""))))
         (values (string-trim " " (subseq input 0 (or from until)))
-                (and from (string-trim " " (subseq input (+ from (if (char-equal (char input from) #\f) 0 1) 4) (or until (length input)))))
+                (and from
+                     (string-trim " "
+                                  (subseq input
+                                          (+ from (if (char-equal (char input from) #\f) 0 1) 4)
+                                          (or until (length input)))))
                 (and until (after until)))))))
 
 (defun org-words-repeat (input now)
   "INPUT, a repeat in words, read at the universal time NOW, as
 ORG-WORDS-REPEAT-PLAIN reads it, and from and to when it says them
-\(ORG-REPEAT-RANGE): from a date, a repeater begins there; to or until a
-date, it is a timestamp by rule (<%%(and (diary-block ...) ...)>) that ends
-there, written as the repeat menu writes it (REPEAT-VALUE), its dates read
-as a date is typed (nov 2, 2026-11-02, fri). NIL when INPUT is none, a date
-is none, it ends before it begins, it cannot be written to end, or a rule is
-given a date to begin from and none to end."
+\(ORG-REPEAT-RANGE): from a date, a repeater begins there. To or until a date,
+it is a timestamp by rule (<%%(and (diary-block ...) ...)>) that ends there,
+written as the repeat menu writes it (REPEAT-VALUE), its dates read as a date is
+typed (nov 2, 2026-11-02, fri). NIL when INPUT is none, a date is none, it ends
+before it begins, it cannot be written to end, or a rule is given a date to
+begin from and none to end."
   (multiple-value-bind (head from-text to-text)
       ;; the time, wherever it is said, is the repeat's
       (multiple-value-bind (start end) (find-time-range input)
@@ -364,8 +370,11 @@ everyday and daily are every day, weekly, monthly and yearly likewise. It is
 written as the repeat menu writes it (REPEAT-FORM), from the menu's
 arguments for it, which are the second value."
   (let* ((words (loop for w in (cl-ppcre:split "[\\s,]+" (string-downcase (string-trim " " input)))
-                      for whole = (cdr (assoc w '(("everyday" "every" "day") ("daily" "every" "day") ("weekly" "every" "week")
-                                                  ("monthly" "every" "month") ("yearly" "every" "year"))
+                      for whole = (cdr (assoc w
+                                              '(("everyday" "every" "day")
+                                                ("daily" "every" "day")
+                                                ("weekly" "every" "week")
+                                                ("monthly" "every" "month") ("yearly" "every" "year"))
                                               :test #'string=))
                       unless (member w '("" "of" "the" "on" "at") :test #'string=)
                         append (or whole (list w))))
@@ -410,7 +419,9 @@ arguments for it, which are the second value."
                       (and start (list (if (minusp n) "repeats=monthly-last" "repeats=monthly-nth")))))))))
         (when (and kind (or (null time) (read-time-range time)))
           (let* ((arguments (append (list (format nil "start=~a" (format-day "%F" start)))
-                                    (and time (list (format nil "time=~a" (multiple-value-call #'time-range-text (read-time-range time)))))
+                                    (and time
+                                         (list (format nil "time=~a" (multiple-value-call #'time-range-text
+                                                                       (read-time-range time)))))
                                     (and (> count 1) (list (format nil "every=~d" count)))
                                     kind))
                  (form (repeat-form arguments start nil)))
@@ -432,7 +443,9 @@ the last of from, or to or until once from is said, or until alone; NIL when
 TEXT is no repeat in words (every, each, daily ...) or says none of them."
   (when (cl-ppcre:scan "(?i)(?:^|\\s)(?:every|each|everyday|daily|weekly|monthly|yearly)(?:\\s|$)" text)
     (let ((from (cl-ppcre:scan "(?i)(?:^|\\s)from(?:\\s|$)" text)) (place nil))
-      (cl-ppcre:do-scans (s e rs re (if from "(?i)(?:^|\\s)(?:from|to|until|till)(?:\\s|$)" "(?i)(?:^|\\s)(?:until|till)(?:\\s|$)")
+      (cl-ppcre:do-scans (s e rs re (if from
+                                        "(?i)(?:^|\\s)(?:from|to|until|till)(?:\\s|$)"
+                                        "(?i)(?:^|\\s)(?:until|till)(?:\\s|$)")
                           text nil :start (or from 0))
         (setf place e))
       place)))
@@ -557,8 +570,9 @@ date that does not repeat, which would end its repeats: that is said."
                  (new-text (cond ((null new) nil)
                                  ((stringp new) new)
                                  (t (org-ts-text (org-ts-keep-cycle new (and old (org-read-ts old)))))))
-                 (tokens (cond ((and new old) (mapcar (lambda (tk) (if (string= (car tk) keyword) (cons keyword new-text) tk))
-                                                      (remove "CLOSED" tokens :key #'car :test #'string=)))
+                 (tokens (cond ((and new old)
+                                (mapcar (lambda (tk) (if (string= (car tk) keyword) (cons keyword new-text) tk))
+                                        (remove "CLOSED" tokens :key #'car :test #'string=)))
                                (new (cons (cons keyword new-text) (remove "CLOSED" tokens :key #'car :test #'string=)))
                                (t (remove keyword tokens :key #'car :test #'string=))))
                  (planning (format nil "~{~a~^ ~}" (mapcar (lambda (tk) (format nil "~a: ~a" (car tk) (cdr tk))) tokens)))
@@ -585,7 +599,8 @@ date that does not repeat, which would end its repeats: that is said."
                             (org-property headline :raw-value) old))
                   (t (org-replace-chars parse begin end new-entry
                                         :point (cond ((<= position line-end) position)
-                                                     ((>= position end) (+ position (- (length new-entry) (- end begin))))
+                                                     ((>= position end)
+                                                      (+ position (- (length new-entry) (- end begin))))
                                                      (t begin)))
                      (message "~:[~a~;~*~a~]" new (if deadline-p "Deadline taken away" "Scheduling taken away")
                               (format nil "~a: ~a" keyword new-text)))))))))
@@ -645,7 +660,8 @@ one after another (*ORG-READ-DATE-IN-CALENDAR*)."
                    (new (progn (setf (org-ts-active ts) active)
                                (when (and old (org-ts-hour old) (not (org-ts-hour ts)))
                                  (setf (org-ts-hour ts) (org-ts-hour old) (org-ts-minute ts) (org-ts-minute old)
-                                       (org-ts-end-hour ts) (org-ts-end-hour old) (org-ts-end-minute ts) (org-ts-end-minute old)))
+                                       (org-ts-end-hour ts) (org-ts-end-hour old) (org-ts-end-minute ts)
+                                       (org-ts-end-minute old)))
                                (org-ts-text (org-ts-keep-cycle ts old))))
                    (from (or from position)))
               (org-replace-chars parse from (or to position) new :point (+ from (length new)))))))))

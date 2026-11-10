@@ -91,7 +91,9 @@
 (defun remove-test-directories ()
   "Take away the directories this test run kept its state and data in, the
 gpg-agent of the tests' own keyring stopped first."
-  (ignore-errors (uiop:run-program (list "gpgconf" "--homedir" (namestring (merge-pathnames "gnupg/" *test-state-directory*))
+  (ignore-errors (uiop:run-program (list "gpgconf"
+                                         "--homedir"
+                                         (namestring (merge-pathnames "gnupg/" *test-state-directory*))
                                          "--kill" "gpg-agent")
                                    :ignore-error-status t))
   (uiop:delete-directory-tree *test-state-directory* :validate t :if-does-not-exist :ignore)

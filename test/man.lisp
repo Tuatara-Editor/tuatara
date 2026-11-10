@@ -160,7 +160,8 @@ faces, its references links; reading what man prints; asking for pages.")
 
 (defun man-test-page-file (name text)
   "Write TEXT in the file NAME in a folder of its own for a test, and return its path and the folder."
-  (let* ((dir (ensure-directories-exist (merge-pathnames (format nil "tuatara-man-~a/" name) (uiop:temporary-directory))))
+  (let* ((dir (ensure-directories-exist (merge-pathnames (format nil "tuatara-man-~a/" name)
+                                                         (uiop:temporary-directory))))
          (path (namestring (merge-pathnames (format nil "~a.1" name) dir))))
     (alexandria:write-string-into-file text path :if-exists :supersede)
     (values path dir)))

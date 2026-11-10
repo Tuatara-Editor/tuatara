@@ -35,13 +35,28 @@ file sets them."
 
 (define-test (formatted names-as-denote-makes-them)
   ;; what denote 4.2.3 makes of the same titles and keywords (denote-format-file-name)
-  (dolist (case '(("My notes on the garden" ("garden" "project") ".org" "20260927T213446--my-notes-on-the-garden__garden_project.org")
-                  ("Hello, World! (draft)" ("project" "draft") ".org" "20260927T213446--hello-world-draft__draft_project.org")
+  (dolist (case '(("My notes on the garden"
+                   ("garden" "project")
+                   ".org"
+                   "20260927T213446--my-notes-on-the-garden__garden_project.org")
+                  ("Hello, World! (draft)"
+                   ("project" "draft")
+                   ".org"
+                   "20260927T213446--hello-world-draft__draft_project.org")
                   ("  Leading and trailing  " () ".org" "20260927T213446--leading-and-trailing.org")
                   ("Ärger über Straßen" ("größe") ".org" "20260927T213446--ärger-über-straßen__größe.org")
-                  ("a_b c--d e" ("garden bed" "multi-word") ".org" "20260927T213446--a-b-c-d-e__gardenbed_multiword.org")
-                  ("Quotes ‘single’ “double” and #hash" ("zeta" "alpha") ".org" "20260927T213446--quotes-single-double-and-hash__alpha_zeta.org")
-                  ("Path/with/slashes and dots... v1.2" ("x") ".org" "20260927T213446--pathwithslashes-and-dots-v12__x.org")
+                  ("a_b c--d e"
+                   ("garden bed" "multi-word")
+                   ".org"
+                   "20260927T213446--a-b-c-d-e__gardenbed_multiword.org")
+                  ("Quotes ‘single’ “double” and #hash"
+                   ("zeta" "alpha")
+                   ".org"
+                   "20260927T213446--quotes-single-double-and-hash__alpha_zeta.org")
+                  ("Path/with/slashes and dots... v1.2"
+                   ("x")
+                   ".org"
+                   "20260927T213446--pathwithslashes-and-dots-v12__x.org")
                   ("Tabs	and  many   spaces" ("a=b" "c_d") ".org" "20260927T213446--tabs	and-many-spaces__ab_cd.org")
                   ("" ("solo") ".txt" "20260927T213446__solo.txt")
                   ("Just a title" () ".md" "20260927T213446--just-a-title.md")))
@@ -97,15 +112,22 @@ file sets them."
                (is = (tuatara.buffer:buffer-size buffer) (tuatara.buffer:buffer-point buffer))))
            ;; a name that exists is visited as it is
            (put-file (merge-pathnames "plain.txt" dir) (format nil "plain text~%"))
-           (multiple-value-bind (f editor) (run-keys (format nil "SPC f ~a RET" (key-string (namestring (merge-pathnames "plain.txt" dir)))))
+           (multiple-value-bind (f editor)
+               (run-keys (format nil "SPC f ~a RET" (key-string (namestring (merge-pathnames "plain.txt" dir)))))
              (declare (ignore f))
-             (is string= "plain.txt" (tuatara.buffer:buffer-name (tuatara.display:window-buffer (tuatara.command:editor-window editor))))
+             (is string= "plain.txt"
+                 (tuatara.buffer:buffer-name (tuatara.display:window-buffer (tuatara.command:editor-window editor))))
              (is string= (format nil "plain text~%") (session-text editor)))
            ;; a name encrypted as Tuatara cannot (.age) is refused; a .gpg one is made, encrypted when saved
-           (multiple-value-bind (f editor) (run-keys (format nil "SPC f ~a RET" (key-string (namestring (merge-pathnames "secret.org.age" dir)))) :width 100)
+           (multiple-value-bind (f editor)
+               (run-keys (format nil "SPC f ~a RET" (key-string (namestring (merge-pathnames "secret.org.age" dir))))
+                         :width 100)
              (true (fake-frame-showing* f "only .gpg files can be encrypted"))
-             (is string= "*scratch*" (tuatara.buffer:buffer-name (tuatara.display:window-buffer (tuatara.command:editor-window editor)))))
-           (multiple-value-bind (f editor) (run-keys (format nil "SPC f ~a RET" (key-string (namestring (merge-pathnames "secret.org.gpg" dir)))) :width 100)
+             (is string= "*scratch*"
+                 (tuatara.buffer:buffer-name (tuatara.display:window-buffer (tuatara.command:editor-window editor)))))
+           (multiple-value-bind (f editor)
+               (run-keys (format nil "SPC f ~a RET" (key-string (namestring (merge-pathnames "secret.org.gpg" dir))))
+                         :width 100)
              (declare (ignore editor))
              (true (fake-frame-showing* f "New file TITLE"))
              (false (probe-file (merge-pathnames "secret.org.gpg" dir)))))
@@ -126,11 +148,14 @@ file sets them."
                               f
                               (session-text editor)))))
              (let ((tuatara-user:*formatted-file-extension* ""))
-               (multiple-value-bind (name f) (made (format nil "SPC f ~a RET ~a RET RET RET" (key-string root) (key-string "None offered")))
+               (multiple-value-bind (name f)
+                 (made (format nil "SPC f ~a RET ~a RET RET RET" (key-string root) (key-string "None offered")))
                  (true (tuatara.frontend.fake:fake-frame-showing f "New file EXTENSION: "))
                  (false (tuatara.frontend.fake:fake-frame-showing f "(default"))
-                 (true (and (tuatara.defaults::identifier-at-start-p name) (string= "--none-offered" (subseq name 15))) "~a" name)))
-             (multiple-value-bind (name f) (made (format nil "SPC f ~a RET ~a RET RET RET" (key-string root) (key-string "Empty line note")))
+                 (true (and (tuatara.defaults::identifier-at-start-p name)
+                            (string= "--none-offered" (subseq name 15))) "~a" name)))
+             (multiple-value-bind (name f)
+                 (made (format nil "SPC f ~a RET ~a RET RET RET" (key-string root) (key-string "Empty line note")))
                (true (and (tuatara.defaults::identifier-at-start-p name)
                           (string= "--empty-line-note.org" (subseq name 15)))
                      "~a" name)
@@ -140,20 +165,33 @@ file sets them."
              (multiple-value-bind (name f text)
                  (made (format nil "SPC f ~a RET ~a RET m d RET RET" (key-string root) (key-string "In markdown")))
                (declare (ignore f))
-               (true (and (tuatara.defaults::identifier-at-start-p name) (string= "--in-markdown.md" (subseq name 15))) "~a" name)
+               (true (and (tuatara.defaults::identifier-at-start-p name)
+                          (string= "--in-markdown.md" (subseq name 15))) "~a" name)
                (true (search "title:      \"In markdown\"" text)))
              ;; a lone dot: no end at all
              (let ((name (made (format nil "SPC f ~a RET ~a RET . RET RET" (key-string root) (key-string "Bare")))))
-               (true (and (tuatara.defaults::identifier-at-start-p name) (string= "--bare" (subseq name 15))) "~a" name))
+               (true (and (tuatara.defaults::identifier-at-start-p name)
+                          (string= "--bare" (subseq name 15))) "~a" name))
              ;; a name typed without its end: that is asked
-             (let ((name (made (format nil "SPC f ~a RET RET RET RET" (key-string (concatenate 'string root "no end"))))))
-               (true (and (tuatara.defaults::identifier-at-start-p name) (string= "--no-end.org" (subseq name 15))) "~a" name))
+             (let ((name (made (format nil
+                                       "SPC f ~a RET RET RET RET"
+                                       (key-string (concatenate 'string root "no end"))))))
+               (true (and (tuatara.defaults::identifier-at-start-p name)
+                          (string= "--no-end.org" (subseq name 15))) "~a" name))
              ;; after a keyword and a comma, the empty line: no more keywords
-             (let ((name (made (format nil "SPC f ~a RET ~a RET RET g a r TAB , RET RET" (key-string root) (key-string "One tag")))))
-               (true (and (tuatara.defaults::identifier-at-start-p name) (string= "--one-tag__garden.org" (subseq name 15))) "~a" name))
+             (let ((name (made (format nil
+                                       "SPC f ~a RET ~a RET RET g a r TAB , RET RET"
+                                       (key-string root)
+                                       (key-string "One tag")))))
+               (true (and (tuatara.defaults::identifier-at-start-p name)
+                          (string= "--one-tag__garden.org" (subseq name 15))) "~a" name))
              ;; the empty line offered only while no name is typed: a name typed is taken
-             (let ((name (made (format nil "SPC f ~a RET C-a C-k ~a RET RET" (key-string (concatenate 'string root "typed.org")) (key-string "Typed")))))
-               (true (and (tuatara.defaults::identifier-at-start-p name) (string= "--typed.org" (subseq name 15))) "~a" name))))
+             (let ((name (made (format nil
+                                       "SPC f ~a RET C-a C-k ~a RET RET"
+                                       (key-string (concatenate 'string root "typed.org"))
+                                       (key-string "Typed")))))
+               (true (and (tuatara.defaults::identifier-at-start-p name)
+                          (string= "--typed.org" (subseq name 15))) "~a" name))))
       (kill-buffers-visiting dir))))
 
 (defun fake-frame-showing* (frontend text)
@@ -167,7 +205,8 @@ file sets them."
   (true (tuatara.command:command-symbol "new-file-formatted"))
   (false (tuatara.command:command-symbol "new-note"))
   (is eq 'tuatara.defaults::new-file-formatted
-      (tuatara.command:lookup-key tuatara.defaults::*tuatara-leader-keymap* (tuatara.frontend:parse-key-sequence "d n"))))
+      (tuatara.command:lookup-key tuatara.defaults::*tuatara-leader-keymap*
+                                  (tuatara.frontend:parse-key-sequence "d n"))))
 
 (define-test (formatted find-and-make-files)
   (with-formatted-directory (dir)
@@ -192,24 +231,29 @@ file sets them."
            (multiple-value-bind (f editor)
                (run-keys (format nil "SPC d f ~a C-j" (key-string "Brand new idea")) :width 100 :height 20)
              (true (tuatara.frontend.fake:fake-frame-showing f "Brand new idea is none of your files with formatted names"))
-             (is string= "*scratch*" (tuatara.buffer:buffer-name (tuatara.display:window-buffer (tuatara.command:editor-window editor))))
-             (false (find-if (lambda (b) (search "brand-new-idea" (tuatara.buffer:buffer-name b))) tuatara.buffer:*buffers*)))
+             (is string= "*scratch*"
+                 (tuatara.buffer:buffer-name (tuatara.display:window-buffer (tuatara.command:editor-window editor))))
+             (false (find-if (lambda (b) (search "brand-new-idea" (tuatara.buffer:buffer-name b)))
+                             tuatara.buffer:*buffers*)))
            ;; SPC d n makes one: its title, the root, keywords, org
            (multiple-value-bind (f editor)
-               (run-keys (list (format nil "SPC d n ~a RET" (key-string "Brand new idea")) :wait "RET f o r e n s i c s C-j RET RET")
+               (run-keys (list (format nil "SPC d n ~a RET" (key-string "Brand new idea"))
+                               :wait "RET f o r e n s i c s C-j RET RET")
                          :width 100 :height 20)
              (declare (ignore f))
              (let* ((buffer (tuatara.display:window-buffer (tuatara.command:editor-window editor)))
                     (name (tuatara.buffer:buffer-name buffer)))
                (is string= "--brand-new-idea__forensics.org" (subseq name 15))
-               (is string= (tuatara.io:native (merge-pathnames name dir)) (tuatara.io:native (tuatara.buffer:buffer-file buffer)))
+               (is string= (tuatara.io:native (merge-pathnames name dir))
+                   (tuatara.io:native (tuatara.buffer:buffer-file buffer)))
                (true (search "#+filetags: :forensics:" (tuatara.buffer:buffer-string buffer)))))
            ;; SPC d n: a text file in the subdirectory (the root chosen just before ranks
            ;; first among the matches when the test directory's random name holds the
            ;; letters of sub: the history starts empty)
            (multiple-value-bind (f editor)
                (let ((tuatara.defaults::*formatted-file-subdirectory-history* '()))
-                 (run-keys (list (format nil "SPC d n ~a RET" (key-string "Shopping list")) :wait "s u b RET C-j t e x t RET")
+                 (run-keys (list (format nil "SPC d n ~a RET" (key-string "Shopping list"))
+                                 :wait "s u b RET C-j t e x t RET")
                            :width 100 :height 20))
              (declare (ignore f))
              (let* ((buffer (tuatara.display:window-buffer (tuatara.command:editor-window editor)))
@@ -261,7 +305,8 @@ file sets them."
            (let ((f (run-keys '("C-x n g" :wait "M-r" :wait "f . o SPC a l" :wait) :width 100 :height 20)))
              (true (fake-frame-showing* f "Literal search formatted files: "))
              (false (fake-frame-showing* f "foo alone")))
-           (multiple-value-bind (f editor) (run-keys '("C-x n g" :wait "M-r f o o SPC a l" :wait "RET") :width 100 :height 20)
+           (multiple-value-bind (f editor)
+               (run-keys '("C-x n g" :wait "M-r f o o SPC a l" :wait "RET") :width 100 :height 20)
              (declare (ignore f))
              (is = (length (format nil "first line~%the foo and the bar~%"))
                  (tuatara.buffer:buffer-point (tuatara.display:window-buffer (tuatara.command:editor-window editor)))))
@@ -269,13 +314,18 @@ file sets them."
              (true (fake-frame-showing* f "foo alone")))
            ;; M-s g from a file there: the files of its directory
            (multiple-value-bind (f editor)
-               (run-keys (format nil "C-x C-f ~a RET M-s g h e a d RET" (key-string (namestring (merge-pathnames "a.txt" dir))))
+               (run-keys (format nil
+                                 "C-x C-f ~a RET M-s g h e a d RET"
+                                 (key-string (namestring (merge-pathnames "a.txt" dir))))
                          :width 100 :height 20)
              (declare (ignore f))
-             (is string= "b.org" (tuatara.buffer:buffer-name (tuatara.display:window-buffer (tuatara.command:editor-window editor)))))
+             (is string= "b.org"
+                 (tuatara.buffer:buffer-name (tuatara.display:window-buffer (tuatara.command:editor-window editor)))))
            ;; a prompt wider than the screen scrolls, so that what is typed shows, the cursor after it
            (multiple-value-bind (f editor)
-               (run-keys (format nil "C-x C-f ~a RET M-s g x y z" (key-string (namestring (merge-pathnames "a.txt" dir))))
+               (run-keys (format nil
+                                 "C-x C-f ~a RET M-s g x y z"
+                                 (key-string (namestring (merge-pathnames "a.txt" dir))))
                          :width 40 :height 10)
              (declare (ignore editor))
              (true (some (lambda (screen)
@@ -299,9 +349,12 @@ file sets them."
              (put-file (merge-pathnames "proj/src/a.txt" dir) (format nil "alpha here~%"))
              (put-file (merge-pathnames "proj/b.txt" dir) (format nil "beta here~%"))
              (put-file (merge-pathnames "other/.project" dir) "")
-             (is string= (concatenate 'string root "proj/") (tuatara.defaults::project-root (merge-pathnames "proj/src/" dir)))
-             (is string= (concatenate 'string root "proj/") (tuatara.defaults::project-root (merge-pathnames "proj/" dir)))
-             (is string= (concatenate 'string root "other/") (tuatara.defaults::project-root (merge-pathnames "other/deep/" dir)))
+             (is string= (concatenate 'string root "proj/")
+                 (tuatara.defaults::project-root (merge-pathnames "proj/src/" dir)))
+             (is string= (concatenate 'string root "proj/")
+                 (tuatara.defaults::project-root (merge-pathnames "proj/" dir)))
+             (is string= (concatenate 'string root "other/")
+                 (tuatara.defaults::project-root (merge-pathnames "other/deep/" dir)))
              (let ((tuatara.defaults::*project-root-markers* '("no-such-marker")))
                (false (tuatara.defaults::project-root (merge-pathnames "proj/src/" dir))))
              ;; the home directory is never a project's root, nor what is above it
@@ -316,7 +369,10 @@ file sets them."
              (dolist (sub '("proj/build/" "proj/src/build/" "proj/src/cache/" "proj/docs/a/"))
                (ensure-directories-exist (merge-pathnames sub dir)))
              (dolist (file '("proj/build/out.txt" "proj/src/build/inner.txt" "proj/src/x.log" "proj/src/keep.log"
-                             "proj/src/cache/c.txt" "proj/docs/a/draft1.txt" "proj/docs/a/final.txt" "proj/src/local.txt"
+                             "proj/src/cache/c.txt"
+                             "proj/docs/a/draft1.txt"
+                             "proj/docs/a/final.txt"
+                             "proj/src/local.txt"
                              "proj/#hash.txt"))
                (put-file (merge-pathnames file dir) (format nil "beta built~%")))
              ;; and, in a repository, its .git/info/exclude and your excludes file
@@ -327,18 +383,24 @@ file sets them."
                (put-file (merge-pathnames file dir) (format nil "beta built~%")))
              (let ((tuatara.defaults::*git-excludes-file* (tuatara.io:native (merge-pathnames "excludes" dir))))
                (is equal '("b.txt" "docs/a/final.txt" "src/a.txt" "src/build/inner.txt" "src/keep.log")
-                   (sort (mapcar #'cdr (tuatara.defaults::files-under (merge-pathnames "proj/" dir) :gitignore t)) #'string<))
+                   (sort (mapcar #'cdr
+                                 (tuatara.defaults::files-under (merge-pathnames "proj/" dir) :gitignore t)) #'string<))
                ;; searching a directory within: the .gitignore above it counts too, its
                ;; /build/ of the directory it is in
                (is equal '("a.txt" "build/inner.txt" "keep.log")
-                   (sort (mapcar #'cdr (tuatara.defaults::files-under (merge-pathnames "proj/src/" dir) :gitignore t)) #'string<)))
+                   (sort (mapcar #'cdr
+                                 (tuatara.defaults::files-under (merge-pathnames "proj/src/" dir)
+                                                                :gitignore t)) #'string<)))
              (let ((tuatara.defaults::*git-excludes-file* nil))
-               (true (find "src/b.secret" (mapcar #'cdr (tuatara.defaults::files-under (merge-pathnames "proj/" dir) :gitignore t))
+               (true (find "src/b.secret"
+                           (mapcar #'cdr (tuatara.defaults::files-under (merge-pathnames "proj/" dir) :gitignore t))
                            :test #'string=)))
              (is = 13 (length (tuatara.defaults::files-under (merge-pathnames "proj/" dir))))
              ;; from src/a.txt, b.txt in the project's root is found
              (multiple-value-bind (f editor)
-                 (run-keys (format nil "C-x C-f ~a RET M-s g b e t a RET" (key-string (concatenate 'string root "proj/src/a.txt")))
+                 (run-keys (format nil
+                                   "C-x C-f ~a RET M-s g b e t a RET"
+                                   (key-string (concatenate 'string root "proj/src/a.txt")))
                            :width 100 :height 20)
                ;; the prompt names the project's root; a long path may put it on a row of its own
                (true (tuatara.frontend.fake:fake-frame-showing f "Regex search files in"))
@@ -349,14 +411,17 @@ file sets them."
 (define-test (formatted back-a-buffer)
   (multiple-value-bind (f editor) (run-keys "C-x b z z b 1 RET SPC b")
     (declare (ignore f))
-    (is string= "*scratch*" (tuatara.buffer:buffer-name (tuatara.display:window-buffer (tuatara.command:editor-window editor)))))
+    (is string= "*scratch*"
+        (tuatara.buffer:buffer-name (tuatara.display:window-buffer (tuatara.command:editor-window editor)))))
   (multiple-value-bind (f editor) (run-keys "C-x b z z b 1 RET SPC b SPC b")
     (declare (ignore f))
-    (is string= "zzb1" (tuatara.buffer:buffer-name (tuatara.display:window-buffer (tuatara.command:editor-window editor)))))
+    (is string= "zzb1"
+        (tuatara.buffer:buffer-name (tuatara.display:window-buffer (tuatara.command:editor-window editor)))))
   ;; C-x b RET alone: the buffer used last
   (multiple-value-bind (f editor) (run-keys "C-x b z z b 2 RET C-x b RET")
     (declare (ignore f))
-    (is string= "*scratch*" (tuatara.buffer:buffer-name (tuatara.display:window-buffer (tuatara.command:editor-window editor)))))
+    (is string= "*scratch*"
+        (tuatara.buffer:buffer-name (tuatara.display:window-buffer (tuatara.command:editor-window editor)))))
   ;; the buffers made here are not left for the tests after, whose names they would match
   (dolist (name '("zzb1" "zzb2"))
     (let ((buffer (tuatara.buffer:find-buffer name)))
@@ -368,12 +433,14 @@ file sets them."
     (unwind-protect
          (let ((age (namestring (merge-pathnames "secret.txt.age" dir)))
                (gpg (namestring (merge-pathnames "secret.txt.gpg" dir))))
-           (multiple-value-bind (f editor) (run-keys (format nil "C-x C-f ~a RET i s e c r e t C-g C-x C-s" (key-string age)) :width 120)
+           (multiple-value-bind (f editor)
+               (run-keys (format nil "C-x C-f ~a RET i s e c r e t C-g C-x C-s" (key-string age)) :width 120)
              (declare (ignore editor))
              (true (fake-frame-showing* f "only .gpg files can be encrypted"))
              (false (probe-file age)))
            (when (tuatara.defaults::gpg-path)
-             (multiple-value-bind (f editor) (run-keys (format nil "C-x C-f ~a RET i s e c r e t C-g C-x C-s" (key-string gpg)) :width 120)
+             (multiple-value-bind (f editor)
+                 (run-keys (format nil "C-x C-f ~a RET i s e c r e t C-g C-x C-s" (key-string gpg)) :width 120)
                (declare (ignore editor))
                (true (fake-frame-showing* f "asked for as it is saved"))
                (false (probe-file gpg)))))
@@ -432,7 +499,8 @@ file sets them."
          (progn
            (ensure-directories-exist (merge-pathnames "sub/" dir))
            (put-file (merge-pathnames "20250101T100000==7--older-note__project.org" dir) (format nil "older~%"))
-           (put-file (merge-pathnames "20250202T100000--a-much-longer-title-here__garden_project.org" dir) (format nil "longer~%"))
+           (put-file (merge-pathnames "20250202T100000--a-much-longer-title-here__garden_project.org" dir)
+                     (format nil "longer~%"))
            (put-file (merge-pathnames "sub/20260101T100000--newer-note__sketch.txt" dir) (format nil "newer~%"))
            (sb-posix:utimes (namestring (merge-pathnames "20250101T100000==7--older-note__project.org" dir)) 1000000000 1000000000)
            (sb-posix:utimes (namestring (merge-pathnames "20250202T100000--a-much-longer-title-here__garden_project.org" dir)) 1000000500 1000000500)
@@ -545,8 +613,10 @@ file sets them."
     (unwind-protect
          (let ((root (tuatara.defaults::directory-name dir)))
            (ensure-directories-exist (merge-pathnames "sub/" dir))
-           (put-file (merge-pathnames "20250101T100000--older-note__project.org" dir) (format nil "a needle in the older~%"))
-           (put-file (merge-pathnames "sub/20260101T100000--newer-note__sketch.txt" dir) (format nil "the newer needle~%"))
+           (put-file (merge-pathnames "20250101T100000--older-note__project.org" dir)
+                     (format nil "a needle in the older~%"))
+           (put-file (merge-pathnames "sub/20260101T100000--newer-note__sketch.txt" dir)
+                     (format nil "the newer needle~%"))
            (sb-posix:utimes (namestring (merge-pathnames "20250101T100000--older-note__project.org" dir)) 1000000000 1000000000)
            (let ((tuatara-user:*indexed-directories* (list (namestring dir))))
              ;; read in the background as the editor starts
@@ -618,8 +688,12 @@ file sets them."
            ;; no place of it kept from an earlier run (test directories are named alike in each)
            (tuatara.defaults::state-list-drop tuatara.defaults::*saved-places* (list (tuatara.io:native note)))
            ;; off, as standard: nothing shown until chosen
-           (let ((tuatara-user:*preview-files* nil) (tuatara-user:*preview-formatted-files* nil) (tuatara-user:*preview-buffers* nil))
-             (let ((f (run-keys (format nil "C-x C-f ~a o l d e r C-g" (key-string (namestring dir))) :width 100 :height 20)))
+           (let ((tuatara-user:*preview-files* nil)
+                 (tuatara-user:*preview-formatted-files* nil)
+                 (tuatara-user:*preview-buffers* nil))
+             (let ((f (run-keys (format nil "C-x C-f ~a o l d e r C-g" (key-string (namestring dir)))
+                                :width 100
+                                :height 20)))
                (false (tuatara.frontend.fake:fake-frame-showing f "the text of the older note")))
              (let ((f (run-keys '("SPC d f" :wait "o l d e r C-g") :width 100 :height 20)))
                (false (tuatara.frontend.fake:fake-frame-showing f "the text of the older note"))))
@@ -629,8 +703,10 @@ file sets them."
              (multiple-value-bind (f editor)
                  (run-keys (format nil "C-x C-f ~a o l d e r C-g" (key-string (namestring dir))) :width 100 :height 20)
                (true (tuatara.frontend.fake:fake-frame-showing f "the text of the older note"))
-               (is string= "*scratch*" (tuatara.buffer:buffer-name (tuatara.display:window-buffer (tuatara.command:editor-window editor))))
-               (false (find-if (lambda (b) (search "older-note" (tuatara.buffer:buffer-name b))) tuatara.buffer:*buffers*))
+               (is string= "*scratch*"
+                   (tuatara.buffer:buffer-name (tuatara.display:window-buffer (tuatara.command:editor-window editor))))
+               (false (find-if (lambda (b) (search "older-note" (tuatara.buffer:buffer-name b)))
+                               tuatara.buffer:*buffers*))
                (false (assoc (tuatara.io:native note) (tuatara.defaults::read-saved-places) :test #'string=)))
              ;; chosen: visited as usual, not safely
              (multiple-value-bind (f editor)
@@ -648,22 +724,28 @@ file sets them."
            ;; searches: the file of the line selected, at that line; back on C-g
            (let ((deep (merge-pathnames "20250202T100000--deep-note__project.org" dir)))
              (put-file deep (format nil "~{~a~%~}" (loop for i from 1 to 60
-                                                        collect (if (= i 45) "line 45 a needle here" (format nil "line ~d" i)))))
+                                                        collect (if (= i 45) "line 45 a needle here"
+                                                                  (format nil "line ~d" i)))))
              (flet ((shown-at-line (f)
                       (some (lambda (screen)
-                              (some (lambda (row) (uiop:string-prefix-p "line 45 a needle" (string-left-trim " " row))) screen))
+                              (some (lambda (row)
+                                      (uiop:string-prefix-p "line 45 a needle" (string-left-trim " " row))) screen))
                             (tuatara.frontend.fake:fake-history f))))
                (let ((tuatara-user:*preview-formatted-search* nil))
                  (false (shown-at-line (run-keys '("SPC d g" :wait "n e e d l e" :wait "C-g") :width 100 :height 20))))
                (let ((tuatara-user:*preview-formatted-search* t))
-                 (multiple-value-bind (f editor) (run-keys '("SPC d g" :wait "n e e d l e" :wait "C-g") :width 100 :height 20)
+                 (multiple-value-bind (f editor)
+                   (run-keys '("SPC d g" :wait "n e e d l e" :wait "C-g") :width 100 :height 20)
                    (true (shown-at-line f))
                    (is string= "*scratch*" (tuatara.buffer:buffer-name (tuatara.display:window-buffer (tuatara.command:editor-window editor))))
-                   (false (find-if (lambda (b) (search "deep-note" (tuatara.buffer:buffer-name b))) tuatara.buffer:*buffers*))))
+                   (false (find-if (lambda (b) (search "deep-note" (tuatara.buffer:buffer-name b)))
+                                   tuatara.buffer:*buffers*))))
                ;; M-s g from the file itself: shown there at the line, point back where it was after
                (let ((tuatara-user:*preview-file-search* t))
                  (multiple-value-bind (f editor)
-                     (run-keys `(,(format nil "C-x C-f ~a RET M-s g" (key-string (namestring deep))) :wait "n e e d l e" :wait "C-g")
+                     (run-keys `(,(format nil "C-x C-f ~a RET M-s g" (key-string (namestring deep)))
+                                 :wait "n e e d l e"
+                                 :wait "C-g")
                                :width 100 :height 20)
                    (true (shown-at-line f))
                    (let ((buffer (tuatara.display:window-buffer (tuatara.command:editor-window editor))))
@@ -733,9 +815,11 @@ file sets them."
             (coerce (append '(#x84 #x5e #x03) (map 'list #'char-code (format nil " a needle without a suffix~%")))
                     '(vector (unsigned-byte 8)))
             no-suffix)
-           (put-file armoured (format nil "-----BEGIN PGP MESSAGE-----~%a needle in armour~%-----END PGP MESSAGE-----~%"))
+           (put-file armoured
+                     (format nil "-----BEGIN PGP MESSAGE-----~%a needle in armour~%-----END PGP MESSAGE-----~%"))
            ;; searching reads none of them
-           (is equalp #("20250101T100000--plain__project.org") (tuatara.defaults::file-corpus-paths (read-file-corpus dir)))
+           (is equalp #("20250101T100000--plain__project.org")
+               (tuatara.defaults::file-corpus-paths (read-file-corpus dir)))
            (let ((f (run-keys '("SPC d g" :wait "n e e d l e") :width 100 :height 20)))
              (true (tuatara.frontend.fake:fake-frame-showing f "a needle in plain sight"))
              (false (tuatara.frontend.fake:fake-frame-showing f "under lock"))
@@ -926,8 +1010,12 @@ file sets them."
                (false (find-if (lambda (path) (uiop:string-prefix-p "b/" path)) texts))
                (false (member "a/n12.txt" texts :test #'string=))
                (true (member "a/n05.txt" texts :test #'string=)))
-             (true (member (concatenate 'string root "c/") (tuatara.defaults::directory-index-directories index) :test #'string=))
-             (false (member (concatenate 'string root "b/") (tuatara.defaults::directory-index-directories index) :test #'string=)))
+             (true (member (concatenate 'string root "c/")
+                           (tuatara.defaults::directory-index-directories index)
+                           :test #'string=))
+             (false (member (concatenate 'string root "b/")
+                            (tuatara.defaults::directory-index-directories index)
+                            :test #'string=)))
         (sb-int:unencapsulate 'tuatara.defaults::read-text-file 'count-reads)))))
 
 (define-test (formatted kept-read-between-sessions)
@@ -954,8 +1042,10 @@ file sets them."
              (is = #o600 (logand #o777 (sb-posix:stat-mode (sb-posix:stat (concatenate 'string cache "index")))))
              (dolist (entry (tuatara.io:directory-entries cache))
                (when (uiop:string-prefix-p "piece-" (first entry))
-                 (is = #o600 (logand #o777 (sb-posix:stat-mode (sb-posix:stat (concatenate 'string cache (first entry))))))
-                 (false (search "needle" (alexandria:read-file-into-string (concatenate 'string cache (first entry)))))))
+                 (is = #o600
+                     (logand #o777 (sb-posix:stat-mode (sb-posix:stat (concatenate 'string cache (first entry))))))
+                 (false (search "needle"
+                                (alexandria:read-file-into-string (concatenate 'string cache (first entry)))))))
              ;; the next session: nothing read but what changed meanwhile
              (sleep 0.01)
              (put-file (merge-pathnames "n3.txt" dir) (format nil "note three, changed~%"))
@@ -965,7 +1055,9 @@ file sets them."
                (is = 1 reads)        ; the file changed alone: the encrypted one is known not to be text
                (is = 10 (length (index-texts index)))
                (true (all-mapped-p index))
-               (true (some (lambda (corpus) (search "note three, changed" (tuatara.text:rope-string (tuatara.defaults::file-corpus-rope corpus))))
+               (true (some (lambda (corpus)
+                             (search "note three, changed"
+                                     (tuatara.text:rope-string (tuatara.defaults::file-corpus-rope corpus))))
                            (coerce (tuatara.defaults::directory-index-corpora index) 'list))))
              ;; something kept that makes no sense: read whole, as if nothing were kept
              (with-open-file (out (concatenate 'string cache "index") :direction :output :if-exists :supersede)
@@ -990,17 +1082,23 @@ file sets them."
       (dolist (file '("build/a.txt" "build/deep/b.txt" "src/out/c.txt" "src/lib/out/d.txt" "src/keep/e.txt" "top.txt"))
         (put-file (merge-pathnames file dir) (format nil "~a~%" file)))
       (index-now index (tuatara.defaults::read-directory-index index :all (* 1024 1024) 64))
-      (flet ((files () (sort (remove ".gitignore" (mapcar (lambda (f) (pathname-name (car f))) (tuatara.defaults::directory-index-files index))
-                                     :test #'string= :key (lambda (n) (or n "")))
-                             #'string<))
-             (walked-p (folder) (and (gethash (concatenate 'string root folder) (tuatara.defaults::directory-index-tree index)) t)))
+      (flet ((files ()
+               (sort (remove ".gitignore"
+                             (mapcar (lambda (f) (pathname-name (car f)))
+                                     (tuatara.defaults::directory-index-files index))
+                             :test #'string= :key (lambda (n) (or n "")))
+                     #'string<))
+             (walked-p (folder)
+               (and (gethash (concatenate 'string root folder) (tuatara.defaults::directory-index-tree index)) t)))
         ;; build/ anywhere and src/out/ alone (anchored): src/lib/out/ is kept
         (is equal '("d" "e" "top") (remove nil (files)))
         (false (walked-p "build/"))
         (false (walked-p "build/deep/"))
         (false (walked-p "src/out/"))
         (true (walked-p "src/lib/out/"))
-        (false (member (concatenate 'string root "build/") (tuatara.defaults::directory-index-directories index) :test #'string=))
+        (false (member (concatenate 'string root "build/")
+                 (tuatara.defaults::directory-index-directories index)
+                 :test #'string=))
         ;; a folder made in an ignored one stays out; the rule taken away, the folder comes in
         (ensure-directories-exist (merge-pathnames "build/new/" dir))
         (index-now index (tuatara.defaults::read-directory-index index (list (concatenate 'string root "build/")) (* 1024 1024) 64))
@@ -1028,7 +1126,8 @@ file sets them."
         (is equal '("plain/note.txt" "plain/née.txt") (sort (copy-list files) #'string<))
         (true (typep (find "plain/note.txt" files :test #'string=) 'simple-base-string))
         (true (string= "plain/née.txt" (find "plain/née.txt" files :test #'string=))))
-      (true (every (lambda (path) (typep path 'simple-base-string)) (tuatara.defaults::directory-index-directories index))))))
+      (true (every (lambda (path) (typep path 'simple-base-string))
+                   (tuatara.defaults::directory-index-directories index))))))
 
 (define-test (formatted cache-names-one-to-one)
   ;; each octet of the name written apart: a dash (U+2014) and " 14" no longer share a directory
@@ -1087,7 +1186,8 @@ file sets them."
            (alexandria:write-byte-vector-into-file (coerce #(102 111 111 0 1 2) '(vector (unsigned-byte 8)))
                                                    (merge-pathnames "binary.bin" dir))
            (multiple-value-bind (f editor)
-               (run-keys (format nil "SPC f ~a RET" (key-string (namestring (merge-pathnames "binary.bin" dir)))) :width 120)
+               (run-keys (format nil "SPC f ~a RET" (key-string (namestring (merge-pathnames "binary.bin" dir))))
+                         :width 120)
              (declare (ignore f))
              (is string= "binary.bin" (tuatara.buffer:buffer-name (session-buffer editor)))
              (true (tuatara.display:hex-view-p (session-buffer editor)))))
@@ -1114,7 +1214,8 @@ file sets them."
     (put-file (merge-pathnames "b-large.txt" dir) (make-string 50000 :initial-element #\x))
     (put-file (merge-pathnames "c-small.txt" dir) (format nil "another needle~%"))
     ;; larger than what is left: not read at all, its size known from the system
-    (multiple-value-bind (octets why) (tuatara.defaults::read-text-file (namestring (merge-pathnames "b-large.txt" dir)) :most 1000)
+    (multiple-value-bind (octets why)
+        (tuatara.defaults::read-text-file (namestring (merge-pathnames "b-large.txt" dir)) :most 1000)
       (false octets)
       (is eq :too-large why))
     ;; the searches' limit: the large one left out, those after it still read
@@ -1131,7 +1232,8 @@ file sets them."
       (false (tuatara.defaults::directory-index-left-out index)))
     ;; searched as grep searches, a piece at a time, never held whole: its lines found, numbered right
     (put-file (merge-pathnames "d-log.txt" dir)
-              (with-output-to-string (out) (dotimes (i 3000) (format out "line ~d~:[~; with a needle~]~%" (1+ i) (= i 2499)))))
+              (with-output-to-string (out)
+                (dotimes (i 3000) (format out "line ~d~:[~; with a needle~]~%" (1+ i) (= i 2499)))))
     (let ((tuatara.defaults::*search-disk-piece* 4096))
       (let ((found (tuatara.defaults::lines-on-disk (namestring (merge-pathnames "d-log.txt" dir)) "d-log.txt"
                                                     (tuatara.defaults::directory-name dir) "needle")))
@@ -1150,14 +1252,18 @@ file sets them."
   (with-formatted-directory (dir)
     (unwind-protect
          (progn
-           (dotimes (i 30) (put-file (merge-pathnames (format nil "f~d.txt" i) dir) (format nil "a needle here ~d~%a needless line~%" i)))
+           (dotimes (i 30)
+             (put-file (merge-pathnames (format nil "f~d.txt" i) dir)
+                       (format nil "a needle here ~d~%a needless line~%" i)))
            (let ((f (run-keys '("SPC d g" :wait "n e e d" :wait "l" :wait "e" :wait) :width 100 :height 20)))
              (let* ((frames (reverse (tuatara.frontend.fake:fake-history f)))
                     (counts (loop for screen in frames
-                                  for prompt = (find-if (lambda (row) (search "Regex search formatted files" row)) screen)
+                                  for prompt = (find-if (lambda (row)
+                                                          (search "Regex search formatted files" row)) screen)
                                   when prompt
                                     collect (let ((slash (position #\/ prompt)))
-                                              (and slash (ignore-errors (parse-integer prompt :end slash :junk-allowed t))))))
+                                              (and slash
+                                                   (ignore-errors (parse-integer prompt :end slash :junk-allowed t))))))
                     (first-found (position-if (lambda (n) (and n (plusp n))) counts)))
                (true first-found)
                ;; once lines are listed, the list never shows none again while typing on
@@ -1169,8 +1275,13 @@ file sets them."
   (with-formatted-directory (dir)
     (unwind-protect
          (progn
-           (dotimes (i 12) (put-file (merge-pathnames (format nil "2025010~dT10000~d--note-~a__p.org" (1+ (mod i 9)) (mod i 10) (code-char (+ 97 i))) dir)
-                                     (format nil "x~%")))
+           (dotimes (i 12)
+             (put-file (merge-pathnames (format nil
+                                                "2025010~dT10000~d--note-~a__p.org"
+                                                (1+ (mod i 9))
+                                                (mod i 10)
+                                                (code-char (+ 97 i))) dir)
+                       (format nil "x~%")))
            (let* ((f (run-keys '("SPC d f" :wait "n o t e - l") :width 100 :height 24))
                   (frames (reverse (tuatara.frontend.fake:fake-history f)))
                   (mode-line-rows (loop for screen in frames
@@ -1200,11 +1311,13 @@ file sets them."
                     (templates (tuatara.defaults::formatted-templates)))
                (is equal '("blank" "report") (mapcar #'first templates))
                (let ((text (tuatara.defaults::formatted-template-text (second templates))))
-                 (true (cl-ppcre:scan "^#\\+issue_date: \\d{4}-\\d\\d-\\d\\d$" (first (uiop:split-string text :separator '(#\Newline)))))
+                 (true (cl-ppcre:scan "^#\\+issue_date: \\d{4}-\\d\\d-\\d\\d$"
+                                      (first (uiop:split-string text :separator '(#\Newline)))))
                  (true (search (format nil "#+author: ~a~%" (tuatara.defaults::user-full-name)) text))
                  (true (search "* Summary" text))))
              (let ((tuatara.defaults::*note-templates-directory* nil))
-               (is string= "" (tuatara.defaults::formatted-template-text (first (tuatara.defaults::formatted-templates))))))
+               (is string= ""
+                   (tuatara.defaults::formatted-template-text (first (tuatara.defaults::formatted-templates))))))
         (if old (sb-posix:setenv "XDG_CONFIG_HOME" old 1) (sb-posix:unsetenv "XDG_CONFIG_HOME"))))))
 
 (define-test (formatted insert-formatted-note-template)
@@ -1233,7 +1346,10 @@ file sets them."
         (true (alexandria:ends-with-subseq "kept" (session-text editor))))
       ;; any other file, as it is: nothing filled in
       (multiple-value-bind (f editor)
-          (run-keys (format nil "C-x i A n o t h e r RET C-a C-k ~a RET" (key-string other)) :text "" :width 80 :height 10)
+          (run-keys (format nil "C-x i A n o t h e r RET C-a C-k ~a RET" (key-string other))
+                    :text ""
+                    :width 80
+                    :height 10)
         (declare (ignore f))
         (is string= (format nil "As it is: %date%~%") (session-text editor)))
       ;; into a file whose lines end with a carriage return and a newline: its lines end so too
@@ -1255,10 +1371,14 @@ file sets them."
       (is string= "My Real Title: A/B? \"quoted\""
           (title "20261015T120000--old-title__alpha.org"
                  (format nil "#+title:      My Real Title: A/B? \"quoted\"~%#+filetags: :alpha:~%~%Title: not this~%")))
-      (is string= "old title" (title "20261015T120000--old-title__alpha.org" (format nil "Some words~%Title: not this~%")))
+      (is string= "old title"
+          (title "20261015T120000--old-title__alpha.org" (format nil "Some words~%Title: not this~%")))
       (false (title "plain note.org" (format nil "Notes~%Title: Report~%")))
-      (is string= "Say \"hi\"" (title "20261015T120000--say-hi.md" (format nil "---~%title:      \"Say \\\"hi\\\"\"~%date: 2026~%---~%~%title: body~%")))
-      (is string= "Plain words" (title "20261015T120000--plain-words.txt" (format nil "title:      Plain words~%date: 2026~%---------~%"))))))
+      (is string= "Say \"hi\""
+          (title "20261015T120000--say-hi.md"
+            (format nil "---~%title:      \"Say \\\"hi\\\"\"~%date: 2026~%---~%~%title: body~%")))
+      (is string= "Plain words"
+          (title "20261015T120000--plain-words.txt" (format nil "title:      Plain words~%date: 2026~%---------~%"))))))
 
 (define-test (formatted front-matter-read-alike)
   ;; one reader of a note's title and tags, for Org, Markdown (YAML and TOML) and text, as the
@@ -1269,7 +1389,8 @@ file sets them."
                            "Tui \"the bird\" Rotorua" '("garden" "project"))
                      (list :markdown (format nil "+++~%title = \"Ann\"~%tags = [\"a\"]~%+++~%")
                            "Ann" '("a"))
-                     (list :text (format nil "title:      Notes~%date:       2026-09-27~%tags:       garden  project~%---~%")
+                     (list :text
+                           (format nil "title:      Notes~%date:       2026-09-27~%tags:       garden  project~%---~%")
                            "Notes" '("garden" "project"))
                      (list :org (format nil "#+filetags: :x:~%# a comment~%#+title: Later~%") "Later" '("x"))
                      (list :org (format nil "Body first~%#+title: Not front matter~%") nil nil)

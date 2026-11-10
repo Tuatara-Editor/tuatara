@@ -16,13 +16,14 @@
 (defstruct (job (:constructor nil) (:copier nil))
   "Work in the background for BUFFER, the buffer it belongs to (NIL for none),
 running on THREAD. STATUS is :RUNNING, then :DONE, :STOPPED or :FAILED, with
-ERROR saying why in words; the car of CANCEL turning true asks it to stop;
-STARTED is the internal real time it began; WAKE, a function of no arguments
+ERROR saying why in words. The car of CANCEL turning true asks it to stop.
+STARTED is the internal real time it began. WAKE, a function of no arguments
 or NIL, wakes the editor for its thread, so that what it has to show shows at
-once; FRAME, the editor's frame it was begun in, where what it says is shown,
-or NIL; PROCESS, the program it runs, if any (JOB-PROGRAM-STARTED). Each kind of job is a structure including this one, and says how it
-differs through generic functions: JOB-PERCENT, JOB-DOING, JOB-DESCRIPTION,
-JOB-VERB, JOB-LEFT-WORDS, JOB-CONSEQUENCE, JOB-STOP, JOB-HOLDS-QUEUE-P,
+once. FRAME is the editor's frame it was begun in, where what it says is
+shown, or NIL. PROCESS is the program it runs, if any (JOB-PROGRAM-STARTED).
+Each kind of job is a structure including this one, and says how it differs
+through generic functions: JOB-PERCENT, JOB-DOING, JOB-DESCRIPTION, JOB-VERB,
+JOB-LEFT-WORDS, JOB-CONSEQUENCE, JOB-STOP, JOB-HOLDS-QUEUE-P,
 JOB-SHOWS-PROCESSING-P, JOB-AT-EXIT, JOB-GUARDED-SPANS and JOB-TAKE-IN."
   buffer (status :running) error (cancel (list nil)) thread (started (get-internal-real-time)) wake frame process)
 
@@ -87,7 +88,8 @@ on. Without a command loop, simply wait.")
 the buffers' package sets it.")
 
 (define-condition job-stopped (serious-condition) ()
-  (:documentation "Signalled in a job's work where it finds it was asked to stop (JOB-CHECK-STOP): the job ends :STOPPED."))
+  (:documentation "Signalled in a job's work where it finds it was asked to stop (JOB-CHECK-STOP):
+the job ends :STOPPED."))
 
 (defun job-running-p (job)
   "True while JOB runs."
@@ -126,7 +128,9 @@ case: \"control stack exhausted\"."
                                                 (progn (when blank (write-char #\Space out) (setf blank nil))
                                                        (write-char c out))))))))
     (if headline
-        (string-downcase (string-trim " " (subseq words 0 (or (position-if (lambda (c) (find c ".:(")) words) (length words)))))
+        (string-downcase (string-trim " "
+                                      (subseq words 0 (or (position-if (lambda (c) (find c ".:(")) words)
+                                                          (length words)))))
         words)))
 
 ;;; What differs between kinds
@@ -217,10 +221,10 @@ for work the mode line shows in words of its own (a save).")
 
 (defgeneric job-at-exit (job)
   (:documentation "What is done to JOB, running, when its buffer is killed or
-the editor left: :STOP it, after asking; :QUIET, stop it without asking, for
-work that only shows something and is quick to do again (a sum, a count of
-words, an agenda worked out, a calendar's marks); or :WAIT for it to end, after
-asking (a save, which stopping would leave not done).")
+the editor left. :STOP stops it, after asking. :QUIET stops it without asking,
+for work that only shows something and is quick to do again (a sum, a count of
+words, an agenda worked out, a calendar's marks). :WAIT waits for it to end,
+after asking (a save, which stopping would leave not done).")
   (:method ((job job)) :stop))
 
 (defgeneric job-guarded-spans (job)
@@ -347,10 +351,10 @@ reached EVENT (started, ended), DETAILS, a string or NIL, said after it."
 (defun start-background-result (function name wake &optional cancel)
   "Call FUNCTION on a thread of its own named NAME, and return a cell whose car
 becomes what FUNCTION returns, or (:ERROR TEXT) when it fails, a lack of
-memory or stack too, WAKE (a function, or NIL) called then to have the editor look; unless CANCEL, a cell,
-has turned true meanwhile, when nothing is kept; STOP-WORK on CANCEL also cuts
-short a call of FUNCTION's that does not look at it (STOPPABLE-WORK).
-FUNCTION runs as background work (CALL-AS-LONG-WORK)."
+memory or stack too. WAKE (a function, or NIL) is called then to have the
+editor look. Nothing is kept when CANCEL, a cell, has turned true meanwhile.
+STOP-WORK on CANCEL also cuts short a call of FUNCTION's that does not look at
+it (STOPPABLE-WORK). FUNCTION runs as background work (CALL-AS-LONG-WORK)."
   (let ((cell (list nil)))
     (make-guarded-thread
      (lambda ()

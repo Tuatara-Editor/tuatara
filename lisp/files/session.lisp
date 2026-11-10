@@ -25,7 +25,8 @@ runs), opened again as it was when it starts without files.")
 
 (defvar *keep-session-interval* 30
   "Seconds between the writings of the session while the editor runs, when it
-has changed (*KEEP-SESSION*): what a crash can lose.")
+has changed (*KEEP-SESSION*), 30 as standard: what a crash can lose. Lower it
+to lose less; raise it where writing is slow, as on a drive that sleeps.")
 
 (defvar *session-name* "session"
   "The name of the file in the state folder the session is kept in: session,
@@ -38,12 +39,12 @@ or session-daemon-NAME for the daemon NAME, whose session is its own.")
 ;;; What is kept
 
 (defun session-entry (buffer)
-  "What the session keeps of BUFFER, as (KIND POINT TARGET): KIND :FILE, :SAFE
-\(a file opened safely), :DIRECTORY (a rimu list) or :SCRATCH (one of the
-scratch buffers, by name); a view of a file (a PDF's pages, a picture, an
-Office document) kept as its file, opened again as it opens; NIL for a buffer
-not kept (help, lists, terminals, buffers with no file, an encrypted file's text,
-a file on another machine)."
+  "What the session keeps of BUFFER, as (KIND POINT TARGET). KIND is :FILE,
+:SAFE (a file opened safely), :DIRECTORY (a rimu list) or :SCRATCH (one of the
+scratch buffers, by name). A view of a file (a PDF's pages, a picture, an
+Office document) is kept as its file, opened again as it opens. It is NIL for
+a buffer not kept (help, lists, terminals, buffers with no file, an encrypted
+file's text, a file on another machine)."
   (let* ((point (tuatara.buffer:buffer-point buffer))
          (directory (tuatara.buffer:buffer-local buffer 'rimu-directory))
          ;; a view (a PDF's pages, a picture, an Office document's pages or text) kept by the file it shows
@@ -276,14 +277,15 @@ as a second value. Refused when they hold no layout."
       (values tree lines))))
 
 (defun read-session ()
-  "The session kept, as five values: the buffers not shown, each (KIND POINT
-TARGET); the windows' layout of the frame worked in, as SESSION-LAYOUT reads
-it, or NIL; the layouts of the other frames, a list of such trees; the lines
-of each of their sections as written, a list of lists of strings; and the
-clients of an editor running in the background, each a property list of
-:NUMBER, :BEGAN, :ENDED (universal times), :DIRECTORY (or NIL), :ENTRIES,
-the buffers of its own not shown, and :LAYOUTS, the lines of each of its
-frames' sections. NIL when there is none or it is not one this editor wrote.
+  "The session kept, as five values. The first is the buffers not shown, each
+\(KIND POINT TARGET). The second is the windows' layout of the frame worked
+in, as SESSION-LAYOUT reads it, or NIL. The third is the layouts of the other
+frames, a list of such trees. The fourth is the lines of each of their
+sections as written, a list of lists of strings. The fifth is the clients of
+an editor running in the background, each a property list of :NUMBER, :BEGAN,
+:ENDED (universal times), :DIRECTORY (or NIL), :ENTRIES, the buffers of its
+own not shown, and :LAYOUTS, the lines of each of its frames' sections. NIL
+when there is none or it is not one this editor wrote.
 Read as text: nothing in it is evaluated."
   (let* ((text (ignoring-errors-reported ("reading the session")
                  (tuatara.io:file-text (session-path) :limit (* 4 1024 1024))))
@@ -354,9 +356,10 @@ was; NIL when it cannot be (a file no longer there)."
 (defvar *session-layout* nil
   "The windows' layouts of the session being opened again, for
 SESSION-LAYOUT-TICK to make once the editor's first window is there, with the
-buffers opened for them: a list of (TREE BUFFERS LINES), the first for the
-frame worked in, then one for each frame more, BUFFERS each window's buffer by
-its entry, LINES the section's lines as written (NIL for the first).")
+buffers opened for them. It is a list of (TREE BUFFERS LINES), the first for
+the frame worked in, then one for each frame more. BUFFERS is each window's
+buffer by its entry, and LINES the section's lines as written (NIL for the
+first).")
 
 (defun session-tree-entries (tree)
   "The entries of the windows of TREE, a layout of the session, that have one."
@@ -502,12 +505,12 @@ behind them instead (SESSION-BUFFERS-BEHIND)."
 
 (defun open-ended-folders (editor)
   "Open again the session of EDITOR, running in the background, kept in a
-file of its own: the buffers no client had, and for each client a folder of
-its own, as one that ended, with its buffers and those its frames showed, and
-its frames' layouts kept (*CLIENT-LAYOUTS*) for a client that attaches with
-no files to take up (TAKE-UP-ENDED-FOLDER). The files opened safely
-(evidence) are not opened: they wait closed in their folder
-(*EVIDENCE-WAITING*), said by how many in *Messages* and the daemon's log.
+file of its own. That means the buffers no client had, and for each client a
+folder of its own, as one that ended, with its buffers and those its frames
+showed. Its frames' layouts are kept (*CLIENT-LAYOUTS*) for a client that
+attaches with no files to take up (TAKE-UP-ENDED-FOLDER). The files opened
+safely (evidence) are not opened: they wait closed in their folder
+\(*EVIDENCE-WAITING*), said by how many in *Messages* and the daemon's log.
 The clients are numbered from 1 again, in the order they began."
   (setf *session-opened* t)
   (multiple-value-bind (buffers tree others sections clients) (read-session)
@@ -577,16 +580,16 @@ same second, when A began after B."
       (and (= (client-ended a) (client-ended b)) (> (client-number a) (client-number b)))))
 
 (defun take-up-ended-folder (editor client &optional folder)
-  "Have CLIENT, of EDITOR, take up FOLDER, the client of a folder that ended,
-or with *KEEP-SESSION*, when CLIENT has just attached with no files and FOLDER
-is not given, the folder of the client that ended last whose frames' layouts
-are kept (*CLIENT-LAYOUTS*) or whose files opened safely wait closed
-\(*EVIDENCE-WAITING*): those files are opened, safely, and said by how many;
-its buffers become CLIENT's, its folder goes, and CLIENT's frame, and a frame
-more for each other it had, up to *MOST-FRAMES*, are laid out as its were,
-each window showing its buffer where that is still open; a client in windows
-of its own is asked for those windows, laid out as they come (OPEN-FRAME).
-True when one was taken up."
+  "Have CLIENT, of EDITOR, take up FOLDER, the client of a folder that ended.
+With *KEEP-SESSION*, when CLIENT has just attached with no files and FOLDER
+is not given, it takes up the folder of the client that ended last whose
+frames' layouts are kept (*CLIENT-LAYOUTS*) or whose files opened safely wait
+closed (*EVIDENCE-WAITING*). Those files are opened, safely, and said by how
+many. Its buffers become CLIENT's, its folder goes, and CLIENT's frame, and a
+frame more for each other it had, up to *MOST-FRAMES*, are laid out as its
+were, each window showing its buffer where that is still open. A client in
+windows of its own is asked for those windows, laid out as they come
+\(OPEN-FRAME). True when one was taken up."
   (let ((ended (or (and folder (client-ended folder) (not (eq folder client)) folder)
                    (and (null folder) *keep-session*
                         (first (sort (remove-if-not #'client-ended

@@ -46,7 +46,9 @@ and the editor."
                        ((and (consp step) (eq (first step) :wait))
                         (if (> (- (get-internal-real-time) start) (* (second step) internal-time-units-per-second))
                             (take (rest steps) (get-internal-real-time))
-                            (progn (sleep 0.02) (tuatara.frontend.fake:fake-queue-action f (lambda () (take steps start))))))
+                            (progn
+                              (sleep 0.02)
+                              (tuatara.frontend.fake:fake-queue-action f (lambda () (take steps start))))))
                        ((and (consp step) (eq (first step) :until))
                         (let ((bound (or (third step) *until-bound*)))
                           (cond ((funcall (second step))
@@ -55,9 +57,12 @@ and the editor."
                                  (waited-in-vain (second step) bound)
                                  (take (rest steps) (get-internal-real-time)))
                                 (t
-                                 (sleep 0.02) (tuatara.frontend.fake:fake-queue-action f (lambda () (take steps start)))))))
+                                 (sleep 0.02)
+                                 (tuatara.frontend.fake:fake-queue-action f (lambda () (take steps start)))))))
                        (t (queue-test-keys f (list step))
-                          (tuatara.frontend.fake:fake-queue-action f (lambda () (take (rest steps) (get-internal-real-time)))))))))
+                          (tuatara.frontend.fake:fake-queue-action f
+                                                                   (lambda ()
+                                                                     (take (rest steps) (get-internal-real-time)))))))))
       (tuatara.frontend.fake:fake-queue-action f (lambda () (take steps (get-internal-real-time))))
       (values f (tuatara.command:run-editor f :setup #'tuatara.defaults:install-defaults)))))
 
@@ -89,7 +94,8 @@ and the editor."
         (is string= "first line" (alexandria:read-file-into-string file))
         ;; the editor started again says so; the list shows it, newer than its file
         ;; (counted in the background, said a moment after the start)
-        (let ((f (auto-save-session (list (list :wait 0.3) (format nil "M-x ~{~a~^ ~} RET" (map 'list #'string "list-auto-saves"))))))
+        (let ((f (auto-save-session (list (list :wait 0.3)
+                                          (format nil "M-x ~{~a~^ ~} RET" (map 'list #'string "list-auto-saves"))))))
           (true (tuatara.frontend.fake:fake-frame-showing f "1 file has changes auto-saved and not saved"))
           (true (tuatara.frontend.fake:fake-frame-showing f "newer than the file"))
           (let ((list (tuatara.buffer:find-buffer "*Auto-saves*")))
@@ -116,7 +122,9 @@ and the editor."
         ;; an open list follows the copies as they are written
         (auto-save-session (list (format nil "M-x ~{~a~^ ~} RET" (map 'list #'string "list-auto-saves"))
                                  (format nil "C-x b ~a RET" (rimu-typed "*lisp-scratch*"))
-                                 (format nil "C-x C-f C-a C-k ~a RET" (rimu-typed file)) "M-> SPC o w l" (list :until (lambda () (copy)))
+                                 (format nil "C-x C-f C-a C-k ~a RET" (rimu-typed file))
+                             "M-> SPC o w l"
+                             (list :until (lambda () (copy)))
                                  (list :wait 0.2)))
         (let ((list (tuatara.buffer:find-buffer "*Auto-saves*")))
           (true (and list (search "newer than the file" (tuatara.buffer:buffer-string list))))
@@ -127,8 +135,11 @@ and the editor."
             (tuatara.buffer:kill-buffer buffer)))
         ;; from the list: RET opens the file and takes its changes in, d marks a copy for deletion and x
         ;; deletes it, after asking; R is not a second RET
-        (false (tuatara.command:lookup-key tuatara.defaults::*auto-saves-keymap* (tuatara.frontend:parse-key-sequence "R")))
-        (auto-save-session (list (format nil "C-x C-f C-a C-k ~a RET" (rimu-typed file)) "M-> SPC b i r d" (list :until (lambda () (copy)))))
+        (false (tuatara.command:lookup-key tuatara.defaults::*auto-saves-keymap*
+                 (tuatara.frontend:parse-key-sequence "R")))
+        (auto-save-session (list (format nil "C-x C-f C-a C-k ~a RET" (rimu-typed file))
+                             "M-> SPC b i r d"
+                             (list :until (lambda () (copy)))))
         (tuatara.buffer:kill-buffer (tuatara.buffer:find-buffer "notes.txt"))
         (auto-save-session (list (format nil "M-x ~{~a~^ ~} RET" (map 'list #'string "list-auto-saves")) "RET y"))
         (let ((buffer (tuatara.buffer:find-buffer "notes.txt")))
@@ -138,11 +149,16 @@ and the editor."
             (setf (tuatara.buffer:buffer-saved-number buffer) (tuatara.buffer:buffer-content-number buffer))
             (tuatara.buffer:kill-buffer buffer)))
         ;; a copy again, its buffer killed with the changes not saved
-        (auto-save-session (list (format nil "C-x C-f C-a C-k ~a RET" (rimu-typed file)) "M-> SPC o w l" (list :until (lambda () (copy)))))
+        (auto-save-session (list (format nil "C-x C-f C-a C-k ~a RET" (rimu-typed file))
+                             "M-> SPC o w l"
+                             (list :until (lambda () (copy)))))
         (tuatara.buffer:kill-buffer (tuatara.buffer:find-buffer "notes.txt"))
         (true (copy))
-        (let ((editor (nth-value 1 (auto-save-session (list (format nil "M-x ~{~a~^ ~} RET" (map 'list #'string "list-auto-saves"))
-                                                            "d x y RET")))))
+        (let ((editor (nth-value 1
+                                 (auto-save-session (list (format nil
+                                                                  "M-x ~{~a~^ ~} RET"
+                                                                  (map 'list #'string "list-auto-saves"))
+                                                          "d x y RET")))))
           (is string= "Deleted 1 auto-saved copy" (tuatara.command:editor-message editor)))
         (false (copy))
         (let ((list (tuatara.buffer:find-buffer "*Auto-saves*"))) (when list (tuatara.buffer:kill-buffer list)))))))
@@ -168,10 +184,14 @@ and the editor."
         (false (copy-of "orig.txt"))
         (auto-save-session (list (format nil "C-x b ~a RET" (rimu-typed "new.txt")) "C-x C-s" (list :until #'no-copies)
                                  "SPC b" (list :until (lambda () (copy-of "new.txt")))
-                                 (format nil "C-x C-w C-a C-k ~a RET" (rimu-typed (namestring (merge-pathnames "other.txt" dir))))
+                                 (format nil
+                                         "C-x C-w C-a C-k ~a RET"
+                                         (rimu-typed (namestring (merge-pathnames "other.txt" dir))))
                                  (list :until #'no-copies)))
         (true (no-copies))
-        (auto-save-session (list (format nil "C-x b ~a RET" (rimu-typed "other.txt")) "SPC c" (list :until (lambda () (copy-of "other.txt")))
+        (auto-save-session (list (format nil "C-x b ~a RET" (rimu-typed "other.txt"))
+                             "SPC c"
+                             (list :until (lambda () (copy-of "other.txt")))
                                  (format nil "~a y RET" (command "revert-buffer"))
                                  (list :until #'no-copies)))
         (true (no-copies))
@@ -198,7 +218,9 @@ and the editor."
         (alexandria:write-string-into-file "kept" file)
         (sb-posix:utimes file 946681200 946681200)
         (let ((tuatara.defaults::*modal-editing* nil))
-          (auto-save-session (list (format nil "C-u C-x C-f C-a C-k ~a RET" (rimu-typed file)) "C-x C-q M-> SPC x" (list :wait 0.3))))
+          (auto-save-session (list (format nil "C-u C-x C-f C-a C-k ~a RET" (rimu-typed file))
+                                   "C-x C-q M-> SPC x"
+                                   (list :wait 0.3))))
         (let ((buffer (tuatara.buffer:find-buffer "kept.txt"))) (when buffer (tuatara.buffer:kill-buffer buffer)))
         (false (and (probe-file copies) (uiop:directory-files copies)))
         (is = 946681200 (sb-posix:stat-atime (sb-posix:stat file))))

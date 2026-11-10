@@ -213,7 +213,8 @@ said instead, except for the files the kernel makes up as they are read."
                                  (tuatara.io:stamp-size stamp) (setf source (file-source fd path))
                                  (lambda (sum)
                                    (if sum
-                                       (unless (or made-up (tuatara.io:same-content-p stamp (tuatara.io:fd-stamp fd path)))
+                                       (unless (or made-up
+                                                   (tuatara.io:same-content-p stamp (tuatara.io:fd-stamp fd path)))
                                          (refuse "~a changed while being summed; sum it again" (abbreviated-path path)))
                                        (sb-posix:close fd)))))))
       (unless started
@@ -247,7 +248,7 @@ into, is made when not given."
       (unwind-protect (fd-sha256 fd path :cancel cancel :done done :buffer buffer)
         (ignoring-errors-reported ("closing ~a" path) (sb-posix:close fd))))))
 
-(defun copy-file-checked (source target &key sum (cancel (list nil)))
+(defun copy-file-checked (source target &key sum (cancel (list nil)) check)
   "Copy the file SOURCE (where it leads, when it is a link) to TARGET, a new
 file, as TUATARA.IO:COPY-REGULAR-FILE copies (never over anything there,
 never in a place nothing may be written in, its mode and times kept), then
@@ -260,11 +261,15 @@ taken away), or SOURCE when it cannot be summed or changed meanwhile. Stopped
 when CANCEL's car turns true: what was copied taken away, a job's work ended
 there (TUATARA.RUNTIME:JOB-CHECK-STOP), else NIL returned. Both are summed
 in one piece of memory, the file's size or *HASH-PIECE* octets when that is
-less."
+less. CHECK, when given, is called with where the file opened really is
+\(TUATARA.IO:FD-REAL-PATH of the descriptor, NIL when the system does not
+say) before anything is summed or copied; an error it signals stops the copy."
   (let ((in (tuatara.io:open-for-reading source t :accept '(:regular) :operation "copy")))
     (unwind-protect
-         (let* ((before (tuatara.io:fd-stamp in source))
-                (buffer (make-array (max 4096 (min *hash-piece* (tuatara.io:stamp-size before))) :element-type '(unsigned-byte 8))))
+         (let* ((before (progn (when check (funcall check (tuatara.io:fd-real-path in)))
+                               (tuatara.io:fd-stamp in source)))
+                (buffer (make-array (max 4096 (min *hash-piece* (tuatara.io:stamp-size before)))
+                                    :element-type '(unsigned-byte 8))))
            (flet ((stopped ()
                     (tuatara.runtime:job-check-stop)
                     (return-from copy-file-checked nil))
@@ -325,7 +330,9 @@ While another job runs in the buffer it waits its turn (\\[list-jobs])."
       (let ((selection (and start (< start end))))
         (unless (queue-if-busy b (cond (selection (format nil "Summing the selection (~:d octet~:p)" (- end start)))
                                        ((tuatara.buffer:buffer-file b)
-                                        (format nil "Summing ~a on disk" (abbreviated-path (tuatara.buffer:buffer-file b))))
+                                        (format nil
+                                                "Summing ~a on disk"
+                                                (abbreviated-path (tuatara.buffer:buffer-file b))))
                                        (t (format nil "Summing ~a's text" (tuatara.buffer:buffer-name b))))
                                (and selection (list (cons start :before) (cons end :after)))
                                (lambda (&optional start end) (start-sum b start end)))

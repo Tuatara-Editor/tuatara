@@ -62,7 +62,8 @@ then; every file buffer killed after, as leaving does."
         (alexandria:write-string-into-file (format nil "#+STARTUP: overview~%* One~%deep text~%* Two~%") path)
         (let ((here (search "deep" (alexandria:read-file-into-string path))))
           ;; left on the hidden line (as another session left it, the file shown whole)
-          (tuatara.defaults::state-list-put tuatara.defaults::*saved-places* (list (cons (tuatara.io:native path) here)))
+          (tuatara.defaults::state-list-put tuatara.defaults::*saved-places*
+                                            (list (cons (tuatara.io:native path) here)))
           (let* ((editor (nth-value 1 (run-keys "" :file (namestring path) :width 80 :height 12)))
                  (buffer (tuatara.display:window-buffer (tuatara.command:editor-window editor))))
             (is = here (tuatara.buffer:buffer-point buffer))
@@ -84,7 +85,10 @@ then; every file buffer killed after, as leaving does."
   (with-test-directory (dir)
     (let ((path (merge-pathnames "note.txt" dir)))
       (put-file path (format nil "one~%two~%"))
-      (multiple-value-bind (f editor) (run-keys "i h e l l o DEL DEL DEL DEL DEL C-g u" :file (namestring path) :width 80 :height 8)
+      (multiple-value-bind (f editor) (run-keys "i h e l l o DEL DEL DEL DEL DEL C-g u"
+                                                :file (namestring path)
+                                                :width 80
+                                                :height 8)
         (declare (ignore f))
         (let ((b (tuatara.display:window-buffer (tuatara.command:editor-window editor))))
           (is string= (format nil "one~%two~%") (tuatara.buffer:buffer-string b))

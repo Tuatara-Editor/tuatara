@@ -6,8 +6,8 @@
 (define-test recorded-keys
   :description "Keys recorded with C-x ( and C-x ), answers typed to questions among them, and
 played again with C-x e: as many times as a prefix argument says, or until a play fails; a
-failing command or search stops every play there; each play one step to undo; nothing drawn
-till the end; C-g between plays; the counter they insert; names that keep them as commands.")
+failing command or search stops every play there. Each play one step to undo; nothing drawn
+till the end; C-g between plays. The counter they insert; names that keep them as commands.")
 
 (defvar *plays-noted* '()
   "What TEST-NOTE-PLAY noted at each run, latest first.")
@@ -143,8 +143,11 @@ of the frontend, keys count as typed while it answers true. A part of KEYS
   (multiple-value-bind (f editor)
       (recorded-keys-session (list "C-x ( C-c y C-x ) C-u 0 C-x e" "C-n" "C-g")
                              :text *five-lines*
-                             :note (lambda (f) (declare (ignore f)) (when (> (length *plays-noted*) 1000) (error "Not stopped")) t)
-                             :pending (lambda (f) (and (>= (length *plays-noted*) 6) (tuatara.frontend.fake::fake-events f))))
+                             :note (lambda (f)
+                                     (declare (ignore f))
+                                     (when (> (length *plays-noted*) 1000) (error "Not stopped")) t)
+                             :pending (lambda (f)
+                                        (and (>= (length *plays-noted*) 6) (tuatara.frontend.fake::fake-events f))))
     (is = 6 (length *plays-noted*))
     (true (tuatara.frontend.fake:fake-frame-showing f "Quit after 5 plays"))
     (is = 4 (session-point editor))))
@@ -201,7 +204,9 @@ of the frontend, keys count as typed while it answers true. A part of KEYS
            (let ((*package* (find-package :tuatara-user)))
              (eval (read-from-string (subseq written 0 (position #\Newline written)))))
            (is string= (format nil "ne~%two~%three~%four~%five~%")
-               (session-text (nth-value 1 (recorded-keys-session "M-x t e s t - k i l l - a g a i n RET" :text *five-lines*))))))
+               (session-text (nth-value 1
+                                        (recorded-keys-session "M-x t e s t - k i l l - a g a i n RET"
+                                                               :text *five-lines*))))))
     (dolist (name '(tuatara-user::test-kill-first tuatara-user::test-kill-again))
       (tuatara.command:forget-command name)
       (fmakunbound name))))
@@ -278,7 +283,9 @@ queued: keys typed meanwhile."
 (define-test (recorded-keys windows-laid-out-while-playing)
   ;; C-v played after moving lands where typing it does: the window is laid out between the keys
   (let ((text (format nil "~{line ~d~%~}" (loop for i below 200 collect i))))
-    (is = (session-point (nth-value 1 (recorded-keys-session "C-u 1 0 C-n C-v C-u 1 0 C-n C-v C-u 1 0 C-n C-v" :text text)))
+    (is =
+        (session-point (nth-value 1
+                                  (recorded-keys-session "C-u 1 0 C-n C-v C-u 1 0 C-n C-v C-u 1 0 C-n C-v" :text text)))
         (session-point (nth-value 1 (recorded-keys-session "C-x ( C-u 1 0 C-n C-v C-x ) C-u 2 C-x e" :text text))))))
 
 (define-test (recorded-keys unfinished-question-not-waited-on)
@@ -391,7 +398,9 @@ that keys played until one fails end in a test whatever the code does."
       (is string= "Played 3 times, until: Beginning of buffer" (session-message editor)))
     ;; a count stops there too, saying so
     (multiple-value-bind (f editor)
-        (recorded-keys-session "C-x ( C-c y C-n C-x ) C-u 5 C-x e" :text (format nil "a~%b~%c") :note (stopped-within 100))
+        (recorded-keys-session "C-x ( C-c y C-n C-x ) C-u 5 C-x e"
+                               :text (format nil "a~%b~%c")
+                               :note (stopped-within 100))
       (declare (ignore f))
       (is string= "Stopped after 1 of 5 plays: End of buffer" (session-message editor)))
     ;; outside a play, moving at the end says nothing, as before

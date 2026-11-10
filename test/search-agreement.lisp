@@ -19,10 +19,10 @@
   "LINES lines like those an investigation searches: logs with dates, times,
 addresses, users, hashes, amounts and messages in several languages and
 cases, a line now and then empty or long, or a block of Base64 and an onion
-address; ending with a carriage return
-and line feed when CRLF, and with MIXED any of a line feed, a carriage
-return and line feed, or a carriage return alone. The same each time it is asked for, so that a text
-that shows a fault shows it again."
+address. They end with a carriage return and line feed when CRLF, and with
+MIXED any of a line feed, a carriage return and line feed, or a carriage
+return alone. The same each time it is asked for, so that a text that shows a
+fault shows it again."
   (let ((*random-state* (sb-ext:seed-random-state 2026))
         (users '("aroha" "Hemi" "JOE" "mere.smith" "tane_99" "Ōtautahi" "ζωή" "李明"))
         (words '("login" "LOGIN" "failed" "kia ora" "transfer" "Transfer" "ERROR" "error" "warn" "kōrero"
@@ -34,15 +34,24 @@ that shows a fault shows it again."
                 ((= r 1) (write-string (make-string (+ 200 (random 1000)) :initial-element #\a) o))
                 ;; a block of Base64 wrapped over lines of one length, and an onion address
                 ((= r 2) (format o "S2lhIG9yYSBrb3V0b3Uga2F0b2Es~%IHRoZSBrZWEgaXMgYSBwYXJyb3Q=~%via ~a.onion"
-                                 (if (zerop (random 2)) "duckduckgogg42xjoc72x3sjasowoarfbgcmvfimaftt6twagswzczad" "expyuzz4wqqyqhjn")))
+                                 (if (zerop (random 2))
+                                     "duckduckgogg42xjoc72x3sjasowoarfbgcmvfimaftt6twagswzczad" "expyuzz4wqqyqhjn")))
                 ;; identifiers in hex, found by their shape: a UUID or GUID, a MAC address, a digest
                 ((= r 3) (format o "session ~(~8,'0x-~4,'0x-~x~3,'0x-~x~3,'0x-~12,'0x~) {~:@(~8,'0x-~4,'0x-~4,'0x-~4,'0x-~12,'0x~)} ~
                                     on ~(~2,'0x:~2,'0x:~2,'0x:~2,'0x:~2,'0x:~2,'0x~) sum ~(~32,'0x~) seen ~d.~d.2026 ~d/~d/2026"
                                  (random (expt 16 8)) (random (expt 16 4)) (random 10) (random (expt 16 3))
                                  (+ 8 (random 6)) (random (expt 16 3)) (random (expt 16 12))
-                                 (random (expt 16 8)) (random (expt 16 4)) (random (expt 16 4)) (random (expt 16 4)) (random (expt 16 12))
+                                 (random (expt 16 8))
+                                 (random (expt 16 4))
+                                 (random (expt 16 4))
+                                 (random (expt 16 4))
+                                 (random (expt 16 12))
                                  (random 256) (random 256) (random 256) (random 256) (random 256) (random 256)
-                                 (random (expt 16 32)) (1+ (random 31)) (1+ (random 12)) (1+ (random 12)) (1+ (random 31))))
+                                 (random (expt 16 32))
+                                 (1+ (random 31))
+                                 (1+ (random 12))
+                                 (1+ (random 12))
+                                 (1+ (random 31))))
                 (t (format o "2026-~2,'0d-~2,'0d ~2,'0d:~2,'0d:~2,'0d ~a user=~a ip=~d.~d.~d.~d ~a ~a@example.~a #~36r £~:d.~2,'0d ~a"
                            (1+ (random 12)) (1+ (random 28)) (random 24) (random 60) (random 60)
                            (nth (random (length words)) words) (nth (random (length users)) users)
@@ -106,14 +115,17 @@ each of its characters starts at, its length in octets last."
 (setf (documentation '%make-scanned 'function) "Return a SCANNED of STRING and its OFFSETS."
       (documentation 'scanned-p 'function) "True when OBJECT is a SCANNED."
       (documentation 'scanned-string 'function) "A SCANNED's text, a string."
-      (documentation 'scanned-offsets 'function) "The octet each character of a SCANNED's text starts at, its length last.")
+      (documentation 'scanned-offsets 'function)
+      "The octet each character of a SCANNED's text starts at, its length last.")
 
 (defun make-scanned (string)
   "STRING with the octet each of its characters starts at."
   (let ((offsets (make-array (1+ (length string)) :element-type 'fixnum)) (b 0))
     (dotimes (i (length string))
       (setf (aref offsets i) b)
-      (incf b (let ((code (char-code (char string i)))) (cond ((< code #x80) 1) ((< code #x800) 2) ((< code #x10000) 3) (t 4)))))
+      (incf b
+            (let ((code (char-code (char string i))))
+              (cond ((< code #x80) 1) ((< code #x800) 2) ((< code #x10000) 3) (t 4)))))
     (setf (aref offsets (length string)) b)
     (%make-scanned string offsets)))
 
@@ -165,7 +177,9 @@ in parallel (LINE-MATCHES)."
               (let ((tuatara.syntax:*serial-window* (first sizes)) (tuatara.syntax:*parallel-piece* (second sizes)))
                 ;; where the matches part, not the lists of them, is what the report keeps
                 (let ((apart (mismatch oracle (matcher-matches rope matcher) :test #'equal)))
-                  (false apart "every match of ~s~:[~;, CRLF~] at ~a: apart at match ~a" pattern (eq crlf t) sizes apart))
+                  (false apart
+                         "every match of ~s~:[~;, CRLF~] at ~a: apart at match ~a" pattern
+                         (eq crlf t) sizes apart))
                 (is = (length oracle) (tuatara.defaults::count-line-matches rope matcher 0 size)
                     "how many ~s~:[~;, CRLF~] at ~a" pattern (eq crlf t) sizes)
                 (is = (length (tuatara.defaults::first-per-line rope oracle))
@@ -200,7 +214,9 @@ in parallel (LINE-MATCHES)."
                 (in (to-octets (if fold (string-downcase text) text))))
             (dolist (sizes (agreement-sizes))
               (let ((tuatara.syntax:*serial-window* (first sizes)) (tuatara.syntax:*parallel-piece* (second sizes)))
-                (is equalp (coerce oracle 'simple-vector) (tuatara.syntax:search-all rope needle :case-fold fold :threads 4)
+                (is equalp
+                    (coerce oracle 'simple-vector)
+                    (tuatara.syntax:search-all rope needle :case-fold fold :threads 4)
                     "every ~s~:[~;, case folded~] at ~a" needle fold sizes)
                 (is = (length oracle)
                     (tuatara.defaults::count-line-matches rope (tuatara.defaults::make-pattern-matcher needle :fold fold) 0 size)
@@ -256,9 +272,13 @@ offsets, by one scan of the whole text as a string."
                 (matcher (tuatara.defaults::make-pattern-matcher pattern :regex t)))
             (true oracle "~s matches" pattern)
             (is equal oracle (matcher-matches rope matcher) "every match of ~s" pattern)
-            (is equal (first oracle) (multiple-value-call #'found-span (tuatara.syntax:regex-search-forward rope pattern :threads 2))
+            (is equal
+                (first oracle)
+                (multiple-value-call #'found-span (tuatara.syntax:regex-search-forward rope pattern :threads 2))
                 "first ~s" pattern)
-            (is eql (first (car (last oracle))) (tuatara.syntax:regex-search-backward rope pattern :start size :threads 2)
+            (is eql
+                (first (car (last oracle)))
+                (tuatara.syntax:regex-search-backward rope pattern :start size :threads 2)
                 "last ~s" pattern)))))))
 
 (define-test (search-agreement raw-bytes-stand-alone)
@@ -270,7 +290,9 @@ offsets, by one scan of the whole text as a string."
     (dolist (way (list (list raw nil) (list raw t) (list "\\xA9" t) (list (concatenate 'string " " raw) nil)))
       (destructuring-bind (pattern regex) way
         (let ((matcher (tuatara.defaults::make-pattern-matcher pattern :regex regex)))
-          (is = 1 (tuatara.defaults::count-line-matches rope matcher 0 size) "how many ~s~:[~;, a pattern~]" pattern regex)
+          (is = 1
+              (tuatara.defaults::count-line-matches rope matcher 0 size)
+              "how many ~s~:[~;, a pattern~]" pattern regex)
           (is equal (if (char= (char pattern 0) #\Space) '(2 4) '(3 4))
               (multiple-value-call #'found-span (tuatara.defaults::matcher-search rope matcher 0 size))
               "where ~s~:[~;, a pattern~]" pattern regex))))))
@@ -279,9 +301,14 @@ offsets, by one scan of the whole text as a string."
   "Every match of MATCHER in ROPE as C-s and C-r step through them, (START
 END) each in order of the text: from one end, from each match on, one
 character on after an empty one going forward."
-  (let ((size (tuatara.text:rope-octet-length rope)) (out '()) (from (if forward 0 (tuatara.text:rope-octet-length rope))))
+  (let ((size (tuatara.text:rope-octet-length rope))
+        (out '())
+        (from (if forward 0 (tuatara.text:rope-octet-length rope))))
     (loop
-      (multiple-value-bind (s e) (tuatara.defaults::matcher-search rope matcher from (if forward size 0) :forward forward :bound size)
+      (multiple-value-bind (s e) (tuatara.defaults::matcher-search rope matcher from
+                                                                   (if forward size 0)
+                                                                   :forward forward
+                                                                   :bound size)
         (unless s (return))
         (push (list s e) out)
         (setf from (cond ((not forward) s)
@@ -305,7 +332,9 @@ character on after an empty one going forward."
                                                rope matcher 0 (tuatara.text:rope-octet-length rope) t nil nil)
             (setf counted (nreverse counted))
             (true counted "~s matches" pattern)
-            (is = (length counted) (tuatara.defaults::count-line-matches rope matcher 0 (tuatara.text:rope-octet-length rope))
+            (is =
+                (length counted)
+                (tuatara.defaults::count-line-matches rope matcher 0 (tuatara.text:rope-octet-length rope))
                 "how many ~s" pattern)
             (is equal counted (stepped-matches rope matcher t) "~s stepped forward~:[~;, CRLF~]" pattern crlf)
             (is equal (remove (tuatara.text:rope-octet-length rope) counted :key #'first)
@@ -354,7 +383,8 @@ character on after an empty one going forward."
   ;; the other words checked on each; a match never runs from one file into the next; a
   ;; text cut into chunks for the cores lists the same lines
   (dolist (crlf '(nil t))
-    (flet ((text (&rest lines) (format nil "~{~a~:[~*~;~c~]~%~}" (loop for line in lines collect line collect crlf collect #\Return))))
+    (flet ((text (&rest lines)
+             (format nil "~{~a~:[~*~;~c~]~%~}" (loop for line in lines collect line collect crlf collect #\Return))))
       (let* ((one (text "a,b" "foo,c" "zz"))
              (two (text "x,b"))
              (three (text "foo" "head,1" "S2lhIG9yYSBrb3V0b3Uga2F0b2Es" "IHRoZSBrZWEgaXMgYSBwYXJyb3Q=" "tail,2"))
@@ -374,7 +404,10 @@ character on after an empty one going forward."
   ;; a file searched from disk a piece at a time: a line longer than the piece is searched
   ;; whole, a match across the piece's edge found, ^ only at the line's start, listed once
   (uiop:with-temporary-file (:stream s :pathname file :direction :output :type "txt")
-    (format s "kia ora~%~aneedle~a~%tail~%" (make-string 60 :initial-element #\x) (make-string 100 :initial-element #\y))
+    (format s
+            "kia ora~%~aneedle~a~%tail~%"
+            (make-string 60 :initial-element #\x)
+            (make-string 100 :initial-element #\y))
     (finish-output s)
     (let ((path (uiop:native-namestring file))
           (tuatara.defaults::*search-disk-piece* 64))
@@ -392,12 +425,19 @@ character on after an empty one going forward."
 their lines ending with a carriage return and a newline when CRLF: the
 evidence, and short lines where a match ends just on the line a fresh scan
 from it would match again."
-  (flet ((text (&rest lines) (format nil "~{~a~:[~*~;~c~]~%~}" (loop for line in lines collect line collect crlf collect #\Return))))
+  (flet ((text (&rest lines)
+           (format nil "~{~a~:[~*~;~c~]~%~}" (loop for line in lines collect line collect crlf collect #\Return))))
     (list (evidence-text 120 :crlf crlf)
-          (text "k,x" (make-string 20 :initial-element #\y) "foo,1" (make-string 20 :initial-element #\z) "zz,foo" "end")
-          (text (concatenate 'string (make-string 20 :initial-element #\z) "a") "b" (concatenate 'string "c" (make-string 20 :initial-element #\z))
+          (text "k,x"
+                (make-string 20 :initial-element #\y) "foo,1"
+                (make-string 20 :initial-element #\z) "zz,foo" "end")
+          (text (concatenate 'string (make-string 20 :initial-element #\z) "a") "b"
+                (concatenate 'string "c" (make-string 20 :initial-element #\z))
                 "a" "b" "c" "tail,2")
-          (text "head,1" "S2lhIG9yYSBrb3V0b3Uga2F0b2Es" "IHRoZSBrZWEgaXMgYSBwYXJyb3Q=" "S2lhIG9yYSBrb3V0b3Uga2F0b2Es" "tail,2"))))
+          (text "head,1"
+                "S2lhIG9yYSBrb3V0b3Uga2F0b2Es"
+                "IHRoZSBrZWEgaXMgYSBwYXJyb3Q="
+                "S2lhIG9yYSBrb3V0b3Uga2F0b2Es" "tail,2"))))
 
 (defparameter *crossing-agreement-patterns*
   '("[^,]*foo" "\\s+foo" "\\Wfoo" "[a-c]\\r?\\n[a-c]" "[^,]*login" "\\s+2026" "\\W2026"
@@ -435,14 +475,17 @@ left, or with KEEP false those it does not find it on."
                 do (dolist (keep '(t nil))
                      (is string= (kept-by-scan text pattern crlf keep)
                          (let ((tuatara.defaults::*rewrite-piece* (if on-disk 16 tuatara.defaults::*rewrite-piece*))
-                               (tuatara.defaults::*sort-in-memory-limit* (if on-disk 0 tuatara.defaults::*sort-in-memory-limit*)))
+                               (tuatara.defaults::*sort-in-memory-limit* (if on-disk 0
+                                                                             tuatara.defaults::*sort-in-memory-limit*)))
                            (session-text
                             (nth-value 1 (run-keys (list (lambda ()
                                                            (let ((b (tuatara.buffer:find-buffer "*scratch*")))
-                                                             (when here (setf (tuatara.buffer:buffer-local b :plaintext) t))
+                                                             (when here
+                                                               (setf (tuatara.buffer:buffer-local b :plaintext) t))
                                                              (when crlf (setf (tuatara.buffer:buffer-local b :line-ending) :crlf))))
                                                          (format nil "C-x h M-x ~a RET ~a RET"
-                                                                 (key-string (if keep "keep-lines" "flush-lines")) (key-string pattern)))
+                                                                 (key-string (if keep "keep-lines" "flush-lines"))
+                                                                 (key-string pattern)))
                                                    :text text :width 200))))
                          "~:[flush~;keep~] ~a~:[~;, CRLF~]~:[~;, at once~]~:[~;, in pieces~]" keep pattern crlf here on-disk))))))))
 
@@ -454,7 +497,9 @@ left, or with KEEP false those it does not find it on."
     (let* ((block (format nil "~{~a~}" (rest (crossing-texts crlf))))
            (text (with-output-to-string (o)
                    (loop repeat (ceiling (* 1600 1024) (length block)) do (write-string block o))))
-           (corpus (tuatara.defaults::make-file-corpus (tuatara.text:string->rope text) (vector "x.txt") (vector 0) "/tmp/")))
+           (corpus (tuatara.defaults::make-file-corpus (tuatara.text:string->rope text)
+                                                       (vector "x.txt")
+                                                       (vector 0) "/tmp/")))
       (uiop:with-temporary-file (:stream s :pathname file :direction :output :type "txt" :external-format :utf-8)
         (write-string text s)
         (finish-output s)
@@ -463,7 +508,8 @@ left, or with KEEP false those it does not find it on."
             (let* ((tuatara.defaults::*search-disk-piece* piece)
                    (scanned (mapcar (lambda (line) (subseq line 1 3))
                                     (tuatara.defaults::corpus-lines corpus pattern :parallel nil :most 100000)))
-                   (from-disk (mapcar (lambda (candidate) (subseq (rest (tuatara.command::candidate-value candidate)) 0 2))
+                   (from-disk (mapcar (lambda (candidate)
+                                        (subseq (rest (tuatara.command::candidate-value candidate)) 0 2))
                                       (tuatara.defaults::lines-on-disk (uiop:native-namestring file) "x.txt" "/tmp/" pattern
                                                                        :parallel nil :most 100000)))
                    (apart (mismatch scanned from-disk :test #'equal)))
@@ -475,7 +521,8 @@ left, or with KEEP false those it does not find it on."
 (define-test (search-agreement byte-order-mark-is-text)
   ;; UTF-8 text starting with a byte order mark is searched, its first line too
   (uiop:with-temporary-file (:stream s :pathname file :direction :output :type "txt" :element-type '(unsigned-byte 8))
-    (write-sequence (append (list #xEF #xBB #xBF) (coerce (sb-ext:string-to-octets (format nil "kiwi one~%two~%kiwi three~%")) 'list)) s)
+    (write-sequence (append (list #xEF #xBB #xBF)
+                            (coerce (sb-ext:string-to-octets (format nil "kiwi one~%two~%kiwi three~%")) 'list)) s)
     (finish-output s)
     (is equal '(1 3) (mapcar (lambda (candidate) (second (tuatara.command::candidate-value candidate)))
                              (tuatara.defaults::lines-on-disk (uiop:native-namestring file) "bom.txt" "/tmp/" "kiwi"

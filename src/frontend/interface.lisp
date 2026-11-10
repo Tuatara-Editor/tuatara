@@ -55,7 +55,8 @@ the order :ctrl :meta :shift followed by the base."
     ("<f1>" . :f1) ("<f2>" . :f2) ("<f3>" . :f3) ("<f4>" . :f4) ("<f5>" . :f5) ("<f6>" . :f6)
     ("<f7>" . :f7) ("<f8>" . :f8) ("<f9>" . :f9) ("<f10>" . :f10) ("<f11>" . :f11) ("<f12>" . :f12)
     ("<wheel-up>" . :wheel-up) ("<wheel-down>" . :wheel-down)
-    ("<down-mouse-1>" . :down-mouse-1) ("<drag-mouse-1>" . :drag-mouse-1) ("<up-mouse-1>" . :up-mouse-1) ("<mouse-2>" . :mouse-2)
+    ("<down-mouse-1>" . :down-mouse-1) ("<drag-mouse-1>" .
+                                        :drag-mouse-1) ("<up-mouse-1>" . :up-mouse-1) ("<mouse-2>" . :mouse-2)
     ("<double-mouse-1>" . :double-mouse-1) ("<triple-mouse-1>" . :triple-mouse-1))
   "The key names of key sequences (RET, SPC, TAB, <f5> and the rest) and the
 base each stands for.")
@@ -100,17 +101,17 @@ KEY-DESCRIPTION writes it, with a space between (C-x C-f)."
 ;;; Events
 
 (defstruct (event (:constructor make-event (kind &key key width height files column row text frame)) (:copier nil))
-  "Something the frontend reports: KIND is :key (with KEY), :resize (with WIDTH
+  "Something the frontend reports. KIND is :key (with KEY), :resize (with WIDTH
 and HEIGHT in cells), :drop when files were dropped on the window (FILES,
-their paths, on the cell COLUMN, ROW), :paste when text was pasted into the
+their paths, on the cell COLUMN, ROW), or :paste when text was pasted into the
 terminal Tuatara runs in (TEXT, its lines ending in newlines), to go in as
-text and never as keys, :close when the window was asked to close, :focus when
-it was given the keyboard, :detached when the frame's screen went away (its
-client left), :said with TEXT, words for the echo area from the frontend
-itself, or :quit when the frontend can deliver nothing more; :secret stands
-among recorded keys where a secret was typed, which is never recorded. FRAME
-is the editor's frame the event happened in, where frames share one source of
-events; NIL for the frame being worked in."
+text and never as keys. It is :close when the window was asked to close,
+:focus when it was given the keyboard, and :detached when the frame's screen
+went away (its client left). It is :said with TEXT, words for the echo area
+from the frontend itself, or :quit when the frontend can deliver nothing
+more. :secret stands among recorded keys where a secret was typed, which is
+never recorded. FRAME is the editor's frame the event happened in, where
+frames share one source of events; NIL for the frame being worked in."
   (kind :key :type keyword :read-only t)
   (key nil :type (or null key) :read-only t)
   (width 0 :type fixnum :read-only t)
@@ -121,7 +122,8 @@ events; NIL for the frame being worked in."
   (text nil :type (or null string) :read-only t)
   (frame nil :read-only t))
 
-(setf (documentation 'make-event 'function) "Return an EVENT of KIND with the given KEY, WIDTH, HEIGHT, FILES, COLUMN, ROW and TEXT."
+(setf (documentation 'make-event 'function) "Return an EVENT of KIND with the given KEY, WIDTH,
+HEIGHT, FILES, COLUMN, ROW and TEXT."
       (documentation 'event-p 'function) "True when OBJECT is an EVENT."
       (documentation 'event-kind 'function)
       "The kind of EVENT: :key, :resize, :drop, :paste, :close, :focus, :detached, :said, :quit, :secret among
@@ -458,18 +460,18 @@ rest included, as for the mode line or a selected candidate. SPANS is a list of
 (START END FACE) over character indices of STRING whose characters get that
 face on top of the row's. Text with no face shows the :default face.
 Where the frontend draws rows large (*ROW-SCALING*), SCALES lists parts of the
-row drawn otherwise, each (START END SCALE SHIFT HEIGHT): from column START
-below END, the text from that column on drawn SCALE times as tall and wide (a
-rational of 1 or more) and SHIFT rows lower, over a band HEIGHT rows tall
-\(the row's gutter, drawn as it is, is as tall as the band of its text), each
-of its characters taking SCALE columns; SCALE 0 leaves those cells to the
-parts moved over them. OVER lists (LEFT TEXT SPANS) drawn over everything
-at the row's own cells, the first on top: a list of candidates. A frontend
-that draws all rows alike is given neither. PARTS lists the columns where
-the row's parts begin after the first (a window's text after its gutter, the
-window beside it), in order: a frontend that keeps what it painted may keep
-each part apart, as the gutter's numbers stay on a row while the text
-scrolls past them."))
+row drawn otherwise, each (START END SCALE SHIFT HEIGHT). The part runs from
+column START below END. The text from that column on is drawn SCALE times as
+tall and wide (a rational of 1 or more) and SHIFT rows lower, over a band
+HEIGHT rows tall (the row's gutter, drawn as it is, is as tall as the band of
+its text), each of its characters taking SCALE columns. SCALE 0 leaves those
+cells to the parts moved over them. OVER lists (LEFT TEXT SPANS) drawn over
+everything at the row's own cells, the first on top: a list of candidates. A
+frontend that draws all rows alike is given neither. PARTS lists the columns
+where the row's parts begin after the first (a window's text after its gutter,
+the window beside it), in order. A frontend that keeps what it painted may keep
+each part apart, as the gutter's numbers stay on a row while the text scrolls
+past them."))
 
 (defgeneric frontend-set-cursor (frontend row column shape &optional colour)
   (:documentation "Place the cursor at ROW and COLUMN with SHAPE, :block, :bar or

@@ -32,14 +32,14 @@
     (:iso :programs (:bsdtar) :words "ISO 9660" :format "ISO9660" :endings (".iso"))
     (:cpio :programs (:bsdtar) :words "cpio" :format "cpio" :endings (".cpio")))
   "The kinds of archive listed and unpacked, each the kind of its first octets
-\(TUATARA.IO:OCTETS-KIND) and a property list: :PROGRAMS, the programs that
+\(TUATARA.IO:OCTETS-KIND) and a property list. :PROGRAMS are the programs that
 read it, the first installed that can taken (ARCHIVE-PROGRAM), GNU tar (:TAR),
-which also makes the archives it reads, 7-Zip (:7ZZ) or bsdtar (:BSDTAR);
-:OPTION, tar's option compressing it; :WORDS, what a message calls it;
-:FORMAT, how bsdtar names the format it read (in its own words, the start of
-them), and :TYPE, 7-Zip's name of it, each held to that format; and
-:ENDINGS, the endings of its names. A Word document, an EPUB book or a Java
-package is read as the zip archive it is (*ZIP-KINDS*).")
+which also makes the archives it reads, 7-Zip (:7ZZ) or bsdtar (:BSDTAR).
+:OPTION is tar's option compressing it. :WORDS is what a message calls it.
+:FORMAT is how bsdtar names the format it read (in its own words, the start of
+them), and :TYPE is 7-Zip's name of it, each held to that format. :ENDINGS are
+the endings of its names. A Word document, an EPUB book or a Java package is
+read as the zip archive it is (*ZIP-KINDS*).")
 
 (defparameter *zip-kinds* '(:zip :docx :xlsx :pptx :odt :ods :odp :epub :apk :jar)
   "The kinds of file (TUATARA.IO:OCTETS-KIND) that are zip archives, listed
@@ -48,7 +48,8 @@ and unpacked as one.")
 (defvar *archive-seconds* (* 24 60 60)
   "The seconds tar, 7-Zip or bsdtar may take to make, list or unpack one
 archive before it is ended: a day, for the largest; \\[stop-job] ends it
-sooner.")
+sooner. Lower it to end a program that hangs sooner; raise it only for an
+archive that takes more than a day.")
 
 (defparameter *archive-test-seconds* (* 60 60)
   "The seconds a password is tried on all of a locked archive before it is
@@ -83,7 +84,9 @@ unpacked into by standard; with no ending to take away, the name and
 
 (defvar *archive-listing-limit* (* 64 1024 1024)
   "The most octets of an archive's list of contents shown (64 MB); a longer
-one is not shown, and that is said.")
+one is not shown, and that is said. Raise it to see the list of a very large
+archive, at the cost of the memory of the whole list; lower it to refuse such
+a list sooner.")
 
 (defun archive-environment ()
   "What the programs reading archives are given in their environment besides
@@ -91,7 +94,9 @@ the sandbox's own: your time zone (SANDBOX-TIME-ZONE), and xz held to half
 the memory a program shut in may take, with as many threads as fit in it."
   (append (sandbox-time-zone)
           (let ((memory tuatara-user:*sandbox-memory*))
-            (and memory (list (list "XZ_DEFAULTS" (format nil "--memlimit-compress=~dMiB" (max 64 (floor memory (* 2 1024 1024))))))))))
+            (and memory
+                 (list (list "XZ_DEFAULTS"
+                             (format nil "--memlimit-compress=~dMiB" (max 64 (floor memory (* 2 1024 1024))))))))))
 
 ;;; 7-Zip
 
@@ -177,10 +182,10 @@ fail comes first."
 (defun archive-failure-words (program kind outcome said password)
   "Why PROGRAM (:TAR, :7ZZ, :BSDTAR) reading or unpacking an archive of KIND,
 an entry of *ARCHIVE-KINDS*, did not end well, as a sentence, from OUTCOME and
-what was SAID, as TUATARA.IO:SANDBOX-RUN gives them: with PASSWORD given, a
-wrong one said so; an archive locked with a password that bsdtar cannot open
-said so by its kind, with 7-Zip to install for it; and one holding what the
-program cannot read said so."
+what was SAID, as TUATARA.IO:SANDBOX-RUN gives them. With PASSWORD given, a
+wrong one is said to be wrong. An archive locked with a password that bsdtar
+cannot open is said so by its kind, with 7-Zip to install for it. An archive
+holding what the program cannot read is said so too."
   (let ((words (archive-said-words said))
         (kind-words (getf (rest kind) :words))
         (label (string-downcase (program-path program))))
@@ -241,13 +246,13 @@ archive of those kinds."
 (defun archive-arguments (program kind action archive &key directory)
   "The arguments of PROGRAM (:TAR, :7ZZ, :BSDTAR) reading archives of KIND
 \(*ARCHIVE-KINDS*) for ACTION on the archive ARCHIVE, where it is seen in the
-sandbox: :LIST its contents, a line each (7-Zip's as its technical list,
-SEVEN-ZIP-LISTING reads it; bsdtar's ending with the format it read);
-:EXTRACT them into DIRECTORY, the files yours, their modes as your umask has
-them, none written outside DIRECTORY nor through a link, and those there
-already left as they are; :TEST, 7-Zip's and bsdtar's, every file unpacked
-and let go, nothing written. 7-Zip is held to the archive's format. An error
-when the program compressing it is not there."
+sandbox. :LIST gives its contents, a line each (7-Zip's as its technical list,
+SEVEN-ZIP-LISTING reads it; bsdtar's ending with the format it read). :EXTRACT
+unpacks them into DIRECTORY. The files are yours, their modes as your umask has
+them. None is written outside DIRECTORY nor through a link, and those there
+already are left as they are. :TEST, 7-Zip's and bsdtar's, has every file
+unpacked and let go, nothing written. 7-Zip is held to the archive's format. An
+error when the program compressing it is not there."
   (check-compressor kind)
   (let ((file (tuatara.io:path-join (tuatara.io:real-place (tuatara.io:parent-path archive))
                                     (tuatara.io:native-file-name archive)))
@@ -353,7 +358,8 @@ cannot be listed without one. Takes time: call it in the background."
                 (format nil "7z, rar (when it reads them) and zip archives by ~a, 7-Zip ~{~d.~2,'0d~}, shut in~@[~a~]"
                         (first found) (second found)
                         (and (< (first (second found)) 25)
-                             (format nil ": older than 25.00, it lacks fixes of its readers made since (CVE-2024-11477, ~
+                             (format nil
+                                     ": older than 25.00, it lacks fixes of its readers made since (CVE-2024-11477, ~
                                           CVE-2025-11001, CVE-2025-11002, CVE-2025-53816, CVE-2025-53817); shut in, ~
                                           it can harm nothing else, but is worth updating")))
                 (format nil "7-Zip for the best of them, not found: ~a: ~a" (getf (outside-program :seven-zip) :what)
@@ -373,8 +379,9 @@ work."
                    (refuse "~a is not named as a tar archive is" (tuatara.io:native-file-name archive))))
          (option (getf (rest kind) :option))
          ;; one in a folder also given goes in with the folder, once
-         (paths (remove-if (lambda (path) (some (lambda (other) (and (string/= path other) (tuatara.io:path-within-p path other)))
-                                                paths))
+         (paths (remove-if (lambda (path)
+                             (some (lambda (other) (and (string/= path other) (tuatara.io:path-within-p path other)))
+                                   paths))
                            paths))
          (root (paths-common-directory paths))
          (folder (tuatara.io:parent-path archive))
@@ -433,7 +440,8 @@ saying why when it does not work; what was unpacked before stays."
       (error 'archive-locked :path archive))
     (when (eq program :bsdtar)
       (bsdtar-format-checked kind (run-archive-program program kind (archive-arguments program kind :list archive)
-                                                       :cancel cancel :directories (list (tuatara.io:parent-path archive))
+                                                       :cancel cancel
+                                                       :directories (list (tuatara.io:parent-path archive))
                                                        :output-limit *archive-listing-limit*)))
     (when password
       ;; what it unpacks to is held to the room unpacking would have
@@ -489,12 +497,12 @@ whose name is there stays in FROM. The names so left, from FROM."
     (nreverse left)))
 
 (defun make-extracted-writable (directory)
-  "Give everything in DIRECTORY, the folder an archive was just unpacked
-into, the modes your umask allows (TUATARA.IO:UMASK-BITS), whatever program
-unpacked it, with the owner's write bit, its folders the owner's read and
-enter bits too, and no setuid or setgid bit, so that what an archive put
-there with other modes can be moved and deleted and runs as no one else.
-Links are neither followed nor changed."
+  "Give everything in DIRECTORY, the folder an archive was just unpacked into,
+the modes your umask allows (TUATARA.IO:UMASK-BITS), whatever program unpacked
+it. Everything has the owner's write bit, its folders the owner's read and
+enter bits too, and no setuid or setgid bit. So what an archive put there with
+other modes can be moved and deleted and runs as no one else. Links are neither
+followed nor changed."
   (flet ((set-bits (path stamp bits)
            (let* ((mode (logand (tuatara.io:stamp-mode stamp) #o7777))
                   (wanted (logior (logand mode (lognot (logior #o6000 (tuatara.io:umask-bits)))) bits)))
@@ -576,15 +584,16 @@ than *ARCHIVE-FREE-RESERVE* free or room for too few more files
 (defun archive-listing (archive &key cancel)
   "What the archive ARCHIVE holds, of a kind of *ARCHIVE-KINDS* told by its
 first octets, a line each: its kind and permissions, owner and group, size,
-time and name, where a link leads; a tar archive's as tar --list --verbose
-writes it and 7-Zip's in the same columns, times to the second, bsdtar's as
-it writes them, times to the minute (the year for one more than half a year
-away), and the format it read last. A character that cannot be shown, or
-that would turn the direction a line is drawn in, is written as its code.
-Nothing is unpacked; the program, shut in, sees only the archive's folder,
-read only. Stopped when CANCEL's car turns true; an error saying why when it
-cannot be read, is locked with a password 7-Zip needs, is read as another
-format than it is, or the list is longer than *ARCHIVE-LISTING-LIMIT*."
+time and name, where a link leads. A tar archive's lines are as tar --list
+--verbose writes them, and 7-Zip's are in the same columns, times to the
+second. bsdtar's are as it writes them, times to the minute (the year for one
+more than half a year away), followed by the format it read last. A character
+that cannot be shown, or that would turn the direction a line is drawn in, is
+written as its code. Nothing is unpacked; the program, shut in, sees only the
+archive's folder, read only. Stopped when CANCEL's car turns true; an error
+saying why when it cannot be read, is locked with a password 7-Zip needs, is
+read as another format than it is, or the list is longer than
+*ARCHIVE-LISTING-LIMIT*."
   (let* ((kind (archive-kind archive))
          (program (archive-program kind))
          (text (run-archive-program program kind (archive-arguments program kind :list archive)
@@ -639,16 +648,20 @@ background, shut in the sandbox."
   (let* ((path (shown-file-argument "List archive: "))
          (stamp (tuatara.io:path-stamp path)))
     (cond ((null stamp) (message "~a is not there" (abbreviated-path path)))
-          ((not (eq (tuatara.io:stamp-kind stamp) :regular)) (message "~a is not a regular file: nothing listed" (abbreviated-path path)))
+          ((not (eq (tuatara.io:stamp-kind stamp) :regular)) (message "~a is not a regular file: nothing listed"
+                                                                      (abbreviated-path path)))
           (t (let ((name (tuatara.io:native-file-name path)))
                (show-buffer
                 (reading-buffer '*archive-listings* (lambda (b) (tuatara.buffer:buffer-local b 'archive-listing)) path
-                                (format nil "*Archive: ~a*" name) (format nil "Listing what ~a holds...~%" name) 'special-mode
+                                (format nil "*Archive: ~a*" name)
+                                (format nil "Listing what ~a holds...~%" name)
+                                'special-mode
                                 (lambda (buffer)
                                   (setf (tuatara.buffer:buffer-local buffer 'archive-listing) path)
                                   (tuatara.runtime:start-job-thread
                                    (make-archive-listing-job buffer path)
                                    (lambda (job)
                                      (setf (archive-listing-job-text job)
-                                           (archive-listing (archive-listing-job-path job) :cancel (tuatara.runtime:job-cancel job))))
+                                           (archive-listing (archive-listing-job-path job)
+                                                            :cancel (tuatara.runtime:job-cancel job))))
                                    :name "tuatara archive listing")))))))))

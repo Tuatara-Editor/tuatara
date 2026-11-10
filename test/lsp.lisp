@@ -43,9 +43,13 @@ what marks a project; check-health saying which are installed.")
   ;; what another program sends is never trusted: anything not JSON is refused, saying where
   (dolist (text '("" "{" "[1,]" "{\"a\" 1}" "tru" "01x" "\"a" "[1] 2" "{\"a\":1,}" "\"\\x\"" "-" "1." "1e"))
     (fail (tuatara.text:json-read text) tuatara.text:json-error))
-  (is = 3 (handler-case (tuatara.text:json-read "[1, ?]") (tuatara.text:json-error (e) (- (tuatara.text:json-error-position e) 1))))
+  (is = 3
+      (handler-case (tuatara.text:json-read "[1, ?]")
+        (tuatara.text:json-error (e) (- (tuatara.text:json-error-position e) 1))))
   ;; nesting past the bound refused, not followed down until the stack runs out
-  (fail (tuatara.text:json-read (concatenate 'string (make-string 100000 :initial-element #\[) (make-string 100000 :initial-element #\])))
+  (fail (tuatara.text:json-read (concatenate 'string
+                                             (make-string 100000 :initial-element #\[)
+                                             (make-string 100000 :initial-element #\])))
       tuatara.text:json-error)
   ;; a number's exponent bounded: neither a hang nor an overflow
   (is = most-positive-double-float (tuatara.text:json-read "1e999999999"))
@@ -102,7 +106,9 @@ what marks a project; check-health saying which are installed.")
           (alexandria:write-string-into-file (format nil "keep = 1~%x  =   2~%keep = 3~%") file)
           ;; laid out by the formatter: only the line that differs replaced, point kept on its text, one undo
           (multiple-value-bind (f editor)
-              (auto-save-session (list (format nil "C-x C-f C-a C-k ~a RET" (rimu-typed file)) "M-> C-p" "M-x f o r m a t - b u f f e r RET"
+              (auto-save-session (list (format nil "C-x C-f C-a C-k ~a RET" (rimu-typed file))
+                                       "M-> C-p"
+                                       "M-x f o r m a t - b u f f e r RET"
                                        (list :until #'formatting-done-p) (list :wait 0.1)))
             (declare (ignore editor))
             (true (tuatara.frontend.fake:fake-frame-showing f "a.py formatted by fmt.sh, 1 place changed"))
@@ -112,14 +118,19 @@ what marks a project; check-health saying which are installed.")
               (tuatara.buffer:kill-buffer buffer)))
           ;; formatted before each save, when its language is named
           (let ((tuatara-user:*format-on-save* '(python)))
-            (auto-save-session (list (format nil "C-x C-f C-a C-k ~a RET" (rimu-typed file)) "M-> x SPC SPC SPC = SPC SPC 4" "C-x C-s"
+            (auto-save-session (list (format nil "C-x C-f C-a C-k ~a RET" (rimu-typed file))
+                                     "M-> x SPC SPC SPC = SPC SPC 4"
+                                     "C-x C-s"
                                      (list :until #'formatting-done-p) (list :wait 0.3)))
             (is string= (format nil "keep = 1~%x = 2~%keep = 3~%x = 4") (alexandria:read-file-into-string file))
             (let ((buffer (tuatara.buffer:find-buffer "a.py"))) (when buffer (tuatara.buffer:kill-buffer buffer))))
           ;; a formatter that fails changes nothing, and says what it said
-          (let ((tuatara-user:*language-formatters* (list (list 'python (stand-in-formatter dir :script "echo bad >&2; exit 3")))))
+          (let ((tuatara-user:*language-formatters* (list (list 'python
+                                                                (stand-in-formatter dir
+                                                                                    :script "echo bad >&2; exit 3")))))
             (multiple-value-bind (f editor)
-                (auto-save-session (list (format nil "C-x C-f C-a C-k ~a RET" (rimu-typed file)) "M-x f o r m a t - b u f f e r RET"
+                (auto-save-session (list (format nil "C-x C-f C-a C-k ~a RET" (rimu-typed file))
+                                         "M-x f o r m a t - b u f f e r RET"
                                          (list :until #'formatting-done-p) (list :wait 0.1)))
               (declare (ignore editor))
               (true (tuatara.frontend.fake:fake-frame-showing f "fmt.sh could not format a.py: bad"))
@@ -127,9 +138,11 @@ what marks a project; check-health saying which are installed.")
           ;; a formatter that gives nothing back, or what is not text, changes nothing, said so
           (loop for (script words) in '(("cat >/dev/null" "it gave nothing back")
                                         ("cat >/dev/null; printf '\\377\\376x'" "is not text"))
-                do (let ((tuatara-user:*language-formatters* (list (list 'python (stand-in-formatter dir :script script)))))
+                do (let ((tuatara-user:*language-formatters* (list (list 'python
+                                                                         (stand-in-formatter dir :script script)))))
                      (multiple-value-bind (f editor)
-                         (auto-save-session (list (format nil "C-x C-f C-a C-k ~a RET" (rimu-typed file)) "M-x f o r m a t - b u f f e r RET"
+                         (auto-save-session (list (format nil "C-x C-f C-a C-k ~a RET" (rimu-typed file))
+                                                  "M-x f o r m a t - b u f f e r RET"
                                                   (list :until #'formatting-done-p) (list :wait 0.1))
                                             :width 200)
                        (declare (ignore editor))
@@ -139,7 +152,8 @@ what marks a project; check-health saying which are installed.")
                          (tuatara.buffer:kill-buffer buffer)))))
           ;; opened safely: never given to a formatter
           (multiple-value-bind (f editor)
-              (auto-save-session (list (format nil "C-u C-x C-f C-a C-k ~a RET" (rimu-typed file)) "M-x f o r m a t - b u f f e r RET"))
+              (auto-save-session (list (format nil "C-u C-x C-f C-a C-k ~a RET" (rimu-typed file))
+                                       "M-x f o r m a t - b u f f e r RET"))
             (declare (ignore editor))
             (true (tuatara.frontend.fake:fake-frame-showing f "a.py is opened safely: not formatted"))
             (let ((buffer (tuatara.buffer:find-buffer "a.py"))) (when buffer (tuatara.buffer:kill-buffer buffer))))))))
@@ -160,11 +174,13 @@ what marks a project; check-health saying which are installed.")
                (progn
                  (sb-posix:setenv "PATH" (format nil "~a:~a" (namestring bin) path) 1)
                  (multiple-value-bind (f editor)
-                     (auto-save-session (list (format nil "C-x C-f C-a C-k ~a RET" (rimu-typed file)) "M-x f o r m a t - b u f f e r RET"
+                     (auto-save-session (list (format nil "C-x C-f C-a C-k ~a RET" (rimu-typed file))
+                                              "M-x f o r m a t - b u f f e r RET"
                                               (list :until #'formatting-done-p) (list :wait 0.1)))
                    (declare (ignore editor))
                    (true (tuatara.frontend.fake:fake-frame-showing f "a.sh formatted by shfmt, 1 place changed"))
-                   (is string= (format nil "echo hi~%") (tuatara.buffer:buffer-string (tuatara.buffer:find-buffer "a.sh")))))
+                   (is string= (format nil "echo hi~%")
+                       (tuatara.buffer:buffer-string (tuatara.buffer:find-buffer "a.sh")))))
             (sb-posix:setenv "PATH" path 1)
             (let ((buffer (tuatara.buffer:find-buffer "a.sh"))) (when buffer (tuatara.buffer:kill-buffer buffer))))))))
 
@@ -172,10 +188,13 @@ what marks a project; check-health saying which are installed.")
   ;; no formatter: the lines indented as the mode indents them
   (let ((tuatara-user:*language-formatters* '((lisp))))
     (multiple-value-bind (f editor)
-        (run-keys "M-x l i s p - m o d e RET M-x f o r m a t - b u f f e r RET" :text (format nil "(defun f ()~%1)") :width 120)
+        (run-keys "M-x l i s p - m o d e RET M-x f o r m a t - b u f f e r RET"
+                  :text (format nil "(defun f ()~%1)")
+                  :width 120)
       (declare (ignore editor))
       (true (tuatara.frontend.fake:fake-frame-showing f "indented by Tuatara"))
-      (is string= (format nil "(defun f ()~%  1)") (tuatara.buffer:buffer-string (tuatara.buffer:find-buffer "*scratch*"))))))
+      (is string= (format nil "(defun f ()~%  1)")
+          (tuatara.buffer:buffer-string (tuatara.buffer:find-buffer "*scratch*"))))))
 
 (define-test (lsp format-refused)
   ;; an encrypted file's text is kept from other programs: never a formatter's
@@ -188,8 +207,11 @@ what marks a project; check-health saying which are installed.")
 
 (defun stand-in-server-setting (log)
   "*LANGUAGE-SERVERS* naming the tests' stand-in language server for Python, writing what it is told to LOG."
-  (list (list 'python (list "python3" (namestring (merge-pathnames "test/stand-in-language-server.py" (asdf:system-source-directory :tuatara)))
-                            (namestring log)))))
+  (list (list 'python
+              (list "python3"
+                    (namestring (merge-pathnames "test/stand-in-language-server.py"
+                                                 (asdf:system-source-directory :tuatara)))
+                    (namestring log)))))
 
 (defun told (log)
   "What the stand-in language server was told, the methods in order."
@@ -208,7 +230,8 @@ what marks a project; check-health saying which are installed.")
            (progn
              ;; a project not trusted: the server offered, not started
              (multiple-value-bind (f editor)
-                 (auto-save-session (list (format nil "C-x C-f C-a C-k ~a RET" (rimu-typed file)) (list :wait 0.3)) :width 140)
+                 (auto-save-session (list (format nil "C-x C-f C-a C-k ~a RET" (rimu-typed file)) (list :wait 0.3))
+                                    :width 140)
                (declare (ignore editor))
                (true (tuatara.frontend.fake:fake-frame-showing f "can serve"))
                (false (told log))
@@ -267,7 +290,9 @@ what marks a project; check-health saying which are installed.")
       (flet ((note (key)
                ;; what the buffer and point are now, kept before the session ends
                (list :until (lambda () (let ((b (tuatara.buffer:find-buffer "b.py")))
-                                         (push (list key (tuatara.buffer:buffer-string b) (tuatara.buffer:buffer-point b)) seen)
+                                         (push (list key
+                                                     (tuatara.buffer:buffer-string b)
+                                                     (tuatara.buffer:buffer-point b)) seen)
                                          t))))
              (ready () (list :until (lambda () (let ((b (tuatara.buffer:find-buffer "b.py")))
                                                  (and b (tuatara.lsp::buffer-diagnostics b))))))
@@ -295,7 +320,12 @@ what marks a project; check-health saying which are installed.")
                         ;; laid out by the server, there being no formatter
                         (typed "format-buffer") (list :wait 0.5) (note :formatted)
                         ;; the server's fix for what it found
-                        "M-< C-s b a d RET" (typed "lsp-code-actions") (list :wait 0.3) "RET" (list :wait 0.3) (note :fixed))
+                        "M-< C-s b a d RET"
+                        (typed "lsp-code-actions")
+                        (list :wait 0.3)
+                        "RET"
+                        (list :wait 0.3)
+                        (note :fixed))
                   :width 150 :height 30)
                (declare (ignore editor))
                (flet ((at (key) (rest (assoc key seen))))
@@ -359,7 +389,9 @@ what marks a project; check-health saying which are installed.")
            (multiple-value-bind (f editor)
                (auto-save-session (list (format nil "C-x C-f C-a C-k ~a RET" (rimu-typed file))
                                         (list :until (lambda () (let ((b (tuatara.buffer:find-buffer "n.org")))
-                                                                  (and b (= 2 (length (tuatara.lsp::buffer-diagnostics b)))
+                                                                  (and b
+                                                                       (= 2
+                                                                          (length (tuatara.lsp::buffer-diagnostics b)))
                                                                        (tuatara.lsp::buffer-hints b)))))
                                         (list :until (lambda () (let ((b (tuatara.buffer:find-buffer "n.org")))
                                                                   (setf seen (tuatara.lsp::buffer-diagnostics b)
@@ -395,10 +427,13 @@ what marks a project; check-health saying which are installed.")
       (flet ((buffer () (tuatara.buffer:find-buffer "r.org")))
         (unwind-protect
              (auto-save-session (list (format nil "C-x C-f C-a C-k ~a RET" (rimu-typed file))
-                                      (list :until (lambda () (and (buffer) (= 1 (length (tuatara.lsp::buffer-diagnostics (buffer)))))))
+                                      (list :until
+                                            (lambda ()
+                                              (and (buffer) (= 1 (length (tuatara.lsp::buffer-diagnostics (buffer)))))))
                                       ;; the first block's line: x = 1 made x = 1 + bad
                                       "M-< C-n C-n C-n C-e SPC + SPC b a d"
-                                      (list :until (lambda () (= 2 (length (tuatara.lsp::buffer-diagnostics (buffer))))))
+                                      (list :until
+                                            (lambda () (= 2 (length (tuatara.lsp::buffer-diagnostics (buffer))))))
                                       (list :until (lambda () (setf seen (tuatara.lsp::buffer-diagnostics (buffer))
                                                                     now (tuatara.buffer:buffer-string (buffer))))))
                                 :width 100 :height 20)
@@ -414,7 +449,8 @@ what marks a project; check-health saying which are installed.")
     (true (tuatara.frontend.fake:fake-frame-showing f "d definition"))
     (true (tuatara.frontend.fake:fake-frame-showing f "R rename")))
   (let ((buffers (tuatara.defaults::mode-keymap 'tuatara.defaults::buffers-mode)))
-    (is eq 'tuatara.defaults::list-mark-entry (tuatara.command:lookup-key buffers (tuatara.frontend:parse-key-sequence "C-c m")))
+    (is eq 'tuatara.defaults::list-mark-entry
+        (tuatara.command:lookup-key buffers (tuatara.frontend:parse-key-sequence "C-c m")))
     (false (tuatara.command:lookup-key buffers (tuatara.frontend:parse-key-sequence "C-c x"))))
   (let ((rimu tuatara.defaults::*rimu-keymap*))
     ;; x stays rimu's alone: C-c x is left for your own keys
@@ -479,9 +515,17 @@ what marks a project; check-health saying which are installed.")
                                           ;; on add: where it is called from
                                           "M-< C-f C-f C-f C-f" (typed "lsp-incoming-calls") (list :wait 0.3) "q"
                                           ;; on twice: what it calls
-                                          "C-x b e . p y RET M-< C-n C-n C-n C-f C-f C-f C-f" (typed "lsp-outgoing-calls") (list :wait 0.3) "q"
+                                          "C-x b e . p y RET M-< C-n C-n C-n C-f C-f C-f C-f"
+                                          (typed "lsp-outgoing-calls")
+                                          (list :wait 0.3)
+                                          "q"
                                           ;; a name of the project, gone to
-                                          "C-x b e . p y RET" (typed "lsp-find-symbol") "a d d RET" (list :wait 0.2) "RET" (list :wait 0.2)
+                                          "C-x b e . p y RET"
+                                          (typed "lsp-find-symbol")
+                                          "a d d RET"
+                                          (list :wait 0.2)
+                                          "RET"
+                                          (list :wait 0.2)
                                           (list :until (lambda () (setf point (tuatara.buffer:buffer-point (tuatara.buffer:find-buffer "e.py"))))))
                                     :width 120 :height 30)
                (declare (ignore editor))
@@ -510,12 +554,17 @@ what marks a project; check-health saying which are installed.")
         (unwind-protect
              (multiple-value-bind (f editor)
                  (auto-save-session (list (format nil "C-x C-f C-a C-k ~a RET" (rimu-typed file))
-                                          (list :until (lambda () (tuatara.lsp::server-work (tuatara.lsp::buffer-servers (buffer)))))
+                                          (list :until
+                                                (lambda ()
+                                                  (tuatara.lsp::server-work (tuatara.lsp::buffer-servers (buffer)))))
                                           (list :wait 0.1)
                                           (typed "list-jobs") (list :wait 0.1) "q"
                                           ;; resting on total: its uses lit
                                           "C-x b f . p y RET M-< C-n C-f C-f C-f C-f C-f"
-                                          (list :until (lambda () (tuatara.buffer:buffer-local (buffer) 'tuatara.lsp::lsp-symbol-highlights)))
+                                          (list :until
+                                                (lambda ()
+                                                  (tuatara.buffer:buffer-local (buffer)
+                                                                               'tuatara.lsp::lsp-symbol-highlights)))
                                           (list :until (lambda () (setf lit (mapcar (lambda (h) (subseq h 0 2))
                                                                                     (tuatara.lsp::placed-items-now
                                                                                      (tuatara.buffer:buffer-local (buffer) 'tuatara.lsp::lsp-symbol-highlights)
@@ -611,13 +660,17 @@ what marks a project; check-health saying which are installed.")
                                           (list :until (lambda () (tuatara.lsp::buffer-servers (buffer))))
                                           (list :wait 0.2)
                                           ;; on area: its two implementations, listed
-                                          "M-< C-n C-n C-n C-n C-f C-f C-f C-f C-f C-f C-f C-f C-f" "C-c I" (list :wait 0.3) "q"
+                                          "M-< C-n C-n C-n C-n C-f C-f C-f C-f C-f C-f C-f C-f C-f"
+                                          "C-c I"
+                                          (list :wait 0.3)
+                                          "q"
                                           ;; on s: the type's definition, gone to
                                           "C-x b h . p y RET M->" "C-p C-a" "C-c T" (list :wait 0.3)
                                           (list :until (lambda () (setf typed (tuatara.buffer:buffer-point (buffer)))))
                                           ;; the imports in order
                                           "C-c o" (list :wait 0.3)
-                                          (list :until (lambda () (setf organised (tuatara.buffer:buffer-string (buffer)))))
+                                          (list :until
+                                                (lambda () (setf organised (tuatara.buffer:buffer-string (buffer)))))
                                           "M-x l s p - e v e n t s RET" (list :wait 0.2)
                                           (list :until (lambda () (setf events (tuatara.buffer:buffer-string
                                                                                 (tuatara.buffer:find-buffer "*Language server events*"))))))
@@ -649,7 +702,12 @@ what marks a project; check-health saying which are installed.")
              (auto-save-session (list (format nil "C-x C-f C-a C-k ~a RET" (rimu-typed file))
                                       (list :until (lambda () (tuatara.lsp::buffer-diagnostics (buffer))))
                                       ;; letters of two octets, a line joined to the one before, a word deleted
-                                      "M-< é é SPC" (list :wait 0.2) "C-n C-a DEL" (list :wait 0.2) "M-> C-p C-e DEL DEL DEL m e h" (list :wait 0.3)
+                                      "M-< é é SPC"
+                                      (list :wait 0.2)
+                                      "C-n C-a DEL"
+                                      (list :wait 0.2)
+                                      "M-> C-p C-e DEL DEL DEL m e h"
+                                      (list :wait 0.3)
                                       (list :until (lambda () (let ((d (tuatara.lsp::buffer-diagnostics (buffer))))
                                                                 (and d (= 1 (length d)) (= 2 (tuatara.lsp::diagnostic-severity (first d)))))))
                                       (list :until (lambda () (setf seen (tuatara.lsp::buffer-diagnostics (buffer))
@@ -657,7 +715,8 @@ what marks a project; check-health saying which are installed.")
                                 :width 100)
           (tuatara.lsp::lsp-stop-all))
         (is string= (format nil "éé x = 1y = 2~%z = meh~%") text)
-        (is = (length (tuatara.text:string-octets (subseq text 0 (search "meh" text)))) (tuatara.lsp::diagnostic-start (first seen)))
+        (is = (length (tuatara.text:string-octets (subseq text 0 (search "meh" text))))
+            (tuatara.lsp::diagnostic-start (first seen)))
         (true (member "ranges" (told log) :test #'string=))
         (false (member "whole" (told log) :test #'string=))))))
 
@@ -667,7 +726,8 @@ what marks a project; check-health saying which are installed.")
     (ensure-directories-exist (merge-pathnames ".git/" dir))
     (let* ((first-log (merge-pathnames "first.log" dir))
            (second-log (merge-pathnames "second.log" dir))
-           (script (namestring (merge-pathnames "test/stand-in-language-server.py" (asdf:system-source-directory :tuatara))))
+           (script (namestring (merge-pathnames "test/stand-in-language-server.py"
+                                                (asdf:system-source-directory :tuatara))))
            (file (namestring (merge-pathnames "two.py" dir)))
            (tuatara.defaults::*modal-editing* nil)
            (tuatara-user:*language-servers*
@@ -682,11 +742,17 @@ what marks a project; check-health saying which are installed.")
       (flet ((buffer () (tuatara.buffer:find-buffer "two.py")))
         (unwind-protect
              (auto-save-session (list (format nil "C-x C-f C-a C-k ~a RET" (rimu-typed file))
-                                      (list :until (lambda () (member "textDocument/didOpen" (told first-log) :test #'string=)))
+                                      (list :until
+                                            (lambda ()
+                                              (member "textDocument/didOpen" (told first-log) :test #'string=)))
                                       "M-> y SPC = SPC b a d"
-                                      (list :until (lambda () (member "textDocument/didOpen" (told second-log) :test #'string=)))
-                                      (list :until (lambda () (= 2 (length (tuatara.lsp::buffer-diagnostics (buffer))))))
-                                      (list :until (lambda () (setf seen (tuatara.lsp::buffer-diagnostics (buffer))) t)))
+                                      (list :until
+                                            (lambda ()
+                                              (member "textDocument/didOpen" (told second-log) :test #'string=)))
+                                      (list :until
+                                            (lambda () (= 2 (length (tuatara.lsp::buffer-diagnostics (buffer))))))
+                                      (list :until
+                                            (lambda () (setf seen (tuatara.lsp::buffer-diagnostics (buffer))) t)))
                                 :width 100)
           (tuatara.lsp::lsp-stop-all)
           (when (buffer) (tuatara.buffer:kill-buffer (buffer))))
@@ -711,7 +777,8 @@ what marks a project; check-health saying which are installed.")
              (auto-save-session (list (format nil "C-x C-f C-a C-k ~a RET" (rimu-typed file))
                                       (list :until (lambda () (tuatara.lsp::buffer-diagnostics (buffer))))
                                       "M-> u g h"
-                                      (list :until (lambda () (= 2 (length (tuatara.lsp::buffer-diagnostics (buffer))))))
+                                      (list :until
+                                            (lambda () (= 2 (length (tuatara.lsp::buffer-diagnostics (buffer))))))
                                       (list :until (lambda () (setf kinds (mapcar #'tuatara.lsp::diagnostic-severity
                                                                                   (tuatara.lsp::buffer-diagnostics (buffer)))))))
                                 :width 100)
@@ -740,9 +807,11 @@ what marks a project; check-health saying which are installed.")
       (flet ((buffer () (tuatara.buffer:find-buffer "saved.py")))
         (unwind-protect
              (auto-save-session (list (format nil "C-x C-f C-a C-k ~a RET" (rimu-typed file))
-                                      (list :until (lambda () (member "textDocument/didOpen" (told log) :test #'string=)))
+                                      (list :until
+                                            (lambda () (member "textDocument/didOpen" (told log) :test #'string=)))
                                       "M-< n e w SPC = SPC 0 RET C-x C-s"
-                                      (list :until (lambda () (assoc "oops found" (found-on-save (buffer)) :test #'string=)))
+                                      (list :until
+                                            (lambda () (assoc "oops found" (found-on-save (buffer)) :test #'string=)))
                                       (list :until (lambda () (setf seen (found-on-save (buffer))
                                                                     text (tuatara.buffer:buffer-string (buffer))))))
                                 :width 100)
@@ -772,7 +841,8 @@ what marks a project; check-health saying which are installed.")
              (checks () (count "checked" (told log) :test #'string=)))
         (unwind-protect
              (auto-save-session (list (format nil "C-x C-f C-a C-k ~a RET" (rimu-typed file))
-                                      (list :until (lambda () (member "textDocument/didOpen" (told log) :test #'string=)))
+                                      (list :until
+                                            (lambda () (member "textDocument/didOpen" (told log) :test #'string=)))
                                       "M-> c SPC = SPC 2 C-x C-s"
                                       (list :until (lambda () (setf first-seen (found-on-save (buffer)))))
                                       ;; the line deleted and saved at once, then more typed and sent
@@ -798,26 +868,36 @@ what marks a project; check-health saying which are installed.")
            (tuatara-user:*lsp-trusted-projects* (list (namestring dir)))
            (tuatara-user:*format-seconds* 1))
       (unwind-protect
-           (loop for (name text words) in '(("fails.py" "x = unformattable" "python3 could not format fails.py: Failed to spawn rustfmt")
+           (loop for (name text words) in '(("fails.py"
+                                             "x = unformattable"
+                                             "python3 could not format fails.py: Failed to spawn rustfmt")
                                             ("slow.py" "x = slowformat" "python3 could not format slow.py: no answer within 1 second (*format-seconds*)")
                                             ("done.py" "x = 1" "done.py formatted by python3: it was laid out already"))
                  for opened from 1
                  do (let ((file (namestring (merge-pathnames name dir))))
                       (alexandria:write-string-into-file (format nil "~a~%" text) file)
                       (let ((f (auto-save-session (list (format nil "C-x C-f C-a C-k ~a RET" (rimu-typed file))
-                                                        (list :until (lambda () (= opened (count "textDocument/didOpen" (told log) :test #'string=))))
+                                                        (list :until
+                                                              (lambda ()
+                                                                (= opened
+                                                                   (count "textDocument/didOpen"
+                                                                          (told log)
+                                                                          :test #'string=))))
                                                         "M-x f o r m a t - b u f f e r RET"
                                                         (list :until (lambda () (search words (or (tuatara.command:editor-message tuatara.command::*editor*) ""))))
                                                         (list :wait 0.1))
                                                   :width 160)))
                         (true (tuatara.frontend.fake:fake-frame-showing f words) "~a" name)
-                        (is string= (format nil "~a~%" text) (tuatara.buffer:buffer-string (tuatara.buffer:find-buffer name)))
+                        (is string= (format nil "~a~%" text)
+                            (tuatara.buffer:buffer-string (tuatara.buffer:find-buffer name)))
                         (tuatara.buffer:kill-buffer (tuatara.buffer:find-buffer name)))))
         (tuatara.lsp::lsp-stop-all))
       ;; no server: indented, and why said
       (let ((tuatara-user:*language-servers* '()))
         (multiple-value-bind (f editor)
-            (run-keys "M-x p y t h o n - m o d e RET M-x f o r m a t - b u f f e r RET" :text (format nil "x = 1~%") :width 160)
+            (run-keys "M-x p y t h o n - m o d e RET M-x f o r m a t - b u f f e r RET"
+                      :text (format nil "x = 1~%")
+                      :width 160)
           (declare (ignore editor))
           (true (tuatara.frontend.fake:fake-frame-showing f "no formatter is known for it, and no language server formats it")))))))
 
@@ -825,7 +905,8 @@ what marks a project; check-health saying which are installed.")
   ;; why a question came to nothing, in one short way: a command line by its program alone,
   ;; other words as they are, the first line only, no answer in time with its setting
   (flet ((words (message) (tuatara.lsp::lsp-error-words (tuatara.text:json-object "message" message))))
-    (is string= "Failed to spawn rustfmt" (words "Failed to spawn cd \"/x/src\" && RUSTUP_AUTO_INSTALL=\"0\" \"rustfmt\""))
+    (is string= "Failed to spawn rustfmt"
+        (words "Failed to spawn cd \"/x/src\" && RUSTUP_AUTO_INSTALL=\"0\" \"rustfmt\""))
     (is string= "Failed to spawn rustfmt" (words "Failed to spawn \"/usr/bin/rustfmt\" \"--edition\" \"2021\""))
     (is string= "unresolved import \"a/b\"" (words (format nil "unresolved import \"a/b\"~%more")))
     (is string= "it failed" (words ""))
@@ -836,7 +917,8 @@ what marks a project; check-health saying which are installed.")
     (is string= "no answer within 0.5 seconds (*lsp-wait*)" (tuatara.lsp::lsp-error-words :timeout :seconds 1/2))
     (is string= "no answer within 3 seconds (*lsp-wait*)" (tuatara.lsp::lsp-error-words :timeout :seconds 3.0))
     ;; a formatter's error output: its first line that says anything
-    (is string= "error: expected item" (tuatara.lsp::short-failure-words (format nil "~%error: expected item~% --> a.rs:1:1~%")))))
+    (is string= "error: expected item"
+        (tuatara.lsp::short-failure-words (format nil "~%error: expected item~% --> a.rs:1:1~%")))))
 
 (defun stand-in-server (name status &rest capabilities)
   "A language server named NAME of STATUS offering CAPABILITIES, for tests that need none running."
@@ -858,11 +940,13 @@ what marks a project; check-health saying which are installed.")
            (servers (stand-in-server "kea" :ready "documentFormattingProvider"))
            (is string= "kea formats whole files only" (tuatara.lsp::servers-not-formatting-words buffer t))
            (servers (stand-in-server "kea" :ready "hoverProvider") (stand-in-server "tui" :starting))
-           (is string= "kea does not format code, tui is still starting" (tuatara.lsp::servers-not-formatting-words buffer))
+           (is string= "kea does not format code, tui is still starting"
+               (tuatara.lsp::servers-not-formatting-words buffer))
            ;; a note whose source blocks alone are seen
            (setf (tuatara.lsp::lsp-doc-shadow (first (tuatara.buffer:buffer-local buffer 'tuatara.lsp::lsp-docs)))
                  (constantly ""))
-           (is string= "its language servers see only its source blocks" (tuatara.lsp::servers-not-formatting-words buffer)))
+           (is string= "its language servers see only its source blocks"
+               (tuatara.lsp::servers-not-formatting-words buffer)))
       (setf (tuatara.buffer:buffer-local buffer 'tuatara.lsp::lsp-docs) nil)
       (tuatara.buffer:kill-buffer buffer))))
 
@@ -928,7 +1012,8 @@ what marks a project; check-health saying which are installed.")
 
 (define-test (lsp titles-in-a-sentence)
   ;; an action's title inside a sentence: its first letter small, an abbreviation kept
-  (is string= "import `HashMap` from std::collections" (tuatara.lsp::title-in-a-sentence "Import `HashMap` from std::collections"))
+  (is string= "import `HashMap` from std::collections"
+      (tuatara.lsp::title-in-a-sentence "Import `HashMap` from std::collections"))
   (is string= "CSS: sort properties" (tuatara.lsp::title-in-a-sentence "CSS: sort properties"))
   (is string= "inline variable" (tuatara.lsp::title-in-a-sentence "inline variable"))
   (is string= "" (tuatara.lsp::title-in-a-sentence "")))
@@ -947,9 +1032,16 @@ what marks a project; check-health saying which are installed.")
       (unwind-protect
            (multiple-value-bind (f editor)
                (auto-save-session (list (format nil "C-x C-f C-a C-k ~a RET" (rimu-typed file))
-                                        (list :until (lambda () (tuatara.lsp::buffer-servers (tuatara.buffer:find-buffer "j.py"))))
+                                        (list :until
+                                              (lambda ()
+                                                (tuatara.lsp::buffer-servers (tuatara.buffer:find-buffer "j.py"))))
                                         (list :wait 0.2)
-                                        "M-> a l" "M-x c o m p l e t i o n - a t - p o i n t RET" (list :wait 0.5) "C-n" (list :wait 0.5) "C-g")
+                                        "M-> a l"
+                                        "M-x c o m p l e t i o n - a t - p o i n t RET"
+                                        (list :wait 0.5)
+                                        "C-n"
+                                        (list :wait 0.5)
+                                        "C-g")
                                   :width 120 :height 20)
              (declare (ignore editor))
              (true (tuatara.frontend.fake:fake-frame-showing f "The word `alpha`."))
@@ -969,10 +1061,14 @@ what marks a project; check-health saying which are installed.")
            (tuatara-user:*typing-pause* 0.05)
            (texts '()))
       (alexandria:write-string-into-file (format nil "total = 1~%") file)
-      (flet ((note () (list :until (lambda () (push (tuatara.buffer:buffer-string (tuatara.buffer:find-buffer "k.py")) texts) t))))
+      (flet ((note ()
+               (list :until
+                     (lambda () (push (tuatara.buffer:buffer-string (tuatara.buffer:find-buffer "k.py")) texts) t))))
         (unwind-protect
              (auto-save-session (list (format nil "C-x C-f C-a C-k ~a RET" (rimu-typed file))
-                                      (list :until (lambda () (tuatara.lsp::buffer-servers (tuatara.buffer:find-buffer "k.py"))))
+                                      (list :until
+                                            (lambda ()
+                                              (tuatara.lsp::buffer-servers (tuatara.buffer:find-buffer "k.py"))))
                                       (list :wait 0.2)
                                       "M-> t o" "C-M-i" (list :wait 0.3) (note)
                                       "RET t o" "M-TAB" (list :wait 0.3) (note))
@@ -1005,8 +1101,11 @@ what marks a project; check-health saying which are installed.")
                                               (and tree (tuatara.lsp::watched-tree-ready tree)))))
                     (list :wait 0.3)
                     (list :until (lambda ()
-                                   (alexandria:write-string-into-file (format nil "w = 2~%") (merge-pathnames "pkg/new.py" dir))
-                                   (alexandria:write-string-into-file (format nil "y = 22~%") (merge-pathnames "pkg/old.py" dir) :if-exists :supersede)
+                                   (alexandria:write-string-into-file (format nil "w = 2~%")
+                                                                      (merge-pathnames "pkg/new.py" dir))
+                                   (alexandria:write-string-into-file (format nil "y = 22~%")
+                                                                      (merge-pathnames "pkg/old.py" dir)
+                                                                      :if-exists :supersede)
                                    (delete-file (merge-pathnames "pkg/gone.py" dir))
                                    (alexandria:write-string-into-file "built" (merge-pathnames "target/made.py" dir))
                                    (alexandria:write-string-into-file "notes" (merge-pathnames "pkg/notes.txt" dir))
@@ -1020,7 +1119,8 @@ what marks a project; check-health saying which are installed.")
         (true (funcall (told-p "watched old.py 2")))
         (true (funcall (told-p "watched gone.py 3")))
         (false (funcall (told-p "watched made.py 1")) "a build's folder is not watched")
-        (false (find-if (lambda (line) (search "notes.txt" line)) (told log)) "a file the patterns do not match is not told")))))
+        (false (find-if (lambda (line) (search "notes.txt" line)) (told log))
+               "a file the patterns do not match is not told")))))
 
 (define-test (lsp folds-lenses-selections-and-files-not-open)
   ;; C-c z hides a block, C-c Z all of them; code lenses at the lines' ends, C-c k runs one;
@@ -1037,14 +1137,17 @@ what marks a project; check-health saying which are installed.")
            (tuatara-user:*lsp-code-lenses* t)
            (folded nil) (all nil) (ranges nil) (opened nil))
       (alexandria:write-string-into-file text file)
-      (alexandria:write-string-into-file (format nil "# a file of the project~%x = 2~%") (merge-pathnames "elsewhere.py" dir))
+      (alexandria:write-string-into-file (format nil "# a file of the project~%x = 2~%")
+                                         (merge-pathnames "elsewhere.py" dir))
       (flet ((buffer () (tuatara.buffer:find-buffer "m.py")))
         (unwind-protect
              (multiple-value-bind (f editor)
                  (auto-save-session
                   (list (format nil "C-x C-f C-a C-k ~a RET" (rimu-typed file))
                         (list :until (lambda () (tuatara.buffer:buffer-local (buffer) 'tuatara.lsp::lsp-lenses)))
-                        (list :until (lambda () (find "  1 calls" (tuatara.lsp::buffer-hints (buffer)) :key #'second :test #'string=)))
+                        (list :until
+                              (lambda ()
+                                (find "  1 calls" (tuatara.lsp::buffer-hints (buffer)) :key #'second :test #'string=)))
                         ;; in one's body: its block hidden under its first line
                         "M-< C-n C-n" "C-c z"
                         (list :until (lambda () (setf folded (copy-list (tuatara.display:buffer-folds (buffer))))))
@@ -1054,7 +1157,9 @@ what marks a project; check-health saying which are installed.")
                         ;; on one's line: its lens run
                         "M-< C-c k" (list :wait 0.2)
                         ;; the pieces the server sees around a
-                        (list :until (lambda () (setf ranges (tuatara.lsp::lsp-selection-ranges (buffer) (search "a = 1" text)))))
+                        (list :until
+                              (lambda ()
+                                (setf ranges (tuatara.lsp::lsp-selection-ranges (buffer) (search "a = 1" text)))))
                         ;; what it found in a file not open, listed and gone to
                         "C-c l" (list :wait 0.2) "RET" (list :wait 0.3)
                         (list :until (lambda () (setf opened (let ((b (tuatara.buffer:find-buffer "elsewhere.py")))
@@ -1062,12 +1167,14 @@ what marks a project; check-health saying which are installed.")
                   :width 250 :height 30)
                (declare (ignore editor))
                (true (tuatara.frontend.fake:fake-frame-showing f "def one():  2 calls"))
-               (is equal (list (cons (search (format nil "~%    a") text) (search (format nil "~%~%def two") text))) folded)
+               (is equal (list (cons (search (format nil "~%    a") text)
+                                     (search (format nil "~%~%def two") text))) folded)
                (is = 2 (length all))
                (true (member "ran one" (told log) :test #'string=))
                (is equal (cons (search "a = 1" text) (1+ (search "a = 1" text))) (first ranges))
                (is = 3 (length ranges))
-               (true (tuatara.frontend.fake:fake-frame-showing f "elsewhere.py:2:5  warning (stand-in): elsewhere found"))
+               (true (tuatara.frontend.fake:fake-frame-showing f
+                                                               "elsewhere.py:2:5  warning (stand-in): elsewhere found"))
                (is = (+ 4 (length (format nil "# a file of the project~%"))) opened))
           (tuatara.lsp::lsp-stop-all))))))
 
@@ -1100,7 +1207,9 @@ what marks a project; check-health saying which are installed.")
       (unwind-protect
            (multiple-value-bind (f editor)
                (auto-save-session (list (format nil "C-x C-f C-a C-k ~a RET" (rimu-typed file))
-                                        (list :until (lambda () (tuatara.lsp::buffer-diagnostics (tuatara.buffer:find-buffer "n.py"))))
+                                        (list :until
+                                              (lambda ()
+                                                (tuatara.lsp::buffer-diagnostics (tuatara.buffer:find-buffer "n.py"))))
                                         "M-< C-e C-b C-c" (list :wait 0.2) "C-g" "M-< C-c" (list :wait 0.2) "C-g")
                                   :width 120 :height 24)
              (declare (ignore editor))
@@ -1120,11 +1229,15 @@ what marks a project; check-health saying which are installed.")
       (alexandria:write-string-into-file (format nil "x = 1~%") file)
       (unwind-protect
            (auto-save-session (list (format nil "C-x C-f C-a C-k ~a RET" (rimu-typed file))
-                                    (list :until (lambda () (tuatara.lsp::buffer-servers (tuatara.buffer:find-buffer "o.py"))))
+                                    (list :until
+                                          (lambda () (tuatara.lsp::buffer-servers (tuatara.buffer:find-buffer "o.py"))))
                                     (list :wait 0.2)
                                     "M-> a d d c a l" "M-x c o m p l e t i o n - a t - p o i n t RET" (list :wait 0.3)
                                     "1 TAB 2 TAB"
-                                    (list :until (lambda () (setf text (tuatara.buffer:buffer-string (tuatara.buffer:find-buffer "o.py"))))))
+                                    (list :until
+                                          (lambda ()
+                                            (setf text
+                                                  (tuatara.buffer:buffer-string (tuatara.buffer:find-buffer "o.py"))))))
                               :width 100)
         (tuatara.lsp::lsp-stop-all))
       (is string= (format nil "x = 1~%add(1, 2)") text))))
@@ -1133,7 +1246,8 @@ what marks a project; check-health saying which are installed.")
   ;; half of a pair alone stands as U+FFFD, what follows it read as itself
   (is string= (format nil "~cA" (code-char #xFFFD)) (tuatara.text:json-read "\"\\ud800A\""))
   (is string= (format nil "~cA" (code-char #xFFFD)) (tuatara.text:json-read "\"\\ud800\\u0041\""))
-  (is string= (format nil "~c~c" (code-char #xFFFD) (code-char #x1F600)) (tuatara.text:json-read "\"\\ud800\\ud83d\\ude00\""))
+  (is string= (format nil "~c~c" (code-char #xFFFD) (code-char #x1F600))
+      (tuatara.text:json-read "\"\\ud800\\ud83d\\ude00\""))
   ;; a number beginning with 0, or written with other scripts' digits, is no JSON
   (dolist (text (list "01" "-01" "00" (format nil "1~c" (code-char #x0662))))
     (fail (tuatara.text:json-read text) tuatara.text:json-error))
@@ -1214,7 +1328,8 @@ what marks a project; check-health saying which are installed.")
       ;; the line beside a place: read from a file of the project only, never one in *safe-directories*
       (let ((tuatara.lsp::*location-files* (make-hash-table :test 'equal)))
         (is string= "second" (tuatara.lsp::location-line server inside 1))
-        (is string= "" (tuatara.lsp::location-line server (tuatara.defaults::uri-path (tuatara.defaults::path-uri outside)) 0)))
+        (is string= ""
+            (tuatara.lsp::location-line server (tuatara.defaults::uri-path (tuatara.defaults::path-uri outside)) 0)))
       (let ((tuatara-user:*safe-directories* (list root)))
         (is string= "" (tuatara.lsp::location-line server inside 1))))))
 
@@ -1244,7 +1359,9 @@ what marks a project; check-health saying which are installed.")
         (unwind-protect
              (multiple-value-bind (f editor)
                  (auto-save-session (list (format nil "C-x C-f C-a C-k ~a RET" (rimu-typed file))
-                                          (list :until (lambda () (member "answered unknown -32601" (told log) :test #'string=)))
+                                          (list :until
+                                                (lambda ()
+                                                  (member "answered unknown -32601" (told log) :test #'string=)))
                                           (list :wait 0.3) "n"
                                           (list :until (lambda () (= 1 (length (applied)))))
                                           "C-x k RET" (list :wait 0.2)
@@ -1254,7 +1371,8 @@ what marks a project; check-health saying which are installed.")
                                     :width 200)
                (declare (ignore editor))
                (true (tuatara.frontend.fake:fake-frame-showing f "python3 asks to change 3 files (1 outside"))
-               (true (search "missing.txt is not there" (tuatara.buffer:buffer-string (tuatara.buffer:find-buffer "*Messages*")))))
+               (true (search "missing.txt is not there"
+                             (tuatara.buffer:buffer-string (tuatara.buffer:find-buffer "*Messages*")))))
           (tuatara.lsp::lsp-stop-all))
         (true (member "answered unknown -32601" (told log) :test #'string=))
         ;; refused, then made where it could be: never a new file
@@ -1263,7 +1381,9 @@ what marks a project; check-health saying which are installed.")
               (outside (tuatara.buffer:find-buffer "outside.txt")))
           (true (and inside (string= (format nil "edited one~%") (tuatara.buffer:buffer-string inside))))
           (true (and outside (string= (format nil "edited two~%") (tuatara.buffer:buffer-string outside)))))
-        (is string= (format nil "two~%") (alexandria:read-file-into-string (merge-pathnames "outside.txt" dir)) "nothing saved")
+        (is string= (format nil "two~%")
+            (alexandria:read-file-into-string (merge-pathnames "outside.txt" dir))
+            "nothing saved")
         (false (probe-file (merge-pathnames "missing.txt" root)))
         (false (tuatara.buffer:find-buffer "missing.txt"))))))
 
@@ -1301,9 +1421,13 @@ what marks a project; check-health saying which are installed.")
                           (list :wait 0.2)
                           (list :until (lambda () (setf took (get-internal-real-time))))
                           "M-x l s p - d e s c r i b e - t h i n g - a t - p o i n t RET"
-                          (list :until (lambda () (setf took (/ (- (get-internal-real-time) took) internal-time-units-per-second))))
+                          (list :until
+                                (lambda ()
+                                  (setf took (/ (- (get-internal-real-time) took) internal-time-units-per-second))))
                           (list :until (lambda () (tuatara.lsp::lsp-stop-all) t))
-                          (format nil "C-x C-f C-a C-k ~a RET" (rimu-typed (file "stall.py" (format nil "stall = 1~%"))))
+                          (format nil
+                                  "C-x C-f C-a C-k ~a RET"
+                                  (rimu-typed (file "stall.py" (format nil "stall = 1~%"))))
                           (list :until (lambda () (tuatara.lsp::buffer-servers (buffer "stall.py"))))
                           (list :wait 0.3)
                           (list :until (lambda ()
@@ -1312,12 +1436,14 @@ what marks a project; check-health saying which are installed.")
                                            (loop repeat 50
                                                  do (tuatara.lsp::lsp-notify server "tuatara/filler"
                                                                                   (tuatara.text:json-object "text" (make-string 10000 :initial-element #\x))))
-                                           (setf sending (/ (- (get-internal-real-time) start) internal-time-units-per-second))
+                                           (setf sending
+                                                 (/ (- (get-internal-real-time) start) internal-time-units-per-second))
                                            (setf status (list status (tuatara.lsp::lsp-server-status server))))))
                           (list :wait 0.1))
                     :width 160)
                  (declare (ignore editor))
-                 (true (search "sent a message of" (tuatara.buffer:buffer-string (tuatara.buffer:find-buffer "*Messages*"))))
+                 (true (search "sent a message of"
+                               (tuatara.buffer:buffer-string (tuatara.buffer:find-buffer "*Messages*"))))
                  (true (tuatara.frontend.fake:fake-frame-showing f "stopped (it stopped reading what it is sent)"))))
           (setf tuatara.lsp::*lsp-largest-message* largest
                 tuatara.lsp::*lsp-most-unsent* most-unsent)
@@ -1411,12 +1537,17 @@ what marks a project; check-health saying which are installed.")
       (loop for (name tangle) in '(("in.org" "code.py") ("out.org" "../../escape.py"))
             do (alexandria:write-string-into-file (format nil "#+begin_src python :tangle ~a~%x = 1~%#+end_src~%" tangle)
                                                   (merge-pathnames name root)))
-      (auto-save-session (list (format nil "C-x C-f C-a C-k ~a RET" (rimu-typed (namestring (merge-pathnames "in.org" root))))
-                               (format nil "C-x C-f C-a C-k ~a RET" (rimu-typed (namestring (merge-pathnames "out.org" root))))
+      (auto-save-session (list (format nil
+                                       "C-x C-f C-a C-k ~a RET"
+                                       (rimu-typed (namestring (merge-pathnames "in.org" root))))
+                               (format nil
+                                       "C-x C-f C-a C-k ~a RET"
+                                       (rimu-typed (namestring (merge-pathnames "out.org" root))))
                                (list :until (lambda ()
-                                              (setf uris (mapcar (lambda (name) (second (first (tuatara.lsp::lsp-doc-specs
-                                                                                                (tuatara.buffer:find-buffer name)))))
-                                                                 '("in.org" "out.org")))))))
+                                              (setf uris
+                                                    (mapcar (lambda (name) (second (first (tuatara.lsp::lsp-doc-specs
+                                                                                           (tuatara.buffer:find-buffer name)))))
+                                                            '("in.org" "out.org")))))))
       (true (and (first uris) (uiop:string-suffix-p (first uris) "/proj/code.py")))
       (true (and (second uris) (uiop:string-suffix-p (second uris) "/proj/out.org.py"))))))
 
@@ -1442,7 +1573,8 @@ what marks a project; check-health saying which are installed.")
                        do (tuatara.lsp::placed-item lazy k b))))
              (is equalp (tuatara.lsp::placed-items-now eager b) (tuatara.lsp::placed-items-now lazy b))))
       (tuatara.buffer:kill-buffer b)))
-  (let ((b (tuatara.buffer:make-buffer "placed-diagnostics" :text (format nil "~{line ~d~%~}" (loop for i below 300 collect i)))))
+  (let ((b (tuatara.buffer:make-buffer "placed-diagnostics"
+                                       :text (format nil "~{line ~d~%~}" (loop for i below 300 collect i)))))
     (unwind-protect
          (progn
            (tuatara.buffer::ensure-indexed b)
@@ -1451,7 +1583,11 @@ what marks a project; check-health saying which are installed.")
                                    (tuatara.buffer:buffer-version b)
                                    (loop for line from 0 below 300 by 3
                                          for at = (tuatara.buffer:buffer-goto-line b line)
-                                         collect (tuatara.lsp::make-diagnostic at (+ at 2) (1+ (mod line 4)) "wrong" "test")
+                                         collect (tuatara.lsp::make-diagnostic at
+                                                                               (+ at 2)
+                                                                               (1+ (mod line 4))
+                                                                               "wrong"
+                                                                               "test")
                                          when (zerop (mod line 9))
                                            collect (tuatara.lsp::make-diagnostic (1+ at) (+ at 3) 1 "worse" "test"))))))
            (let* ((w (tuatara.display:make-window b :width 40 :height 30))
@@ -1460,7 +1596,8 @@ what marks a project; check-health saying which are installed.")
              (loop for line from 0 below 25
                    do (is equal (multiple-value-list (tuatara.lsp::diagnostic-gutter-cell nil w nil line))
                           (multiple-value-list (tuatara.lsp::diagnostic-gutter-cell nil w nil line ready))))
-             (is equal '("E" " " " " "·") (loop for line below 4 collect (tuatara.lsp::diagnostic-gutter-cell nil w nil line ready)))
+             (is equal '("E" " " " " "·")
+                 (loop for line below 4 collect (tuatara.lsp::diagnostic-gutter-cell nil w nil line ready)))
              (is = 2 (length (tuatara.lsp::diagnostics-in b 0 (tuatara.buffer:buffer-goto-line b 1))))))
       (tuatara.buffer:kill-buffer b))))
 
@@ -1470,7 +1607,8 @@ what marks a project; check-health saying which are installed.")
   (is equal '((0 10) (12 20)) (tuatara.lsp::outermost-ranges '((2 5) (0 10) (12 20) (0 10) (3 4) (12 15) (0 7))))
   (is equal '((0 10) (5 15)) (tuatara.lsp::outermost-ranges '((5 15) (0 10))))
   (flet ((seconds (n)
-           (let ((ranges (loop for i below n append (list (list (* 10 i) (+ (* 10 i) 9)) (list (+ (* 10 i) 1) (+ (* 10 i) 5)))))
+           (let ((ranges (loop for i below n append (list (list (* 10 i) (+ (* 10 i) 9))
+                                                          (list (+ (* 10 i) 1) (+ (* 10 i) 5)))))
                  (start (thread-cpu-time)))
              (tuatara.lsp::outermost-ranges ranges)
              (/ (- (thread-cpu-time) start) internal-time-units-per-second))))
@@ -1482,7 +1620,8 @@ what marks a project; check-health saying which are installed.")
   ;; what the editor tells a server it can do, it does: every request it claims is made
   ;; somewhere in the client, and the kinds of names it takes are those it colours
   (let* ((source (with-output-to-string (out)
-                   (dolist (file (directory (merge-pathnames "lisp/lsp/*.lisp" (asdf:system-source-directory :tuatara))))
+                   (dolist (file (directory (merge-pathnames "lisp/lsp/*.lisp"
+                                                             (asdf:system-source-directory :tuatara))))
                      (write-string (uiop:read-file-string file) out))))
          (capabilities (tuatara.lsp::lsp-capabilities))
          (text-document (tuatara.text:json-get capabilities "textDocument"))
@@ -1501,7 +1640,8 @@ what marks a project; check-health saying which are installed.")
   ;; its octets went to decoding it alone, as text that took what was not UTF-8 for a ?
   (with-test-directory (dir)
     (let* ((path (namestring (merge-pathnames "message" dir)))
-           (body (tuatara.text:string-octets (format nil "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"contents\":\"~a\"}}"
+           (body (tuatara.text:string-octets (format nil
+                                                     "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"contents\":\"~a\"}}"
                                                      (make-string (* 2 1024 1024) :initial-element #\x)))))
       (with-open-file (out path :direction :output :element-type '(unsigned-byte 8))
         (write-sequence (tuatara.text:string-octets (format nil "Content-Length: ~d~c~c~c~c" (length body) #\Return #\Newline #\Return #\Newline)) out)
@@ -1510,7 +1650,9 @@ what marks a project; check-health saying which are installed.")
                           minimize (with-open-file (in path :element-type :default :external-format :latin-1)
                                      (let ((before (sb-ext:get-bytes-consed)))
                                        (is equal (* 2 1024 1024)
-                                           (length (tuatara.text:json-get (tuatara.lsp::lsp-read-message in) "result" "contents")))
+                                           (length (tuatara.text:json-get (tuatara.lsp::lsp-read-message in)
+                                                                          "result"
+                                                                          "contents")))
                                        (- (sb-ext:get-bytes-consed) before))))))
         (true (< consed (* 16 (length body))) "~,1f octets made for each octet" (/ consed (length body)))))))
 
@@ -1558,7 +1700,11 @@ characters of the text it is made in."
                      (end (lsp-applied-index text (tuatara.text:json-get range "end") encoding)))
                  (unless (and start end (<= start end))
                    (return nil))
-                 (setf text (concatenate 'string (subseq text 0 start) (tuatara.text:json-get change "text") (subseq text end))))))
+                 (setf text
+                       (concatenate 'string
+                                    (subseq text 0 start)
+                                    (tuatara.text:json-get change "text")
+                                    (subseq text end))))))
   text)
 
 (defun messages-written (server)
@@ -1604,21 +1750,26 @@ line by line from the whole text, an oracle for ORG-BLOCKS-SHADOW."
                      (let* ((code (subseq lines (second open) n))
                             (indent (loop for l across code
                                           unless (zerop (length (string-trim '(#\Space #\Tab) l)))
-                                            minimize (or (position-if-not (lambda (c) (member c '(#\Space #\Tab))) l) 0))))
+                                            minimize (or (position-if-not (lambda (c)
+                                                                            (member c '(#\Space #\Tab))) l) 0))))
                        (loop for l across code
                              for k from (second open)
                              for cut = (min (or indent 0) (length l))
                              for rest = (subseq l cut)
                              do (setf (aref shown k)
-                                      (if (or (uiop:string-prefix-p ",*" rest) (uiop:string-prefix-p ",#+" rest)) (subseq rest 1) rest)))))
+                                      (if (or (uiop:string-prefix-p ",*" rest)
+                                              (uiop:string-prefix-p ",#+" rest)) (subseq rest 1) rest)))))
                    (setf open nil))
-                 (multiple-value-bind (match groups) (cl-ppcre:scan-to-strings "(?i)^[ \\t]*#\\+begin_src[ \\t]+([^ \\t]+)" line)
+                 (multiple-value-bind (match groups)
+                     (cl-ppcre:scan-to-strings "(?i)^[ \\t]*#\\+begin_src[ \\t]+([^ \\t]+)" line)
                    (when match (setf open (list (aref groups 0) (1+ n)))))))
     (format nil "~{~a~^~%~}" (coerce shown 'list))))
 
 (defparameter *note-pieces*
   (vector "a" "x = 1" " " "  " "é" "😀" "中" (string #\Newline) (string #\Newline) (format nil "~c~c" #\Return #\Newline)
-          (format nil "#+begin_src python~%") (format nil "  #+BEGIN_SRC python :tangle no~%") (format nil "#+end_src~%")
+          (format nil "#+begin_src python~%")
+          (format nil "  #+BEGIN_SRC python :tangle no~%")
+          (format nil "#+end_src~%")
           (format nil "#+begin_src rust~%") (format nil "* Heading~%") ",*" ",#+" "#+end_src" "#+begin_src python")
   "Pieces random notes are built from: code, Org's block lines, headlines, escaping commas and line ends of each kind.")
 
@@ -1690,7 +1841,8 @@ as ranges and how many whole."
   ;; server ends them
   (let ((ranges 0) (whole 0))
     (dotimes (round 40)
-      (let ((*alphabet* (if (< round 20) (concatenate 'vector *note-pieces* (list (string #\Return) (string #\Return))) *note-pieces*)))
+      (let ((*alphabet* (if (< round 20) (concatenate 'vector *note-pieces* (list (string #\Return)
+                                                                                  (string #\Return))) *note-pieces*)))
         (multiple-value-bind (r w) (random-sync-session (if (evenp round) :utf-16 :utf-8) (random-text 1000) nil)
           (incf ranges r) (incf whole w))))
     (true (> ranges (* 3 whole)) "~a sent as ranges, ~a whole" ranges whole)))
@@ -1738,8 +1890,11 @@ as ranges and how many whole."
                                      (tuatara.lsp::lsp-send-text buffer)
                                      (prog1 (- (sb-ext:get-bytes-consed) before)
                                        (let ((sent (messages-written server)))
-                                         (is equal "y" (tuatara.text:json-get (aref (tuatara.text:json-get (first sent) "params" "contentChanges") 0)
-                                                                              "text")))))))
+                                         (is equal "y"
+                                             (tuatara.text:json-get (aref (tuatara.text:json-get (first sent)
+                                                                                                 "params"
+                                                                                                 "contentChanges") 0)
+                                                                    "text")))))))
                (setf (tuatara.buffer:buffer-local buffer 'tuatara.lsp::lsp-docs) nil)
                (tuatara.buffer:kill-buffer buffer)))))
     (let* ((small (pause 2000)) (large (pause 4000))
@@ -1755,15 +1910,21 @@ as ranges and how many whole."
           (prose (with-output-to-string (out) (loop repeat 150 do (format out "Words of prose, no code at all.~%"))))
           (buffers '()))
       (flet ((visiting (name text mode)
-               (let ((buffer (tuatara.buffer:make-buffer name :text text :file (namestring (merge-pathnames name dir)))))
+               (let ((buffer (tuatara.buffer:make-buffer name
+                                                         :text text
+                                                         :file (namestring (merge-pathnames name dir)))))
                  (push buffer buffers)
                  (tuatara.defaults::set-major-mode buffer mode)
                  buffer))
              (languages (buffer) (mapcar (lambda (spec) (tuatara.defaults::language-name (first spec)))
                                          (tuatara.lsp::lsp-doc-specs buffer))))
         (unwind-protect
-             (let ((small (visiting "small.org" (format nil "~a#+begin_src python~%x = 1~%#+end_src~%" prose) 'tuatara.defaults::org-mode))
-                   (large (visiting "large.org" (format nil "#+begin_src python~%~a#+end_src~%" prose) 'tuatara.defaults::org-mode))
+             (let ((small (visiting "small.org"
+                                    (format nil "~a#+begin_src python~%x = 1~%#+end_src~%" prose)
+                                    'tuatara.defaults::org-mode))
+                   (large (visiting "large.org"
+                                    (format nil "#+begin_src python~%~a#+end_src~%" prose)
+                                    'tuatara.defaults::org-mode))
                    (file (visiting "large.py" prose 'tuatara.defaults::python-mode)))
                (true (> (tuatara.buffer:buffer-size small) 4000))
                (is equal '(tuatara.defaults::python) (languages small))
@@ -1831,11 +1992,13 @@ SHADOW-LANGUAGE, the document is that language's blocks of the note."
                     (false (find "textDocument/didChange" (messages-written server)
                                  :key (lambda (m) (tuatara.text:json-get m "method")) :test #'equal)))
           (tuatara.buffer:kill-buffer buffer)))
-      (multiple-value-bind (buffer doc server) (one-doc-session (format nil "* Note~%#+begin_src python~%x = 1~%#+end_src~%") python)
+      (multiple-value-bind (buffer doc server)
+          (one-doc-session (format nil "* Note~%#+begin_src python~%x = 1~%#+end_src~%") python)
         (declare (ignore doc))
         (unwind-protect
              (progn (server-text server nil)
-                    (tuatara.buffer:buffer-insert buffer (+ 2 (search "x =" (tuatara.buffer:buffer-string buffer))) paste)
+                    (tuatara.buffer:buffer-insert buffer (+ 2
+                                                            (search "x =" (tuatara.buffer:buffer-string buffer))) paste)
                     (tuatara.lsp::lsp-send-text buffer)
                     (false (tuatara.lsp::buffer-docs buffer))
                     (false (find "textDocument/didChange" (messages-written server)
@@ -1851,7 +2014,8 @@ SHADOW-LANGUAGE, the document is that language's blocks of the note."
       (unwind-protect
            (let ((had (server-text server nil)))
              ;; é's second octet made è's
-             (tuatara.buffer:buffer-edit buffer (vector (tuatara.text:make-edit 1 2 (coerce #(#xA8) 'tuatara.text:octets))))
+             (tuatara.buffer:buffer-edit buffer
+                                         (vector (tuatara.text:make-edit 1 2 (coerce #(#xA8) 'tuatara.text:octets))))
              (tuatara.lsp::lsp-send-text buffer)
              (setf had (server-text server had))
              (is string= (format nil "è = 1~%") had)
