@@ -1,7 +1,7 @@
 // The manual's pages: filter the contents column to the headings holding what
-// is typed in its box, change between light and dark colours (the choice kept
-// in this browser for the next page), and take the corner link to the box when
-// the column is in view. No address is ever loaded.
+// is typed in its box, and change between light and dark colours (the choice
+// kept in this browser for the next page). Links are left alone: the corner
+// link always opens the contents page. No address is ever loaded.
 (function () {
   var root = document.documentElement;
   var key = "tuatara-manual-theme";
@@ -42,14 +42,4 @@
       item.classList.toggle("hidden", !hit);
     });
   });
-
-  var corner = document.querySelector("a.to-contents");
-  if (corner) {
-    corner.addEventListener("click", function (event) {
-      if (window.getComputedStyle(nav).position === "sticky") {
-        event.preventDefault();
-        box.focus();
-      }
-    });
-  }
 }());
