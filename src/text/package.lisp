@@ -44,7 +44,8 @@ batches, versions and anchors.")
    #:rope-count-newlines #:rope-nth-newline #:rope-find-line-end #:rope-find-line-end-backward
    #:line-end-octet-p #:octets-line-end-p #:line-text-ends-p #:octets-line-end-position
    #:octets-line-end-position-backward #:octets-line-ends
-   #:rope-line-start #:rope-line-end #:rope-line-pieces #:blank-line-octet-p #:*blank-line-octets*
+   #:rope-line-start #:rope-line-end #:rope-line-pieces #:map-rope-line-pieces
+   #:blank-line-octet-p #:*blank-line-octets*
    #:rope-pieces #:rope-slice #:splice-rope
    ;; edits
    #:edit #:edit-p #:make-edit #:edit-start #:edit-end #:edit-insert #:edit-deleted

@@ -745,6 +745,114 @@ with y hidden between them and after the last.")
       (is = 101 (length (records-shown buffer)))
       (true (screen-showing f "Filtered by kiwi: 100 of 300 records")))))
 
+(defun record-line-end-reads (thunk)
+  "Call THUNK, a function of none, and give two values: the farthest octet the
+editor's thread started a search for a line end from while it ran, and how
+many searches it made."
+  (let ((editor sb-thread:*current-thread*) (farthest 0) (calls 0))
+    (sb-int:encapsulate 'tuatara.text:rope-find-line-end 'farthest
+                        (lambda (function rope &rest arguments)
+                          (when (eq sb-thread:*current-thread* editor)
+                            (incf calls)
+                            (setf farthest (max farthest (or (getf arguments :start) 0))))
+                          (apply function rope arguments)))
+    (unwind-protect (funcall thunk)
+      (sb-int:unencapsulate 'tuatara.text:rope-find-line-end 'farthest))
+    (values farthest calls)))
+
+(define-test (search-filters csv-key-reads-only-the-window)
+  ;; at each key of a filter of a large file the editor matches the lines from the window's top
+  ;; on, and cuts the text into pieces only as far as it reads: never to the end of the file,
+  ;; which on a file of gigabytes not in memory held each key for seconds
+  (let ((tuatara.defaults::*search-filter-quick-characters* 100)
+        (tuatara.defaults::*count-at-once-seconds* 0)
+        (tuatara.defaults::*count-at-once-least* 0)
+        (tuatara.defaults::*typing-pause* 1000)
+        (partial nil) (farthest nil))
+    (setf farthest
+          (record-line-end-reads
+           (lambda ()
+             (with-records (f buffer path)
+                 ((list "C-x / s k i w i" (lambda () (setf partial (records-shown (tuatara.command:current-buffer))))
+                        "C-g")
+                  :text (many-records 400000) :height 12)
+               (true (< 1 (length partial) 20))
+               (true (every (lambda (line) (or (search "kiwi" line) (search "name" line))) partial))))))
+    (true (< farthest (* 2 1024 1024)) "the editor read to octet ~:d of the file at a key" farthest)))
+
+(define-test (search-filters text-key-reads-only-the-window)
+  ;; the same in a file of plain lines, not of records
+  (let ((tuatara.defaults::*search-filter-quick-characters* 100)
+        (tuatara.defaults::*count-at-once-seconds* 0)
+        (tuatara.defaults::*count-at-once-least* 0)
+        (tuatara.defaults::*typing-pause* 1000)
+        (partial nil) (farthest nil))
+    (setf farthest
+          (record-line-end-reads
+           (lambda ()
+             (with-records (f buffer path)
+                 ((list "C-x / s k i w i" (lambda () (setf partial (records-shown (tuatara.command:current-buffer))))
+                        "C-g")
+                  :text (many-records 400000) :type "log" :height 12)
+               (true (< 1 (length partial) 20))
+               (true (every (lambda (line) (or (search "kiwi" line) (search "name" line))) partial))))))
+    (true (< farthest (* 2 1024 1024)) "the editor read to octet ~:d of the file at a key" farthest)))
+
+(define-test (search-filters narrowing-key-reads-only-the-runs)
+  ;; a second filter, typed after a first that left a few lines of a large file, is matched at
+  ;; each key on the editor's thread over those lines alone, with the first filter's runs given
+  (let ((tuatara.defaults::*search-filter-quick-characters* 1000)
+        (tuatara.defaults::*count-at-once-seconds* 0)
+        (tuatara.defaults::*count-at-once-least* 0)
+        (tuatara.defaults::*typing-pause* 1000)
+        (editor sb-thread:*current-thread*)
+        (narrowed 0) (partial nil) (farthest nil)
+        (text (format nil "name,number~%~{~a~%~}~a"
+                      (loop for i below 30 collect (format nil "kiwi,~d" i))
+                      (with-output-to-string (o) (dotimes (i 400000) (format o "weka,~d~%" i))))))
+    (sb-int:encapsulate 'tuatara.defaults::lines-matching 'narrowing
+                        (lambda (function filters rope ranges &rest arguments)
+                          (when (and (eq sb-thread:*current-thread* editor)
+                                     (< (tuatara.defaults::runs-octets ranges) 1000))
+                            (incf narrowed))
+                          (apply function filters rope ranges arguments)))
+    (unwind-protect
+         (setf farthest
+               (record-line-end-reads
+                (lambda ()
+                  (with-records (f buffer path)
+                      ((list "C-x / s k i w i RET" #'wait-for-filter-jobs :tick
+                             "C-x / s 1" (lambda () (setf partial (records-shown (tuatara.command:current-buffer))))
+                             "RET")
+                       :text text :height 12)
+                    (true (< 1 (length partial) 20))
+                    (true (every (lambda (line) (or (search "kiwi" line) (search "name" line))) partial))
+                    (true (every (lambda (line) (or (search "name" line) (find #\1 line))) partial))))))
+      (sb-int:unencapsulate 'tuatara.defaults::lines-matching 'narrowing))
+    (true (plusp narrowed) "no key matched the lines the first filter left")
+    (true (< farthest (* 2 1024 1024)) "the editor read to octet ~:d of the file at a key" farthest)))
+
+(define-test (search-filters stop-while-cutting-into-pieces)
+  ;; a job stopped while its file is being cut into pieces for the workers ends there: the cutting
+  ;; stops at the first piece, not after the whole text, and nothing is found
+  (let* ((rope (tuatara.text:string->rope (many-records 400000)))
+         (filter (tuatara.defaults::make-search-filter "kiwi"))
+         (found :unset) (halted 0) (pieces (floor (tuatara.text:rope-octet-length rope) 10000)))
+    (multiple-value-bind (farthest calls)
+        (let ((tuatara.defaults::*filter-piece* 10000))
+          (record-line-end-reads
+           (lambda ()
+             (setf found (multiple-value-list
+                          (tuatara.defaults::lines-matching-everywhere
+                           filter rope (runs-of (list (list 0 (tuatara.text:rope-octet-length rope)))) nil nil
+                           (lambda () (incf halted) t) nil))))))
+      (declare (ignore farthest))
+      (true (< 100 pieces))
+      (is = 0 (length (first found)))
+      (is = 0 (second found))
+      (true (<= calls 2) "the text was cut ~d times after the stop, of ~d pieces" calls pieces)
+      (is = 1 halted))))
+
 (define-test (search-filters csv-stop-job)
   ;; stopped: the filter it was working out taken away, everything shown as before
   (let* ((release (list nil))

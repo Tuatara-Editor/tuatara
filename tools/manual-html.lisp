@@ -82,7 +82,7 @@ each (CHAPTER . PARTS) or NIL, and up to the contents."
 (defun site (contents version main &key whole)
   "The HTML of a page's layout: the contents column, named CONTENTS, and MAIN beside it, for VERSION.
 The column links to the whole manual on one page, or with WHOLE back to the chapters, and holds the
-button that changes between light and dark colours; a link in the corner goes to the contents."
+button that changes between light and dark colours; a link in the corner opens the contents page."
   (format nil "<div class=\"site\">
 <nav class=\"toc\" id=\"contents\" aria-label=\"Contents\">
 <strong>Tuatara Manual</strong>
@@ -95,7 +95,7 @@ button that changes between light and dark colours; a link in the corner goes to
 <main>
 ~a</main>
 </div>
-<a class=\"to-contents\" href=\"#contents\">Contents</a>
+<a class=\"to-contents\" href=\"index.html\">Contents</a>
 " version whole contents main))
 
 (defun write-page (out title body)
@@ -129,8 +129,8 @@ section.chapter + section.chapter { border-top: 1px solid var(--rule); margin-to
 "
   "The manual's own rules after the export's stylesheet: every text in a monospaced font, the first of
 these the reader has, as the pages load no font from elsewhere; links in the contents not underlined;
-the contents column kept in view on a wide screen, a link to it in the corner, the colour button;
-and on paper the text alone, each chapter of the whole manual from a new page.")
+the contents column kept in view on a wide screen, a link to the contents page in the corner, the
+colour button; and on paper the text alone, each chapter of the whole manual from a new page.")
 
 (defparameter *one-page-ids* (cl-ppcre:create-scanner "\\b(id|href)=\"(#?)([^\"]*)\"")
   "An id or href attribute of a chapter's HTML, with any # its value begins with.")

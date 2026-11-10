@@ -639,3 +639,29 @@ cd")
                 (with-output-to-string (o) (dotimes (i 20000) (write-string "kia ora tūī ✓ " o)))))
          (per-octet (/ (least-bytes (lambda () (tuatara.text:lenient-string text)) 3) (length text))))
     (true (< per-octet 10) "~,1f octets made for each octet decoded" per-octet)))
+
+(define-test (rope line-pieces-cut-as-reached)
+  ;; the pieces handed one by one are those of the list, and leaving at the first reads no further
+  (let* ((text (with-output-to-string (o) (dotimes (i 2000) (format o "line number ~d~%" i))))
+         (rope (tuatara.text:string->rope text))
+         (end (tuatara.text:rope-octet-length rope))
+         (calls 0) (mapped '()) (first-only '()) (after-first 0) (after-all 0))
+    (sb-int:encapsulate 'tuatara.text:rope-find-line-end 'counted
+                        (lambda (function &rest arguments) (incf calls) (apply function arguments)))
+    (unwind-protect
+         (progn
+           (tuatara.text::map-rope-line-pieces (lambda (low high) (push (list low high) mapped)) rope 0 end 1000)
+           (setf after-all calls calls 0)
+           (block leave
+             (tuatara.text::map-rope-line-pieces (lambda (low high)
+                                                   (push (list low high) first-only)
+                                                   (return-from leave))
+                                                 rope 0 end 1000))
+           (setf after-first calls))
+      (sb-int:unencapsulate 'tuatara.text:rope-find-line-end 'counted))
+    (is equal (tuatara.text:rope-line-pieces rope 0 end 1000) (nreverse mapped))
+    (true (< 10 after-all) "the whole text was cut with ~d reads" after-all)
+    (destructuring-bind ((low high)) first-only
+      (is = 0 low)
+      (true (and (>= high 1000) (char= #\Newline (char text (1- high)))) "the first piece ended at ~d" high))
+    (true (<= after-first 1) "leaving at the first piece read ~d times" after-first)))

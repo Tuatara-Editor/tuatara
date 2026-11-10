@@ -1957,11 +1957,13 @@ over a part of the file not arrived yet, so that it is never read through."
 
 ;;; Pieces of a text that end at line starts
 
-(defun rope-line-pieces (rope start end size)
-  "Pieces of ROPE from START below END, each about SIZE octets and ending at a
-line start, or at END: a list of (START END)."
+(defun map-rope-line-pieces (function rope start end size)
+  "Call FUNCTION with the start and end of each piece of ROPE from START below
+END, in order, each about SIZE octets and ending at a line start, or at END.
+A piece is cut only when it is reached, so leaving FUNCTION early reads no
+more of ROPE."
   (declare (type fixnum start end size))
-  (let ((pieces '()) (p start))
+  (let ((p start))
     (declare (type fixnum p))
     (loop while (< p end)
           do (let* ((nominal (+ p size))
@@ -1969,8 +1971,14 @@ line start, or at END: a list of (START END)."
                              end
                              (let ((newline (rope-find-line-end rope :start nominal :end end)))
                                (if newline (1+ newline) end)))))
-               (push (list p cut) pieces)
-               (setf p cut)))
+               (funcall function p cut)
+               (setf p cut)))))
+
+(defun rope-line-pieces (rope start end size)
+  "Pieces of ROPE from START below END, each about SIZE octets and ending at a
+line start, or at END: a list of (START END)."
+  (let ((pieces '()))
+    (map-rope-line-pieces (lambda (low high) (push (list low high) pieces)) rope start end size)
     (nreverse pieces)))
 
 ;;; Invariants, for tests

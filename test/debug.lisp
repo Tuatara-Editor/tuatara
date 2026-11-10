@@ -321,6 +321,32 @@ reports not yet shown."
                               (error condition))))))
     (drain-debug-reports)))
 
+(define-test (debug-reports long-thread-name-keeps-columns)
+  (let* ((start tuatara.runtime::*debug-start*)
+         (column (lambda (thread)
+                   (search " error " (tuatara.runtime:debug-report-line (list start thread :error "text"))))))
+    (is = (funcall column "editor") (funcall column "tuatara syntax helpers starting"))
+    (is = (funcall column "editor") (funcall column "syntax helper starting in the background"))
+    (is = (funcall column "editor") (funcall column nil))))
+
+(define-test (debug-reports missing-auto-save-is-no-error)
+  (drain-debug-reports)
+  (with-test-directory (dir)
+    (let* ((tuatara-user:*auto-save-directory* (namestring (merge-pathnames "copies/" dir)))
+           (file (namestring (merge-pathnames "notes.txt" dir)))
+           (copy (tuatara.defaults::auto-save-path file)))
+      (ensure-directories-exist copy)
+      (alexandria:write-string-into-file "kea" copy)
+      (unwind-protect
+           (progn
+             (tuatara.runtime:set-debug t)
+             (tuatara.defaults::delete-auto-save-of file)
+             (false (probe-file copy))
+             (let ((texts (loop for report = (sb-concurrency:dequeue tuatara.runtime:*debug-reports*)
+                                while report collect (princ-to-string (fourth report)))))
+               (false (find "deleting" texts :test #'search) "~s" texts)))
+        (drain-debug-reports)))))
+
 (define-test (debug-reports refusals-said-whole-under-a-secret)
   ;; under a secret, the editor's own refusals keep their words for the person, any other error
   ;; says its kind alone; a character among the arguments of what was being done still prints

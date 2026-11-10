@@ -719,31 +719,35 @@ text into the next. LINES-FOUND takes and gives them."
     (if (null most)
         (through ranges nil carries)
         (let ((parts '()) (count 0) (looked 0))
-          (dolist (piece (line-pieces rope ranges 1048576))
-            (multiple-value-bind (runs left seen onward) (through piece (- most count) carries)
-              (push runs parts)
-              (incf count left)
-              (incf looked seen)
-              (setf carries onward))
-            (when (or (>= count most) (and halt (funcall halt))) (return)))
+          (block pieces
+            (map-line-pieces (lambda (piece)
+                               (multiple-value-bind (runs left seen onward) (through piece (- most count) carries)
+                                 (push runs parts)
+                                 (incf count left)
+                                 (incf looked seen)
+                                 (setf carries onward))
+                               (when (or (>= count most) (and halt (funcall halt))) (return-from pieces)))
+                             rope ranges 1048576))
           (values (join-runs (nreverse parts)) count looked carries)))))
 
-(defun line-pieces (rope ranges size)
-  "RANGES, as LINES-MATCHING takes them, cut and gathered into pieces of
-about SIZE octets each, every cut at a line's start: a list of vectors of
-the same kind, in order."
-  (let ((pieces '()) (piece '()) (held 0))
+(defun map-line-pieces (function rope ranges size)
+  "Call FUNCTION with each piece of RANGES, as LINES-MATCHING takes them, cut
+and gathered into pieces of about SIZE octets, every cut at a line's start: a
+vector of the same kind, in order. A piece is cut only when it is reached, so
+leaving FUNCTION early reads no more of ROPE."
+  (let ((piece '()) (held 0))
     (flet ((close-piece ()
              (when piece
-               (push (coerce (nreverse piece) '(simple-array fixnum (*))) pieces)
-               (setf piece '() held 0))))
+               (let ((done (coerce (nreverse piece) '(simple-array fixnum (*)))))
+                 (setf piece '() held 0)
+                 (funcall function done)))))
       (loop for i from 0 below (length ranges) by 2
-            do (loop for (start end) in (tuatara.text:rope-line-pieces rope (aref ranges i) (aref ranges (1+ i)) size)
-                     do (push start piece) (push end piece)
-                        (incf held (- end start))
-                        (when (>= held size) (close-piece))))
-      (close-piece))
-    (nreverse pieces)))
+            do (tuatara.text:map-rope-line-pieces (lambda (start end)
+                                                    (push start piece) (push end piece)
+                                                    (incf held (- end start))
+                                                    (when (>= held size) (close-piece)))
+                                                  rope (aref ranges i) (aref ranges (1+ i)) size))
+      (close-piece))))
 
 (defun join-runs (parts)
   "The runs of PARTS, vectors of runs (LINES-MATCHING) in order, as one
@@ -763,8 +767,17 @@ together in order: the same three values, the same as one scan finds them;
 a piece into which a match of the pieces before runs is matched again from
 where that match ends. Each piece begins by calling HOOK, when given
 \(*REWRITE-PIECE-HOOK* as the work began); records ending as ENDS says
-\(RECORD-ENDS)."
-  (let* ((pieces (coerce (line-pieces rope ranges *filter-piece*) 'simple-vector))
+\(RECORD-ENDS). HALT, a function of none, asked after each piece is cut and
+now and then while they are matched, stops the work when it answers true,
+nothing found when that is before matching began."
+  (let* ((pieces (let ((all '()))
+                   (map-line-pieces (lambda (piece)
+                                      (push piece all)
+                                      (when (and halt (funcall halt))
+                                        (return-from lines-matching-everywhere
+                                          (values (make-array 0 :element-type 'fixnum) 0 0))))
+                                    rope ranges *filter-piece*)
+                   (coerce (nreverse all) 'simple-vector)))
          (results (tuatara.runtime:run-tasks
                    (map 'simple-vector (lambda (piece)
                                          (lambda ()

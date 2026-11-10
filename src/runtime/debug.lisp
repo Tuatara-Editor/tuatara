@@ -46,13 +46,14 @@ evaluated but the look at *DEBUG-ON*."
 
 (defun debug-report-line (report)
   "REPORT, as DEBUG-REPORT queues it (TIME THREAD TOPIC TEXT), as a line of
-*Debug* and the debug log: the seconds since the start, the thread, the topic
-and the text."
+*Debug* and the debug log: the seconds since the start, the thread (without a
+leading \"tuatara \", cut to the 12 columns it has), the topic and the text."
   (destructuring-bind (time thread topic text) report
     (format nil "~10,3f  ~12a ~10a ~a"
             (/ (- time *debug-start*) internal-time-units-per-second)
-            (let ((name (or thread "")))
-              (if (and (> (length name) 8) (string= "tuatara " name :end2 8)) (subseq name 8) name))
+            (let* ((name (or thread ""))
+                   (name (if (and (> (length name) 8) (string= "tuatara " name :end2 8)) (subseq name 8) name)))
+              (subseq name 0 (min 12 (length name))))
             (string-downcase (symbol-name topic)) text)))
 
 (defun queue-debug-report (topic text)

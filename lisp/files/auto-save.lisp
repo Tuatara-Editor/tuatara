@@ -80,10 +80,16 @@ not one of the system's made-up files."
   "Delete the auto-saved copy of the native FILE, and its name kept beside it,
 when there is one."
   (let ((copy (auto-save-path file)))
-    (when (and copy (tuatara.io:path-stamp copy))
-      (ignoring-errors-reported ("deleting ~a" copy) (tuatara.io:remove-file copy))
-      (ignoring-errors-reported ("deleting ~a.path" copy) (tuatara.io:remove-file (concatenate 'string copy ".path")))
-      (ignoring-errors-reported ("listing the auto-saves again") (refill-open-list "*Auto-saves*" 'auto-saves-mode)))))
+    (flet ((remove-if-there (path)
+             (ignoring-errors-reported ("deleting ~a" path)
+               (handler-case (tuatara.io:remove-file path)
+                 (tuatara.io:file-system-error (condition)
+                   (unless (eql (tuatara.io:file-system-error-errno condition) sb-posix:enoent)
+                     (error condition)))))))
+      (when (and copy (tuatara.io:path-stamp copy))
+        (remove-if-there copy)
+        (remove-if-there (concatenate 'string copy ".path"))
+        (ignoring-errors-reported ("listing the auto-saves again") (refill-open-list "*Auto-saves*" 'auto-saves-mode))))))
 
 (defun delete-auto-save (buffer)
   "Delete BUFFER's auto-saved copy, and its name kept beside it, when there is

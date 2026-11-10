@@ -599,6 +599,13 @@ of matches made in the background."
              (true (< tuatara.defaults::**count-rate** (* 1024 1024 50)) "a stopped count lowers it")))
       (setf tuatara.defaults::**count-rate** rate))))
 
+(define-test (incremental-search replace-regexp-docstring-says-where)
+  ;; the scope the commands have (see replace-regexp-as-sed) is the scope their help gives
+  (dolist (name '("replace-regexp" "query-replace-regexp"))
+    (let ((help (documentation (tuatara.command:command-symbol name) 'function)))
+      (true (search "line at point" help) "~a: ~a" name help)
+      (false (search "else in the whole buffer" help) "~a: ~a" name help))))
+
 (define-test (incremental-search replace-regexp-as-sed)
   ;; r r with nothing selected: the first match on the line at point; % every match in the buffer
   (multiple-value-bind (f editor) (run-keys "r r o / 0 RET" :text (format nil "foo~%boo~%"))

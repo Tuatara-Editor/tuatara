@@ -1429,21 +1429,22 @@ is seen, and the other folds stay as they are."
 match: \\`y' replaces, \\`n' leaves it and goes to the next, \\`!' replaces all
 the rest, \\`.' replaces and stops, \\`q' stops. The first match on each line
 is asked at; with a % in front, %pattern/replacement, every match. In the
-region when one is active, else in the whole buffer; no flags; the word or
-symbol at point offered as the pattern, selected. & and \\1 in the
-replacement stand for the match and its first group. How many matches there
-are to ask at shows before the prompt as the pattern is typed. A match in
-folded text is asked at too, its fold opened first. A match of more than 4 KB that runs
-across lines and needs text further on can be missed, as regex-search-forward
-says; \\[query-replace-regexp-thorough] finds every match of up to a megabyte."
+selected text when there is some, else on the line at point, or in the whole
+buffer after a % in front; no flags; the word or symbol at point offered as
+the pattern, selected. & and \\1 in the replacement stand for the match and
+its first group. How many matches there are to ask at shows before the prompt
+as the pattern is typed. A match in folded text is asked at too, its fold
+opened first. A match of more than 4 KB that runs across lines and needs text
+further on can be missed, as regex-search-forward says; \\[query-replace-regexp-thorough] finds every match of up to a megabyte."
   (search-start t t :preset '(:flags "c" :every-after-percent t) :suggest t))
 
 (define-command replace-regexp ()
-  "Replace a regular expression, as one edit, in the region when one is
-active, else in the whole buffer: pattern/replacement, typed on one line or
-in two parts, as \\<search>\\[search-exit] after the pattern types the /
-before the replacement. The first match on each line is replaced; with a %
-in front, %pattern/replacement, every match. It takes no flags:
+  "Replace a regular expression, as one edit: pattern/replacement, typed on
+one line or in two parts, as \\<search>\\[search-exit] after the pattern types the /
+before the replacement. In the selected text when there is some, else on the
+line at point, the first match on each line is replaced; with a % in front,
+%pattern/replacement, every match in the whole buffer, or in the selected
+text. It takes no flags:
 \\[query-replace-regexp] asks at each match, and
 \\[regex-search-forward] counts with %pattern//gn. & and \\1 in the replacement stand for
 the match and its first group. How many matches it replaces shows before the

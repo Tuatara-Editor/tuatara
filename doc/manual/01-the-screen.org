@@ -59,25 +59,41 @@ column then does what the table says, and typing inserts text everywhere.
 ** The parts of the screen
 
 Figure 1.1 shows the whole editor with two windows and a question open, and
-names each part.
+Figure 1.2 the same with no question open. Each part is named as this manual,
+the help and the project's support pages name it, so that a question about a
+part can say which one it means.
 
-#+caption: Figure 1.1. The parts of the screen. Frame is the name for all of it.
+#+caption: Figure 1.1. The parts of the frame while a question is open.
 #+name: fig-parts
 #+begin_example
- +-------------------------------+  +------------------------------+
- | eggs                          |  | Pancakes                     |  Window
- | bread                         |  | 2 eggs, 200 g flour, milk    |
- | milk                          |  | Mix, rest, fry.              |
- |                               |  |                              |
- +-------------------------------+  +------------------------------+
- | TUATARA[N] PD [-] list.txt .. |  | TUATARA[N] PD [-] pancakes.. |  Mode line
- +-------------------------------+  +------------------------------+
- | 3/12 Find file: ~/notes/sh                                      |  Panel
- | shopping.txt                                                    |
- | sheep-notes.org                                                 |
- +-----------------------------------------------------------------+
- | (echo area, or the minibuffer when a question is open)          |  Last row
- +-----------------------------------------------------------------+
+ +- Frame ----------------------------------------------------------+
+ |+-----------------------------+  +------------------------------+ |
+ || eggs                        |  | Pancakes                     | | Window
+ || bread                       |  | 2 eggs, 200 g flour, milk    | |
+ || milk                        |  | Mix, rest, fry.              | |
+ |+-----------------------------+  +------------------------------+ |
+ || TUATARA[N] PD [-] list.txt  |  | TUATARA[N] PD [-] pancakes.. | | Mode line
+ |+-----------------------------+  +------------------------------+ |
+ || 3/12 Find file: ~/notes/sh                                    | | Minibuffer
+ || shopping.txt                                                  | | Panel
+ || sheep-notes.org                                               | |
+ |+---------------------------------------------------------------+ |
+ +------------------------------------------------------------------+
+#+end_example
+
+#+caption: Figure 1.2. The frame with no question open.
+#+name: fig-echo-area
+#+begin_example
+ +- Frame ----------------------------------------------------------+
+ |+-----------------------------+  +------------------------------+ |
+ || eggs                        |  | Pancakes                     | | Window
+ || bread                       |  | 2 eggs, 200 g flour, milk    | |
+ |+-----------------------------+  +------------------------------+ |
+ || TUATARA[N] PD [-] list.txt  |  | TUATARA[N] PD [-] pancakes.. | | Mode line
+ |+-----------------------------+  +------------------------------+ |
+ || Wrote /home/you/list.txt                                      | | Echo area
+ |+---------------------------------------------------------------+ |
+ +------------------------------------------------------------------+
 #+end_example
 
 The frame is everything Tuatara draws. In a window of its own it is that
@@ -89,12 +105,15 @@ a mode line under it, a row that describes what the window shows.
 The echo area is the last row of the frame. Tuatara says short things there,
 such as =Wrote /home/you/list.txt=.
 
-The minibuffer is the same row when Tuatara asks you a question. The question
-is called the prompt, and what you type after it is your answer.
+The minibuffer is the row where Tuatara asks you a question. The question is
+called the prompt, and what you type after it is your answer. While a question
+is open, the minibuffer and the panel take the bottom of the frame in place of
+the echo area: the minibuffer on top and the choices under it, or the
+minibuffer on the last row when =*prompt-above-candidates*= is =nil=.
 
-The panel is a few rows above the last row. It lists choices while a question
-is open, and it lists the keys you can press next after a key such as ~C-x~.
-It is only there when it has something to say.
+The panel is the rows at the bottom of the frame that list choices while a
+question is open, and the keys you can press next after a key such as ~C-x~,
+above the echo area. It is only there when it has something to say.
 
 The cursor is the mark that shows where typed text goes. Other editors call
 that place the point, and Tuatara's help uses the word too.
@@ -537,11 +556,19 @@ is the place to look when a message went by too fast.
 ** The minibuffer and its prompt
 
 When a command needs something from you, a file name, a word to search for, a
-yes or no, it asks in the last row of the frame. That row is then called the
-minibuffer. The words that ask are the prompt, such as =Find file:=, and
-your answer follows it. The prompt is drawn in bold. A frame that has a
-question open keeps its window text where it was, and its cursor is drawn as
-an outline there while you type in the row below.
+yes or no, it asks in the minibuffer, a row at the bottom of the frame
+(Figure 1.1). The words that ask are the prompt, such as =Find file:=, and
+your answer follows it (Figure 1.3). The prompt is drawn in bold. A frame
+that has a question open keeps its window text where it was, and its cursor
+is drawn as an outline there while you type in the minibuffer.
+
+#+caption: Figure 1.3. The parts of the minibuffer.
+#+name: fig-minibuffer
+#+begin_example
+ 3/12 Find file: ~/notes/sh
+ ---- ---------- ----------
+ count prompt    answer
+#+end_example
 
 Press ~RET~ to give the answer, or ~C-g~ or ~ESC~ to give up. Before the prompt
 Tuatara may show a count, such as =3/12=, which means the third of twelve
