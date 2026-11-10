@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src  'self'; img-src 'self' file:; script-src 'self'; base-uri 'none'; form-action 'none'">
 <title>Large files and work in the background &ndash; Tuatara Manual</title>
+<link rel="icon" href="tuatara.png">
 <link rel="stylesheet" href="manual.css">
 <script src="manual.js" defer></script>
 </head>
@@ -335,7 +336,11 @@ the power fails in the middle, you have either the old file or the new one,
 whole. You never have a mix of both.</p>
 <p>On some file systems, btrfs and XFS among them, the new file can share with
 the old one every part that did not change. A save then takes only as long as
-your change, even in a file of 10 GB.</p>
+your change, even in a file of 10 GB. Tuatara does not go by the kind of file
+system alone: the first time it writes on such a drive, it tries sharing with
+two new empty files, which leaves nothing behind, and keeps the answer until
+you quit. An older XFS made without reflink shares nothing, so there it saves
+as on ext4.</p>
 <p>On the others, ext4 among them, a new file means writing every part of it
 again. Changing one line of a 10 GB file then costs about a minute of writing.
 It happens in the background and you can go on working, but the disk is busy

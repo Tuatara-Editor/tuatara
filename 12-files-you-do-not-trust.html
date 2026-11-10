@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src  'self'; img-src 'self' file:; script-src 'self'; base-uri 'none'; form-action 'none'">
 <title>Files you do not trust &ndash; Tuatara Manual</title>
+<link rel="icon" href="tuatara.png">
 <link rel="stylesheet" href="manual.css">
 <script src="manual.js" defer></script>
 </head>
@@ -380,9 +381,10 @@ a wall.</p>
 GB of memory (<code>*sandbox-memory*</code>). All the decoders working on one file may use
 2 GB together (<code>*sandbox-total-memory*</code>), where your system can hold them to it.
 A file larger than 1 GB is not decoded (<code>*sandbox-input-limit*</code>). It opens as
-bytes, and the echo area says why. <code>*sandbox-seccomp*</code> is the kernel's refusal
-of unneeded calls, on x86-64 and AArch64. Keep it true unless a decoder of yours
-fails because of it.</p>
+bytes, and the echo area says why. A PDF that grew past the limit after it was
+opened says so in its view when it is read again. <code>*sandbox-seccomp*</code> is the
+kernel's refusal of unneeded calls, on x86-64 and AArch64. Keep it true unless a
+decoder of yours fails because of it.</p>
 <div class="try">
 <h3>Try it, with a PDF from a stranger</h3>
 <ol>

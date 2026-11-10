@@ -110,3 +110,5 @@ dt { font-weight: 600; }
   nav.toc { border-right: 0; border-bottom: 1px solid var(--rule); padding-inline: 16px; }
   nav.toc ol.chapters { max-height: 150px; overflow-y: auto; }
 }
+body, code, kbd, pre, input { font-family: "Cascadia Code", "Cascadia Mono", "JetBrains Mono",
+  "Fira Code", "Source Code Pro", "DejaVu Sans Mono", ui-monospace, monospace; }

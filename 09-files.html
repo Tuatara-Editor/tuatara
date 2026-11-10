@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src  'self'; img-src 'self' file:; script-src 'self'; base-uri 'none'; form-action 'none'">
 <title>Files &ndash; Tuatara Manual</title>
+<link rel="icon" href="tuatara.png">
 <link rel="stylesheet" href="manual.css">
 <script src="manual.js" defer></script>
 </head>
@@ -287,6 +288,11 @@ buffer. It asks first when the buffer has changes you have not saved. The
 reading is one step in the undo history, so <kbd>C-/</kbd> takes it back if you made a
 mistake. Point and the window stay on the same text, so you do not lose your
 place. If the file only grew, only the new part is added.</p>
+<p>Opening the file again, with <kbd>C-x C-f</kbd> or with <kbd>RET</kbd> in a list such as the git
+status, also reads it again when its buffer has no changes of your own. With
+changes of your own the buffer is left as it is, and the echo area says so. A
+buffer that <kbd>M-x follow-file</kbd> stopped following is not read again, and a file
+deleted on disk is said.</p>
 <p>In a buffer that Tuatara made for you, such as a list of buffers, <kbd>r</kbd> reads it
 again from what it shows. <kbd>g r</kbd> does the same. This is how a list is brought up
 to date. The buffer list does it by itself.</p>
