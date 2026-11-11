@@ -134,6 +134,7 @@ dt { font-weight: 600; }
 body, code, kbd, pre, input, button { font-family: "Cascadia Code", "Cascadia Mono", "JetBrains Mono",
   "Fira Code", "Source Code Pro", "DejaVu Sans Mono", ui-monospace, monospace; }
 nav.contents a, .node a { text-decoration: none; }
+nav.toc li.here > a, nav.toc a.in-view { color: var(--accent); font-weight: 700; }
 nav.toc .tools { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; margin: 0 0 14px;
   font-size: 14px; }
 nav.toc .tools a { color: var(--accent); }
