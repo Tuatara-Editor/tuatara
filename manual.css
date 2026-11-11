@@ -131,10 +131,14 @@ dt { font-weight: 600; }
   nav.toc { border-right: 0; border-bottom: 1px solid var(--rule); padding-inline: 16px; }
   nav.toc ol.chapters { max-height: 150px; overflow-y: auto; }
 }
-body, code, kbd, pre, input, button { font-family: "Cascadia Code", "Cascadia Mono", "JetBrains Mono",
-  "Fira Code", "Source Code Pro", "DejaVu Sans Mono", ui-monospace, monospace; }
+:root { --mono: "Cascadia Code", "Cascadia Mono", "JetBrains Mono", "Fira Code", "Source Code Pro",
+  "DejaVu Sans Mono", ui-monospace, monospace; --head: var(--mono); }
+body, code, kbd, pre, input, button { font-family: var(--mono); }
 nav.contents a, .node a { text-decoration: none; }
 nav.toc li.here > a, nav.toc a.in-view { color: var(--accent); font-weight: 700; }
+main article h1, main article h2 { font-weight: 700; }
+main article h3, main article h4, main article h5 { font-weight: 600; }
+main article h2 { border-bottom: 3px solid var(--accent); padding-bottom: 4px; }
 nav.toc .tools { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; margin: 0 0 14px;
   font-size: 14px; }
 nav.toc .tools a { color: var(--accent); }
