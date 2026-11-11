@@ -218,10 +218,10 @@ is in use. The thorough form of replacing is described in the next section.</p>
 faded (<code>:search-outside-scope</code>) so that you can see the limit. A pattern that
 begins with <code>%</code> searches the whole buffer instead.</p>
 <h2 id="replacing"><span class="num">6.2</span> Replacing</h2>
-<p>Replacing uses the same prompt as searching. In NORMAL state press <kbd>r r</kbd>. The
-prompt reads <code>Regex replace on this line:</code>. Type the pattern, then <kbd>RET</kbd>, which
-types the <code>/</code> for you, then the new text, then <kbd>RET</kbd>. You can also type it all
-on one line as <code>pattern/new text</code>.</p>
+<p>Replacing uses the same prompt as searching. In NORMAL state press <kbd>r r</kbd>
+(non-modal: <kbd>C-z r r</kbd>). The prompt reads <code>Regex replace on this line:</code>. Type the
+pattern, then <kbd>RET</kbd>, which types the <code>/</code> for you, then the new text, then <kbd>RET</kbd>.
+You can also type it all on one line as <code>pattern/new text</code>.</p>
 <p>What gets changed depends on what is selected. With nothing selected, only
 the line the cursor is on, and only the first match on it. With a selection,
 the selected lines. A <code>%</code> in front of the pattern, as in <code>%tui/Tui</code>, means every
@@ -253,7 +253,7 @@ replaced, and <code>i</code> or <code>I</code> ignores or keeps case.</p>
 each match: a match in capitals is replaced in capitals, and one that starts
 with a capital gets a capital. So <code>%tui/kokako</code> turns Tui into Kokako.</p>
 <h3 id="replacing-with-questions"><span class="num">6.2.2</span> Replacing with questions</h3>
-<p><kbd>r q</kbd> (non-modal: <kbd>C-M-%</kbd>) replaces a regular expression and asks about each
+<p><kbd>r q</kbd> (non-modal: <kbd>C-z r q</kbd>) replaces a regular expression and asks about each
 match, with <code>Query replacing ... with ...:</code> and the keys <code>y n ! . q</code>:</p>
 <div class="tablewrap"><table>
 <thead>
@@ -267,7 +267,7 @@ match, with <code>Query replacing ... with ...:</code> and the keys <code>y n ! 
 <tr><td>none</td><td><kbd>q</kbd></td><td>Stop</td></tr>
 </tbody></table></div>
 <p><kbd>M-%</kbd> is the same for plain text, with no special characters to think about.
-<kbd>C-M-%</kbd> is another key for <kbd>r q</kbd>, and it works in every state.</p>
+<kbd>C-z r q</kbd> is the key for <kbd>r q</kbd> in every state.</p>
 <p>When you want to be sure of each change, use the question form. When a
 change is plain and mechanical, use <kbd>r r</kbd> and look at the preview.</p>
 <p>If the text you replace can run over many lines, use the thorough forms of
@@ -284,7 +284,7 @@ the commands. They are described under searching, above.</p>
 <li>Press <kbd>r r</kbd> and type <code>%tui/kea</code>, <kbd>RET</kbd>. Every tui of the whole letter
    changes, and the third one keeps its capital: <code>Kea are rare</code>. The echo area
    says <code>Replaced 3 occurrences on 1 line</code>. Press <kbd>u</kbd>.</li>
-<li>Press <kbd>r q</kbd> (non-modal: <kbd>C-M-%</kbd>), type <code>%tui/kea</code>, <kbd>RET</kbd>. Press <kbd>y</kbd> at the
+<li>Press <kbd>r q</kbd> (non-modal: <kbd>C-z r q</kbd>), type <code>%tui/kea</code>, <kbd>RET</kbd>. Press <kbd>y</kbd> at the
    first, <kbd>n</kbd> at the second and <kbd>!</kbd> at the third. Only the first and the last
    were changed. Press <kbd>u</kbd>.</li>
 <li>Press <kbd>r r</kbd> and type <code>%(\w+) at (\w+)/\2 at \1</code>, <kbd>RET</kbd>. Look at what
@@ -297,9 +297,9 @@ the commands. They are described under searching, above.</p>
 <tr><th>Modal</th><th>Non-modal</th><th>Command</th><th>What it does</th></tr>
 </thead>
 <tbody>
-<tr><td><kbd>r r</kbd></td><td>none</td><td><code>replace-regexp</code></td><td>Replace a regular expression, as one edit: pattern/replacement, typed on one line or in two parts, as RET after the pattern types the / before the replacement.</td></tr>
+<tr><td><kbd>r r</kbd></td><td><kbd>C-z r r</kbd></td><td><code>replace-regexp</code></td><td>Replace a regular expression, as one edit: pattern/replacement, typed on one line or in two parts, as RET after the pattern types the / before the replacement.</td></tr>
 <tr><td>none</td><td><kbd>M-%</kbd></td><td><code>query-replace</code></td><td>Replace literal text, asking at each match: y replaces, n skips, ! replaces all the rest, .</td></tr>
-<tr><td><kbd>r q</kbd></td><td><kbd>C-M-%</kbd></td><td><code>query-replace-regexp</code></td><td>Replace a regular expression as r r does, asking at each match: y replaces, n leaves it and goes to the next, ! replaces all the rest, .</td></tr>
+<tr><td><kbd>r q</kbd></td><td><kbd>C-z r q</kbd></td><td><code>query-replace-regexp</code></td><td>Replace a regular expression as C-z r r does, asking at each match: y replaces, n leaves it and goes to the next, ! replaces all the rest, .</td></tr>
 <tr><td>none</td><td><kbd>M-x replace-regexp-thorough</kbd></td><td><code>replace-regexp-thorough</code></td><td>Replace a regular expression as replace-regexp does (the first match on each line, every match after a leading %), finding every match of up to a megabyte whole however many lines it spans, with the cost and the limit of regex-search-forward-thorough: a match of more than a megabyte is still cut short, or missed when it needs text further on.</td></tr>
 <tr><td>none</td><td><kbd>M-x query-replace-regexp-thorough</kbd></td><td><code>query-replace-regexp-thorough</code></td><td>Replace a regular expression asking at each match, as query-replace-regexp does, finding every match of up to a megabyte whole however many lines it spans, with the cost and the limit of regex-search-forward-thorough: a match of more than a megabyte is still cut short, or missed when it needs text further on.</td></tr>
 </tbody></table></div>

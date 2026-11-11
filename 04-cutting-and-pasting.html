@@ -121,20 +121,19 @@ cursor, or on as many characters as the number you gave first.</p>
 <div class="try">
 <h3>Try it, with a letter</h3>
 <ol>
-<li>Press <kbd>C-x C-f</kbd>, type <code>~/letter.txt</code> and press <kbd>RET</kbd>. Press <kbd>i</kbd> and type
-   four lines: <code>Dear Hana,</code>, <code>See you at Easter.</code>,
-   <code>Thanks for the weekend in Raglan.</code> and <code>Love, Aroha</code>, each followed by
-   <kbd>RET</kbd> except the last. Press <kbd>C-g</kbd> to go back to NORMAL state.</li>
-<li>The thanks should come before the other line. Press <kbd>g g j j</kbd> to go to the
-   third line, then <kbd>V</kbd> to select it and <kbd>d</kbd> to cut it. The line is gone.</li>
-<li>Press <kbd>k</kbd> (non-modal: <kbd>C-p</kbd>) to go up, <kbd>g h</kbd> (non-modal: <kbd>C-a</kbd>) to go to the
-   start of the line, then <kbd>p</kbd>. The thanks line is pasted above
-   <code>See you at Easter.</code> Press <kbd>u</kbd> (non-modal: <kbd>C-/</kbd>) to undo it.</li>
-<li>Press <kbd>V</kbd>, then <kbd>y</kbd>. The echo area says <code>Copied</code>. Press <kbd>g g p</kbd>. The copy
-   is pasted above <code>Dear Hana,</code>. Press <kbd>u</kbd> to undo it.</li>
-<li>Press <kbd>g g D</kbd>. The text of the first line is cut and the line stays,
-   empty. Press <kbd>u</kbd> to bring it back. The text that <kbd>D</kbd> (non-modal: <kbd>C-k</kbd>) cut
-   is on the kill ring, and <kbd>p</kbd> would paste it.</li>
+<li>1. Press <kbd>C-x C-f</kbd>, type <code>~/letter.txt</code> and press <kbd>RET</kbd>. Press <kbd>i</kbd> and type
+   four lines: <code>Dear Hana,</code>, <code>See you at Easter.</code>, <code>Thanks for the weekend in
+   Raglan.</code> and <code>Love, Aroha</code>, each followed by <kbd>RET</kbd> except the last. Press
+   <kbd>C-g</kbd> to go back to NORMAL state. 2. The thanks should come before the other
+   line. Press <kbd>g g j j</kbd> to go to the third line, then <kbd>V</kbd> (non-modal: <kbd>C-z V</kbd>)
+   to select it and <kbd>d</kbd> to cut it. The line is gone. 3. Press <kbd>k</kbd> (non-modal:
+   <kbd>C-p</kbd>) to go up, <kbd>g h</kbd> (non-modal: <kbd>C-a</kbd>) to go to the start of the line,
+   then <kbd>p</kbd>. The thanks line is pasted above <code>See you at Easter.</code> Press <kbd>u</kbd>
+   (non-modal: <kbd>C-/</kbd>) to undo it. 4. Press <kbd>V</kbd>, then <kbd>y</kbd>. The echo area says
+   <code>Copied</code>. Press <kbd>g g p</kbd>. The copy is pasted above <code>Dear Hana,</code>. Press <kbd>u</kbd> to
+   undo it. 5. Press <kbd>g g D</kbd>. The text of the first line is cut and the line
+   stays, empty. Press <kbd>u</kbd> to bring it back. The text that <kbd>D</kbd> (non-modal:
+   <kbd>C-k</kbd>) cut is on the kill ring, and <kbd>p</kbd> would paste it.</li>
 </ol>
 </div>
 <h2 id="the-system-clipboard-and-the-primary-selection"><span class="num">4.4</span> The system clipboard and the primary selection</h2>
@@ -228,17 +227,16 @@ not act on them.</p>
 <div class="try">
 <h3>Try it, with a shopping list</h3>
 <ol>
-<li>Open <code>~/shopping.txt</code> from the first try, or make a new file with six
+<li>1. Open <code>~/shopping.txt</code> from the first try, or make a new file with six
    lines: <code>eggs</code>, <code>bread</code>, <code>milk</code>, <code>apples</code>, <code>tea</code>, <code>butter</code>. Press <kbd>C-g</kbd> so
-   that you are in NORMAL state.</li>
-<li>Press <kbd>g g j</kbd> to go to <code>bread</code>, then <kbd>m l</kbd>. The line changes colour and
-   the echo area says <code>Banked this line (1 total)</code>, then what to do next.</li>
-<li>Press <kbd>j j j</kbd> to go to <code>tea</code>, then <kbd>m l</kbd> again. Now two lines are banked.</li>
-<li>Press <kbd>m u</kbd> on <code>tea</code>. It leaves the bank. Press <kbd>m l</kbd> to bank it again.</li>
-<li>Press <kbd>d</kbd>. Both lines are cut together and leave the bank, and the echo
-   area says <code>Deleted 2 lines</code>.</li>
-<li>Press <kbd>g g p</kbd>. <code>bread</code> and <code>tea</code> are pasted above <code>eggs</code>, as one cut. Press
-   <kbd>C-x C-s</kbd> to save.</li>
+   that you are in NORMAL state. 2. Press <kbd>g g j</kbd> to go to <code>bread</code>, then <kbd>m l</kbd>
+   (non-modal: <kbd>C-z m l</kbd>). The line changes colour and the echo area says
+   <code>Banked this line (1 total)</code>, then what to do next. 3. Press <kbd>j j j</kbd> to go to
+   <code>tea</code>, then <kbd>m l</kbd> again. Now two lines are banked. 4. Press <kbd>m u</kbd> on <code>tea</code>.
+   It leaves the bank. Press <kbd>m l</kbd> to bank it again. 5. Press <kbd>d</kbd>. Both lines
+   are cut together and leave the bank, and the echo area says <code>Deleted 2
+   lines</code>. 6. Press <kbd>g g p</kbd>. <code>bread</code> and <code>tea</code> are pasted above <code>eggs</code>, as one
+   cut. Press <kbd>C-x C-s</kbd> to save.</li>
 </ol>
 </div>
 <div class="tablewrap"><table>
@@ -246,10 +244,10 @@ not act on them.</p>
 <tr><th>Modal</th><th>Non-modal</th><th>Command</th><th>What it does</th></tr>
 </thead>
 <tbody>
-<tr><td><kbd>m l</kbd></td><td>none</td><td><code>bank-lines</code></td><td>Banks the line, or the lines the selection touches, and drops the selection. On lines that are all banked already it takes them out again, and on lines partly banked it banks the rest. A number banks that many lines from the cursor. A line whose end a fold hides is banked with all that the fold hides. Lines a search filter hides are not banked.</td></tr>
-<tr><td><kbd>m u</kbd></td><td>none</td><td><code>bank-release-line</code></td><td>Takes the line at the cursor out of the bank and keeps the others.</td></tr>
-<tr><td><kbd>m U</kbd></td><td>none</td><td><code>bank-release-section</code></td><td>Takes out the whole run of banked lines the cursor is on, the lines beside each other at once. Banked lines elsewhere stay.</td></tr>
-<tr><td><kbd>m DEL</kbd>, <kbd>m &lt;delete&gt;</kbd></td><td>none</td><td><code>bank-clear</code></td><td>Lets go of every banked line in the buffer. The text is not changed.</td></tr>
+<tr><td><kbd>m l</kbd></td><td><kbd>C-z m l</kbd></td><td><code>bank-lines</code></td><td>Banks the line, or the lines the selection touches, and drops the selection. On lines that are all banked already it takes them out again, and on lines partly banked it banks the rest. A number banks that many lines from the cursor. A line whose end a fold hides is banked with all that the fold hides. Lines a search filter hides are not banked.</td></tr>
+<tr><td><kbd>m u</kbd></td><td><kbd>C-z m u</kbd></td><td><code>bank-release-line</code></td><td>Takes the line at the cursor out of the bank and keeps the others.</td></tr>
+<tr><td><kbd>m U</kbd></td><td><kbd>C-z m U</kbd></td><td><code>bank-release-section</code></td><td>Takes out the whole run of banked lines the cursor is on, the lines beside each other at once. Banked lines elsewhere stay.</td></tr>
+<tr><td><kbd>m DEL</kbd>, <kbd>m &lt;delete&gt;</kbd></td><td><kbd>C-z m DEL</kbd>, <kbd>C-z m &lt;delete&gt;</kbd></td><td><code>bank-clear</code></td><td>Lets go of every banked line in the buffer. The text is not changed.</td></tr>
 </tbody></table></div>
 <p>With lines banked, <kbd>y</kbd> copies them as one cut and <kbd>d</kbd> cuts them as one cut and
 one change, so that one <kbd>u</kbd> (non-modal: <kbd>C-/</kbd>) puts them back. <kbd>p</kbd> puts the

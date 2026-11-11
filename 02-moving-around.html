@@ -261,8 +261,8 @@ while Tuatara waits for the key.</p>
 makes the count negative, so <kbd>C-u - 2 w</kbd> moves back two words, as <kbd>b</kbd>
 (non-modal: <kbd>M-b</kbd>) would. A number you type after <kbd>C-u C-u</kbd> starts a new count
 of its own.</p>
-<p><kbd>.</kbd> in NORMAL state runs the last command again, with the count it had. Press
-<kbd>.</kbd> after <kbd>C-u 3 j</kbd> and the cursor goes three more lines down.</p>
+<p><kbd>.</kbd> (non-modal: <kbd>C-z .</kbd>) runs the last command again, with the count it had.
+Press <kbd>.</kbd> after <kbd>C-u 3 j</kbd> and the cursor goes three more lines down.</p>
 <p>Other chapters use the same count for other things, such as how many times to
 insert a character. The count is always taken by the key that follows it.</p>
 <div class="try">
@@ -284,7 +284,7 @@ insert a character. The count is always taken by the key that follows it.</p>
 </thead>
 <tbody>
 <tr><td>none</td><td><kbd>C-u</kbd></td><td><code>universal-argument</code></td><td>Starts a count. Alone it is 4, twice it is 16, digits give a number and a minus sign negates.</td></tr>
-<tr><td><kbd>.</kbd></td><td>none</td><td><code>repeat</code></td><td>Runs the last command again with its count.</td></tr>
+<tr><td><kbd>.</kbd></td><td><kbd>C-z .</kbd></td><td><code>repeat</code></td><td>Runs the last command again with its count.</td></tr>
 </tbody></table></div>
 <h2 id="marks-and-going-back"><span class="num">2.10</span> Marks and going back</h2>
 <p>The mark is a place that Tuatara remembers, and that stays where it is while the
@@ -295,10 +295,11 @@ was, so a long jump can be taken back.</p>
 Tuatara also keeps a global mark ring, with the marks of the buffers you set
 marks in.</p>
 <p>Tuatara keeps a second list as well: the places the cursor was at before each
-move, ten for each buffer. <kbd>S</kbd> goes back to the place before the cursor's last
-move, and <kbd>S</kbd> again goes further back, round the list. It is meant for taking
-back a key that jumped to the wrong place. The echo area says <code>Position 2 of
-7</code> so you know how far back you are. A count before <kbd>S</kbd> skips that many places.</p>
+move, ten for each buffer. <kbd>S</kbd> (non-modal: <kbd>C-z S</kbd>) goes back to the place
+before the cursor's last move, and <kbd>S</kbd> again goes further back, round the list.
+It is meant for taking back a key that jumped to the wrong place. The echo area
+says <code>Position 2 of 7</code> so you know how far back you are. A count before <kbd>S</kbd>
+skips that many places.</p>
 <p>Registers and bookmarks keep a place for longer. A register (<kbd>C-x r p</kbd>, then a
 character) keeps the place until Tuatara quits, and <kbd>C-x r j</kbd> with the same
 character goes back to it, even after the text above it has changed. A
@@ -327,7 +328,7 @@ its name.</p>
 <tr><th>Modal</th><th>Non-modal</th><th>Command</th><th>What it does</th></tr>
 </thead>
 <tbody>
-<tr><td><kbd>S</kbd></td><td>none</td><td><code>jump-back</code></td><td>Goes to a place the cursor was before, and further back each time you press it.</td></tr>
+<tr><td><kbd>S</kbd></td><td><kbd>C-z S</kbd></td><td><code>jump-back</code></td><td>Goes to a place the cursor was before, and further back each time you press it.</td></tr>
 <tr><td>none</td><td><kbd>C-SPC</kbd></td><td><code>set-mark-command</code></td><td>Sets the mark at the cursor and shows the region. Pressed again at once, it hides the region, and once more shows it. With <kbd>C-u</kbd>, goes back to the mark, as <code>pop-to-mark-command</code> does.</td></tr>
 <tr><td>none</td><td><kbd>C-u C-SPC</kbd></td><td><code>pop-to-mark-command</code></td><td>Goes to the mark and takes the mark before it from the ring, so the next press goes further back.</td></tr>
 <tr><td>none</td><td><kbd>C-x C-SPC</kbd></td><td><code>pop-global-mark</code></td><td>Goes to the newest mark of the global ring, in its buffer, and so back through the buffers where you set marks.</td></tr>

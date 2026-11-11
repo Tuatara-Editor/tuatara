@@ -283,7 +283,9 @@ for commands, as other editors do. If that is you, turn modal editing off:</p>
 <p>Every buffer then takes the keys of its mode and the global keys. Typing puts
 letters in the text. The states are gone from the mode line. Every command
 is still there, to run with <kbd>M-x</kbd> or to bind to a key. The leader stays,
-under <kbd>C-x SPC</kbd>.</p>
+under <kbd>C-x SPC</kbd>. The commands that selecting, cursors, spelling and replacing
+have in NORMAL state are under <kbd>C-z</kbd>, on the same letters: <kbd>C-z m f</kbd> selects
+the function around the cursor, <kbd>C-z t</kbd> adds a cursor below.</p>
 <div class="try">
 <h3>Try it, with modal editing off</h3>
 <ol>

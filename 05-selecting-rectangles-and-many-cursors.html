@@ -44,10 +44,10 @@ the mark, which is how you reach the other end of a region to change it.
 Chapter 2 describes the mark and the mark ring, the list of places the mark
 has been.</p>
 <p>The NORMAL state way has keys for it. <kbd>v</kbd> starts a selection at the cursor and
-any move stretches it. Pressing <kbd>v</kbd> again while it is live starts it afresh
-from where the cursor is now. <kbd>V</kbd> selects whole lines instead. <kbd>%</kbd> selects the
-whole buffer. You can use whichever you like in either state, and a selection
-made by one is a region for the other.</p>
+any move stretches it. Pressing <kbd>v</kbd> again while it is live starts it afresh from
+where the cursor is now. <kbd>V</kbd> (non-modal: <kbd>C-z V</kbd>) selects whole lines instead.
+<kbd>%</kbd> selects the whole buffer. You can use whichever you like in either state,
+and a selection made by one is a region for the other.</p>
 <p>Figure 5.1 shows a selection made with <kbd>v</kbd> and one made with <kbd>V</kbd>.</p>
 <figure id="fig-selections">
 <pre class="ex"> v w w, from the u of &quot;tui&quot;:
@@ -71,17 +71,16 @@ behind.</p>
 <div class="try">
 <h3>Try it, with a recipe</h3>
 <ol>
-<li>Press <kbd>C-x C-f</kbd>, type <code>~/pancakes.txt</code> and press <kbd>RET</kbd>. Press <kbd>i</kbd> and type
-   <code>Pancakes</code>, <kbd>RET</kbd>, <code>2 eggs, 200 g flour, 1 cup milk</code>, <kbd>RET</kbd>,
-   <code>Mix and rest.</code>, <kbd>RET</kbd>, <code>Fry in butter.</code> Press <kbd>C-g</kbd>.</li>
-<li>Press <kbd>g g j</kbd> to go to the second line. Press <kbd>v</kbd>, then <kbd>w w</kbd>. The first
-   words of the line are selected. Press <kbd>C-g</kbd> to let go.</li>
-<li>Press <kbd>V</kbd>. The whole line is selected. Press <kbd>J</kbd>. The line below is
-   selected too. Press <kbd>d</kbd>. Both lines are cut. Press <kbd>u</kbd> (non-modal: <kbd>C-/</kbd>) to
-   undo.</li>
-<li>Press <kbd>V</kbd> on the second line, then <kbd>K</kbd>: the line above joins the
-   selection. Press <kbd>C-g</kbd>. (<kbd>K</kbd> alone, with nothing selected, only moves up.)</li>
-<li>Press <kbd>%</kbd>. The whole buffer is selected. Press <kbd>C-g</kbd>.</li>
+<li>1. Press <kbd>C-x C-f</kbd>, type <code>~/pancakes.txt</code> and press <kbd>RET</kbd>. Press <kbd>i</kbd> and type
+   <code>Pancakes</code>, <kbd>RET</kbd>, <code>2 eggs, 200 g flour, 1 cup milk</code>, <kbd>RET</kbd>, <code>Mix and rest.</code>,
+   <kbd>RET</kbd>, <code>Fry in butter.</code> Press <kbd>C-g</kbd>. 2. Press <kbd>g g j</kbd> to go to the second
+   line. Press <kbd>v</kbd>, then <kbd>w w</kbd>. The first words of the line are selected. Press
+   <kbd>C-g</kbd> to let go. 3. Press <kbd>V</kbd>. The whole line is selected. Press <kbd>J</kbd>
+   (non-modal: <kbd>C-z J</kbd>). The line below is selected too. Press <kbd>d</kbd>. Both lines
+   are cut. Press <kbd>u</kbd> (non-modal: <kbd>C-/</kbd>) to undo. 4. Press <kbd>V</kbd> on the second
+   line, then <kbd>K</kbd>: the line above joins the selection. Press <kbd>C-g</kbd>. (<kbd>K</kbd> alone,
+   with nothing selected, only moves up.) 5. Press <kbd>%</kbd>. The whole buffer is
+   selected. Press <kbd>C-g</kbd>.</li>
 </ol>
 </div>
 <h3 id="keys-that-select"><span class="num">5.1.1</span> Keys that select</h3>
@@ -91,8 +90,8 @@ behind.</p>
 </thead>
 <tbody>
 <tr><td><kbd>v</kbd></td><td>none</td><td><code>start-selection</code></td><td>Starts a selection at the cursor. Any move stretches it.</td></tr>
-<tr><td><kbd>V</kbd></td><td>none</td><td><code>select-lines</code></td><td>Selects the cursor's line. Pressed with a line selection live, it lets go.</td></tr>
-<tr><td><kbd>J</kbd>, <kbd>K</kbd></td><td>none</td><td><code>select-next-line</code> and <code>select-previous-line</code></td><td>Move down or up a line, adding it to a line selection. Without one they only move.</td></tr>
+<tr><td><kbd>V</kbd></td><td><kbd>C-z V</kbd></td><td><code>select-lines</code></td><td>Selects the cursor's line. Pressed with a line selection live, it lets go.</td></tr>
+<tr><td><kbd>J</kbd>, <kbd>K</kbd></td><td><kbd>C-z J</kbd>, <kbd>C-z K</kbd></td><td><code>select-next-line</code> and <code>select-previous-line</code></td><td>Move down or up a line, adding it to a line selection. Without one they only move.</td></tr>
 <tr><td><kbd>%</kbd></td><td>none</td><td><code>select-whole-buffer</code></td><td>Selects everything, the cursor at the start.</td></tr>
 <tr><td>none</td><td><kbd>C-x h</kbd></td><td><code>mark-whole-buffer</code></td><td>The same with the Emacs keys, the cursor at the start and the mark at the end.</td></tr>
 </tbody></table></div>
@@ -105,9 +104,9 @@ NORMAL state to let go of any selection.</p>
 </thead>
 <tbody>
 <tr><td><kbd>v</kbd></td><td>none</td><td><code>start-selection</code></td><td>Start a selection at point: any motion extends it.</td></tr>
-<tr><td><kbd>V</kbd></td><td>none</td><td><code>select-lines</code></td><td>Start a line selection anchored on the current line, or cancel a live one.</td></tr>
-<tr><td><kbd>J</kbd></td><td>none</td><td><code>select-next-line</code></td><td>Move down, extending the line selection if one is active.</td></tr>
-<tr><td><kbd>K</kbd></td><td>none</td><td><code>select-previous-line</code></td><td>Move up, extending the line selection if one is active.</td></tr>
+<tr><td><kbd>V</kbd></td><td><kbd>C-z V</kbd></td><td><code>select-lines</code></td><td>Start a line selection anchored on the current line, or cancel a live one.</td></tr>
+<tr><td><kbd>J</kbd></td><td><kbd>C-z J</kbd></td><td><code>select-next-line</code></td><td>Move down, extending the line selection if one is active.</td></tr>
+<tr><td><kbd>K</kbd></td><td><kbd>C-z K</kbd></td><td><code>select-previous-line</code></td><td>Move up, extending the line selection if one is active.</td></tr>
 <tr><td><kbd>%</kbd></td><td>none</td><td><code>select-whole-buffer</code></td><td>Select the whole buffer: point at the start, the mark at the end.</td></tr>
 <tr><td>none</td><td><kbd>C-SPC</kbd></td><td><code>set-mark-command</code></td><td>Set the mark at point and activate the region (C-SPC).</td></tr>
 <tr><td>none</td><td><kbd>C-x C-x</kbd></td><td><code>exchange-point-and-mark</code></td><td>Swap point and mark.</td></tr>
@@ -129,14 +128,14 @@ is inside.</p>
 <tr><th>Modal</th><th>Non-modal</th><th>Command</th><th>What it selects</th></tr>
 </thead>
 <tbody>
-<tr><td><kbd>m w</kbd></td><td>none</td><td><code>select-word</code></td><td>The word at the cursor. In a gap between two words, the next one.</td></tr>
-<tr><td><kbd>m b</kbd></td><td>none</td><td><code>select-word-backward</code></td><td>The same, growing backward.</td></tr>
-<tr><td><kbd>m W</kbd>, <kbd>m B</kbd></td><td>none</td><td><code>select-symbol</code>, <code>select-symbol-backward</code></td><td>A symbol: a name with its <kbd>-</kbd> and <kbd>_</kbd>, so <code>shopping-list</code> is one symbol.</td></tr>
-<tr><td><kbd>m s</kbd>, <kbd>m S</kbd></td><td>none</td><td><code>select-sentence</code>, <code>select-sentence-backward</code></td><td>The sentence, as far as its full stop.</td></tr>
-<tr><td><kbd>m p</kbd>, <kbd>m P</kbd></td><td>none</td><td><code>select-paragraph</code>, <code>select-paragraph-backward</code></td><td>The paragraph with one blank line next to it.</td></tr>
-<tr><td><kbd>m i</kbd></td><td>none</td><td><code>select-inside-pair</code></td><td>What is inside a pair of brackets or quotes, without them.</td></tr>
-<tr><td><kbd>m a</kbd></td><td>none</td><td><code>select-pair</code></td><td>The pair of brackets or quotes and what is inside.</td></tr>
-<tr><td><kbd>m I</kbd>, <kbd>m A</kbd></td><td>none</td><td><code>select-sexp-inside</code>, <code>select-sexp</code></td><td>What a bracketed expression holds, and the expression with its brackets.</td></tr>
+<tr><td><kbd>m w</kbd></td><td><kbd>C-z m w</kbd></td><td><code>select-word</code></td><td>The word at the cursor. In a gap between two words, the next one.</td></tr>
+<tr><td><kbd>m b</kbd></td><td><kbd>C-z m b</kbd></td><td><code>select-word-backward</code></td><td>The same, growing backward.</td></tr>
+<tr><td><kbd>m W</kbd>, <kbd>m B</kbd></td><td><kbd>C-z m W</kbd>, <kbd>C-z m B</kbd></td><td><code>select-symbol</code>, <code>select-symbol-backward</code></td><td>A symbol: a name with its <kbd>-</kbd> and <kbd>_</kbd>, so <code>shopping-list</code> is one symbol.</td></tr>
+<tr><td><kbd>m s</kbd>, <kbd>m S</kbd></td><td><kbd>C-z m s</kbd>, <kbd>C-z m S</kbd></td><td><code>select-sentence</code>, <code>select-sentence-backward</code></td><td>The sentence, as far as its full stop.</td></tr>
+<tr><td><kbd>m p</kbd>, <kbd>m P</kbd></td><td><kbd>C-z m p</kbd>, <kbd>C-z m P</kbd></td><td><code>select-paragraph</code>, <code>select-paragraph-backward</code></td><td>The paragraph with one blank line next to it.</td></tr>
+<tr><td><kbd>m i</kbd></td><td><kbd>C-z m i</kbd></td><td><code>select-inside-pair</code></td><td>What is inside a pair of brackets or quotes, without them.</td></tr>
+<tr><td><kbd>m a</kbd></td><td><kbd>C-z m a</kbd></td><td><code>select-pair</code></td><td>The pair of brackets or quotes and what is inside.</td></tr>
+<tr><td><kbd>m I</kbd>, <kbd>m A</kbd></td><td><kbd>C-z m I</kbd>, <kbd>C-z m A</kbd></td><td><code>select-sexp-inside</code>, <code>select-sexp</code></td><td>What a bracketed expression holds, and the expression with its brackets.</td></tr>
 </tbody></table></div>
 <p>A paragraph selection takes one blank line with it, the one before it. When
 you delete it, one blank line is left between its neighbours, which is what you
@@ -152,8 +151,9 @@ bracket under the cursor is taken at once. With the cursor anywhere else,
 <li>Press <kbd>C-x C-f</kbd>, type <code>~/letter.txt</code> and press <kbd>RET</kbd>. Press <kbd>i</kbd> and type
    <code>Dear Hana,</code>, <kbd>RET</kbd>, <code>The kereru ate (all 12) of the berries.</code>, <kbd>RET</kbd>,
    <code>It was a good day. See you at Easter.</code> Press <kbd>C-g</kbd>.</li>
-<li>Press <kbd>g g j w</kbd> to land on <code>kereru</code>. Press <kbd>m w</kbd>. The word is selected.
-   Press <kbd>m w</kbd> again and <code>kereru ate</code> is selected. Press <kbd>C-g</kbd>.</li>
+<li>Press <kbd>g g j w</kbd> to land on <code>kereru</code>. Press <kbd>m w</kbd> (non-modal: <kbd>C-z m w</kbd>). The
+   word is selected. Press <kbd>m w</kbd> again and <code>kereru ate</code> is selected. Press
+   <kbd>C-g</kbd>.</li>
 <li>Move to the brackets: press <kbd>g g j</kbd>, then press <kbd>w</kbd> (non-modal: <kbd>M-f</kbd>) until
    the cursor is on the closing bracket after <code>12</code>. Press <kbd>m i</kbd>. The text
    inside, <code>all 12</code>, is selected without its brackets. Press <kbd>m a</kbd>, then <kbd>(</kbd>,
@@ -176,19 +176,19 @@ row.</p>
 <tr><th>Modal</th><th>Non-modal</th><th>Command</th><th>What it does</th></tr>
 </thead>
 <tbody>
-<tr><td><kbd>m w</kbd></td><td>none</td><td><code>select-word</code></td><td>Select the word at point; from the gap between two words, the one ahead (the last one at the end of the text).</td></tr>
-<tr><td><kbd>m b</kbd></td><td>none</td><td><code>select-word-backward</code></td><td>Select the word at point, or grow a word selection backward, as select-word grows it forward: from the gap between two words, the one behind.</td></tr>
-<tr><td><kbd>m W</kbd></td><td>none</td><td><code>select-symbol</code></td><td>Select the symbol at point (a name with its _ and -, Lisp's own characters in Lisp), punctuation at either end left out: from the gap between two, the one ahead, brackets and quotes crossed.</td></tr>
-<tr><td><kbd>m B</kbd></td><td>none</td><td><code>select-symbol-backward</code></td><td>Select the symbol at point, or grow a symbol selection backward: from the gap between two, the one behind.</td></tr>
-<tr><td><kbd>m s</kbd></td><td>none</td><td><code>select-sentence</code></td><td>Select the sentence at point, as far as its full stop; from the gap between two, the one ahead.</td></tr>
-<tr><td><kbd>m S</kbd></td><td>none</td><td><code>select-sentence-backward</code></td><td>Select the sentence at point, or grow a sentence selection backward: from the gap between two, the one behind.</td></tr>
-<tr><td><kbd>m p</kbd></td><td>none</td><td><code>select-paragraph</code></td><td>Select the paragraph at point with one blank line, the one before it (the one after, for the first paragraph), so that deleting it leaves one blank line between its neighbours: from a blank line between two, the one below.</td></tr>
-<tr><td><kbd>m P</kbd></td><td>none</td><td><code>select-paragraph-backward</code></td><td>Select the paragraph at point, or grow a paragraph selection backward: from a blank line between two, the one above.</td></tr>
-<tr><td><kbd>m i</kbd></td><td>none</td><td><code>select-inside-pair</code></td><td>Select what is inside a pair of delimiters, the delimiters left out: the pair of the delimiter at point, or the one whose half is typed next ((, ), [, &quot;, ', =, * and the rest of <strong>pair-delimiters</strong>).</td></tr>
-<tr><td><kbd>m a</kbd></td><td>none</td><td><code>select-pair</code></td><td>Select a pair of delimiters and what it holds, as select-inside-pair finds it.</td></tr>
-<tr><td><kbd>m I</kbd></td><td>none</td><td><code>select-sexp-inside</code></td><td>Select what is inside the bracketed expression around point, its brackets left out: point at the start, the mark at the end.</td></tr>
-<tr><td><kbd>m A</kbd></td><td>none</td><td><code>select-sexp</code></td><td>Select the bracketed expression around point, its brackets included: point at the start, the mark at the end.</td></tr>
-<tr><td><kbd>&quot;</kbd>, <kbd>$</kbd>, <kbd>'</kbd></td><td>none</td><td><code>wrap-selection-with-key</code></td><td>Wrap the selection in the delimiter pressed and its partner, or take them off when they stand just outside it: &quot; on a word quotes it, and &quot; on the word of a quoted word unquotes it.</td></tr>
+<tr><td><kbd>m w</kbd></td><td><kbd>C-z m w</kbd></td><td><code>select-word</code></td><td>Select the word at point; from the gap between two words, the one ahead (the last one at the end of the text).</td></tr>
+<tr><td><kbd>m b</kbd></td><td><kbd>C-z m b</kbd></td><td><code>select-word-backward</code></td><td>Select the word at point, or grow a word selection backward, as select-word grows it forward: from the gap between two words, the one behind.</td></tr>
+<tr><td><kbd>m W</kbd></td><td><kbd>C-z m W</kbd></td><td><code>select-symbol</code></td><td>Select the symbol at point (a name with its _ and -, Lisp's own characters in Lisp), punctuation at either end left out: from the gap between two, the one ahead, brackets and quotes crossed.</td></tr>
+<tr><td><kbd>m B</kbd></td><td><kbd>C-z m B</kbd></td><td><code>select-symbol-backward</code></td><td>Select the symbol at point, or grow a symbol selection backward: from the gap between two, the one behind.</td></tr>
+<tr><td><kbd>m s</kbd></td><td><kbd>C-z m s</kbd></td><td><code>select-sentence</code></td><td>Select the sentence at point, as far as its full stop; from the gap between two, the one ahead.</td></tr>
+<tr><td><kbd>m S</kbd></td><td><kbd>C-z m S</kbd></td><td><code>select-sentence-backward</code></td><td>Select the sentence at point, or grow a sentence selection backward: from the gap between two, the one behind.</td></tr>
+<tr><td><kbd>m p</kbd></td><td><kbd>C-z m p</kbd></td><td><code>select-paragraph</code></td><td>Select the paragraph at point with one blank line, the one before it (the one after, for the first paragraph), so that deleting it leaves one blank line between its neighbours: from a blank line between two, the one below.</td></tr>
+<tr><td><kbd>m P</kbd></td><td><kbd>C-z m P</kbd></td><td><code>select-paragraph-backward</code></td><td>Select the paragraph at point, or grow a paragraph selection backward: from a blank line between two, the one above.</td></tr>
+<tr><td><kbd>m i</kbd></td><td><kbd>C-z m i</kbd></td><td><code>select-inside-pair</code></td><td>Select what is inside a pair of delimiters, the delimiters left out: the pair of the delimiter at point, or the one whose half is typed next ((, ), [, &quot;, ', =, * and the rest of <strong>pair-delimiters</strong>).</td></tr>
+<tr><td><kbd>m a</kbd></td><td><kbd>C-z m a</kbd></td><td><code>select-pair</code></td><td>Select a pair of delimiters and what it holds, as select-inside-pair finds it.</td></tr>
+<tr><td><kbd>m I</kbd></td><td><kbd>C-z m I</kbd></td><td><code>select-sexp-inside</code></td><td>Select what is inside the bracketed expression around point, its brackets left out: point at the start, the mark at the end.</td></tr>
+<tr><td><kbd>m A</kbd></td><td><kbd>C-z m A</kbd></td><td><code>select-sexp</code></td><td>Select the bracketed expression around point, its brackets included: point at the start, the mark at the end.</td></tr>
+<tr><td><kbd>&quot;</kbd>, <kbd>$</kbd>, <kbd>'</kbd></td><td><kbd>C-z &quot;</kbd>, <kbd>C-z $</kbd>, <kbd>C-z '</kbd></td><td><code>wrap-selection-with-key</code></td><td>Wrap the selection in the delimiter pressed and its partner, or take them off when they stand just outside it: &quot; on a word quotes it, and &quot; on the word of a quoted word unquotes it.</td></tr>
 </tbody></table></div>
 <div class="tablewrap"><table>
 <thead>
@@ -226,10 +226,11 @@ states.</p>
 <tr><td>none</td><td><kbd>C-x C-SPC</kbd></td><td><code>pop-global-mark</code></td><td>Go to the newest mark of the global mark ring, in its buffer, that mark going to the ring's far end.</td></tr>
 </tbody></table></div>
 <h2 id="the-mark-run"><span class="num">5.3</span> The mark run</h2>
-<p>Sometimes one object is not enough. You want a word, then the next word,
-then the symbol before it. A mark run lets you keep adding to a selection
-with single keys. Press <kbd>M</kbd>, the <kbd>m</kbd> held down, and you are in a run. The
-keys of a run are the ones you would have pressed after <kbd>m</kbd>, without the <kbd>m</kbd>.</p>
+<p>Sometimes one object is not enough. You want a word, then the next word, then
+the symbol before it. A mark run lets you keep adding to a selection with single
+keys. Press <kbd>M</kbd> (non-modal: <kbd>C-z M</kbd>), the <kbd>m</kbd> held down, and you are in a run.
+The keys of a run are the ones you would have pressed after <kbd>m</kbd>, without the
+<kbd>m</kbd>.</p>
 <div class="tablewrap"><table>
 <thead>
 <tr><th>Modal</th><th>Non-modal</th><th>What it does in a run</th></tr>
@@ -269,7 +270,7 @@ on many cursors below, where the run goes on at every cursor.</p>
 <tr><th>Modal</th><th>Non-modal</th><th>Command</th><th>What it does</th></tr>
 </thead>
 <tbody>
-<tr><td><kbd>M</kbd></td><td>none</td><td><code>mark-run-toggle</code></td><td>Start a mark run: the m prefix held down.</td></tr>
+<tr><td><kbd>M</kbd></td><td><kbd>C-z M</kbd></td><td><code>mark-run-toggle</code></td><td>Start a mark run: the m prefix held down.</td></tr>
 <tr><td>none</td><td><kbd>M-x mark-run-adopt</kbd></td><td><code>mark-run-adopt</code></td><td>Take the selection into a mark run: its keys then grow it from where it is.</td></tr>
 <tr><td>none</td><td><kbd>M-x mark-run-cancel</kbd></td><td><code>mark-run-cancel</code></td><td>Drop the selection and end the mark run.</td></tr>
 <tr><td>none</td><td><kbd>M-x mark-run-exchange</kbd></td><td><code>mark-run-exchange</code></td><td>Swap point and the mark, so that h j k l adjust the run's other end.</td></tr>
@@ -287,20 +288,21 @@ on many cursors below, where the run goes on at every cursor.</p>
 <tr><td>none</td><td><kbd>M-x mark-run-buffer-end</kbd></td><td><code>mark-run-buffer-end</code></td><td>Stretch the run's end on to the end of the text, or with no run go there.</td></tr>
 </tbody></table></div>
 <h2 id="growing-a-selection-by-the-code"><span class="num">5.4</span> Growing a selection by the code</h2>
-<p>In a file whose language Tuatara reads, it knows the structure: which words
-make an expression, which expressions make a statement, and so on up to the
-whole file. The keys below select by that structure. They work in NORMAL
-state, in files that have a syntax tree. In a file with no tree, such as a
-plain text file, the echo area says there is none.</p>
+<p>In a file whose language Tuatara reads, it knows the structure: which words make
+an expression, which expressions make a statement, and so on up to the whole
+file. The keys below select by that structure. <kbd>M-o</kbd>, <kbd>M-i</kbd>, <kbd>M-n</kbd> and <kbd>M-p</kbd>
+work in every state; the <kbd>m</kbd> keys after them, in NORMAL state or under <kbd>C-z</kbd>.
+They need a file that has a syntax tree. In a file with no tree, such as a plain
+text file, the echo area says there is none.</p>
 <div class="tablewrap"><table>
 <thead>
 <tr><th>Modal</th><th>Non-modal</th><th>Command</th><th>What it does</th></tr>
 </thead>
 <tbody>
-<tr><td><kbd>M-o</kbd></td><td>none</td><td><code>expand-selection</code></td><td>Selects the smallest piece of syntax around the selection, or at the cursor. Again, a larger one.</td></tr>
-<tr><td><kbd>M-i</kbd></td><td>none</td><td><code>shrink-selection</code></td><td>Goes back to the selection before the last <kbd>M-o</kbd>.</td></tr>
-<tr><td><kbd>M-n</kbd></td><td>none</td><td><code>select-next-sibling</code></td><td>Selects the piece beside it, the next argument, statement or item.</td></tr>
-<tr><td><kbd>M-p</kbd></td><td>none</td><td><code>select-previous-sibling</code></td><td>The one before it.</td></tr>
+<tr><td><kbd>M-o</kbd></td><td><kbd>M-o</kbd></td><td><code>expand-selection</code></td><td>Selects the smallest piece of syntax around the selection, or at the cursor. Again, a larger one.</td></tr>
+<tr><td><kbd>M-i</kbd></td><td><kbd>M-i</kbd></td><td><code>shrink-selection</code></td><td>Goes back to the selection before the last <kbd>M-o</kbd>.</td></tr>
+<tr><td><kbd>M-n</kbd></td><td><kbd>M-n</kbd></td><td><code>select-next-sibling</code></td><td>Selects the piece beside it, the next argument, statement or item.</td></tr>
+<tr><td><kbd>M-p</kbd></td><td><kbd>M-p</kbd></td><td><code>select-previous-sibling</code></td><td>The one before it.</td></tr>
 </tbody></table></div>
 <p>A number before <kbd>M-o</kbd> grows that many steps at once.</p>
 <p>The <kbd>m</kbd> keys have a second set that picks out pieces of code. The small letter
@@ -311,13 +313,13 @@ they take the next one out.</p>
 <tr><th>Modal</th><th>Non-modal</th><th>Command</th><th>What it selects</th></tr>
 </thead>
 <tbody>
-<tr><td><kbd>m f</kbd>, <kbd>m F</kbd></td><td>none</td><td><code>select-function-inside</code>, <code>select-function</code></td><td>A function's body, or all of it.</td></tr>
-<tr><td><kbd>m t</kbd>, <kbd>m T</kbd></td><td>none</td><td><code>select-type-inside</code>, <code>select-type</code></td><td>The fields or items of a type, or all of it.</td></tr>
-<tr><td><kbd>m r</kbd>, <kbd>m R</kbd></td><td>none</td><td><code>select-parameter-inside</code>, <code>select-parameter</code></td><td>A parameter or argument, or the same with its comma.</td></tr>
-<tr><td><kbd>m c</kbd>, <kbd>m C</kbd></td><td>none</td><td><code>select-comment-inside</code>, <code>select-comment</code></td><td>A comment, or with the comment lines next to it.</td></tr>
-<tr><td><kbd>m y</kbd>, <kbd>m Y</kbd></td><td>none</td><td><code>select-test-inside</code>, <code>select-test</code></td><td>A test's body, or the whole test.</td></tr>
-<tr><td><kbd>m e</kbd>, <kbd>m E</kbd></td><td>none</td><td><code>select-entry-inside</code>, <code>select-entry</code></td><td>The key or value of an entry in JSON, YAML or TOML, or the whole entry.</td></tr>
-<tr><td><kbd>m x</kbd>, <kbd>m X</kbd></td><td>none</td><td><code>select-element-inside</code>, <code>select-element</code></td><td>What the tags of an HTML or XML element hold, or the element with its tags.</td></tr>
+<tr><td><kbd>m f</kbd>, <kbd>m F</kbd></td><td><kbd>C-z m f</kbd>, <kbd>C-z m F</kbd></td><td><code>select-function-inside</code>, <code>select-function</code></td><td>A function's body, or all of it.</td></tr>
+<tr><td><kbd>m t</kbd>, <kbd>m T</kbd></td><td><kbd>C-z m t</kbd>, <kbd>C-z m T</kbd></td><td><code>select-type-inside</code>, <code>select-type</code></td><td>The fields or items of a type, or all of it.</td></tr>
+<tr><td><kbd>m r</kbd>, <kbd>m R</kbd></td><td><kbd>C-z m r</kbd>, <kbd>C-z m R</kbd></td><td><code>select-parameter-inside</code>, <code>select-parameter</code></td><td>A parameter or argument, or the same with its comma.</td></tr>
+<tr><td><kbd>m c</kbd>, <kbd>m C</kbd></td><td><kbd>C-z m c</kbd>, <kbd>C-z m C</kbd></td><td><code>select-comment-inside</code>, <code>select-comment</code></td><td>A comment, or with the comment lines next to it.</td></tr>
+<tr><td><kbd>m y</kbd>, <kbd>m Y</kbd></td><td><kbd>C-z m y</kbd>, <kbd>C-z m Y</kbd></td><td><code>select-test-inside</code>, <code>select-test</code></td><td>A test's body, or the whole test.</td></tr>
+<tr><td><kbd>m e</kbd>, <kbd>m E</kbd></td><td><kbd>C-z m e</kbd>, <kbd>C-z m E</kbd></td><td><code>select-entry-inside</code>, <code>select-entry</code></td><td>The key or value of an entry in JSON, YAML or TOML, or the whole entry.</td></tr>
+<tr><td><kbd>m x</kbd>, <kbd>m X</kbd></td><td><kbd>C-z m x</kbd>, <kbd>C-z m X</kbd></td><td><code>select-element-inside</code>, <code>select-element</code></td><td>What the tags of an HTML or XML element hold, or the element with its tags.</td></tr>
 </tbody></table></div>
 <div class="try">
 <h3>Try it, with a small Python file</h3>
@@ -345,24 +347,24 @@ they take the next one out.</p>
 <tr><th>Modal</th><th>Non-modal</th><th>Command</th><th>What it does</th></tr>
 </thead>
 <tbody>
-<tr><td><kbd>M-o</kbd></td><td>none</td><td><code>expand-selection</code></td><td>Select the smallest piece of syntax around the selection, or around the character at point: the word, then the expression holding it, then the statement, and so on out; in a buffer with no syntax tree, as its language server sees the code.</td></tr>
-<tr><td><kbd>M-i</kbd></td><td>none</td><td><code>shrink-selection</code></td><td>Go back to the selection before the last M-o, or else select the first piece of syntax inside the selection; without a selection, the smallest piece of syntax at point.</td></tr>
-<tr><td><kbd>M-n</kbd></td><td>none</td><td><code>select-next-sibling</code></td><td>Select the next piece of syntax beside the selection, or beside the one at point: the next argument, statement or item, and after the last one, the next beside the piece around them.</td></tr>
-<tr><td><kbd>M-p</kbd></td><td>none</td><td><code>select-previous-sibling</code></td><td>Select the piece of syntax before the selection, or before the one at point: the argument, statement or item before it, and before the first one, the one before the piece around them.</td></tr>
-<tr><td><kbd>m f</kbd></td><td>none</td><td><code>select-function-inside</code></td><td>Select the body of the function around point: the block of a Rust fn or closure, the body of a shell function, the forms of a Lisp defun, defmacro, defgeneric, defmethod or lambda after its lambda list.</td></tr>
-<tr><td><kbd>m F</kbd></td><td>none</td><td><code>select-function</code></td><td>Select all of the function around point.</td></tr>
-<tr><td><kbd>m t</kbd></td><td>none</td><td><code>select-type-inside</code></td><td>Select the body of the type around point: the fields, variants or items of a Rust struct, enum, union, trait or impl; in Lisp, what follows the name in a defclass, defstruct, define-condition or deftype.</td></tr>
-<tr><td><kbd>m T</kbd></td><td>none</td><td><code>select-type</code></td><td>Select all of the type around point.</td></tr>
-<tr><td><kbd>m r</kbd></td><td>none</td><td><code>select-parameter-inside</code></td><td>Select the parameter or argument around point: of a Rust function's parameters, a call's arguments or a generic's parameters; of a shell command's arguments; of a Lisp lambda list or a call's arguments.</td></tr>
-<tr><td><kbd>m R</kbd></td><td>none</td><td><code>select-parameter</code></td><td>Select the parameter or argument around point with the comma after it.</td></tr>
-<tr><td><kbd>m c</kbd></td><td>none</td><td><code>select-comment-inside</code></td><td>Select the comment around point.</td></tr>
-<tr><td><kbd>m C</kbd></td><td>none</td><td><code>select-comment</code></td><td>Select the comment around point with the comment lines right before and after it.</td></tr>
-<tr><td><kbd>m y</kbd></td><td>none</td><td><code>select-test-inside</code></td><td>Select the body of the test around point: a Rust function marked #[test], a Python function whose name begins with test, a Go TestX or BenchmarkX, and the tests of Zig, Elixir, Dart, Julia and others, as the language's rules know them.</td></tr>
-<tr><td><kbd>m Y</kbd></td><td>none</td><td><code>select-test</code></td><td>Select all of the test around point.</td></tr>
-<tr><td><kbd>m e</kbd></td><td>none</td><td><code>select-entry-inside</code></td><td>Select the key or the value at point of the entry around it: of a key and its value in JSON, YAML or TOML, a field of a struct, an item of a list, as the language's rules know them.</td></tr>
-<tr><td><kbd>m E</kbd></td><td>none</td><td><code>select-entry</code></td><td>Select all of the entry around point, its key and value or the list's item.</td></tr>
-<tr><td><kbd>m x</kbd></td><td>none</td><td><code>select-element-inside</code></td><td>Select what is between the tags of the element around point: in HTML, XML, JSX, Svelte and Vue.</td></tr>
-<tr><td><kbd>m X</kbd></td><td>none</td><td><code>select-element</code></td><td>Select all of the element around point, its tags too.</td></tr>
+<tr><td>none</td><td><kbd>M-o</kbd></td><td><code>expand-selection</code></td><td>Select the smallest piece of syntax around the selection, or around the character at point: the word, then the expression holding it, then the statement, and so on out; in a buffer with no syntax tree, as its language server sees the code.</td></tr>
+<tr><td>none</td><td><kbd>M-i</kbd></td><td><code>shrink-selection</code></td><td>Go back to the selection before the last M-o, or else select the first piece of syntax inside the selection; without a selection, the smallest piece of syntax at point.</td></tr>
+<tr><td>none</td><td><kbd>M-n</kbd></td><td><code>select-next-sibling</code></td><td>Select the next piece of syntax beside the selection, or beside the one at point: the next argument, statement or item, and after the last one, the next beside the piece around them.</td></tr>
+<tr><td>none</td><td><kbd>M-p</kbd></td><td><code>select-previous-sibling</code></td><td>Select the piece of syntax before the selection, or before the one at point: the argument, statement or item before it, and before the first one, the one before the piece around them.</td></tr>
+<tr><td><kbd>m f</kbd></td><td><kbd>C-z m f</kbd></td><td><code>select-function-inside</code></td><td>Select the body of the function around point: the block of a Rust fn or closure, the body of a shell function, the forms of a Lisp defun, defmacro, defgeneric, defmethod or lambda after its lambda list.</td></tr>
+<tr><td><kbd>m F</kbd></td><td><kbd>C-z m F</kbd></td><td><code>select-function</code></td><td>Select all of the function around point.</td></tr>
+<tr><td><kbd>m t</kbd></td><td><kbd>C-z m t</kbd></td><td><code>select-type-inside</code></td><td>Select the body of the type around point: the fields, variants or items of a Rust struct, enum, union, trait or impl; in Lisp, what follows the name in a defclass, defstruct, define-condition or deftype.</td></tr>
+<tr><td><kbd>m T</kbd></td><td><kbd>C-z m T</kbd></td><td><code>select-type</code></td><td>Select all of the type around point.</td></tr>
+<tr><td><kbd>m r</kbd></td><td><kbd>C-z m r</kbd></td><td><code>select-parameter-inside</code></td><td>Select the parameter or argument around point: of a Rust function's parameters, a call's arguments or a generic's parameters; of a shell command's arguments; of a Lisp lambda list or a call's arguments.</td></tr>
+<tr><td><kbd>m R</kbd></td><td><kbd>C-z m R</kbd></td><td><code>select-parameter</code></td><td>Select the parameter or argument around point with the comma after it.</td></tr>
+<tr><td><kbd>m c</kbd></td><td><kbd>C-z m c</kbd></td><td><code>select-comment-inside</code></td><td>Select the comment around point.</td></tr>
+<tr><td><kbd>m C</kbd></td><td><kbd>C-z m C</kbd></td><td><code>select-comment</code></td><td>Select the comment around point with the comment lines right before and after it.</td></tr>
+<tr><td><kbd>m y</kbd></td><td><kbd>C-z m y</kbd></td><td><code>select-test-inside</code></td><td>Select the body of the test around point: a Rust function marked #[test], a Python function whose name begins with test, a Go TestX or BenchmarkX, and the tests of Zig, Elixir, Dart, Julia and others, as the language's rules know them.</td></tr>
+<tr><td><kbd>m Y</kbd></td><td><kbd>C-z m Y</kbd></td><td><code>select-test</code></td><td>Select all of the test around point.</td></tr>
+<tr><td><kbd>m e</kbd></td><td><kbd>C-z m e</kbd></td><td><code>select-entry-inside</code></td><td>Select the key or the value at point of the entry around it: of a key and its value in JSON, YAML or TOML, a field of a struct, an item of a list, as the language's rules know them.</td></tr>
+<tr><td><kbd>m E</kbd></td><td><kbd>C-z m E</kbd></td><td><code>select-entry</code></td><td>Select all of the entry around point, its key and value or the list's item.</td></tr>
+<tr><td><kbd>m x</kbd></td><td><kbd>C-z m x</kbd></td><td><code>select-element-inside</code></td><td>Select what is between the tags of the element around point: in HTML, XML, JSX, Svelte and Vue.</td></tr>
+<tr><td><kbd>m X</kbd></td><td><kbd>C-z m X</kbd></td><td><code>select-element</code></td><td>Select all of the element around point, its tags too.</td></tr>
 </tbody></table></div>
 <h2 id="rectangles"><span class="num">5.5</span> Rectangles</h2>
 <p>A rectangle is a block of columns over several lines. It is the right tool
@@ -468,10 +470,10 @@ width, and <kbd>C-f</kbd> and <kbd>C-n</kbd> (modal: <kbd>l</kbd>, <kbd>j</kbd>)
 <tr><td><code>*rectangle-cursors-limit*</code></td><td><code>10000</code></td><td>The most rows M-x tuatara-change on a rectangle (M-x rectangle-mark-mode) puts a cursor on, or NIL for as many as the memory has room for: the block is emptied and what is typed appears on every row, as at the cursors of M-x add-cursor-below.</td></tr>
 </tbody></table></div>
 <h2 id="many-cursors"><span class="num">5.6</span> Many cursors</h2>
-<p><kbd>t</kbd> puts another cursor on the line below, at the same column. <kbd>T</kbd> puts one
-above. From then on, nearly every key you press works at every cursor. Move,
-select, type, delete: each key runs once at each place. This is the fast way to
-do the same small edit on many lines.</p>
+<p><kbd>t</kbd> (non-modal: <kbd>C-z t</kbd>) puts another cursor on the line below, at the same
+column. <kbd>T</kbd> (non-modal: <kbd>C-z T</kbd>) puts one above. From then on, nearly every key
+you press works at every cursor. Move, select, type, delete: each key runs once
+at each place. This is the fast way to do the same small edit on many lines.</p>
 <p>Figure 5.3 shows four cursors made with three presses of <kbd>t</kbd>.</p>
 <figure id="fig-cursors">
 <pre class="ex">   |Hana Raglan
@@ -555,8 +557,8 @@ leaves them as they were.</p>
 <tr><th>Modal</th><th>Non-modal</th><th>Command</th><th>What it does</th></tr>
 </thead>
 <tbody>
-<tr><td><kbd>t</kbd></td><td>none</td><td><code>add-cursor-below</code></td><td>Add a cursor on the line below, at the same column.</td></tr>
-<tr><td><kbd>T</kbd></td><td>none</td><td><code>add-cursor-above</code></td><td>Add a cursor on the line above, at the same column: the first press makes cursors of point and the line above, each one after adds one above the first, and a count adds that many (negative, below).</td></tr>
+<tr><td><kbd>t</kbd></td><td><kbd>C-z t</kbd></td><td><code>add-cursor-below</code></td><td>Add a cursor on the line below, at the same column.</td></tr>
+<tr><td><kbd>T</kbd></td><td><kbd>C-z T</kbd></td><td><code>add-cursor-above</code></td><td>Add a cursor on the line above, at the same column: the first press makes cursors of point and the line above, each one after adds one above the first, and a count adds that many (negative, below).</td></tr>
 <tr><td>none</td><td><kbd>M-x drop-last-cursor</kbd></td><td><code>drop-last-cursor</code></td><td>Take back the cursor added last, keeping the others; the real cursor is never taken back, and C-g ends the cursors.</td></tr>
 <tr><td>none</td><td><kbd>M-x align-cursors</kbd></td><td><code>align-cursors</code></td><td>Put every cursor at the real cursor's column, or its line's end where the line is shorter; with cursors selecting, wrap the selections in = as any delimiter does.</td></tr>
 <tr><td>none</td><td><kbd>M-x cursors-select</kbd></td><td><code>cursors-select</code></td><td>Start a selection at every cursor, where each is: the motions then grow them.</td></tr>
@@ -611,10 +613,10 @@ have a face as well.</p>
 <tr><td><code>:split-place</code></td><td>The places a split holds: the matches of f, what the cursors select.</td></tr>
 </tbody></table></div>
 <h2 id="splitting-a-selection-on-what-matches"><span class="num">5.7</span> Splitting a selection on what matches</h2>
-<p>A pattern can make the cursors for you. Select some text and press <kbd>f</kbd>. Tuatara
-asks for a regular expression, a pattern as used in a search (chapter 6). It
-holds every match inside the selection at once, one place for each, and waits
-for you to say what to do with them.</p>
+<p>A pattern can make the cursors for you. Select some text and press <kbd>f</kbd>
+(non-modal: <kbd>C-z f</kbd>). Tuatara asks for a regular expression, a pattern as used
+in a search (chapter 6). It holds every match inside the selection at once, one
+place for each, and waits for you to say what to do with them.</p>
 <div class="tablewrap"><table>
 <thead>
 <tr><th>Modal</th><th>Non-modal</th><th>Command</th><th>What it does with every match</th></tr>
@@ -659,7 +661,7 @@ hold them all even so.</p>
 <tr><th>Modal</th><th>Non-modal</th><th>Command</th><th>What it does</th></tr>
 </thead>
 <tbody>
-<tr><td><kbd>f</kbd></td><td>none</td><td><code>split-selection</code></td><td>Hold every match of a regexp in the selection, then wait for a verb: i types before every match and a after, c empties them first, d deletes them, w or any delimiter wraps them (again, to take the pair off), and C-g lets go.</td></tr>
+<tr><td><kbd>f</kbd></td><td><kbd>C-z f</kbd></td><td><code>split-selection</code></td><td>Hold every match of a regexp in the selection, then wait for a verb: i types before every match and a after, c empties them first, d deletes them, w or any delimiter wraps them (again, to take the pair off), and C-g lets go.</td></tr>
 <tr><td>none</td><td><kbd>M-x split-selection-thorough</kbd></td><td><code>split-selection-thorough</code></td><td>Hold every match of a regexp in the selection, as f does, finding every match of up to a megabyte (about a million characters of ASCII) whole however many lines it spans, where f may miss one of more than 4 KB that runs across lines and needs text further on; the writing out of sight the same.</td></tr>
 <tr><td>none</td><td><kbd>M-x split-wrap</kbd></td><td><code>split-wrap</code></td><td>Wrap every place of the split in the pair of the delimiter asked for, or take the pair off where it stands outside every place already.</td></tr>
 </tbody></table></div>
@@ -680,7 +682,7 @@ hold them all even so.</p>
 <tbody>
 <tr><td><kbd>v</kbd>, <kbd>V</kbd>, <kbd>J</kbd>, <kbd>K</kbd>, <kbd>%</kbd></td><td>none</td><td>Select by character, by line, or everything.</td></tr>
 <tr><td><kbd>m w</kbd>, <kbd>m s</kbd>, <kbd>m p</kbd>, <kbd>m i</kbd>, <kbd>m a</kbd></td><td>none</td><td>Select by what the text is.</td></tr>
-<tr><td><kbd>M-o</kbd>, <kbd>M-i</kbd>, <kbd>M-n</kbd>, <kbd>M-p</kbd></td><td>none</td><td>Select by what the code is.</td></tr>
+<tr><td><kbd>M-o</kbd>, <kbd>M-i</kbd>, <kbd>M-n</kbd>, <kbd>M-p</kbd></td><td>the same</td><td>Select by what the code is.</td></tr>
 <tr><td><kbd>M</kbd></td><td>none</td><td>Keep adding to a selection with single keys.</td></tr>
 <tr><td><kbd>m v</kbd></td><td>none</td><td>Start a rectangle.</td></tr>
 <tr><td><kbd>t</kbd>, <kbd>T</kbd></td><td>none</td><td>Add a cursor below or above.</td></tr>

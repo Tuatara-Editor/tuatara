@@ -66,6 +66,11 @@ key that has a partner of the other kind is followed by it in brackets, as in
 <kbd>j</kbd> (non-modal: <kbd>C-n</kbd>) and <kbd>C-n</kbd> (modal: <kbd>j</kbd>). To turn modal editing off, put
 <code>(setf *modal-editing* nil)</code> in your init file. Every key of the Non-modal
 column then does what the table says, and typing inserts text everywhere.</p>
+<p>Most letter keys of NORMAL state that have no Control or Alt key of their own
+are also under <kbd>C-z</kbd>, in every state: <kbd>m w</kbd> selects a word, and <kbd>C-z m w</kbd> does
+the same with modal editing off. The Non-modal column gives them, as <kbd>C-z m w</kbd>.
+A command that has a key in both states, such as <kbd>w</kbd> (non-modal: <kbd>M-f</kbd>), is not
+under <kbd>C-z</kbd> a second time.</p>
 <h2 id="the-parts-of-the-screen"><span class="num">1.2</span> The parts of the screen</h2>
 <p>Figure 1.1 shows the whole editor with two windows and a question open, and
 Figure 1.2 the same with no question open. Each part is named as this manual,

@@ -166,8 +166,8 @@ setting <code>*tab-always-indent*</code> says what <kbd>TAB</kbd> does. Its stan
 <code>:complete</code>, indents and then completes. With <code>t</code> it only indents. With <code>nil</code>
 it indents only while the cursor is in the blanks at the start of the line, and
 anywhere else it moves on to the next tab stop.</p>
-<p>To lay out more than one line, select them and press <kbd>C-M-\</kbd>
-(<code>indent-region</code>). In NORMAL state <kbd>&gt;</kbd> (<code>indent-selection-or-line</code>) does the
+<p>To lay out more than one line, select them and press <kbd>C-M-\</kbd> (<code>indent-region</code>).
+In NORMAL state <kbd>&gt;</kbd> (non-modal: <kbd>C-z &gt;</kbd>, <code>indent-selection-or-line</code>) does the
 same for the selected lines, or for the current line when nothing is selected.
 <kbd>M-m</kbd> (<code>back-to-indentation</code>) moves the cursor to the first character of the
 line that is not a blank.</p>
@@ -180,8 +180,8 @@ you say otherwise, which keeps a file looking the same in every program. Some
 projects, a Makefile or a C project with its own style, use tab characters. For
 those, <kbd>M-x indent-tabs-mode</kbd> switches the buffer between tabs and spaces, and
 <code>*indent-tabs-mode*</code> sets the starting choice. <kbd>M-x insert-tab</kbd> puts in one tab
-character whatever the settings say, and <kbd>M-i</kbd> (<code>tab-to-tab-stop</code>) moves on to
-the next tab stop with spaces or a tab as the buffer wants.</p>
+character whatever the settings say, and <kbd>C-z TAB</kbd> (<code>tab-to-tab-stop</code>) moves on
+to the next tab stop with spaces or a tab as the buffer wants.</p>
 <p>The init file has forms for one language at a time:</p>
 <pre class="ex">(set-indentation 'c 2)            ; two columns a level in C
 (set-tab-width 'c-mode 8)         ; tab stops 8 apart in C files
@@ -242,10 +242,10 @@ shfmt for shell scripts. The section on language servers covers it.</p>
 <tbody>
 <tr><td>none</td><td><kbd>TAB</kbd></td><td><code>indent-for-tab-command</code></td><td>Indent the current line as its major mode indents it: point in the blanks the line begins with goes to where its text begins, point in its text stays with the text.</td></tr>
 <tr><td>none</td><td><kbd>C-M-\</kbd></td><td><code>indent-region</code></td><td>Indent each line the selection touches as its major mode indents it; the lines inside a comment or a string begun on a line before keep their blanks, which are text.</td></tr>
-<tr><td><kbd>&gt;</kbd></td><td>none</td><td><code>indent-selection-or-line</code></td><td>Indent the lines the selection touches, or the current line, as the language's mode indents them.</td></tr>
+<tr><td><kbd>&gt;</kbd></td><td><kbd>C-z &gt;</kbd></td><td><code>indent-selection-or-line</code></td><td>Indent the lines the selection touches, or the current line, as the language's mode indents them.</td></tr>
 <tr><td>none</td><td><kbd>M-m</kbd></td><td><code>back-to-indentation</code></td><td>Move point to the first character of its line that is not a space or a tab.</td></tr>
-<tr><td>none</td><td><kbd>M-i</kbd></td><td><code>tab-to-tab-stop</code></td><td>Go on to the next tab stop, putting spaces in up to it, or a tab character where the buffer wants tabs (<strong>indent-tabs-mode</strong>, set-indent-tabs-mode, M-x indent-tabs-mode); with a count, that many stops.</td></tr>
-<tr><td>none</td><td><kbd>M-x insert-tab</kbd></td><td><code>insert-tab</code></td><td>Insert a tab character at point, whatever the tab settings say; M-i (tab-to-tab-stop) goes on to the next tab stop as they say.</td></tr>
+<tr><td>none</td><td><kbd>C-z TAB</kbd></td><td><code>tab-to-tab-stop</code></td><td>Go on to the next tab stop, putting spaces in up to it, or a tab character where the buffer wants tabs (<strong>indent-tabs-mode</strong>, set-indent-tabs-mode, M-x indent-tabs-mode); with a count, that many stops.</td></tr>
+<tr><td>none</td><td><kbd>M-x insert-tab</kbd></td><td><code>insert-tab</code></td><td>Insert a tab character at point, whatever the tab settings say; C-z TAB (tab-to-tab-stop) goes on to the next tab stop as they say.</td></tr>
 <tr><td>none</td><td><kbd>M-x indent-tabs-mode</kbd></td><td><code>indent-tabs-mode</code></td><td>Switch the current buffer between tab characters and spaces where TAB and indentation go on to a tab stop; with a count, tabs when it is positive, spaces when it is zero or less.</td></tr>
 </tbody></table></div>
 <div class="tablewrap"><table>
@@ -263,7 +263,7 @@ shfmt for shell scripts. The section on language servers covers it.</p>
 <p>You comment out a line to stop the program running it without losing it, and
 you write a comment to say something to the next reader, which may be you in
 six months. Both are a single key.</p>
-<p><kbd>C-x C-;</kbd> (<code>toggle-comment-lines</code>) comments the current line. In NORMAL state
+<p><kbd>C-z C</kbd> (<code>toggle-comment-lines</code>) comments the current line. In NORMAL state
 the single key <kbd>C</kbd> does the same. If you have selected lines, it comments every
 line the selection touches. If the lines are all commented already, it takes
 the comment marks away instead, so the same key switches the comment on and
@@ -273,11 +273,11 @@ line, so the block stays tidy, and the cursor stays where it was.</p>
 <p>If you like the cursor to move down to the next line afterwards, so that you
 can press the key again and again to comment a run of lines, use
 <code>toggle-comment-lines-ret</code>. It has no key. Give it one in your init file:</p>
-<pre class="ex">(bind-key &quot;C-x C-;&quot; 'toggle-comment-lines-ret)
+<pre class="ex">(bind-key &quot;C-z C&quot; 'toggle-comment-lines-ret)
 (bind-key &quot;C&quot; 'toggle-comment-lines-ret :map :normal)
 </pre>
 <p><kbd>M-;</kbd> (<code>comment-dwim</code>, &quot;do what I mean&quot;) does the sensible thing for where you
-are. With lines selected it comments them as <kbd>C-x C-;</kbd> (modal: <kbd>C</kbd>) does. On a
+are. With lines selected it comments them as <kbd>C-z C</kbd> (modal: <kbd>C</kbd>) does. On a
 line with no comment it starts one at the end of the code, with the marker and a
 space, and leaves you in INSERT state ready to type the words. On a line that
 has a comment already it moves you into it. In Python it writes
@@ -291,11 +291,11 @@ it.</p>
 <tr><th>Modal</th><th>Non-modal</th><th>Command</th><th>What it does</th></tr>
 </thead>
 <tbody>
-<tr><td><kbd>C</kbd></td><td><kbd>C-x C-;</kbd></td><td><code>toggle-comment-lines</code></td><td>Comment the lines the selection touches, or the current line, or uncomment them when they are all commented: with the language's marker (;; in Lisp, <em>/ in Rust, # in shell scripts and Org) at their smallest indentation, or each line between the two a comment has where it has an end (&lt;!– –&gt; in HTML, /* *</em> in CSS).</td></tr>
+<tr><td><kbd>C</kbd></td><td><kbd>C-z C</kbd></td><td><code>toggle-comment-lines</code></td><td>Comment the lines the selection touches, or the current line, or uncomment them when they are all commented: with the language's marker (;; in Lisp, <em>/ in Rust, # in shell scripts and Org) at their smallest indentation, or each line between the two a comment has where it has an end (&lt;!– –&gt; in HTML, /* *</em> in CSS).</td></tr>
 <tr><td>none</td><td><kbd>M-x toggle-comment-lines-ret</kbd></td><td><code>toggle-comment-lines-ret</code></td><td>Comment the lines the region touches, or the line point is on, then going to the next line, or uncomment them when they are all commented; it has no key of its own.</td></tr>
 <tr><td>none</td><td><kbd>M-;</kbd></td><td><code>comment-dwim</code></td><td>Comment what suits where point is (M-;): with a region, its lines, or uncomment them when they all are (as M-x toggle-comment-lines-ret); on a line with a comment, go into it; on a blank line, begin a comment; after code, begin one at the line's end, at <strong>COMMENT-COLUMN</strong>.</td></tr>
-<tr><td><kbd>m C</kbd></td><td>none</td><td><code>select-comment</code></td><td>Select the comment around point with the comment lines right before and after it.</td></tr>
-<tr><td><kbd>m c</kbd></td><td>none</td><td><code>select-comment-inside</code></td><td>Select the comment around point.</td></tr>
+<tr><td><kbd>m C</kbd></td><td><kbd>C-z m C</kbd></td><td><code>select-comment</code></td><td>Select the comment around point with the comment lines right before and after it.</td></tr>
+<tr><td><kbd>m c</kbd></td><td><kbd>C-z m c</kbd></td><td><code>select-comment-inside</code></td><td>Select the comment around point.</td></tr>
 </tbody></table></div>
 <h2 id="brackets-and-pairs"><span class="num">13.4</span> Brackets and pairs</h2>
 <p>Code is full of brackets, and a missing one is a common reason a program does
@@ -359,10 +359,10 @@ The second line is indented one level.</p>
 <tr><td>none</td><td><kbd>M-x electric-pair-mode</kbd></td><td><code>electric-pair-mode</code></td><td>Turn closing delimiters as they are typed on or off.</td></tr>
 <tr><td>none</td><td><kbd>M-(</kbd></td><td><code>insert-pair</code></td><td>Put the pair of the delimiter of the key pressed around the region (M-( for parentheses), point on the first character inside; when the pair stands just outside the region already, take it off.</td></tr>
 <tr><td>none</td><td><kbd>M-x delete-pair</kbd></td><td><code>delete-pair</code></td><td>Delete the brackets or quote marks around the balanced expression after point: the character there, after any spaces and tabs, and the one that closes the expression it begins.</td></tr>
-<tr><td><kbd>m a</kbd></td><td>none</td><td><code>select-pair</code></td><td>Select a pair of delimiters and what it holds, as select-inside-pair finds it.</td></tr>
-<tr><td><kbd>m i</kbd></td><td>none</td><td><code>select-inside-pair</code></td><td>Select what is inside a pair of delimiters, the delimiters left out: the pair of the delimiter at point, or the one whose half is typed next ((, ), [, &quot;, ', =, * and the rest of <strong>pair-delimiters</strong>).</td></tr>
-<tr><td><kbd>m A</kbd></td><td>none</td><td><code>select-sexp</code></td><td>Select the bracketed expression around point, its brackets included: point at the start, the mark at the end.</td></tr>
-<tr><td><kbd>m I</kbd></td><td>none</td><td><code>select-sexp-inside</code></td><td>Select what is inside the bracketed expression around point, its brackets left out: point at the start, the mark at the end.</td></tr>
+<tr><td><kbd>m a</kbd></td><td><kbd>C-z m a</kbd></td><td><code>select-pair</code></td><td>Select a pair of delimiters and what it holds, as select-inside-pair finds it.</td></tr>
+<tr><td><kbd>m i</kbd></td><td><kbd>C-z m i</kbd></td><td><code>select-inside-pair</code></td><td>Select what is inside a pair of delimiters, the delimiters left out: the pair of the delimiter at point, or the one whose half is typed next ((, ), [, &quot;, ', =, * and the rest of <strong>pair-delimiters</strong>).</td></tr>
+<tr><td><kbd>m A</kbd></td><td><kbd>C-z m A</kbd></td><td><code>select-sexp</code></td><td>Select the bracketed expression around point, its brackets included: point at the start, the mark at the end.</td></tr>
+<tr><td><kbd>m I</kbd></td><td><kbd>C-z m I</kbd></td><td><code>select-sexp-inside</code></td><td>Select what is inside the bracketed expression around point, its brackets left out: point at the start, the mark at the end.</td></tr>
 </tbody></table></div>
 <div class="tablewrap"><table>
 <thead>
@@ -424,14 +424,15 @@ cursor and <kbd>C-M-DEL</kbd> cuts the one before it, and <kbd>C-M-t</kbd> (<cod
 swaps the two either side of the cursor, which is a quick way to put two
 arguments in the other order.</p>
 <h3 id="selecting-by-the-code"><span class="num">13.5.1</span> Selecting by the code</h3>
-<p>In NORMAL state the syntax tree grows and shrinks a selection for you. <kbd>M-o</kbd>
+<p>In every state the syntax tree grows and shrinks a selection for you. <kbd>M-o</kbd>
 (<code>expand-selection</code>) selects the smallest piece around the cursor, and each
 press after that selects the next larger one: the word, the call, the
 statement, the function, the file. <kbd>M-i</kbd> (<code>shrink-selection</code>) goes back a step.
 <kbd>M-n</kbd> and <kbd>M-p</kbd> move the selection to the piece beside it, the next argument or
 the next statement. A count before <kbd>M-o</kbd> grows several steps at once.</p>
-<p>The <kbd>m</kbd> keys name a piece directly. <kbd>m f</kbd> selects the body of the function
-around the cursor and <kbd>m F</kbd> the whole function. <kbd>m t</kbd> and <kbd>m T</kbd> do the same for
+<p>The <kbd>m</kbd> keys (non-modal: <kbd>C-z m</kbd> and the same letter) name a piece directly.
+<kbd>m f</kbd> selects the body of the function around the cursor and <kbd>m F</kbd> the whole
+function. <kbd>m t</kbd> and <kbd>m T</kbd> do the same for
 a type, <kbd>m r</kbd> and <kbd>m R</kbd> for a parameter, and <kbd>m y</kbd> and <kbd>m Y</kbd> for a test. Which
 pieces a language has depends on its grammar. Where the language has none of
 the piece, the echo area says so.</p>
@@ -475,18 +476,18 @@ fields nested.</p>
 <tr><td>none</td><td><kbd>M-x kill-sexp</kbd></td><td><code>kill-sexp</code></td><td>Kill the balanced expression after point: to where forward-sexp goes.</td></tr>
 <tr><td>none</td><td><kbd>C-M-DEL</kbd></td><td><code>backward-kill-sexp</code></td><td>Kill the balanced expression before point: to where backward-sexp goes.</td></tr>
 <tr><td>none</td><td><kbd>C-M-t</kbd></td><td><code>transpose-sexps</code></td><td>Interchange the balanced expressions about point, point after them; with a count N, carry the expression before point past N expressions (back when N is negative); with 0, interchange the expressions at point and at the mark.</td></tr>
-<tr><td><kbd>M-o</kbd></td><td>none</td><td><code>expand-selection</code></td><td>Select the smallest piece of syntax around the selection, or around the character at point: the word, then the expression holding it, then the statement, and so on out; in a buffer with no syntax tree, as its language server sees the code.</td></tr>
-<tr><td><kbd>M-i</kbd></td><td>none</td><td><code>shrink-selection</code></td><td>Go back to the selection before the last M-o, or else select the first piece of syntax inside the selection; without a selection, the smallest piece of syntax at point.</td></tr>
-<tr><td><kbd>M-n</kbd></td><td>none</td><td><code>select-next-sibling</code></td><td>Select the next piece of syntax beside the selection, or beside the one at point: the next argument, statement or item, and after the last one, the next beside the piece around them.</td></tr>
-<tr><td><kbd>M-p</kbd></td><td>none</td><td><code>select-previous-sibling</code></td><td>Select the piece of syntax before the selection, or before the one at point: the argument, statement or item before it, and before the first one, the one before the piece around them.</td></tr>
-<tr><td><kbd>m F</kbd></td><td>none</td><td><code>select-function</code></td><td>Select all of the function around point.</td></tr>
-<tr><td><kbd>m f</kbd></td><td>none</td><td><code>select-function-inside</code></td><td>Select the body of the function around point: the block of a Rust fn or closure, the body of a shell function, the forms of a Lisp defun, defmacro, defgeneric, defmethod or lambda after its lambda list.</td></tr>
-<tr><td><kbd>m T</kbd></td><td>none</td><td><code>select-type</code></td><td>Select all of the type around point.</td></tr>
-<tr><td><kbd>m t</kbd></td><td>none</td><td><code>select-type-inside</code></td><td>Select the body of the type around point: the fields, variants or items of a Rust struct, enum, union, trait or impl; in Lisp, what follows the name in a defclass, defstruct, define-condition or deftype.</td></tr>
-<tr><td><kbd>m R</kbd></td><td>none</td><td><code>select-parameter</code></td><td>Select the parameter or argument around point with the comma after it.</td></tr>
-<tr><td><kbd>m r</kbd></td><td>none</td><td><code>select-parameter-inside</code></td><td>Select the parameter or argument around point: of a Rust function's parameters, a call's arguments or a generic's parameters; of a shell command's arguments; of a Lisp lambda list or a call's arguments.</td></tr>
-<tr><td><kbd>m Y</kbd></td><td>none</td><td><code>select-test</code></td><td>Select all of the test around point.</td></tr>
-<tr><td><kbd>m y</kbd></td><td>none</td><td><code>select-test-inside</code></td><td>Select the body of the test around point: a Rust function marked #[test], a Python function whose name begins with test, a Go TestX or BenchmarkX, and the tests of Zig, Elixir, Dart, Julia and others, as the language's rules know them.</td></tr>
+<tr><td>none</td><td><kbd>M-o</kbd></td><td><code>expand-selection</code></td><td>Select the smallest piece of syntax around the selection, or around the character at point: the word, then the expression holding it, then the statement, and so on out; in a buffer with no syntax tree, as its language server sees the code.</td></tr>
+<tr><td>none</td><td><kbd>M-i</kbd></td><td><code>shrink-selection</code></td><td>Go back to the selection before the last M-o, or else select the first piece of syntax inside the selection; without a selection, the smallest piece of syntax at point.</td></tr>
+<tr><td>none</td><td><kbd>M-n</kbd></td><td><code>select-next-sibling</code></td><td>Select the next piece of syntax beside the selection, or beside the one at point: the next argument, statement or item, and after the last one, the next beside the piece around them.</td></tr>
+<tr><td>none</td><td><kbd>M-p</kbd></td><td><code>select-previous-sibling</code></td><td>Select the piece of syntax before the selection, or before the one at point: the argument, statement or item before it, and before the first one, the one before the piece around them.</td></tr>
+<tr><td><kbd>m F</kbd></td><td><kbd>C-z m F</kbd></td><td><code>select-function</code></td><td>Select all of the function around point.</td></tr>
+<tr><td><kbd>m f</kbd></td><td><kbd>C-z m f</kbd></td><td><code>select-function-inside</code></td><td>Select the body of the function around point: the block of a Rust fn or closure, the body of a shell function, the forms of a Lisp defun, defmacro, defgeneric, defmethod or lambda after its lambda list.</td></tr>
+<tr><td><kbd>m T</kbd></td><td><kbd>C-z m T</kbd></td><td><code>select-type</code></td><td>Select all of the type around point.</td></tr>
+<tr><td><kbd>m t</kbd></td><td><kbd>C-z m t</kbd></td><td><code>select-type-inside</code></td><td>Select the body of the type around point: the fields, variants or items of a Rust struct, enum, union, trait or impl; in Lisp, what follows the name in a defclass, defstruct, define-condition or deftype.</td></tr>
+<tr><td><kbd>m R</kbd></td><td><kbd>C-z m R</kbd></td><td><code>select-parameter</code></td><td>Select the parameter or argument around point with the comma after it.</td></tr>
+<tr><td><kbd>m r</kbd></td><td><kbd>C-z m r</kbd></td><td><code>select-parameter-inside</code></td><td>Select the parameter or argument around point: of a Rust function's parameters, a call's arguments or a generic's parameters; of a shell command's arguments; of a Lisp lambda list or a call's arguments.</td></tr>
+<tr><td><kbd>m Y</kbd></td><td><kbd>C-z m Y</kbd></td><td><code>select-test</code></td><td>Select all of the test around point.</td></tr>
+<tr><td><kbd>m y</kbd></td><td><kbd>C-z m y</kbd></td><td><code>select-test-inside</code></td><td>Select the body of the test around point: a Rust function marked #[test], a Python function whose name begins with test, a Go TestX or BenchmarkX, and the tests of Zig, Elixir, Dart, Julia and others, as the language's rules know them.</td></tr>
 <tr><td>none</td><td><kbd>M-g o</kbd></td><td><code>buffer-outline</code></td><td>Go to a heading of the current buffer, chosen from a list of them: Org's headings, Lisp's comments of three semicolons and top-level forms, and in a language parsed with tree-sitter its definitions and headings (a function, a type, a Markdown heading), each shown as its line after its number, in the order of the text.</td></tr>
 </tbody></table></div>
 <h2 id="finding-definitions"><span class="num">13.6</span> Finding definitions</h2>
