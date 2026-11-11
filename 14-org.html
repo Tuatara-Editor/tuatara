@@ -100,13 +100,13 @@ and open the file again.</p>
 </tbody></table></div>
 <div class="tablewrap"><table>
 <thead>
-<tr><th>Setting</th><th>Standard</th><th>What it changes</th></tr>
+<tr><th>Setting</th><th>Default</th><th>Values</th><th>What it changes</th></tr>
 </thead>
 <tbody>
-<tr><td><code>*org-startup-indented*</code></td><td><code>t</code></td><td>True for Org files to open in the indented view (M-x org-indent-mode), as they do: each line shown indented by the level of the headline it is under, a headline's stars but the last hidden, the file itself as it is; NIL for them to open as they are written.</td></tr>
-<tr><td><code>*org-bullets*</code></td><td><code>(&quot;◉&quot; &quot;○&quot; &quot;✸&quot; &quot;✿&quot;)</code></td><td>The signs Org headlines show in place of their last star, by level, the first for the first level and round again past the last; NIL to show the stars.</td></tr>
-<tr><td><code>*org-hide-leading-stars*</code></td><td><code>t</code></td><td>True to hide a headline's stars but the last, with <strong>ORG-BULLETS</strong> or in the indented view; NIL to show them faint (the :org-leading-stars face).</td></tr>
-<tr><td><code>*org-depth-limit*</code></td><td><code>200</code></td><td>The most elements and objects of Org text the parser reads one within another: what lies deeper is read as plain text, so that a file made of nothing but nesting cannot exhaust the parser.</td></tr>
+<tr><td><code>*org-startup-indented*</code></td><td><code>t</code></td><td>t, nil</td><td>Whether Org files open in the indented view (M-x org-indent-mode).</td></tr>
+<tr><td><code>*org-bullets*</code></td><td><code>(&quot;◉&quot; &quot;○&quot; &quot;✸&quot; &quot;✿&quot;)</code></td><td>a list, each text</td><td>The signs Org headlines show in place of their last star, by level.</td></tr>
+<tr><td><code>*org-hide-leading-stars*</code></td><td><code>t</code></td><td>t, nil</td><td>Whether a headline's stars but the last are hidden.</td></tr>
+<tr><td><code>*org-depth-limit*</code></td><td><code>200</code></td><td>a whole number, 1 or more</td><td>The most elements and objects of Org text the parser reads one within another.</td></tr>
 </tbody></table></div>
 <div class="tablewrap"><table>
 <thead>
@@ -227,12 +227,12 @@ buffer to its subtree, as chapter 7 explains.</p>
 </tbody></table></div>
 <div class="tablewrap"><table>
 <thead>
-<tr><th>Setting</th><th>Standard</th><th>What it changes</th></tr>
+<tr><th>Setting</th><th>Default</th><th>Values</th><th>What it changes</th></tr>
 </thead>
 <tbody>
-<tr><td><code>*org-cycle-hide-drawers*</code></td><td><code>t</code></td><td>True for drawers (:LOGBOOK:, :PROPERTIES:) and a task's notes (ORG-NOTES-RANGE) to stay folded when TAB shows a headline's or an item's children or all of it; TAB on a drawer's line, or on the first of the notes, opens it.</td></tr>
-<tr><td><code>*org-fold-metadata*</code></td><td><code>t</code></td><td>True for an Org file to open with what is kept of each task folded: its drawers (:PROPERTIES:, :LOGBOOK:) and its notes (- State &quot;DONE&quot; …, - Note taken on …, CLOCK: lines) each to one line, those of headings and list items alike; its SCHEDULED: and DEADLINE: shown.</td></tr>
-<tr><td><code>*org-cycle-include-plain-lists*</code></td><td><code>t</code></td><td>True for TAB on a list item with sub-items or text under its first line to fold it, as on a headline: folded, then its sub-items, then all of it; NIL for TAB there to indent.</td></tr>
+<tr><td><code>*org-cycle-hide-drawers*</code></td><td><code>t</code></td><td>t, nil</td><td>Whether drawers and a task's notes stay folded as TAB shows the rest.</td></tr>
+<tr><td><code>*org-fold-metadata*</code></td><td><code>t</code></td><td>t, nil</td><td>Whether an Org file opens with what is kept of each task folded.</td></tr>
+<tr><td><code>*org-cycle-include-plain-lists*</code></td><td><code>t</code></td><td>t, nil</td><td>What TAB does on a list item with sub-items or text under its first line.</td></tr>
 </tbody></table></div>
 <div class="tablewrap"><table>
 <thead>
@@ -322,15 +322,15 @@ state of a box. The file itself keeps the plain marks.</p>
 </tbody></table></div>
 <div class="tablewrap"><table>
 <thead>
-<tr><th>Setting</th><th>Standard</th><th>What it changes</th></tr>
+<tr><th>Setting</th><th>Default</th><th>Values</th><th>What it changes</th></tr>
 </thead>
 <tbody>
-<tr><td><code>*org-complete-checkboxes*</code></td><td><code>t</code></td><td>True for [ typed right after a list item's bullet and its space (- [) to make it a checkbox at once, - [ ] with point after the space, ready for the item's text; NIL to type [ as anywhere else.</td></tr>
-<tr><td><code>*org-return-cycles-checkboxes*</code></td><td><code>t</code></td><td>True for M-x tuatara-normal-return in NORMAL state anywhere on a list item's line with a checkbox to cycle it, [ ] to [-] to [X] and round, the counts above brought up to date (a link point is on is followed first); NIL to leave it to M-x org-ctrl-c-ctrl-c.</td></tr>
-<tr><td><code>*org-log-checkboxes*</code></td><td><code>t</code></td><td>True to log when a list item's checkbox is ticked or cleared, in a :LOGBOOK: drawer under the item: - State &quot;DONE&quot; from &quot;TODO&quot; and the time, as a TODO headline's change of state is logged; NIL to log nothing.</td></tr>
-<tr><td><code>*org-todo-follows-checkboxes*</code></td><td><code>t</code></td><td>True for a TODO headline with a statistics cookie ([2/3], [66%]) to become done by itself once all it counts are done, its TODO sub-headlines (or, with none, the checkboxes right under it), with CLOSED: and the time, and not done again when one is not yet done; up the tree, a headline above with a cookie following in turn.</td></tr>
-<tr><td><code>*org-list-bullets*</code></td><td><code>nil</code></td><td>The signs list items show in place of their bullets, each (BULLET .</td></tr>
-<tr><td><code>*org-checkbox-signs*</code></td><td><code>nil</code></td><td>The signs list items' checkboxes show, each (CHECKBOX .</td></tr>
+<tr><td><code>*org-complete-checkboxes*</code></td><td><code>t</code></td><td>t, nil</td><td>Whether [ typed right after a list item's bullet makes a checkbox.</td></tr>
+<tr><td><code>*org-return-cycles-checkboxes*</code></td><td><code>t</code></td><td>t, nil</td><td>Whether RET on a list item's line in NORMAL state cycles its checkbox.</td></tr>
+<tr><td><code>*org-log-checkboxes*</code></td><td><code>t</code></td><td>t, nil</td><td>Whether ticking or clearing a list item's checkbox is logged.</td></tr>
+<tr><td><code>*org-todo-follows-checkboxes*</code></td><td><code>t</code></td><td>t, nil</td><td>Whether a TODO headline with a statistics cookie becomes done by itself.</td></tr>
+<tr><td><code>*org-list-bullets*</code></td><td><code>nil</code></td><td>a list, each (BULLET . SIGN)</td><td>The signs list items show in place of their bullets.</td></tr>
+<tr><td><code>*org-checkbox-signs*</code></td><td><code>nil</code></td><td>a list, each (CHECKBOX . SIGN)</td><td>The signs list items' checkboxes show.</td></tr>
 </tbody></table></div>
 <div class="tablewrap"><table>
 <thead>
@@ -404,18 +404,18 @@ that the important tasks stand out.</p>
 </tbody></table></div>
 <div class="tablewrap"><table>
 <thead>
-<tr><th>Setting</th><th>Standard</th><th>What it changes</th></tr>
+<tr><th>Setting</th><th>Default</th><th>Values</th><th>What it changes</th></tr>
 </thead>
 <tbody>
-<tr><td><code>*org-standard-todo-keywords*</code></td><td><code>((&quot;TODO&quot; &quot;WAIT&quot;) &quot;DONE&quot; &quot;CANCELLED&quot;)</code></td><td>The TODO keywords of an Org file with no #+TODO: line of its own, as (NOT-DONE .</td></tr>
-<tr><td><code>*org-todo-keywords-not-cycled*</code></td><td><code>(&quot;CANCELLED&quot; &quot;CANCELED&quot;)</code></td><td>The TODO keywords passed over as a task's keyword goes round to the next: by M-x org-todo, M-x org-shiftright and M-x org-shiftleft, by RET on a task's headline and by the agenda's M-x org-agenda-todo.</td></tr>
-<tr><td><code>*org-todo-keyword-faces*</code></td><td><code>((&quot;WAIT&quot; . :org-wait) (&quot;CANCELLED&quot; . :or...</code></td><td>The TODO keywords with a face of their own, each (KEYWORD .</td></tr>
-<tr><td><code>*org-return-cycles-todo*</code></td><td><code>t</code></td><td>True for M-x tuatara-normal-return in NORMAL state on a headline's line with a TODO keyword to change it to the next, as M-x org-todo does, but never to none: TODO to WAIT to DONE and round, or round the document's #+TODO: keywords, those of <strong>org-todo-keywords-not-cycled</strong> passed over (a link point is on is followed first).</td></tr>
-<tr><td><code>*org-log-done*</code></td><td><code>:time</code></td><td>What is noted when a task is done: :TIME (as standard) a CLOSED: line with the time, which the agenda's log mode lists; NIL nothing.</td></tr>
-<tr><td><code>*org-log-into-drawer*</code></td><td><code>t</code></td><td>True for the notes logged of a task (a change of state, a repeat, a reschedule, a note taken) to go into the entry's :LOGBOOK: drawer, where they fold with it (<strong>ORG-FOLD-METADATA</strong>); NIL for them to go right after its planning line and properties, outside any drawer.</td></tr>
-<tr><td><code>*org-log-repeat*</code></td><td><code>:time</code></td><td>What Org notes when a task that repeats is done: :TIME the change of state and LAST_REPEAT with the time; NIL nothing.</td></tr>
-<tr><td><code>*org-log-reschedule*</code></td><td><code>nil</code></td><td>What Org notes when a task's scheduled date is changed or taken away: NIL nothing, :TIME the date it had and when.</td></tr>
-<tr><td><code>*org-log-redeadline*</code></td><td><code>nil</code></td><td>What Org notes when a task's deadline is changed or taken away: NIL nothing, :TIME the deadline it had and when.</td></tr>
+<tr><td><code>*org-standard-todo-keywords*</code></td><td><code>((&quot;TODO&quot; &quot;WAIT&quot;) &quot;DONE&quot; &quot;CANCELLED&quot;)</code></td><td>(NOT-DONE . DONE), each a list of keywords as text</td><td>The TODO keywords of an Org file with no #+TODO: line of its own.</td></tr>
+<tr><td><code>*org-todo-keywords-not-cycled*</code></td><td><code>(&quot;CANCELLED&quot; &quot;CANCELED&quot;)</code></td><td>a list, each text</td><td>The TODO keywords passed over as a task's keyword goes round to the next.</td></tr>
+<tr><td><code>*org-todo-keyword-faces*</code></td><td><code>((&quot;WAIT&quot; . :org-wait) (&quot;CANCELLED&quot; . :or...</code></td><td>a list, each (KEYWORD . FACE)</td><td>The TODO keywords with a face of their own, each (KEYWORD .</td></tr>
+<tr><td><code>*org-return-cycles-todo*</code></td><td><code>t</code></td><td>t, nil</td><td>Whether RET on a task's headline in NORMAL state changes its TODO keyword.</td></tr>
+<tr><td><code>*org-log-done*</code></td><td><code>:time</code></td><td>:time, nil</td><td>What is noted when a task is done.</td></tr>
+<tr><td><code>*org-log-into-drawer*</code></td><td><code>t</code></td><td>t, nil</td><td>Where the notes logged of a task go.</td></tr>
+<tr><td><code>*org-log-repeat*</code></td><td><code>:time</code></td><td>:time, nil</td><td>What Org notes when a task that repeats is done.</td></tr>
+<tr><td><code>*org-log-reschedule*</code></td><td><code>nil</code></td><td>:time, nil</td><td>What Org notes when a task's scheduled date is changed or taken away.</td></tr>
+<tr><td><code>*org-log-redeadline*</code></td><td><code>nil</code></td><td>:time, nil</td><td>What Org notes when a task's deadline is changed or taken away.</td></tr>
 </tbody></table></div>
 <div class="tablewrap"><table>
 <thead>
@@ -462,10 +462,10 @@ tagged <code>TOC</code> holds a table of contents, described under code blocks.<
 </tbody></table></div>
 <div class="tablewrap"><table>
 <thead>
-<tr><th>Setting</th><th>Standard</th><th>What it changes</th></tr>
+<tr><th>Setting</th><th>Default</th><th>Values</th><th>What it changes</th></tr>
 </thead>
 <tbody>
-<tr><td><code>*org-tags-column*</code></td><td><code>0</code></td><td>Where M-x org-set-tags-command and M-x org-align-tags put a headline's tags: 0, one space after the headline's text; negative, so that they end at that column (-77 to end at the 77th); positive, so that they start there.</td></tr>
+<tr><td><code>*org-tags-column*</code></td><td><code>0</code></td><td>a whole number</td><td>Where M-x org-set-tags-command and M-x org-align-tags put a headline's tags.</td></tr>
 </tbody></table></div>
 <div class="tablewrap"><table>
 <thead>
@@ -606,15 +606,15 @@ call them by name, but they are what the keys above run.</p>
 </tbody></table></div>
 <div class="tablewrap"><table>
 <thead>
-<tr><th>Setting</th><th>Standard</th><th>What it changes</th></tr>
+<tr><th>Setting</th><th>Default</th><th>Values</th><th>What it changes</th></tr>
 </thead>
 <tbody>
-<tr><td><code>*org-read-date-in-calendar*</code></td><td><code>t</code></td><td>True for Org's date question (M-x org-schedule, M-x org-deadline, M-x org-time-stamp, a capture template's %^T) to begin in the calendar shown below it (<strong>ORG-READ-DATE-POPUP-CALENDAR</strong>).</td></tr>
-<tr><td><code>*org-read-date-popup-calendar*</code></td><td><code>t</code></td><td>True for Org's date prompt (M-x org-schedule, M-x org-deadline) to show the calendar below while it asks: the day read from what is typed marked there, S-&lt;left&gt; and S-&lt;right&gt; a day either way, S-&lt;up&gt; and S-&lt;down&gt; a week, M-S-&lt;left&gt; and M-S-&lt;right&gt; a month, M-S-&lt;up&gt; and M-S-&lt;down&gt; a year, C-.</td></tr>
-<tr><td><code>*org-deadline-warning-days*</code></td><td><code>14</code></td><td>How many days before its deadline a task is listed on today; a deadline's own -3d says otherwise.</td></tr>
-<tr><td><code>*org-notify-tag*</code></td><td><code>&quot;notify&quot;</code></td><td>The tag of the agenda's entries told on the desktop as their time comes (a heading's own or one it takes from those above it); NIL tells none.</td></tr>
-<tr><td><code>*org-notify-before*</code></td><td><code>10</code></td><td>How many minutes before its time an entry tagged :notify: is told, as well as when the time comes; 0 or NIL for only then.</td></tr>
-<tr><td><code>*org-notify-day-time*</code></td><td><code>&quot;08:00&quot;</code></td><td>When an entry tagged :notify: with a date and no time of day is told on that day, or as Tuatara starts when that is later; NIL never tells them.</td></tr>
+<tr><td><code>*org-read-date-in-calendar*</code></td><td><code>t</code></td><td>t, nil</td><td>Whether Org's date question begins in the calendar shown below it.</td></tr>
+<tr><td><code>*org-read-date-popup-calendar*</code></td><td><code>t</code></td><td>t, nil</td><td>Whether Org's date prompt shows the calendar below while it asks.</td></tr>
+<tr><td><code>*org-deadline-warning-days*</code></td><td><code>14</code></td><td>a whole number, 0 or more</td><td>How many days before its deadline a task is listed on today.</td></tr>
+<tr><td><code>*org-notify-tag*</code></td><td><code>&quot;notify&quot;</code></td><td>nil, or text</td><td>The tag of the agenda's entries told on the desktop as their time comes.</td></tr>
+<tr><td><code>*org-notify-before*</code></td><td><code>10</code></td><td>nil, or a whole number, 0 or more</td><td>How many minutes before its time an entry tagged :notify: is told.</td></tr>
+<tr><td><code>*org-notify-day-time*</code></td><td><code>&quot;08:00&quot;</code></td><td>nil, or text</td><td>When an entry tagged :notify: with a date and no time of day is told.</td></tr>
 </tbody></table></div>
 <div class="tablewrap"><table>
 <thead>
@@ -780,23 +780,23 @@ entry in the setting is a pattern to copy.</p>
 </tbody></table></div>
 <div class="tablewrap"><table>
 <thead>
-<tr><th>Setting</th><th>Standard</th><th>What it changes</th></tr>
+<tr><th>Setting</th><th>Default</th><th>Values</th><th>What it changes</th></tr>
 </thead>
 <tbody>
-<tr><td><code>*org-agenda-files*</code></td><td><code>(&quot;~/org/agenda.org&quot;)</code></td><td>The files the agenda reads: each a file, a folder (every .org file in it, those whose names begin with a dot left out) or a pattern of names in a folder, * for any characters and ? for one (&quot;~/notes/*.org&quot;), names beginning with a dot only for a pattern that does.</td></tr>
-<tr><td><code>*org-agenda-span*</code></td><td><code>:week</code></td><td>How many days M-x org-agenda's agenda shows: :day, :week, :month or :year, or a number of days.</td></tr>
-<tr><td><code>*org-agenda-start-on-weekday*</code></td><td><code>1</code></td><td>The day a week's agenda starts on, 1 for Monday to 6 for Saturday and 7 or 0 for Sunday; NIL to start on today.</td></tr>
-<tr><td><code>*org-agenda-log-mode*</code></td><td><code>nil</code></td><td>True for the agenda to list what was closed and clocked on each day too.</td></tr>
-<tr><td><code>*org-agenda-refresh-minutes*</code></td><td><code>10</code></td><td>Minutes after which an agenda shown is drawn again by itself, so that the time now in its grid and the days left to deadlines stay true; NIL for never.</td></tr>
-<tr><td><code>*org-agenda-autosave-files*</code></td><td><code>nil</code></td><td>The agenda files saved as soon as a change made from the agenda (a keyword, a date, tags, a note, the clock) changes them: NIL for none (M-x org-agenda-save-all-buffers saves them), T for every agenda file, or a list of files, folders and patterns as <strong>ORG-AGENDA-FILES</strong> takes them: '(&quot;~/notes/agenda.org&quot;).</td></tr>
-<tr><td><code>*org-agenda-custom-commands*</code></td><td><code>((&quot;u&quot; &quot;Untagged tasks&quot; :tags-todo &quot;-{.*}...</code></td><td>Views of your own that M-x org-agenda offers beside its own: each (KEY DESCRIPTION TYPE MATCH :header HEADER).</td></tr>
-<tr><td><code>*org-agenda-time-grid*</code></td><td><code>((:daily :today :require-timed) (800 100...</code></td><td>Today's time grid in the agenda: (WHEN TIMES AFTER-TIME LINE).</td></tr>
-<tr><td><code>*org-agenda-current-time-string*</code></td><td><code>&quot;← now ─────────────────────────────────...</code></td><td>The line that shows the time now in today's time grid; NIL for none.</td></tr>
-<tr><td><code>*org-agenda-category-width*</code></td><td><code>12</code></td><td>How wide the agenda's first column is, its category (the file's name, or its #+CATEGORY:) and a colon, in columns: a longer one is cut short with …, so that every line's time and text stand in one column.</td></tr>
-<tr><td><code>*org-agenda-untimed-text*</code></td><td><code>&quot;all day&quot;</code></td><td>What the agenda's time column says on a line with no time of day, faint: &quot;all day&quot;, so that every line's kind and text stand in one column; &quot;&quot; leaves the column empty, lined up all the same; NIL leaves it out, the line's text where the time would have been.</td></tr>
-<tr><td><code>*org-agenda-event-kind-text*</code></td><td><code>&quot;Event:&quot;</code></td><td>What the agenda's column of kinds (Scheduled:, Deadline:) says on the line of an event, a date in the text of an entry with no TODO keyword (:org-agenda-event-kind), Event:.</td></tr>
-<tr><td><code>*org-agenda-task-kind-text*</code></td><td><code>&quot;Task:&quot;</code></td><td>What the agenda's column of kinds says on the line of a date in the text of a task, an entry with a TODO keyword, not on its SCHEDULED: or DEADLINE: line: Task:, told apart from an event's (<strong>ORG-AGENDA-EVENT-KIND-TEXT</strong>, which says whether the column is there at all).</td></tr>
-<tr><td><code>*org-agenda-date-in-title*</code></td><td><code>nil</code></td><td>True to keep the dates written in a heading or a checkbox's line in its title on the agenda's days, as Org shows them; NIL takes them out there, the day and the time column saying them already (the TODO list and matches keep them).</td></tr>
+<tr><td><code>*org-agenda-files*</code></td><td><code>(&quot;~/org/agenda.org&quot;)</code></td><td>a list, each a file's name</td><td>The files the agenda reads.</td></tr>
+<tr><td><code>*org-agenda-span*</code></td><td><code>:week</code></td><td>:day, :week, :month, :year, or a whole number, 1 or more</td><td>How many days M-x org-agenda's agenda shows.</td></tr>
+<tr><td><code>*org-agenda-start-on-weekday*</code></td><td><code>1</code></td><td>nil, or a whole number from 0 to 7</td><td>The day a week's agenda starts on.</td></tr>
+<tr><td><code>*org-agenda-log-mode*</code></td><td><code>nil</code></td><td>t, nil</td><td>Whether the agenda lists what was closed and clocked on each day too.</td></tr>
+<tr><td><code>*org-agenda-refresh-minutes*</code></td><td><code>10</code></td><td>nil, or a number, 0 or more</td><td>How often an agenda shown is drawn again by itself, in minutes.</td></tr>
+<tr><td><code>*org-agenda-autosave-files*</code></td><td><code>nil</code></td><td>t, nil, or a list, each a file's name</td><td>The agenda files saved as soon as a change made from the agenda changes them.</td></tr>
+<tr><td><code>*org-agenda-custom-commands*</code></td><td><code>((&quot;u&quot; &quot;Untagged tasks&quot; :tags-todo &quot;-{.*}...</code></td><td>a list, each (KEY DESCRIPTION TYPE MATCH :header HEADER)</td><td>Views of your own that M-x org-agenda offers beside its own.</td></tr>
+<tr><td><code>*org-agenda-time-grid*</code></td><td><code>((:daily :today :require-timed) (800 100...</code></td><td>nil, or a list (WHEN TIMES AFTER-TIME LINE)</td><td>Today's time grid in the agenda, lines at set times of the day.</td></tr>
+<tr><td><code>*org-agenda-current-time-string*</code></td><td><code>&quot;← now ─────────────────────────────────...</code></td><td>nil, or text</td><td>The line that shows the time now in today's time grid.</td></tr>
+<tr><td><code>*org-agenda-category-width*</code></td><td><code>12</code></td><td>a whole number, 3 or more</td><td>How wide the agenda's first column is, in columns.</td></tr>
+<tr><td><code>*org-agenda-untimed-text*</code></td><td><code>&quot;all day&quot;</code></td><td>nil, or text</td><td>What the agenda's time column says, faint, on a line with no time of day.</td></tr>
+<tr><td><code>*org-agenda-event-kind-text*</code></td><td><code>&quot;Event:&quot;</code></td><td>nil, or text</td><td>What the agenda's column of kinds says on the line of an event.</td></tr>
+<tr><td><code>*org-agenda-task-kind-text*</code></td><td><code>&quot;Task:&quot;</code></td><td>nil, or text</td><td>What the agenda's column of kinds says on the line of a date in a task's text.</td></tr>
+<tr><td><code>*org-agenda-date-in-title*</code></td><td><code>nil</code></td><td>t, nil</td><td>Whether the agenda's days show the dates written in a heading's title.</td></tr>
 </tbody></table></div>
 <div class="tablewrap"><table>
 <thead>
@@ -920,10 +920,10 @@ it.</p>
 </tbody></table></div>
 <div class="tablewrap"><table>
 <thead>
-<tr><th>Setting</th><th>Standard</th><th>What it changes</th></tr>
+<tr><th>Setting</th><th>Default</th><th>Values</th><th>What it changes</th></tr>
 </thead>
 <tbody>
-<tr><td><code>*capture-template-directories*</code></td><td><code>nil</code></td><td>The folders your capture templates are in, a template a file, as M-x org-capture offers them with Tuatara's own (t, n, j, m); NIL, as standard, for capture-templates/ in your configuration folder (~/.config/tuatara/capture-templates/, XDG_CONFIG_HOME's when it is set).</td></tr>
+<tr><td><code>*capture-template-directories*</code></td><td><code>nil</code></td><td>a list, each a folder's name</td><td>The folders your capture templates are in, a template a file.</td></tr>
 </tbody></table></div>
 <h2 id="moving-an-entry-to-another-place"><span class="num">14.9</span> Moving an entry to another place</h2>
 <p>An inbox fills up. Refiling moves a heading, with everything under it, to
@@ -945,10 +945,10 @@ which files are offered and how deep their headings go.</p>
 </tbody></table></div>
 <div class="tablewrap"><table>
 <thead>
-<tr><th>Setting</th><th>Standard</th><th>What it changes</th></tr>
+<tr><th>Setting</th><th>Default</th><th>Values</th><th>What it changes</th></tr>
 </thead>
 <tbody>
-<tr><td><code>*org-refile-targets*</code></td><td><code>((:agenda-files . 3) (:this-file . 3))</code></td><td>Where M-x org-refile offers to move an entry: a list of (WHERE .</td></tr>
+<tr><td><code>*org-refile-targets*</code></td><td><code>((:agenda-files . 3) (:this-file . 3))</code></td><td>a list, each (WHERE . LEVELS)</td><td>Where M-x org-refile offers to move an entry, a list of (WHERE .</td></tr>
 </tbody></table></div>
 <h2 id="clocking"><span class="num">14.10</span> Clocking</h2>
 <p>The clock records how long you spend on a task. It is for anyone who bills
@@ -995,10 +995,10 @@ date.</p>
 </tbody></table></div>
 <div class="tablewrap"><table>
 <thead>
-<tr><th>Setting</th><th>Standard</th><th>What it changes</th></tr>
+<tr><th>Setting</th><th>Default</th><th>Values</th><th>What it changes</th></tr>
 </thead>
 <tbody>
-<tr><td><code>*org-clock-into-drawer*</code></td><td><code>t</code></td><td>True for clock lines to go into a :LOGBOOK: drawer of their headline; NIL for them to go right under it.</td></tr>
+<tr><td><code>*org-clock-into-drawer*</code></td><td><code>t</code></td><td>t, nil</td><td>Where clock lines go.</td></tr>
 </tbody></table></div>
 <div class="tablewrap"><table>
 <thead>
@@ -1106,10 +1106,10 @@ column the table does not have.</p>
 </tbody></table></div>
 <div class="tablewrap"><table>
 <thead>
-<tr><th>Setting</th><th>Standard</th><th>What it changes</th></tr>
+<tr><th>Setting</th><th>Default</th><th>Values</th><th>What it changes</th></tr>
 </thead>
 <tbody>
-<tr><td><code>*org-formula-depth-limit*</code></td><td><code>200</code></td><td>The most a formula's parts may be nested, within brackets, signs and powers: a formula nested deeper is refused.</td></tr>
+<tr><td><code>*org-formula-depth-limit*</code></td><td><code>200</code></td><td>a whole number, 1 or more</td><td>The most a formula's parts may be nested.</td></tr>
 </tbody></table></div>
 <div class="tablewrap"><table>
 <thead>
@@ -1173,11 +1173,11 @@ understands as well.</p>
 </tbody></table></div>
 <div class="tablewrap"><table>
 <thead>
-<tr><th>Setting</th><th>Standard</th><th>What it changes</th></tr>
+<tr><th>Setting</th><th>Default</th><th>Values</th><th>What it changes</th></tr>
 </thead>
 <tbody>
-<tr><td><code>*org-link-descriptive*</code></td><td><code>t</code></td><td>True for Org links to be shown as their labels, <a href="#target">label</a> as label and <a href="#target">target</a> as target, and entities as their characters, <code>\dollar{}</code> as $; NIL to show them as written.</td></tr>
-<tr><td><code>*org-return-follows-link*</code></td><td><code>t</code></td><td>True for RET on an Org link to follow it; M-x org-open-at-point follows one always.</td></tr>
+<tr><td><code>*org-link-descriptive*</code></td><td><code>t</code></td><td>t, nil</td><td>Whether Org links are shown as their labels.</td></tr>
+<tr><td><code>*org-return-follows-link*</code></td><td><code>t</code></td><td>t, nil</td><td>Whether RET on an Org link follows it.</td></tr>
 </tbody></table></div>
 <div class="tablewrap"><table>
 <thead>
@@ -1259,14 +1259,14 @@ every such block in the buffer.</p>
 </tbody></table></div>
 <div class="tablewrap"><table>
 <thead>
-<tr><th>Setting</th><th>Standard</th><th>What it changes</th></tr>
+<tr><th>Setting</th><th>Default</th><th>Values</th><th>What it changes</th></tr>
 </thead>
 <tbody>
-<tr><td><code>*org-src-languages*</code></td><td><code>((&quot;emacs-lisp&quot; . &quot;elisp&quot;) (&quot;C++&quot; . &quot;cpp&quot;...</code></td><td>The language each name a source block is given (#+begin_src emacs-lisp) means, where Org's name is not the language's own: each (NAME .</td></tr>
-<tr><td><code>*code-files-make-folders*</code></td><td><code>nil</code></td><td>NIL for tangle-code-files to make the folders a file goes in only for blocks with :mkdirp yes, so that an Org file writes the same everywhere; true to make them for every block, as :mkdirp yes does (a block's :mkdirp no still says not to).</td></tr>
-<tr><td><code>*org-toc-on-save*</code></td><td><code>t</code></td><td>True to make the table of contents of an Org file again each time it is saved, under its first headline tagged :TOC:; NIL to leave it to M-x toc-org-insert-toc.</td></tr>
-<tr><td><code>*org-toc-max-depth*</code></td><td><code>2</code></td><td>How deep the headlines of a table of contents go when its tag says nothing (:TOC:), 2 for those of one and two stars.</td></tr>
-<tr><td><code>*org-toc-style*</code></td><td><code>&quot;gh&quot;</code></td><td>How a table of contents links to its headlines when its tag says nothing, &quot;gh&quot; for GitHub's anchors (#a-headline, which GitHub shows a README's headlines by), &quot;org&quot; for their titles.</td></tr>
+<tr><td><code>*org-src-languages*</code></td><td><code>((&quot;emacs-lisp&quot; . &quot;elisp&quot;) (&quot;C++&quot; . &quot;cpp&quot;...</code></td><td>a list, each (NAME . LANGUAGE)</td><td>The language each name a source block is given means, each (NAME .</td></tr>
+<tr><td><code>*code-files-make-folders*</code></td><td><code>nil</code></td><td>t, nil</td><td>Whether tangle-code-files makes the folders a file goes in.</td></tr>
+<tr><td><code>*org-toc-on-save*</code></td><td><code>t</code></td><td>t, nil</td><td>Whether an Org file's table of contents is made again each time it is saved.</td></tr>
+<tr><td><code>*org-toc-max-depth*</code></td><td><code>2</code></td><td>a whole number, 1 or more</td><td>How deep the headlines of a table of contents go when its tag says nothing.</td></tr>
+<tr><td><code>*org-toc-style*</code></td><td><code>&quot;gh&quot;</code></td><td>&quot;gh&quot;, &quot;org&quot;</td><td>How a table of contents links to its headlines when its tag says nothing.</td></tr>
 </tbody></table></div>
 <div class="tablewrap"><table>
 <thead>
@@ -1472,16 +1472,16 @@ folders you allow. Chapter 12 has more on files you do not trust.</p>
 </tbody></table></div>
 <div class="tablewrap"><table>
 <thead>
-<tr><th>Setting</th><th>Standard</th><th>What it changes</th></tr>
+<tr><th>Setting</th><th>Default</th><th>Values</th><th>What it changes</th></tr>
 </thead>
 <tbody>
-<tr><td><code>*latex-engines*</code></td><td><code>(&quot;xelatex&quot; &quot;lualatex&quot;)</code></td><td>The programs that make a PDF of LaTeX, tried in this order: when one fails, the next is tried.</td></tr>
-<tr><td><code>*latex-main-font*</code></td><td><code>nil</code></td><td>The font the enhanced export sets a document's text in, by its family's name as fontconfig knows it (&quot;Noto Serif&quot;); NIL for the first installed of Libertinus Serif, Noto Serif, Source Serif 4, Liberation Serif, DejaVu Serif.</td></tr>
-<tr><td><code>*latex-sans-font*</code></td><td><code>nil</code></td><td>The sans-serif font of the enhanced export, as <strong>LATEX-MAIN-FONT</strong>; NIL for the first installed of Libertinus Sans, Noto Sans, Source Sans 3, Liberation Sans, DejaVu Sans.</td></tr>
-<tr><td><code>*latex-mono-font*</code></td><td><code>nil</code></td><td>The fixed-width font the enhanced export sets code in, as <strong>LATEX-MAIN-FONT</strong>; NIL for your window's font (<strong>gui-font</strong>) when it is installed, else the first of JetBrains Mono, Cascadia Code, Noto Sans Mono, Source Code Pro, Liberation Mono, DejaVu Sans Mono.</td></tr>
-<tr><td><code>*logos-directory*</code></td><td><code>nil</code></td><td>The folder of the pictures your templates ask a note for, the logo its #+logo: names (LOGOS-DIRECTORY); NIL, as standard, for logos/ in the configuration directory.</td></tr>
-<tr><td><code>*export-trusted-folders*</code></td><td><code>nil</code></td><td>The folders, besides a note's own folder and the folders in it and your note templates' folder (NOTE-TEMPLATES-DIRECTORY), that exporting the note (to PDF or to a Word document) may take files from: the setup files its #+SETUPFILE lines name and the pictures its <a href="...">...</a> links show.</td></tr>
-<tr><td><code>*latex-redaction-commands*</code></td><td><code>(&quot;R&quot; &quot;D&quot; &quot;redact&quot;)</code></td><td>The LaTeX commands that hide their argument in your LaTeX files, <code>\\R{John</code> Otago} for one, by their names without the backslash: what M-x export-check-redactions and M-x export-latex-compile-pdf look for in a LaTeX file, as hidden text to be found nowhere else.</td></tr>
+<tr><td><code>*latex-engines*</code></td><td><code>(&quot;xelatex&quot; &quot;lualatex&quot;)</code></td><td>a list, each text</td><td>The programs that make a PDF of LaTeX, tried in this order: when one fails, the next is tried.</td></tr>
+<tr><td><code>*latex-main-font*</code></td><td><code>nil</code></td><td>nil, or text</td><td>The font the enhanced export sets a document's text in.</td></tr>
+<tr><td><code>*latex-sans-font*</code></td><td><code>nil</code></td><td>nil, or text</td><td>The sans-serif font of the enhanced export.</td></tr>
+<tr><td><code>*latex-mono-font*</code></td><td><code>nil</code></td><td>nil, or text</td><td>The fixed-width font the enhanced export sets code in.</td></tr>
+<tr><td><code>*logos-directory*</code></td><td><code>nil</code></td><td>nil, or a folder's name</td><td>The folder of the pictures your templates ask a note for.</td></tr>
+<tr><td><code>*export-trusted-folders*</code></td><td><code>nil</code></td><td>a list, each a folder's name</td><td>More folders that exporting a note may take files from.</td></tr>
+<tr><td><code>*latex-redaction-commands*</code></td><td><code>(&quot;R&quot; &quot;D&quot; &quot;redact&quot;)</code></td><td>a list, each text</td><td>The LaTeX commands that hide their argument in your LaTeX files, <code>\\R{John</code> Otago} for one.</td></tr>
 </tbody></table></div>
 <div class="tablewrap"><table>
 <thead>

@@ -139,10 +139,10 @@ chapter 20.</p>
 </tbody></table></div>
 <div class="tablewrap"><table>
 <thead>
-<tr><th>Setting</th><th>Standard</th><th>What it changes</th></tr>
+<tr><th>Setting</th><th>Default</th><th>Values</th><th>What it changes</th></tr>
 </thead>
 <tbody>
-<tr><td><code>*escape-quits*</code></td><td><code>nil</code></td><td>True to have Escape do what C-g does everywhere.</td></tr>
+<tr><td><code>*escape-quits*</code></td><td><code>nil</code></td><td>t, nil</td><td>Whether Escape does what C-g does everywhere.</td></tr>
 </tbody></table></div>
 <h2 id="prefix-keys"><span class="num">8.4</span> Prefix keys</h2>
 <p>Most of the keys you press are one key. Longer keys are made by pressing a
@@ -225,10 +225,10 @@ colours are the faces below.</p>
 </div>
 <div class="tablewrap"><table>
 <thead>
-<tr><th>Setting</th><th>Standard</th><th>What it changes</th></tr>
+<tr><th>Setting</th><th>Default</th><th>Values</th><th>What it changes</th></tr>
 </thead>
 <tbody>
-<tr><td><code>*key-hint-rows*</code></td><td><code>nil</code></td><td>Most rows the key hints take after a prefix key (C-x, SPC), the echo row under them included, or NIL for as many as the frame has room for, as a menu takes; where they do not all fit, the last row ends in …</td></tr>
+<tr><td><code>*key-hint-rows*</code></td><td><code>nil</code></td><td>nil, or a whole number, 1 or more</td><td>The most rows the key hints take after a prefix key (C-x, SPC).</td></tr>
 </tbody></table></div>
 <div class="tablewrap"><table>
 <thead>
@@ -326,7 +326,10 @@ In a Lisp buffer it offers the name at the cursor first.</p>
 you ask what a setting is for and what it is now. Press <kbd>C-h v</kbd>, type
 <code>*fill-column*</code> and <kbd>RET</kbd>, and the help gives the value, 80 as Tuatara comes,
 and what it is for. A very long value, such as a list of hundreds of items, is
-cut after a few thousand characters, and says so.</p>
+cut after a few thousand characters, and says so. For a setting, a line of its
+own says which values it takes: <code>t, nil</code> for one that is on or off, the words
+it understands, or a kind of value such as a whole number or text. The
+description below it says what each value does.</p>
 <p>The help is shown in a window of its own, and you stay where you were, in the
 text. If you would rather be taken to the help, so that you can scroll it,
 set <code>*help-window-select*</code> to <code>t</code>. <kbd>q</kbd> then closes the window and returns you
@@ -343,10 +346,10 @@ to where you were. Either way <kbd>q</kbd> closes a help window when you are in 
 </tbody></table></div>
 <div class="tablewrap"><table>
 <thead>
-<tr><th>Setting</th><th>Standard</th><th>What it changes</th></tr>
+<tr><th>Setting</th><th>Default</th><th>Values</th><th>What it changes</th></tr>
 </thead>
 <tbody>
-<tr><td><code>*help-window-select*</code></td><td><code>nil</code></td><td>True to move to the window a help buffer is shown in (M-x describe-function, M-x describe-key and the rest); M-x quit-window there then closes it and goes back; NIL (the standard) leaves you where you were.</td></tr>
+<tr><td><code>*help-window-select*</code></td><td><code>nil</code></td><td>t, nil</td><td>Whether you move to the window a help buffer is shown in (M-x describe-function, M-x describe-key and the rest).</td></tr>
 </tbody></table></div>
 <div class="tablewrap"><table>
 <thead>
@@ -434,11 +437,11 @@ comes. Set it to <code>nil</code> to keep them in the buffer only.</p>
 </tbody></table></div>
 <div class="tablewrap"><table>
 <thead>
-<tr><th>Setting</th><th>Standard</th><th>What it changes</th></tr>
+<tr><th>Setting</th><th>Default</th><th>Values</th><th>What it changes</th></tr>
 </thead>
 <tbody>
-<tr><td><code>*message-log-max*</code></td><td><code>1000</code></td><td>Lines the <strong>Messages</strong> buffer keeps of the messages shown, the oldest going first, 1000 as standard; NIL keeps none.</td></tr>
-<tr><td><code>*notify-program*</code></td><td><code>&quot;notify-send&quot;</code></td><td>The program that shows a notification on the desktop: a name looked for on the PATH, or a path.</td></tr>
+<tr><td><code>*message-log-max*</code></td><td><code>1000</code></td><td>nil, or a whole number, 0 or more</td><td>The lines the <strong>Messages</strong> buffer keeps of the messages shown.</td></tr>
+<tr><td><code>*notify-program*</code></td><td><code>&quot;notify-send&quot;</code></td><td>nil, or text</td><td>The program that shows a notification on the desktop.</td></tr>
 </tbody></table></div>
 <h2 id="the-tutor-and-manual-pages"><span class="num">8.12</span> The tutor and manual pages</h2>
 <p><kbd>M-x tuatara-tutor</kbd> opens the tutor, a buffer that teaches the modal keys by
@@ -535,11 +538,11 @@ says it is on, and <kbd>M-x debug-mode</kbd> again turns it off. <code>*debug-mo
 </tbody></table></div>
 <div class="tablewrap"><table>
 <thead>
-<tr><th>Setting</th><th>Standard</th><th>What it changes</th></tr>
+<tr><th>Setting</th><th>Default</th><th>Values</th><th>What it changes</th></tr>
 </thead>
 <tbody>
-<tr><td><code>*debug-mode*</code></td><td><code>nil</code></td><td>True to start the editor with debug mode on, as M-x debug-mode switches it: what the editor's parts do is reported in <strong>Debug</strong>.</td></tr>
-<tr><td><code>*debug-log-limit*</code></td><td><code>10000</code></td><td>The lines <strong>Debug</strong> keeps, the oldest going first, 10000 as standard; NIL keeps them all, and the buffer then grows for as long as debug mode is on.</td></tr>
+<tr><td><code>*debug-mode*</code></td><td><code>nil</code></td><td>t, nil</td><td>Whether the editor starts with debug mode on, as M-x debug-mode switches it.</td></tr>
+<tr><td><code>*debug-log-limit*</code></td><td><code>10000</code></td><td>nil, or a whole number, 1 or more</td><td>The lines <strong>Debug</strong> keeps, the oldest going first.</td></tr>
 </tbody></table></div>
 <h2 id="lisp-in-the-running-editor"><span class="num">8.15</span> Lisp in the running editor</h2>
 <p>Tuatara is written in Common Lisp, and the Lisp you type runs inside the
@@ -597,10 +600,10 @@ toggle-debug-on-error</kbd> makes it show the calls under way too, in
 </tbody></table></div>
 <div class="tablewrap"><table>
 <thead>
-<tr><th>Setting</th><th>Standard</th><th>What it changes</th></tr>
+<tr><th>Setting</th><th>Default</th><th>Values</th><th>What it changes</th></tr>
 </thead>
 <tbody>
-<tr><td><code>*debug-on-error*</code></td><td><code>nil</code></td><td>True to show the calls under way when a command or an evaluation meets an error, in <strong>Backtrace</strong>; M-x toggle-debug-on-error switches it.</td></tr>
+<tr><td><code>*debug-on-error*</code></td><td><code>nil</code></td><td>t, nil</td><td>Whether a command or an evaluation that meets an error shows the calls under way, in <strong>Backtrace</strong>.</td></tr>
 </tbody></table></div>
 <h2 id="binding-keys-yourself"><span class="num">8.16</span> Binding keys yourself</h2>
 <p>The prefixes, the leader and the labels that the key hints show are yours to
@@ -609,11 +612,11 @@ show in place of the command's name, in your init file. That is described in
 chapter 20, together with the settings that move the leader.</p>
 <div class="tablewrap"><table>
 <thead>
-<tr><th>Setting</th><th>Standard</th><th>What it changes</th></tr>
+<tr><th>Setting</th><th>Default</th><th>Values</th><th>What it changes</th></tr>
 </thead>
 <tbody>
-<tr><td><code>*leader-key*</code></td><td><code>&quot;SPC&quot;</code></td><td>The key that opens the leader's keys (bind-key's :map :leader) in NORMAL and support states, in lists and in the calendar: SPC, or another written as bind-key writes keys (&quot;,&quot;, &quot;C-c SPC&quot;).</td></tr>
-<tr><td><code>*modal-editing*</code></td><td><code>t</code></td><td>True for Tuatara's modal editing: NORMAL and INSERT states in editing buffers, NORMAL's reading keys in support buffers, the leader on SPC.</td></tr>
+<tr><td><code>*leader-key*</code></td><td><code>&quot;SPC&quot;</code></td><td>text</td><td>The key that opens the leader's keys (bind-key's :map :leader) in NORMAL and support states, in lists and in the calendar.</td></tr>
+<tr><td><code>*modal-editing*</code></td><td><code>t</code></td><td>t, nil</td><td>Whether Tuatara's modal editing is on: NORMAL and INSERT states in editing buffers, NORMAL's reading keys in support buffers, the leader on SPC.</td></tr>
 </tbody></table></div>
 <div class="node end"><span>Previous: <a href="07-buffers-and-sessions.html">Buffers and sessions</a></span><span>Next: <a href="09-files.html">Files</a></span><span>Up: <a href="index.html">Contents</a></span></div>
 </article>

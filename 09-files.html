@@ -99,13 +99,13 @@ you see it.</p>
 </tbody></table></div>
 <div class="tablewrap"><table>
 <thead>
-<tr><th>Setting</th><th>Standard</th><th>What it changes</th></tr>
+<tr><th>Setting</th><th>Default</th><th>Values</th><th>What it changes</th></tr>
 </thead>
 <tbody>
-<tr><td><code>*last-used-first*</code></td><td><code>t</code></td><td>True for the questions that choose a file or a folder (M-x find-file, M-x rimu and the rest) to start in the folder of the path chosen last in any of them, and to list first, in each folder, what was chosen there last (or something in it), TAB then going the way last gone; the others follow in order of name.</td></tr>
-<tr><td><code>*open-dropped-files-safely*</code></td><td><code>nil</code></td><td>True to open files dropped on the window safely, as M-x universal-argument M-x find-file does: read-only, no mode, nothing written beside them.</td></tr>
-<tr><td><code>*file-local-variables*</code></td><td><code>t</code></td><td>True for a file's own settings (-<strong>- mode: org -</strong>- on its first line, a Local Variables block near its end) to be taken as it is opened, namely its major mode, tab width, tabs or spaces, fill column and spaces between sentences, and those a package takes; nothing else.</td></tr>
-<tr><td><code>*preview-files*</code></td><td><code>nil</code></td><td>True to show, while you choose a file with M-x find-file (and the other ways of finding a file) or M-x find-recent-file, the file selected in the window you are in, opened safely: read-only, no mode or hook run on it, its times untouched, a binary one in the hex view; what the window showed comes back when the question ends.</td></tr>
+<tr><td><code>*last-used-first*</code></td><td><code>t</code></td><td>t, nil</td><td>Whether the questions that choose a file or a folder (M-x find-file, M-x rimu and the rest) start where you chose last.</td></tr>
+<tr><td><code>*open-dropped-files-safely*</code></td><td><code>nil</code></td><td>t, nil</td><td>Whether files dropped on the window are opened safely, as M-x universal-argument M-x find-file does: read-only, no mode, nothing written beside them.</td></tr>
+<tr><td><code>*file-local-variables*</code></td><td><code>t</code></td><td>t, nil</td><td>Whether a file's own settings are taken as it is opened.</td></tr>
+<tr><td><code>*preview-files*</code></td><td><code>nil</code></td><td>t, nil</td><td>Whether choosing a file shows the selected file in the window you are in.</td></tr>
 </tbody></table></div>
 <div class="tablewrap"><table>
 <thead>
@@ -210,10 +210,10 @@ percentage. You can keep typing. Leaving Tuatara waits for saves still running.
 </tbody></table></div>
 <div class="tablewrap"><table>
 <thead>
-<tr><th>Setting</th><th>Standard</th><th>What it changes</th></tr>
+<tr><th>Setting</th><th>Default</th><th>Values</th><th>What it changes</th></tr>
 </thead>
 <tbody>
-<tr><td><code>*save-in-place*</code></td><td><code>nil</code></td><td>True to save a large file by writing only what changed into the file itself, where that is quicker than writing it whole.</td></tr>
+<tr><td><code>*save-in-place*</code></td><td><code>nil</code></td><td>t, nil</td><td>Whether a large file is saved by writing only what changed into the file itself, where that is quicker than writing it whole.</td></tr>
 </tbody></table></div>
 <h2 id="save-as-and-a-new-name"><span class="num">9.4</span> Save as, and a new name</h2>
 <p><kbd>C-x C-w</kbd> writes the buffer to another file. The question works like the one
@@ -342,10 +342,10 @@ which writes yours over it.</p>
 </tbody></table></div>
 <div class="tablewrap"><table>
 <thead>
-<tr><th>Setting</th><th>Standard</th><th>What it changes</th></tr>
+<tr><th>Setting</th><th>Default</th><th>Values</th><th>What it changes</th></tr>
 </thead>
 <tbody>
-<tr><td><code>*reload-changed-files*</code></td><td><code>nil</code></td><td>True to have every buffer keep up with its file on disk by itself.</td></tr>
+<tr><td><code>*reload-changed-files*</code></td><td><code>nil</code></td><td>t, nil</td><td>Whether every buffer keeps up with its file on disk by itself.</td></tr>
 </tbody></table></div>
 <h2 id="line-endings-and-letters-from-other-languages"><span class="num">9.7</span> Line endings and letters from other languages</h2>
 <h3 id="line-endings"><span class="num">9.7.1</span> Line endings</h3>
@@ -460,17 +460,17 @@ in a folder listing. Use it to put a whole month of letters under <code>done</co
 </tbody></table></div>
 <div class="tablewrap"><table>
 <thead>
-<tr><th>Setting</th><th>Standard</th><th>What it changes</th></tr>
+<tr><th>Setting</th><th>Default</th><th>Values</th><th>What it changes</th></tr>
 </thead>
 <tbody>
-<tr><td><code>*formatted-file-directory*</code></td><td><code>&quot;~/&quot;</code></td><td>The directory of your files with formatted names: open-file-formatted lists those in it and its subdirectories, new-file-formatted makes new ones there, and the keywords in their names are offered for every new file with a formatted name.</td></tr>
-<tr><td><code>*formatted-file-extension*</code></td><td><code>&quot;&quot;</code></td><td>The end of a new file's name that find-file-formatted offers when it asks for one (New file EXTENSION): nothing typed there takes it.</td></tr>
-<tr><td><code>*formatted-file-keywords*</code></td><td><code>nil</code></td><td>Keywords offered for a new file with a formatted name, besides the keywords in the names of the files in <strong>FORMATTED-FILE-DIRECTORY</strong>: none as standard.</td></tr>
-<tr><td><code>*formatted-file-sort-keywords*</code></td><td><code>t</code></td><td>True to put the keywords of a formatted name in alphabetical order.</td></tr>
-<tr><td><code>*formatted-file-prompts*</code></td><td><code>(:title :subdirectory :keywords :file-ty...</code></td><td>What new-file-formatted asks for a new file, in this order: :title, :subdirectory (of <strong>FORMATTED-FILE-DIRECTORY</strong>), :keywords, :file-type (one of <strong>FORMATTED-FILE-TYPES</strong>; else <strong>FORMATTED-FILE-TYPE</strong> is used) and :template (blank, or one of your note templates' files, asked only when there are any).</td></tr>
-<tr><td><code>*formatted-file-type*</code></td><td><code>:org</code></td><td>The kind of a new file when <strong>FORMATTED-FILE-PROMPTS</strong> does not ask, and the one offered first when it does: a name in <strong>FORMATTED-FILE-TYPES</strong>.</td></tr>
-<tr><td><code>*formatted-file-types*</code></td><td><code>((:org &quot;.org&quot; :org &quot;#+title: {title} #+d...</code></td><td>The kinds of files with formatted names, each (NAME EXTENSION STYLE HEADER): the end of the file's name, how its header writes the date and keywords, and the header a new file begins with.</td></tr>
-<tr><td><code>*preview-formatted-files*</code></td><td><code>nil</code></td><td>True to show, while you choose one of your files with formatted names with M-x open-file-formatted, the file selected in the window you are in, opened safely, as <strong>PREVIEW-FILES</strong> shows files.</td></tr>
+<tr><td><code>*formatted-file-directory*</code></td><td><code>&quot;~/&quot;</code></td><td>a folder's name</td><td>The directory of your files with formatted names.</td></tr>
+<tr><td><code>*formatted-file-extension*</code></td><td><code>&quot;&quot;</code></td><td>nil, or text</td><td>The end of a new file's name that find-file-formatted offers when it asks for one (New file EXTENSION).</td></tr>
+<tr><td><code>*formatted-file-keywords*</code></td><td><code>nil</code></td><td>a list, each text</td><td>Keywords offered for a new file with a formatted name, besides the keywords in the names of the files in <strong>FORMATTED-FILE-DIRECTORY</strong>.</td></tr>
+<tr><td><code>*formatted-file-sort-keywords*</code></td><td><code>t</code></td><td>t, nil</td><td>Whether the keywords of a formatted name are put in alphabetical order.</td></tr>
+<tr><td><code>*formatted-file-prompts*</code></td><td><code>(:title :subdirectory :keywords :file-ty...</code></td><td>a list, each :title, :subdirectory, :keywords, :file-type, :template</td><td>What new-file-formatted asks for a new file, in the order of the list.</td></tr>
+<tr><td><code>*formatted-file-type*</code></td><td><code>:org</code></td><td>a name in <strong>FORMATTED-FILE-TYPES</strong></td><td>The kind of a new file when <strong>FORMATTED-FILE-PROMPTS</strong> does not ask, and the one offered first when it does.</td></tr>
+<tr><td><code>*formatted-file-types*</code></td><td><code>((:org &quot;.org&quot; :org &quot;#+title: {title} #+d...</code></td><td>a list, each (NAME EXTENSION STYLE HEADER)</td><td>The kinds of files with formatted names.</td></tr>
+<tr><td><code>*preview-formatted-files*</code></td><td><code>nil</code></td><td>t, nil</td><td>Whether choosing one of your files with formatted names shows the selected file in the window you are in.</td></tr>
 </tbody></table></div>
 <div class="tablewrap"><table>
 <thead>
@@ -619,11 +619,11 @@ Chapter 12 describes it.</p>
 </tbody></table></div>
 <div class="tablewrap"><table>
 <thead>
-<tr><th>Setting</th><th>Standard</th><th>What it changes</th></tr>
+<tr><th>Setting</th><th>Default</th><th>Values</th><th>What it changes</th></tr>
 </thead>
 <tbody>
-<tr><td><code>*remote-seconds*</code></td><td><code>30</code></td><td>Seconds a server reached for its files (/ssh:HOST:/path) has to answer each request, and ssh to connect: past them the connection is closed and the work in hand fails, saying so.</td></tr>
-<tr><td><code>*remote-preview-size-limit*</code></td><td><code>20000000</code></td><td>The most octets a file on another machine may hold to be shown in the preview of its list (M-x list-toggle-preview), 20 MB by default: all of it has to come from the server first.</td></tr>
+<tr><td><code>*remote-seconds*</code></td><td><code>30</code></td><td>a number, 0 or more</td><td>Seconds a server reached for its files (/ssh:HOST:/path) has to answer each request, and ssh to connect.</td></tr>
+<tr><td><code>*remote-preview-size-limit*</code></td><td><code>20000000</code></td><td>a whole number, 0 or more</td><td>The most octets a file on another machine may hold to be shown in the preview of its list (M-x list-toggle-preview).</td></tr>
 </tbody></table></div>
 <h2 id="opening-a-file-with-another-program"><span class="num">9.10</span> Opening a file with another program</h2>
 <p>Tuatara shows text, and also pictures, PDFs and some office documents. There is
@@ -657,13 +657,13 @@ is <code>xdg-open</code> as standard.</p>
 </tbody></table></div>
 <div class="tablewrap"><table>
 <thead>
-<tr><th>Setting</th><th>Standard</th><th>What it changes</th></tr>
+<tr><th>Setting</th><th>Default</th><th>Values</th><th>What it changes</th></tr>
 </thead>
 <tbody>
-<tr><td><code>*open-externally-ask*</code></td><td><code>t</code></td><td>True for M-x open-externally to ask before opening a file in the desktop's own program, which reads it outside the sandbox; NIL to open it at once.</td></tr>
-<tr><td><code>*open-externally-kinds*</code></td><td><code>(:png :jpeg :gif :webp :bmp :tiff :raw :...</code></td><td>The kinds of file M-x open-externally opens in the desktop's own program, as their first octets tell them (pictures, PDFs, sound and video, and Office documents, as standard): keywords as TUATARA.IO:OCTETS-KIND gives them, :png, :jpeg, :pdf, :docx and the like.</td></tr>
-<tr><td><code>*open-externally-program*</code></td><td><code>&quot;xdg-open&quot;</code></td><td>The program that opens a file in the desktop's own program for its kind, given the file's name: xdg-open, looked for on the PATH.</td></tr>
-<tr><td><code>*open-externally-programs*</code></td><td><code>nil</code></td><td>Programs to open files and addresses in instead of the one the desktop would choose (xdg-open), by Multipurpose Internet Mail Extensions (MIME) type as xdg-mime names them: a list of (TYPE .</td></tr>
+<tr><td><code>*open-externally-ask*</code></td><td><code>t</code></td><td>t, nil</td><td>Whether M-x open-externally asks before opening a file in the desktop's own program, which reads it outside the sandbox.</td></tr>
+<tr><td><code>*open-externally-kinds*</code></td><td><code>(:png :jpeg :gif :webp :bmp :tiff :raw :...</code></td><td>a list, each a keyword naming a kind of file</td><td>The kinds of file M-x open-externally opens in the desktop's own program, as their first octets tell them.</td></tr>
+<tr><td><code>*open-externally-program*</code></td><td><code>&quot;xdg-open&quot;</code></td><td>text</td><td>The program that opens a file in the desktop's own program for its kind, given the file's name.</td></tr>
+<tr><td><code>*open-externally-programs*</code></td><td><code>nil</code></td><td>a list, each (TYPE . PROGRAM)</td><td>Programs to open files and addresses in instead of the one the desktop would choose (xdg-open), by Multipurpose Internet Mail Extensions (MIME) type as xdg-mime names them.</td></tr>
 </tbody></table></div>
 <h2 id="starting-tuatara-with-files"><span class="num">9.11</span> Starting Tuatara with files</h2>
 <p><kbd>tuatara letter.txt</kbd> opens the file in the terminal you typed it in. Several
@@ -681,6 +681,10 @@ for every file in that command. <kbd>--hex</kbd> opens them in the hex view inst
 text. A single <code>-</code> reads what another program sends: <code>ls | tuatara -</code> shows the
 output in a buffer called <code>*stdin*</code>. After <code>--</code>, every word is a file, so
 <code>tuatara -- -odd.txt</code> opens a file named <code>-odd.txt</code>.</p>
+<p>In bash, pressing <kbd>TAB</kbd> after <code>tuatara -</code> completes the options, and after an
+option that takes a file, or after a plain word, the file names. The
+distribution packages install this completion, and the AppImage does with
+<code>--install-desktop</code>. Both need the bash-completion package of the system.</p>
 <p>The table at the end of this section lists every option, as <kbd>tuatara --help</kbd>
 does. The ones that start the daemon, make a client, compare files or merge
 them are explained in chapters 15 and 18.</p>

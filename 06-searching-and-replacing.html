@@ -198,11 +198,11 @@ is in use. The thorough form of replacing is described in the next section.</p>
 </tbody></table></div>
 <div class="tablewrap"><table>
 <thead>
-<tr><th>Setting</th><th>Standard</th><th>What it changes</th></tr>
+<tr><th>Setting</th><th>Default</th><th>Values</th><th>What it changes</th></tr>
 </thead>
 <tbody>
-<tr><td><code>*show-completion-count*</code></td><td><code>t</code></td><td>True to show before the prompt of a completing read the place of the selected candidate and how many there are, as they change with what is typed: 3/120 (*/0 when nothing matches and the text typed can be taken, !/0 when it cannot); before a search's, the match the cursor is at and how many there are.</td></tr>
-<tr><td><code>*typing-pause*</code></td><td><code>1/2</code></td><td>Seconds without a key typed before work over a text too large to go through at each key starts while a pattern is typed: the count of a search's matches (M-x regex-search-forward) and a filter being typed (M-x search-filter-regex), its lines in the window shown at once.</td></tr>
+<tr><td><code>*show-completion-count*</code></td><td><code>t</code></td><td>t, nil</td><td>Whether a completing read shows the place of the selected candidate and how many there are, before the prompt.</td></tr>
+<tr><td><code>*typing-pause*</code></td><td><code>1/2</code></td><td>a number, 0 or more</td><td>The seconds without a key typed before work over a text too large to go through at each key starts.</td></tr>
 </tbody></table></div>
 <div class="tablewrap"><table>
 <thead>
@@ -376,11 +376,11 @@ see. Press <kbd>C-x / r</kbd> to see everything again.</p>
 </tbody></table></div>
 <div class="tablewrap"><table>
 <thead>
-<tr><th>Setting</th><th>Standard</th><th>What it changes</th></tr>
+<tr><th>Setting</th><th>Default</th><th>Values</th><th>What it changes</th></tr>
 </thead>
 <tbody>
-<tr><td><code>*line-record-modes*</code></td><td><code>(tuatara.defaults::log-mode tuatara.defa...</code></td><td>The major modes whose files hold a record a line, as a log does: search filters (M-x search-filter-regex) narrow them, and the modes made from them, by hiding the lines they leave out, as they narrow a CSV.</td></tr>
-<tr><td><code>*csv-header*</code></td><td><code>t</code></td><td>True when the first line of the files CSV mode shows is their header, naming the columns: always shown by search filters, never deleted by M-x list-keep-records, its names offered for a column.</td></tr>
+<tr><td><code>*line-record-modes*</code></td><td><code>(tuatara.defaults::log-mode tuatara.defa...</code></td><td>a list, each a mode's name</td><td>The major modes whose files hold a record a line, as a log does.</td></tr>
+<tr><td><code>*csv-header*</code></td><td><code>t</code></td><td>t, nil</td><td>Whether the first line of the files CSV mode shows is their header, naming the columns.</td></tr>
 </tbody></table></div>
 <div class="tablewrap"><table>
 <thead>
@@ -478,21 +478,21 @@ from the disk, more slowly.</p>
 </tbody></table></div>
 <div class="tablewrap"><table>
 <thead>
-<tr><th>Setting</th><th>Standard</th><th>What it changes</th></tr>
+<tr><th>Setting</th><th>Default</th><th>Values</th><th>What it changes</th></tr>
 </thead>
 <tbody>
-<tr><td><code>*project-root-markers*</code></td><td><code>(&quot;.git&quot; &quot;.project&quot;)</code></td><td>The names of the files or directories that mark the root of a project: M-x search-in-files searches all of the project a buffer's file is in, from the nearest directory above the file holding one of them.</td></tr>
-<tr><td><code>*default-directory*</code></td><td><code>&quot;~/&quot;</code></td><td>The directory of a buffer with no file (<strong>scratch</strong>, the lists): a file name typed there is taken from it, and M-x search-in-files searches it.</td></tr>
-<tr><td><code>*search-files-min-input*</code></td><td><code>3</code></td><td>How many characters search-in-files and search-in-formatted wait for before searching.</td></tr>
-<tr><td><code>*search-files-lines-limit*</code></td><td><code>2000</code></td><td>The most matching lines search-in-files and search-in-formatted list, 2000 as standard.</td></tr>
-<tr><td><code>*search-files-limit*</code></td><td><code>134217728</code></td><td>The most octets of text kept in memory for a search of many files (M-x search-in-files, M-x search-in-formatted) and for each directory of <strong>INDEXED-DIRECTORIES</strong> (and on disk with it, <strong>INDEXES-KEPT-ON-DISK</strong>): 128 MB as standard.</td></tr>
-<tr><td><code>*search-results-save-files*</code></td><td><code>t</code></td><td>True to save the files that lines found by M-x search-in-files are written back into (M-x search-results-finish), those that were not open too, closed again after; NIL to leave each changed and not saved in a buffer of its own, for you to look at and save (M-x save-buffer).</td></tr>
-<tr><td><code>*preview-file-search*</code></td><td><code>nil</code></td><td>True to show, while you search the files of a project or a directory with M-x search-in-files, the file of the line selected in the window you are in, at that line, opened safely, as <strong>PREVIEW-FILES</strong> shows files.</td></tr>
-<tr><td><code>*preview-formatted-search*</code></td><td><code>nil</code></td><td>True to show, while you search your files with formatted names with M-x search-in-formatted, the file of the line selected in the window you are in, at that line, opened safely, as <strong>PREVIEW-FILES</strong> shows files.</td></tr>
-<tr><td><code>*indexed-directories*</code></td><td><code>nil</code></td><td>Directories Tuatara keeps read in memory, so that M-x open-file-formatted, M-x search-in-formatted and M-x search-in-files answer at once there, and in the directories under them: the names of their files and the text of those a search reads (at most <strong>SEARCH-FILES-LIMIT</strong> octets each), read in the background when the editor starts and again whenever something in them changes on disk.</td></tr>
-<tr><td><code>*indexes-kept-on-disk*</code></td><td><code>t</code></td><td>True to keep what is read of <strong>INDEXED-DIRECTORIES</strong> on disk between sessions, in the cache directory ($XDG_CACHE_HOME/tuatara/indexes/, readable by you alone): at the next start the directories are only listed again, and only the files changed meanwhile read, rather than all.</td></tr>
-<tr><td><code>*indexing-indicator*</code></td><td><code>&quot;U&quot;</code></td><td>What the mode line shows while directories are kept read (<strong>INDEXED-DIRECTORIES</strong>), always in the same place, before [-], after the sign of work for the buffer (<strong>PROCESSING-INDICATOR</strong>): in :mode-line-sign while one is being read in the background (at least <strong>SIGN-LIT-SECONDS</strong>), else faint, in :mode-line-sign-idle, so that nothing after it moves as reading starts and ends.</td></tr>
-<tr><td><code>*searching-indicator*</code></td><td><code>&quot;S&quot;</code></td><td>What the mode line shows after <strong>INDEXING-INDICATOR</strong> while directories are kept read, always in the same place: in :mode-line-sign while a search runs over a directory kept read (M-x search-in-files and the like; at least <strong>SIGN-LIT-SECONDS</strong>), else faint, in :mode-line-sign-idle.</td></tr>
+<tr><td><code>*project-root-markers*</code></td><td><code>(&quot;.git&quot; &quot;.project&quot;)</code></td><td>a list, each text</td><td>The names of the files or directories that mark the root of a project.</td></tr>
+<tr><td><code>*default-directory*</code></td><td><code>&quot;~/&quot;</code></td><td>nil, or a folder's name</td><td>The directory of a buffer with no file (<strong>scratch</strong>, the lists).</td></tr>
+<tr><td><code>*search-files-min-input*</code></td><td><code>3</code></td><td>a whole number, 0 or more</td><td>How many characters search-in-files and search-in-formatted wait for before searching.</td></tr>
+<tr><td><code>*search-files-lines-limit*</code></td><td><code>2000</code></td><td>a whole number, 1 or more</td><td>The most matching lines search-in-files and search-in-formatted list.</td></tr>
+<tr><td><code>*search-files-limit*</code></td><td><code>134217728</code></td><td>a whole number, 0 or more</td><td>The most octets of text kept in memory for a search of many files.</td></tr>
+<tr><td><code>*search-results-save-files*</code></td><td><code>t</code></td><td>t, nil</td><td>Whether the files that lines found by M-x search-in-files are written back into are saved (M-x search-results-finish).</td></tr>
+<tr><td><code>*preview-file-search*</code></td><td><code>nil</code></td><td>t, nil</td><td>Whether searching the files of a project or a directory shows the line selected in the window you are in.</td></tr>
+<tr><td><code>*preview-formatted-search*</code></td><td><code>nil</code></td><td>t, nil</td><td>Whether searching your files with formatted names shows the line selected in the window you are in.</td></tr>
+<tr><td><code>*indexed-directories*</code></td><td><code>nil</code></td><td>a list, each a folder's name</td><td>The directories Tuatara keeps read in memory.</td></tr>
+<tr><td><code>*indexes-kept-on-disk*</code></td><td><code>t</code></td><td>t, nil</td><td>Whether what is read of <strong>INDEXED-DIRECTORIES</strong> is kept on disk between sessions.</td></tr>
+<tr><td><code>*indexing-indicator*</code></td><td><code>&quot;U&quot;</code></td><td>nil, or text</td><td>What the mode line shows while directories are kept read (<strong>INDEXED-DIRECTORIES</strong>).</td></tr>
+<tr><td><code>*searching-indicator*</code></td><td><code>&quot;S&quot;</code></td><td>nil, or text</td><td>What the mode line shows after <strong>INDEXING-INDICATOR</strong> while directories are kept read.</td></tr>
 </tbody></table></div>
 <h2 id="the-outline-of-a-buffer"><span class="num">6.5</span> The outline of a buffer</h2>
 <p><kbd>M-g o</kbd> lists the headings of the buffer you are in and goes to the one you
@@ -532,10 +532,10 @@ types. Otherwise it uses the headings Tuatara finds itself.</p>
 </tbody></table></div>
 <div class="tablewrap"><table>
 <thead>
-<tr><th>Setting</th><th>Standard</th><th>What it changes</th></tr>
+<tr><th>Setting</th><th>Default</th><th>Values</th><th>What it changes</th></tr>
 </thead>
 <tbody>
-<tr><td><code>*lsp-outline*</code></td><td><code>t</code></td><td>True for M-x buffer-outline to list a file's names as its language server knows them (functions, types, their fields and methods, nested), where it has one that does; else as the mode finds its headings.</td></tr>
+<tr><td><code>*lsp-outline*</code></td><td><code>t</code></td><td>t, nil</td><td>Whether M-x buffer-outline lists a file's names as its language server knows them (functions, types, their fields and methods, nested), where it has one that does.</td></tr>
 </tbody></table></div>
 <div class="tablewrap"><table>
 <thead>

@@ -117,13 +117,13 @@ it one in your init file (chapter 20).</p>
 </tbody></table></div>
 <div class="tablewrap"><table>
 <thead>
-<tr><th>Setting</th><th>Standard</th><th>What it changes</th></tr>
+<tr><th>Setting</th><th>Default</th><th>Values</th><th>What it changes</th></tr>
 </thead>
 <tbody>
-<tr><td><code>*terminal-place*</code></td><td><code>:bottom</code></td><td>Where a terminal shows (M-x terminal, M-x terminal-toggle): :bottom or :top, a window across that whole side of the screen <strong>TERMINAL-SIZE</strong> high; :left or :right, one down that whole side <strong>TERMINAL-WIDTH</strong> wide; or :full, the selected window.</td></tr>
-<tr><td><code>*terminal-size*</code></td><td><code>0.3</code></td><td>How high a terminal's window is at the bottom or top of the screen (<strong>TERMINAL-PLACE</strong>, M-x terminal-bottom, M-x terminal-top): a fraction of the screen's height (0.3), or a number of rows (15).</td></tr>
-<tr><td><code>*terminal-width*</code></td><td><code>0.5</code></td><td>How wide a terminal's window is at the left or right of the screen (<strong>TERMINAL-PLACE</strong>, M-x terminal-left, M-x terminal-right): a fraction of the screen's width (0.5, half of it), or a number of columns (80).</td></tr>
-<tr><td><code>*terminal-program*</code></td><td><code>nil</code></td><td>The program M-x terminal runs, a list of it and its arguments, (&quot;bash&quot; &quot;-l&quot;); NIL for your shell ($SHELL, else /bin/sh).</td></tr>
+<tr><td><code>*terminal-place*</code></td><td><code>:bottom</code></td><td>:bottom, :top, :left, :right, :full</td><td>Where a terminal shows (M-x terminal, M-x terminal-toggle).</td></tr>
+<tr><td><code>*terminal-size*</code></td><td><code>0.3</code></td><td>a number, 0 or more</td><td>How high a terminal's window is at the bottom or top of the screen (<strong>TERMINAL-PLACE</strong>, M-x terminal-bottom, M-x terminal-top).</td></tr>
+<tr><td><code>*terminal-width*</code></td><td><code>0.5</code></td><td>a number, 0 or more</td><td>How wide a terminal's window is at the left or right of the screen (<strong>TERMINAL-PLACE</strong>, M-x terminal-left, M-x terminal-right).</td></tr>
+<tr><td><code>*terminal-program*</code></td><td><code>nil</code></td><td>nil, or a list, each text</td><td>The program M-x terminal runs.</td></tr>
 </tbody></table></div>
 <div class="try">
 <h3>Try it, running a command while you write</h3>
@@ -172,10 +172,10 @@ do in any terminal. The mouse works too, when the program asks for it. Hold
 <code>Shift</code> while you click if you would rather the editor take the mouse.</p>
 <div class="tablewrap"><table>
 <thead>
-<tr><th>Setting</th><th>Standard</th><th>What it changes</th></tr>
+<tr><th>Setting</th><th>Default</th><th>Values</th><th>What it changes</th></tr>
 </thead>
 <tbody>
-<tr><td><code>*terminal-editor-keys*</code></td><td><code>(&quot;C-x&quot; &quot;M-x&quot; &quot;C-g&quot; &quot;C-\\&quot; &quot;C-q&quot; &quot;C-s&quot;)</code></td><td>Keys that stay the editor's while you type into a terminal (M-x terminal).</td></tr>
+<tr><td><code>*terminal-editor-keys*</code></td><td><code>(&quot;C-x&quot; &quot;M-x&quot; &quot;C-g&quot; &quot;C-\\&quot; &quot;C-q&quot; &quot;C-s&quot;)</code></td><td>a list, each text</td><td>Keys that stay the editor's while you type into a terminal (M-x terminal).</td></tr>
 </tbody></table></div>
 <h3 id="sending-a-key-the-editor-keeps"><span class="num">17.2.1</span> Sending a key the editor keeps</h3>
 <p>You are running <code>nano</code> in a terminal, and it uses <code>C-x</code> to exit. Pressing
@@ -254,11 +254,11 @@ In the history view, <code>C-s</code> and <code>C-r</code> search forward and ba
 </tbody></table></div>
 <div class="tablewrap"><table>
 <thead>
-<tr><th>Setting</th><th>Standard</th><th>What it changes</th></tr>
+<tr><th>Setting</th><th>Default</th><th>Values</th><th>What it changes</th></tr>
 </thead>
 <tbody>
-<tr><td><code>*terminal-scrollback*</code></td><td><code>100000</code></td><td>How many lines a terminal (M-x terminal) keeps that have gone up off its screen.</td></tr>
-<tr><td><code>*terminal-compress-after*</code></td><td><code>10</code></td><td>Seconds a terminal's program has printed nothing after which its scrollback is compressed, in the background, a little at a time, so that a terminal with a long history holds a fraction of the memory; reading the history (its history view) undoes it as it goes, unseen.</td></tr>
+<tr><td><code>*terminal-scrollback*</code></td><td><code>100000</code></td><td>a whole number, 0 or more</td><td>How many lines a terminal (M-x terminal) keeps that have gone up off its screen.</td></tr>
+<tr><td><code>*terminal-compress-after*</code></td><td><code>10</code></td><td>nil, or a number, 0 or more</td><td>How long a terminal's program has printed nothing before its scrollback is compressed, in the background, a little at a time, so that a terminal with a long history holds a fraction of the memory.</td></tr>
 </tbody></table></div>
 <div class="try">
 <h3>Try it, looking back through output</h3>
@@ -302,10 +302,10 @@ last in any program, the way it does in a desktop terminal.</p>
 </tbody></table></div>
 <div class="tablewrap"><table>
 <thead>
-<tr><th>Setting</th><th>Standard</th><th>What it changes</th></tr>
+<tr><th>Setting</th><th>Default</th><th>Values</th><th>What it changes</th></tr>
 </thead>
 <tbody>
-<tr><td><code>*terminal-paste-keys*</code></td><td><code>(&quot;C-V&quot; &quot;S-&lt;insert&gt;&quot;)</code></td><td>Keys that paste into a terminal while you type there (M-x terminal-paste): the text copied last, in Tuatara or another program, marked as pasted for a program that asks (a shell then runs none of its lines until you press RET).</td></tr>
+<tr><td><code>*terminal-paste-keys*</code></td><td><code>(&quot;C-V&quot; &quot;S-&lt;insert&gt;&quot;)</code></td><td>a list, each text</td><td>Keys that paste into a terminal while you type there (M-x terminal-paste): the text copied last, in Tuatara or another program, marked as pasted for a program that asks (a shell then runs none of its lines until you press RET).</td></tr>
 </tbody></table></div>
 <div class="try">
 <h3>Try it, pasting a command from a note</h3>
@@ -358,10 +358,10 @@ sixteen basic colours a program may choose follow your theme, so the output of
 are shown as the program asked, rounded to the nearest of 4,096.</p>
 <div class="tablewrap"><table>
 <thead>
-<tr><th>Setting</th><th>Standard</th><th>What it changes</th></tr>
+<tr><th>Setting</th><th>Default</th><th>Values</th><th>What it changes</th></tr>
 </thead>
 <tbody>
-<tr><td><code>*terminal-picture-memory*</code></td><td><code>67108864</code></td><td>The most octets of pictures a terminal keeps for the programs in it that draw them; 0 takes none, programs then drawing with text.</td></tr>
+<tr><td><code>*terminal-picture-memory*</code></td><td><code>67108864</code></td><td>a whole number, 0 or more</td><td>The most octets of pictures a terminal keeps for the programs in it that draw them.</td></tr>
 </tbody></table></div>
 <div class="tablewrap"><table>
 <thead>
@@ -382,10 +382,10 @@ the title. When you have several terminals open, the title tells you which is
 in which folder.</p>
 <div class="tablewrap"><table>
 <thead>
-<tr><th>Setting</th><th>Standard</th><th>What it changes</th></tr>
+<tr><th>Setting</th><th>Default</th><th>Values</th><th>What it changes</th></tr>
 </thead>
 <tbody>
-<tr><td><code>*terminal-title-limit*</code></td><td><code>40</code></td><td>The most columns of a terminal's title (as the shell gives it, user@host:~/dir in many) the mode line shows; NIL shows none.</td></tr>
+<tr><td><code>*terminal-title-limit*</code></td><td><code>40</code></td><td>nil, or a whole number, 0 or more</td><td>The most columns of a terminal's title (as the shell gives it, user@host:~/dir in many) the mode line shows.</td></tr>
 </tbody></table></div>
 <h2 id="escape-nvim-and-the-shell"><span class="num">17.8</span> Escape, nvim and the shell</h2>
 <p>Escape is the awkward key. A shell uses it for editing the line, and a
@@ -420,10 +420,10 @@ add it to the list of editor keys and bind it for terminals:</p>
 </tbody></table></div>
 <div class="tablewrap"><table>
 <thead>
-<tr><th>Setting</th><th>Standard</th><th>What it changes</th></tr>
+<tr><th>Setting</th><th>Default</th><th>Values</th><th>What it changes</th></tr>
 </thead>
 <tbody>
-<tr><td><code>*terminal-send-escape*</code></td><td><code>nil</code></td><td>True to give Escape to a full-screen program in a terminal (one on the alternate screen: nvim, less, htop) even while <strong>ESCAPE-QUITS</strong> is on, Escape then still stopping typing at a shell's prompt.</td></tr>
+<tr><td><code>*terminal-send-escape*</code></td><td><code>nil</code></td><td>t, nil</td><td>Whether Escape goes to a full-screen program in a terminal (one on the alternate screen: nvim, less, htop) even while <strong>ESCAPE-QUITS</strong> is on.</td></tr>
 </tbody></table></div>
 <div class="try">
 <h3>Try it, with a program like top</h3>
@@ -470,10 +470,10 @@ other way round.</p>
 after Escape while Tuatara waits to see what follows.</p>
 <div class="tablewrap"><table>
 <thead>
-<tr><th>Setting</th><th>Standard</th><th>What it changes</th></tr>
+<tr><th>Setting</th><th>Default</th><th>Values</th><th>What it changes</th></tr>
 </thead>
 <tbody>
-<tr><td><code>*kitty-keyboard*</code></td><td><code>:auto</code></td><td>Whether the terminal frontend reads keys by the kitty keyboard protocol.</td></tr>
+<tr><td><code>*kitty-keyboard*</code></td><td><code>:auto</code></td><td>:auto, t, nil</td><td>Whether the terminal frontend reads keys by the kitty keyboard protocol.</td></tr>
 </tbody></table></div>
 <h3 id="colours-and-pictures"><span class="num">17.10.2</span> Colours and pictures</h3>
 <p><code>*tui-colours*</code> says how many colours Tuatara uses. The standard, <code>:auto</code>,
@@ -491,10 +491,10 @@ terminal buffer in Tuatara in a terminal of your desktop is quite normal, and
 works.</p>
 <div class="tablewrap"><table>
 <thead>
-<tr><th>Setting</th><th>Standard</th><th>What it changes</th></tr>
+<tr><th>Setting</th><th>Default</th><th>Values</th><th>What it changes</th></tr>
 </thead>
 <tbody>
-<tr><td><code>*tui-colours*</code></td><td><code>:auto</code></td><td>How many colours Tuatara uses in a terminal.</td></tr>
+<tr><td><code>*tui-colours*</code></td><td><code>:auto</code></td><td>:auto, :24-bit, 256, 16, 8, nil</td><td>How many colours Tuatara uses in a terminal.</td></tr>
 </tbody></table></div>
 <div class="node end"><span>Previous: <a href="16-data-pictures-and-pdfs.html">Data, pictures and PDFs</a></span><span>Next: <a href="18-the-daemon-and-other-machines.html">The daemon and other machines</a></span><span>Up: <a href="index.html">Contents</a></span></div>
 </article>

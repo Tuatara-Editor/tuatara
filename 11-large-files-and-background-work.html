@@ -273,10 +273,10 @@ place, described below. Stopping it half-way would leave the file spoiled.</p>
 </div>
 <div class="tablewrap"><table>
 <thead>
-<tr><th>Setting</th><th>Standard</th><th>What it changes</th></tr>
+<tr><th>Setting</th><th>Default</th><th>Values</th><th>What it changes</th></tr>
 </thead>
 <tbody>
-<tr><td><code>*processing-indicator*</code></td><td><code>&quot;P&quot;</code></td><td>What the mode line shows first, before [-] and the signs of directories kept read (<strong>INDEXING-INDICATOR</strong>), always in the same place: in :mode-line-sign while a job runs or waits its turn in the buffer, or another program works for it (a language server indexing), else faint, in :mode-line-sign-idle, so that nothing after it moves as work starts and ends.</td></tr>
+<tr><td><code>*processing-indicator*</code></td><td><code>&quot;P&quot;</code></td><td>nil, or text</td><td>What the mode line shows first, before [-] and the signs of directories kept read (<strong>INDEXING-INDICATOR</strong>).</td></tr>
 </tbody></table></div>
 <div class="tablewrap"><table>
 <thead>
@@ -375,10 +375,10 @@ the file before then, a backup for one, may see it half saved.</p>
 not mind the minute.</p>
 <div class="tablewrap"><table>
 <thead>
-<tr><th>Setting</th><th>Standard</th><th>What it changes</th></tr>
+<tr><th>Setting</th><th>Default</th><th>Values</th><th>What it changes</th></tr>
 </thead>
 <tbody>
-<tr><td><code>*save-in-place*</code></td><td><code>nil</code></td><td>True to save a large file by writing only what changed into the file itself, where that is quicker than writing it whole.</td></tr>
+<tr><td><code>*save-in-place*</code></td><td><code>nil</code></td><td>t, nil</td><td>Whether a large file is saved by writing only what changed into the file itself, where that is quicker than writing it whole.</td></tr>
 </tbody></table></div>
 <h2 id="memory-and-pauses-you-might-notice"><span class="num">11.6</span> Memory, and pauses you might notice</h2>
 <p>You do not have to manage memory in Tuatara. This part tells you what to
@@ -416,13 +416,13 @@ two keys. The setting <code>*idle-collection-seconds*</code> holds how long you 
 still. There is rarely a reason to change it.</p>
 <div class="tablewrap"><table>
 <thead>
-<tr><th>Setting</th><th>Standard</th><th>What it changes</th></tr>
+<tr><th>Setting</th><th>Default</th><th>Values</th><th>What it changes</th></tr>
 </thead>
 <tbody>
-<tr><td><code>*auto-save-size-limit*</code></td><td><code>268435456</code></td><td>The largest buffer auto-saved, in octets, 256 MB as standard: a larger one is not copied (each copy would be written whole), so a crash loses its changes not saved.</td></tr>
-<tr><td><code>*undo-limit*</code></td><td><code>nil</code></td><td>The most memory, in octets, the undo history of one buffer may hold; NIL, the default, for no limit.</td></tr>
-<tr><td><code>*idle-collection-seconds*</code></td><td><code>0.3</code></td><td>Seconds you leave the editor alone, no key typed, after which the garbage made since the last collection is collected, when it is at least half of what makes one (<strong>NURSERY-OCTETS</strong>): the pause comes while you think, not between two keys.</td></tr>
-<tr><td><code>*typing-pause*</code></td><td><code>1/2</code></td><td>Seconds without a key typed before work over a text too large to go through at each key starts while a pattern is typed: the count of a search's matches (M-x regex-search-forward) and a filter being typed (M-x search-filter-regex), its lines in the window shown at once.</td></tr>
+<tr><td><code>*auto-save-size-limit*</code></td><td><code>268435456</code></td><td>a whole number, 0 or more</td><td>The largest buffer auto-saved, in octets.</td></tr>
+<tr><td><code>*undo-limit*</code></td><td><code>nil</code></td><td>nil, or a whole number, 1 or more</td><td>The most memory, in octets, the undo history of one buffer may hold.</td></tr>
+<tr><td><code>*idle-collection-seconds*</code></td><td><code>0.3</code></td><td>nil, or a number, 0 or more</td><td>How long you leave the editor alone before the garbage made since the last collection is collected, so the pause comes while you think, not between two keys.</td></tr>
+<tr><td><code>*typing-pause*</code></td><td><code>1/2</code></td><td>a number, 0 or more</td><td>The seconds without a key typed before work over a text too large to go through at each key starts.</td></tr>
 </tbody></table></div>
 <h2 id="a-large-file-on-another-machine"><span class="num">11.7</span> A large file on another machine</h2>
 <p>Chapter 9 showed how to open a file on a server by writing <code>/ssh:</code> and the
@@ -486,10 +486,10 @@ your own names.</p>
 </div>
 <div class="tablewrap"><table>
 <thead>
-<tr><th>Setting</th><th>Standard</th><th>What it changes</th></tr>
+<tr><th>Setting</th><th>Default</th><th>Values</th><th>What it changes</th></tr>
 </thead>
 <tbody>
-<tr><td><code>*remote-seconds*</code></td><td><code>30</code></td><td>Seconds a server reached for its files (/ssh:HOST:/path) has to answer each request, and ssh to connect: past them the connection is closed and the work in hand fails, saying so.</td></tr>
+<tr><td><code>*remote-seconds*</code></td><td><code>30</code></td><td>a number, 0 or more</td><td>Seconds a server reached for its files (/ssh:HOST:/path) has to answer each request, and ssh to connect.</td></tr>
 </tbody></table></div>
 <h2 id="in-short"><span class="num">11.8</span> In short</h2>
 <div class="tablewrap"><table>

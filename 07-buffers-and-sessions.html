@@ -159,11 +159,11 @@ You can skip this until chapter 18.</p>
 <h3 id="settings-and-faces"><span class="num">7.1.6</span> Settings and faces</h3>
 <div class="tablewrap"><table>
 <thead>
-<tr><th>Setting</th><th>Standard</th><th>What it changes</th></tr>
+<tr><th>Setting</th><th>Default</th><th>Values</th><th>What it changes</th></tr>
 </thead>
 <tbody>
-<tr><td><code>*project-root-markers*</code></td><td><code>(&quot;.git&quot; &quot;.project&quot;)</code></td><td>The names of the files or directories that mark the root of a project: M-x search-in-files searches all of the project a buffer's file is in, from the nearest directory above the file holding one of them.</td></tr>
-<tr><td><code>*client-kept-without-buffers*</code></td><td><code>:first</code></td><td>Which clients of a daemon stay when their last buffer is closed: :FIRST, the one opened first of those running; :LAST, only the last one left; :ALL, every one; NIL, none.</td></tr>
+<tr><td><code>*project-root-markers*</code></td><td><code>(&quot;.git&quot; &quot;.project&quot;)</code></td><td>a list, each text</td><td>The names of the files or directories that mark the root of a project.</td></tr>
+<tr><td><code>*client-kept-without-buffers*</code></td><td><code>:first</code></td><td>:first, :last, :all, nil</td><td>Which clients of a daemon stay when their last buffer is closed.</td></tr>
 </tbody></table></div>
 <div class="tablewrap"><table>
 <thead>
@@ -202,11 +202,11 @@ new one when none is there.</p>
 </tbody></table></div>
 <div class="tablewrap"><table>
 <thead>
-<tr><th>Setting</th><th>Standard</th><th>What it changes</th></tr>
+<tr><th>Setting</th><th>Default</th><th>Values</th><th>What it changes</th></tr>
 </thead>
 <tbody>
-<tr><td><code>*startup-buffer*</code></td><td><code>&quot;*lisp-scratch*&quot;</code></td><td>The buffer shown when the editor starts without files: &quot;<strong>lisp-scratch</strong>&quot; or &quot;<strong>org-scratch</strong>&quot; (or any buffer the init file makes).</td></tr>
-<tr><td><code>*auto-scratch-buffers*</code></td><td><code>(&quot;*lisp-scratch*&quot; &quot;*org-scratch*&quot;)</code></td><td>The scratch buffers made without being asked for: at startup, and when the last buffer is killed.</td></tr>
+<tr><td><code>*startup-buffer*</code></td><td><code>&quot;*lisp-scratch*&quot;</code></td><td>text</td><td>The buffer shown when the editor starts without files.</td></tr>
+<tr><td><code>*auto-scratch-buffers*</code></td><td><code>(&quot;*lisp-scratch*&quot; &quot;*org-scratch*&quot;)</code></td><td>a list, each text</td><td>The scratch buffers made without being asked for, at startup and when the last buffer is killed.</td></tr>
 </tbody></table></div>
 <p>A file name typed in a scratch buffer is taken from the folder in
 <code>*default-directory*</code>, which is your home folder unless you say otherwise.
@@ -276,14 +276,14 @@ at a time.</p>
 </tbody></table></div>
 <div class="tablewrap"><table>
 <thead>
-<tr><th>Setting</th><th>Standard</th><th>What it changes</th></tr>
+<tr><th>Setting</th><th>Default</th><th>Values</th><th>What it changes</th></tr>
 </thead>
 <tbody>
-<tr><td><code>*remember-recent-files*</code></td><td><code>t</code></td><td>True to keep a list of the files you visit, the latest first, for find-recent-file (M-x find-recent-file, M-x find-recent-file) to offer; NIL adds nothing to it.</td></tr>
-<tr><td><code>*recent-files-limit*</code></td><td><code>25</code></td><td>How many files the list of recent files keeps, 25 as standard.</td></tr>
-<tr><td><code>*recent-files-auto-cleanup*</code></td><td><code>t</code></td><td>True to take out of the list of recent files, when the editor starts, the files no longer there; NIL keeps them, shown as not found.</td></tr>
-<tr><td><code>*save-place-mode*</code></td><td><code>t</code></td><td>True to remember where point was in each file you visit and put it back there when you visit the file again, in this session or a later one (on as standard); NIL to open files at their top.</td></tr>
-<tr><td><code>*save-place-limit*</code></td><td><code>400</code></td><td>How many files' places are kept, the latest first, 400 as standard.</td></tr>
+<tr><td><code>*remember-recent-files*</code></td><td><code>t</code></td><td>t, nil</td><td>Whether a list of the files you visit is kept, the latest first, for find-recent-file (M-x find-recent-file, M-x find-recent-file) to offer.</td></tr>
+<tr><td><code>*recent-files-limit*</code></td><td><code>25</code></td><td>a whole number, 0 or more</td><td>How many files the list of recent files keeps.</td></tr>
+<tr><td><code>*recent-files-auto-cleanup*</code></td><td><code>t</code></td><td>t, nil</td><td>Whether the files no longer there are taken out of the list of recent files when the editor starts.</td></tr>
+<tr><td><code>*save-place-mode*</code></td><td><code>t</code></td><td>t, nil</td><td>Whether point's place in each file you visit is remembered and put back when you visit the file again, in this session or a later one.</td></tr>
+<tr><td><code>*save-place-limit*</code></td><td><code>400</code></td><td>a whole number, 0 or more</td><td>How many files' places are kept, the latest first.</td></tr>
 </tbody></table></div>
 <h2 id="bookmarks"><span class="num">7.5</span> Bookmarks</h2>
 <p>A bookmark is a named place that Tuatara keeps for good. It is like a recent
@@ -333,11 +333,11 @@ on, so you can bookmark a folder you visit often.</p>
 </tbody></table></div>
 <div class="tablewrap"><table>
 <thead>
-<tr><th>Setting</th><th>Standard</th><th>What it changes</th></tr>
+<tr><th>Setting</th><th>Default</th><th>Values</th><th>What it changes</th></tr>
 </thead>
 <tbody>
-<tr><td><code>*bookmark-set-asks-categories*</code></td><td><code>t</code></td><td>True for M-x bookmark-set to ask, after the name, which categories the bookmark is in (those used already offered, new ones typed); NIL never to ask.</td></tr>
-<tr><td><code>*bookmarks-kept*</code></td><td><code>1000</code></td><td>How many bookmarks you may have before setting another says you have more.</td></tr>
+<tr><td><code>*bookmark-set-asks-categories*</code></td><td><code>t</code></td><td>t, nil</td><td>Whether M-x bookmark-set asks, after the name, which categories the bookmark is in.</td></tr>
+<tr><td><code>*bookmarks-kept*</code></td><td><code>1000</code></td><td>a whole number, 0 or more</td><td>How many bookmarks you may have before setting another says you have more.</td></tr>
 </tbody></table></div>
 <h2 id="registers"><span class="num">7.6</span> Registers</h2>
 <p>A register is a place to keep text, a number or a position under a single
@@ -378,11 +378,11 @@ replaced by that start.</p>
 </div>
 <div class="tablewrap"><table>
 <thead>
-<tr><th>Setting</th><th>Standard</th><th>What it changes</th></tr>
+<tr><th>Setting</th><th>Default</th><th>Values</th><th>What it changes</th></tr>
 </thead>
 <tbody>
-<tr><td><code>*keep-session*</code></td><td><code>nil</code></td><td>True for the editor to keep its session: the files and directories open and how the windows show them, written as it stops (and now and then while it runs), opened again as it was when it starts without files.</td></tr>
-<tr><td><code>*keep-session-interval*</code></td><td><code>30</code></td><td>Seconds between the writings of the session while the editor runs, when it has changed (<strong>KEEP-SESSION</strong>), 30 as standard: what a crash can lose.</td></tr>
+<tr><td><code>*keep-session*</code></td><td><code>nil</code></td><td>t, nil</td><td>Whether the editor keeps its session: the files and directories open and how the windows show them.</td></tr>
+<tr><td><code>*keep-session-interval*</code></td><td><code>30</code></td><td>a number, 0 or more</td><td>Seconds between the writings of the session while the editor runs, when it has changed (<strong>KEEP-SESSION</strong>).</td></tr>
 </tbody></table></div>
 <h2 id="auto-save-and-getting-changes-back"><span class="num">7.8</span> Auto-save and getting changes back</h2>
 <p>Saving is your decision. Tuatara never writes your file until you press
@@ -431,14 +431,14 @@ you can point it at a folder on another drive. <code>*auto-save-idle*</code> and
 </tbody></table></div>
 <div class="tablewrap"><table>
 <thead>
-<tr><th>Setting</th><th>Standard</th><th>What it changes</th></tr>
+<tr><th>Setting</th><th>Default</th><th>Values</th><th>What it changes</th></tr>
 </thead>
 <tbody>
-<tr><td><code>*auto-save*</code></td><td><code>t</code></td><td>True for buffers visiting files to have their changes not saved written now and then to a copy of their own in <strong>AUTO-SAVE-DIRECTORY</strong>, never to the file itself; M-x recover-file takes such a copy back.</td></tr>
-<tr><td><code>*auto-save-directory*</code></td><td><code>nil</code></td><td>The folder auto-saved copies are kept in, made for you alone when it is not there: NIL for auto-save/ in Tuatara's state folder ($XDG_STATE_HOME/tuatara/, or ~/.local/state/tuatara/), or a folder's name, &quot;~/backups/tuatara/&quot;.</td></tr>
-<tr><td><code>*auto-save-idle*</code></td><td><code>5</code></td><td>Seconds without a change after which a buffer's changes not saved are auto-saved (<strong>AUTO-SAVE</strong>), 5 as standard.</td></tr>
-<tr><td><code>*auto-save-interval*</code></td><td><code>60</code></td><td>The most seconds changes not saved go without an auto-save while they go on without a pause (<strong>AUTO-SAVE</strong>), 60 as standard.</td></tr>
-<tr><td><code>*auto-save-size-limit*</code></td><td><code>268435456</code></td><td>The largest buffer auto-saved, in octets, 256 MB as standard: a larger one is not copied (each copy would be written whole), so a crash loses its changes not saved.</td></tr>
+<tr><td><code>*auto-save*</code></td><td><code>t</code></td><td>t, nil</td><td>Whether buffers visiting files have their changes not saved written now and then to a copy of their own in <strong>AUTO-SAVE-DIRECTORY</strong>.</td></tr>
+<tr><td><code>*auto-save-directory*</code></td><td><code>nil</code></td><td>nil, or a folder's name</td><td>The folder auto-saved copies are kept in.</td></tr>
+<tr><td><code>*auto-save-idle*</code></td><td><code>5</code></td><td>a number, 0 or more</td><td>Seconds without a change after which a buffer's changes not saved are auto-saved (<strong>AUTO-SAVE</strong>).</td></tr>
+<tr><td><code>*auto-save-interval*</code></td><td><code>60</code></td><td>a number, 0 or more</td><td>The most seconds changes not saved go without an auto-save while they go on without a pause (<strong>AUTO-SAVE</strong>).</td></tr>
+<tr><td><code>*auto-save-size-limit*</code></td><td><code>268435456</code></td><td>a whole number, 0 or more</td><td>The largest buffer auto-saved, in octets.</td></tr>
 </tbody></table></div>
 <h2 id="narrowing-to-a-part-of-a-buffer"><span class="num">7.9</span> Narrowing to a part of a buffer</h2>
 <p>A long file can be a distraction. If you want to rewrite one paragraph of a

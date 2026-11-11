@@ -49,8 +49,8 @@ manual say <kbd>M-x</kbd> and its name for it.</p>
 <p>A setting is a name that starts and ends with a star, such as
 <code>*mode-line-tuatara*</code>. Settings go in your init file, the file Tuatara reads
 when it starts, as in <code>(setf *mode-line-tuatara* nil)</code>. Each table of settings
-in this chapter gives the standard value, the one Tuatara has until you
-change it.</p>
+in this chapter gives the default, the value Tuatara has until you change it.
+<kbd>C-h v</kbd> shows a setting's value, the values it takes and what each does.</p>
 <p>Tuatara is a modal editor, which means a key can do different things
 depending on a state the editor is in. There are two states you will meet
 first. In NORMAL state, the letter keys are commands: <kbd>i</kbd> starts INSERT
@@ -241,7 +241,7 @@ drag a mode line up or down, or the line between two windows left or right.</p>
 <h3 id="settings"><span class="num">1.3.5</span> Settings</h3>
 <div class="tablewrap"><table>
 <thead>
-<tr><th>Setting</th><th>Standard</th><th>What it changes</th></tr>
+<tr><th>Setting</th><th>Default</th><th>What it changes</th></tr>
 </thead>
 <tbody>
 <tr><td><code>*window-min-height*</code></td><td><code>4</code></td><td>The fewest rows, mode line included, a window may be left with when it is split or made smaller.</td></tr>
@@ -311,7 +311,7 @@ terminal the font belongs to the terminal, and these commands say so.</p>
 <h3 id="settings-2"><span class="num">1.4.2</span> Settings</h3>
 <div class="tablewrap"><table>
 <thead>
-<tr><th>Setting</th><th>Standard</th><th>What it changes</th></tr>
+<tr><th>Setting</th><th>Default</th><th>What it changes</th></tr>
 </thead>
 <tbody>
 <tr><td><code>*startup-buffer*</code></td><td><code>&quot;*lisp-scratch*&quot;</code></td><td>The buffer shown when Tuatara starts without files, either <code>&quot;*lisp-scratch*&quot;</code> or <code>&quot;*org-scratch*&quot;</code>.</td></tr>
@@ -480,7 +480,7 @@ folder named by <code>*default-directory*</code>. Files on another machine show 
 <h3 id="settings-3"><span class="num">1.5.9</span> Settings</h3>
 <div class="tablewrap"><table>
 <thead>
-<tr><th>Setting</th><th>Standard</th><th>What it changes</th></tr>
+<tr><th>Setting</th><th>Default</th><th>What it changes</th></tr>
 </thead>
 <tbody>
 <tr><td><code>*mode-line-tuatara*</code></td><td><code>t</code></td><td>Writes TUATARA before the modal state.</td></tr>
@@ -499,7 +499,7 @@ theme in force, ao-dark as standard, gives each face its look. Change one in
 your init file, for example <code>(set-face :mode-line-sign :fg &quot;#e0a33a&quot;)</code>.</p>
 <div class="tablewrap"><table>
 <thead>
-<tr><th>Face</th><th>Standard</th><th>What it paints</th></tr>
+<tr><th>Face</th><th>Default</th><th>What it paints</th></tr>
 </thead>
 <tbody>
 <tr><td><code>:mode-line</code></td><td>theme</td><td>The mode line of the selected window.</td></tr>
@@ -553,7 +553,7 @@ is the place to look when a message went by too fast.</p>
 <h3 id="settings-4"><span class="num">1.6.2</span> Settings</h3>
 <div class="tablewrap"><table>
 <thead>
-<tr><th>Setting</th><th>Standard</th><th>What it changes</th></tr>
+<tr><th>Setting</th><th>Default</th><th>What it changes</th></tr>
 </thead>
 <tbody>
 <tr><td><code>*message-log-max*</code></td><td><code>1000</code></td><td>Lines <code>*Messages*</code> keeps. The oldest go first. <code>nil</code> keeps none.</td></tr>
@@ -610,7 +610,7 @@ replaces it and <kbd>RET</kbd> takes it.</p>
 <h3 id="settings-5"><span class="num">1.7.1</span> Settings</h3>
 <div class="tablewrap"><table>
 <thead>
-<tr><th>Setting</th><th>Standard</th><th>What it changes</th></tr>
+<tr><th>Setting</th><th>Default</th><th>What it changes</th></tr>
 </thead>
 <tbody>
 <tr><td><code>*show-completion-count*</code></td><td><code>t</code></td><td>Shows the place of the selected choice and how many there are before the prompt.</td></tr>
@@ -620,7 +620,7 @@ replaces it and <kbd>RET</kbd> takes it.</p>
 <h3 id="faces-2"><span class="num">1.7.2</span> Faces</h3>
 <div class="tablewrap"><table>
 <thead>
-<tr><th>Face</th><th>Standard</th><th>What it paints</th></tr>
+<tr><th>Face</th><th>Default</th><th>What it paints</th></tr>
 </thead>
 <tbody>
 <tr><td><code>:minibuffer-prompt</code></td><td>theme</td><td>The prompt.</td></tr>
@@ -678,7 +678,7 @@ as the folder that the files under it are in.</p>
 <code>*show-completion-count*</code>, are in the table in the section before this one.</p>
 <div class="tablewrap"><table>
 <thead>
-<tr><th>Face</th><th>Standard</th><th>What it paints</th></tr>
+<tr><th>Face</th><th>Default</th><th>What it paints</th></tr>
 </thead>
 <tbody>
 <tr><td><code>:completion-selected</code></td><td>theme</td><td>The selected choice.</td></tr>
@@ -726,14 +726,14 @@ all</code>.</p>
 <h3 id="settings-7"><span class="num">1.9.2</span> Settings</h3>
 <div class="tablewrap"><table>
 <thead>
-<tr><th>Setting</th><th>Standard</th><th>What it changes</th></tr>
+<tr><th>Setting</th><th>Default</th><th>What it changes</th></tr>
 </thead>
 <tbody>
 <tr><td><code>*key-hint-rows*</code></td><td><code>nil</code></td><td>The most rows for the hints, the echo row included. <code>nil</code> takes all the room.</td></tr>
 </tbody></table></div>
 <div class="tablewrap"><table>
 <thead>
-<tr><th>Face</th><th>Standard</th><th>What it paints</th></tr>
+<tr><th>Face</th><th>Default</th><th>What it paints</th></tr>
 </thead>
 <tbody>
 <tr><td><code>:key-hint-key</code></td><td>theme</td><td>The keys.</td></tr>
@@ -773,7 +773,7 @@ while the rest scrolls under it.</p>
 <h3 id="settings-8"><span class="num">1.10.2</span> Settings</h3>
 <div class="tablewrap"><table>
 <thead>
-<tr><th>Setting</th><th>Standard</th><th>What it changes</th></tr>
+<tr><th>Setting</th><th>Default</th><th>What it changes</th></tr>
 </thead>
 <tbody>
 <tr><td><code>*cursor-shape*</code></td><td><code>:block</code></td><td>The cursor's shape: <code>:block</code>, <code>:bar</code> or <code>:underline</code>.</td></tr>
@@ -792,7 +792,7 @@ while the rest scrolls under it.</p>
 </tbody></table></div>
 <div class="tablewrap"><table>
 <thead>
-<tr><th>Face</th><th>Standard</th><th>What it paints</th></tr>
+<tr><th>Face</th><th>Default</th><th>What it paints</th></tr>
 </thead>
 <tbody>
 <tr><td><code>:line-number</code></td><td>theme</td><td>The line numbers.</td></tr>

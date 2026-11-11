@@ -113,10 +113,10 @@ setting <code>*daemon-indicator*</code> is the letter, and <code>nil</code> take
 </tbody></table></div>
 <div class="tablewrap"><table>
 <thead>
-<tr><th>Setting</th><th>Standard</th><th>What it changes</th></tr>
+<tr><th>Setting</th><th>Default</th><th>Values</th><th>What it changes</th></tr>
 </thead>
 <tbody>
-<tr><td><code>*daemon-indicator*</code></td><td><code>&quot;D&quot;</code></td><td>What the mode line shows last among its signs before [-], always in the same place: in :mode-line-sign while this editor runs as a daemon (tuatara –daemon), in each of its clients, else faint, in :mode-line-sign-idle.</td></tr>
+<tr><td><code>*daemon-indicator*</code></td><td><code>&quot;D&quot;</code></td><td>nil, or text</td><td>What the mode line shows for a daemon, last among its signs before [-].</td></tr>
 </tbody></table></div>
 <div class="tablewrap"><table>
 <thead>
@@ -184,10 +184,10 @@ the person who opened them.</p>
 </tbody></table></div>
 <div class="tablewrap"><table>
 <thead>
-<tr><th>Setting</th><th>Standard</th><th>What it changes</th></tr>
+<tr><th>Setting</th><th>Default</th><th>Values</th><th>What it changes</th></tr>
 </thead>
 <tbody>
-<tr><td><code>*client-kept-without-buffers*</code></td><td><code>:first</code></td><td>Which clients of a daemon stay when their last buffer is closed: :FIRST, the one opened first of those running; :LAST, only the last one left; :ALL, every one; NIL, none.</td></tr>
+<tr><td><code>*client-kept-without-buffers*</code></td><td><code>:first</code></td><td>:first, :last, :all, nil</td><td>Which clients of a daemon stay when their last buffer is closed.</td></tr>
 </tbody></table></div>
 <div class="tablewrap"><table>
 <thead>

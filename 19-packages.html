@@ -331,10 +331,10 @@ the package manager says <code>unencrypted</code> for these sources.</p>
 <h3 id="settings"><span class="num">19.5.3</span> Settings</h3>
 <div class="tablewrap"><table>
 <thead>
-<tr><th>Setting</th><th>Standard</th><th>What it changes</th></tr>
+<tr><th>Setting</th><th>Default</th><th>Values</th><th>What it changes</th></tr>
 </thead>
 <tbody>
-<tr><td><code>*package-check-signatures*</code></td><td><code>t</code></td><td>True to check who signed each version of a package, and take only those that M-x package-trust-again and the signers of a source (:signers) allow.</td></tr>
+<tr><td><code>*package-check-signatures*</code></td><td><code>t</code></td><td>t, nil</td><td>Whether a package's versions are taken only when signed by a key you trust.</td></tr>
 </tbody></table></div>
 <p><code>*package-check-signatures*</code> is <code>t</code>, and you should leave it so. Setting it to
 <code>nil</code> makes every version of every source be taken, signed by anyone or by no
@@ -428,13 +428,13 @@ standard is 512 MiB. <code>*package-sources*</code> holds the sources named with
 <code>package-source</code>. Set them with that function and not by hand.</p>
 <div class="tablewrap"><table>
 <thead>
-<tr><th>Setting</th><th>Standard</th><th>What it changes</th></tr>
+<tr><th>Setting</th><th>Default</th><th>Values</th><th>What it changes</th></tr>
 </thead>
 <tbody>
-<tr><td><code>*package-sources*</code></td><td><code>nil</code></td><td>The places packages come from, each (NAME .</td></tr>
-<tr><td><code>*packages-directory*</code></td><td><code>nil</code></td><td>The folder Tuatara keeps the packages it fetches in, in place of ~/.local/share/tuatara/packages/ ($XDG_DATA_HOME/tuatara/packages/); NIL for that standard place.</td></tr>
-<tr><td><code>*package-size-limit*</code></td><td><code>536870912</code></td><td>The most octets a package may take on disk while it is fetched, what git keeps of its history and its files together: a fetch that grows past it is ended and its files deleted.</td></tr>
-<tr><td><code>*package-ask-before-loading*</code></td><td><code>t</code></td><td>True to be asked before a package is first compiled and loaded: one fetched the first time, and again when an update brings another commit; one of a folder of yours the first time only, what you change in it later being yours.</td></tr>
+<tr><td><code>*package-sources*</code></td><td><code>nil</code></td><td>a list, each (NAME . WHERE)</td><td>The places packages come from (PACKAGE-SOURCE sets them).</td></tr>
+<tr><td><code>*packages-directory*</code></td><td><code>nil</code></td><td>nil, or a folder's name</td><td>The folder Tuatara keeps the packages it fetches in.</td></tr>
+<tr><td><code>*package-size-limit*</code></td><td><code>536870912</code></td><td>a whole number, 0 or more</td><td>The most octets a package may take on disk while it is fetched, what git keeps of its history and its files together: a fetch that grows past it is ended and its files deleted.</td></tr>
+<tr><td><code>*package-ask-before-loading*</code></td><td><code>t</code></td><td>t, nil</td><td>Whether you are asked before a package is first compiled and loaded: one fetched the first time, and again when an update brings another commit; one of a folder of yours the first time only, what you change in it later being yours.</td></tr>
 </tbody></table></div>
 <h2 id="what-a-package-needs-check-health"><span class="num">19.7</span> What a package needs: check-health</h2>
 <p>Some packages need a program that is not part of Tuatara. csvdt needs csvdt,
@@ -565,11 +565,11 @@ stays on top of a theme.</p>
 </tbody></table></div>
 <div class="tablewrap"><table>
 <thead>
-<tr><th>Setting</th><th>Standard</th><th>What it changes</th></tr>
+<tr><th>Setting</th><th>Default</th><th>Values</th><th>What it changes</th></tr>
 </thead>
 <tbody>
-<tr><td><code>*light-theme*</code></td><td><code>tuatara.defaults::ao-light</code></td><td>The light theme toggle-light-dark-theme switches to.</td></tr>
-<tr><td><code>*dark-theme*</code></td><td><code>tuatara.defaults::ao-dark</code></td><td>The dark theme toggle-light-dark-theme switches to.</td></tr>
+<tr><td><code>*light-theme*</code></td><td><code>tuatara.defaults::ao-light</code></td><td>a theme's name</td><td>The light theme toggle-light-dark-theme switches to, and the one used while the desktop is light (<strong>FOLLOW-DESKTOP-STYLE</strong>).</td></tr>
+<tr><td><code>*dark-theme*</code></td><td><code>tuatara.defaults::ao-dark</code></td><td>a theme's name</td><td>The dark theme toggle-light-dark-theme switches to, and the one used while the desktop is dark (<strong>FOLLOW-DESKTOP-STYLE</strong>).</td></tr>
 </tbody></table></div>
 <h2 id="writing-a-package-of-your-own"><span class="num">19.9</span> Writing a package of your own</h2>
 <p>A package is a folder of Lisp files and can be small: one command in one file

@@ -216,14 +216,14 @@ would sooner add one or two than see them all.</p>
 </tbody></table></div>
 <div class="tablewrap"><table>
 <thead>
-<tr><th>Setting</th><th>Standard</th><th>What it changes</th></tr>
+<tr><th>Setting</th><th>Default</th><th>Values</th><th>What it changes</th></tr>
 </thead>
 <tbody>
-<tr><td><code>*git-recent-commits*</code></td><td><code>10</code></td><td>How many of the latest commits M-x git shows.</td></tr>
-<tr><td><code>*git-section-lines*</code></td><td><code>1000</code></td><td>How many files each section of a status (M-x git) lists at first, and how many more each M-x git-toggle-diff on the line after them lists.</td></tr>
-<tr><td><code>*git-watch-seconds*</code></td><td><code>2</code></td><td>The least time, in seconds, between two readings of a status on the screen when git changes its repository, from a terminal too (GIT-WATCH-TICK), or NIL for a status never to follow it: then M-x revert-buffer reads it again.</td></tr>
-<tr><td><code>*git-menus*</code></td><td><code>:slim</code></td><td>How much the git menus (branch, worktree …) show: :SLIM the actions <strong>GIT-SLIM-ACTIONS</strong> names, the ones most used, :FULL every one.</td></tr>
-<tr><td><code>*git-slim-actions*</code></td><td><code>(tuatara.git::git-commit tuatara.git::gi...</code></td><td>The actions the slim git menus show (<strong>GIT-MENUS</strong>), by command: push one to show it too, or take one away.</td></tr>
+<tr><td><code>*git-recent-commits*</code></td><td><code>10</code></td><td>a whole number, 0 or more</td><td>How many of the latest commits M-x git shows.</td></tr>
+<tr><td><code>*git-section-lines*</code></td><td><code>1000</code></td><td>a whole number, 1 or more</td><td>How many files each section of a status (M-x git) lists at first, and how many more each M-x git-toggle-diff on the line after them lists.</td></tr>
+<tr><td><code>*git-watch-seconds*</code></td><td><code>2</code></td><td>nil, or a number, 0 or more</td><td>The least time between two readings of a status on the screen when git changes its repository, from a terminal too (GIT-WATCH-TICK).</td></tr>
+<tr><td><code>*git-menus*</code></td><td><code>:slim</code></td><td>:slim, :full</td><td>How much the git menus (branch, worktree …) show.</td></tr>
+<tr><td><code>*git-slim-actions*</code></td><td><code>(tuatara.git::git-commit tuatara.git::gi...</code></td><td>a list, each a function</td><td>The actions the slim git menus show (<strong>GIT-MENUS</strong>).</td></tr>
 </tbody></table></div>
 <div class="tablewrap"><table>
 <thead>
@@ -286,10 +286,10 @@ after a commit made in a terminal.</p>
 </tbody></table></div>
 <div class="tablewrap"><table>
 <thead>
-<tr><th>Setting</th><th>Standard</th><th>What it changes</th></tr>
+<tr><th>Setting</th><th>Default</th><th>Values</th><th>What it changes</th></tr>
 </thead>
 <tbody>
-<tr><td><code>*git-diff-lines*</code></td><td><code>1000</code></td><td>How many lines of a file's changes M-x git-toggle-diff shows under it at first, and how many more each M-x git-toggle-diff on the line after them shows.</td></tr>
+<tr><td><code>*git-diff-lines*</code></td><td><code>1000</code></td><td>a whole number, 1 or more</td><td>How many lines of a file's changes M-x git-toggle-diff shows under it at first, and how many more each M-x git-toggle-diff on the line after them shows.</td></tr>
 </tbody></table></div>
 <div class="tablewrap"><table>
 <thead>
@@ -386,10 +386,10 @@ an <code>N</code> means none.</p>
 </tbody></table></div>
 <div class="tablewrap"><table>
 <thead>
-<tr><th>Setting</th><th>Standard</th><th>What it changes</th></tr>
+<tr><th>Setting</th><th>Default</th><th>Values</th><th>What it changes</th></tr>
 </thead>
 <tbody>
-<tr><td><code>*git-commit-fill-column*</code></td><td><code>72</code></td><td>The column a git message's lines are filled to: 72, as git recommends for the body; the summary on the first line is best kept to 50.</td></tr>
+<tr><td><code>*git-commit-fill-column*</code></td><td><code>72</code></td><td>a whole number, 1 or more</td><td>The column a git message's lines are filled to, 72 as git recommends for the body; the summary on the first line is best kept to 50.</td></tr>
 </tbody></table></div>
 <h2 id="the-log-and-diffs"><span class="num">15.5</span> The log and diffs</h2>
 <h3 id="the-log"><span class="num">15.5.1</span> The log</h3>
@@ -438,10 +438,10 @@ check it out or make a branch at it.</p>
 </tbody></table></div>
 <div class="tablewrap"><table>
 <thead>
-<tr><th>Setting</th><th>Standard</th><th>What it changes</th></tr>
+<tr><th>Setting</th><th>Default</th><th>Values</th><th>What it changes</th></tr>
 </thead>
 <tbody>
-<tr><td><code>*git-log-length*</code></td><td><code>200</code></td><td>How many commits M-x git-log lists.</td></tr>
+<tr><td><code>*git-log-length*</code></td><td><code>200</code></td><td>a whole number, 1 or more</td><td>How many commits M-x git-log lists.</td></tr>
 </tbody></table></div>
 <h3 id="diffs"><span class="num">15.5.2</span> Diffs</h3>
 <p>A diff shows how two states differ, line by line, in the same form as the
@@ -485,10 +485,10 @@ files that are not in git is <kbd>M-x diff-files</kbd>, described in chapter 9.<
 </tbody></table></div>
 <div class="tablewrap"><table>
 <thead>
-<tr><th>Setting</th><th>Standard</th><th>What it changes</th></tr>
+<tr><th>Setting</th><th>Default</th><th>Values</th><th>What it changes</th></tr>
 </thead>
 <tbody>
-<tr><td><code>*differences-limit*</code></td><td><code>67108864</code></td><td>The most octets of differences shown (64 MB); when there are more, none are shown, and that is said.</td></tr>
+<tr><td><code>*differences-limit*</code></td><td><code>67108864</code></td><td>a whole number, 0 or more</td><td>The most octets of differences shown.</td></tr>
 </tbody></table></div>
 <div class="tablewrap"><table>
 <thead>

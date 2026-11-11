@@ -147,15 +147,15 @@ read for them, safe or not.</p>
 <h3 id="settings-and-faces"><span class="num">12.1.4</span> Settings and faces</h3>
 <div class="tablewrap"><table>
 <thead>
-<tr><th>Setting</th><th>Standard</th><th>What it changes</th></tr>
+<tr><th>Setting</th><th>Default</th><th>Values</th><th>What it changes</th></tr>
 </thead>
 <tbody>
-<tr><td><code>*safe-directories*</code></td><td><code>nil</code></td><td>Directories whose files always open safely, as M-x find-file-safely opens a file: read-only, with no major mode, hooks or version control, and nothing written beside them; for example '(&quot;~/Evidence/&quot;).</td></tr>
-<tr><td><code>*open-binary-files-safely*</code></td><td><code>t</code></td><td>True to open safely, as M-x find-file-safely does, a file that looks binary: one with a null (NUL) octet in its first 64 KB, as executables, archives and disk images have and text has not.</td></tr>
-<tr><td><code>*open-dropped-files-safely*</code></td><td><code>nil</code></td><td>True to open files dropped on the window safely, as M-x universal-argument M-x find-file does: read-only, no mode, nothing written beside them.</td></tr>
-<tr><td><code>*invisible-characters-when-safe*</code></td><td><code>t</code></td><td>True to show the characters that draw nothing as their codes (&lt;FEFF&gt;, &lt;200B&gt;) in every file opened safely (M-x find-file-safely) that has not chosen otherwise with M-x invisible-characters-mode; NIL to leave those buffers to <strong>INVISIBLE-CHARACTERS-MODES</strong> and <strong>GLOBAL-INVISIBLE-CHARACTERS-MODE</strong> as any other.</td></tr>
-<tr><td><code>*text-direction-when-safe*</code></td><td><code>nil</code></td><td>True to show right-to-left text in the order it is read in a file opened safely (M-x find-file-safely) too; NIL to show it there in the order it is stored, unless the buffer chose otherwise with M-x text-direction-mode.</td></tr>
-<tr><td><code>*file-local-variables*</code></td><td><code>t</code></td><td>True for a file's own settings (-<strong>- mode: org -</strong>- on its first line, a Local Variables block near its end) to be taken as it is opened, namely its major mode, tab width, tabs or spaces, fill column and spaces between sentences, and those a package takes; nothing else.</td></tr>
+<tr><td><code>*safe-directories*</code></td><td><code>nil</code></td><td>a list, each a folder's name</td><td>Directories whose files always open safely, as M-x find-file-safely opens a file.</td></tr>
+<tr><td><code>*open-binary-files-safely*</code></td><td><code>t</code></td><td>t, nil</td><td>Whether a file that looks binary opens safely, as M-x find-file-safely opens it.</td></tr>
+<tr><td><code>*open-dropped-files-safely*</code></td><td><code>nil</code></td><td>t, nil</td><td>Whether files dropped on the window are opened safely, as M-x universal-argument M-x find-file does: read-only, no mode, nothing written beside them.</td></tr>
+<tr><td><code>*invisible-characters-when-safe*</code></td><td><code>t</code></td><td>t, nil</td><td>Whether a file opened safely (M-x find-file-safely) shows the characters that draw nothing as their codes (&lt;FEFF&gt;, &lt;200B&gt;), unless the buffer chose otherwise with M-x invisible-characters-mode.</td></tr>
+<tr><td><code>*text-direction-when-safe*</code></td><td><code>nil</code></td><td>t, nil</td><td>Whether a file opened safely (M-x find-file-safely) shows right-to-left text in the order it is read, unless the buffer chose otherwise with M-x text-direction-mode.</td></tr>
+<tr><td><code>*file-local-variables*</code></td><td><code>t</code></td><td>t, nil</td><td>Whether a file's own settings are taken as it is opened.</td></tr>
 </tbody></table></div>
 <div class="tablewrap"><table>
 <thead>
@@ -315,10 +315,10 @@ with <code>chmod -R a-w evidence/</code>. Tuatara's guard does not replace it.</
 </tbody></table></div>
 <div class="tablewrap"><table>
 <thead>
-<tr><th>Setting</th><th>Standard</th><th>What it changes</th></tr>
+<tr><th>Setting</th><th>Default</th><th>Values</th><th>What it changes</th></tr>
 </thead>
 <tbody>
-<tr><td><code>*evidence-folders*</code></td><td><code>nil</code></td><td>The folders whose files are evidence: each opens safely however it is opened (read-only, no mode, hooks or version control run on it), and nothing is written in such a folder or below it, by saving, saving as, exporting, copying, moving, renaming, deleting or making folders, nor any of the editor's own files (backups, auto-saves, locks).</td></tr>
+<tr><td><code>*evidence-folders*</code></td><td><code>nil</code></td><td>a list, each a folder's path, (:name …) or (:regex …)</td><td>The folders whose files are evidence.</td></tr>
 </tbody></table></div>
 <div class="tablewrap"><table>
 <thead>
@@ -413,17 +413,17 @@ decoder of yours fails because of it.</p>
 </tbody></table></div>
 <div class="tablewrap"><table>
 <thead>
-<tr><th>Setting</th><th>Standard</th><th>What it changes</th></tr>
+<tr><th>Setting</th><th>Default</th><th>Values</th><th>What it changes</th></tr>
 </thead>
 <tbody>
-<tr><td><code>*sandbox-program*</code></td><td><code>&quot;bwrap&quot;</code></td><td>The program that shuts in the programs decoding files for the editor, and LaTeX making PDFs: bubblewrap, named bwrap, looked for on the PATH (or a full path to it).</td></tr>
-<tr><td><code>*sandbox-seconds*</code></td><td><code>10</code></td><td>The seconds a program decoding a file may run before it is ended, and the processor time it may take, 10 as standard.</td></tr>
-<tr><td><code>*sandbox-memory*</code></td><td><code>1073741824</code></td><td>The octets of memory a program decoding a file may take (1 GB); NIL for no limit.</td></tr>
-<tr><td><code>*sandbox-total-memory*</code></td><td><code>2147483648</code></td><td>The octets of memory all the programs decoding one file may take together (2 GB), where the system can hold them to it (systemd-run, a scope of the user's own); NIL for no such limit, each program still held to <strong>SANDBOX-MEMORY</strong>.</td></tr>
-<tr><td><code>*sandbox-input-limit*</code></td><td><code>1073741824</code></td><td>The largest file a program decoding files is given (1 GB): it gets a copy in memory, which a larger file, or one claiming a huge size with nothing in it, would fill.</td></tr>
-<tr><td><code>*sandbox-seccomp*</code></td><td><code>t</code></td><td>True to have the kernel refuse a program decoding a file the system calls no decoder needs (see the file's header), on x86-64 and AArch64; NIL to leave them to it, the rest of the sandbox kept.</td></tr>
-<tr><td><code>*format-in-sandbox*</code></td><td><code>t</code></td><td>True for formatters to run shut in the sandbox: the project's folder and the formatter's own seen, read only, nothing written, no network.</td></tr>
-<tr><td><code>*syntax-helper-unconfined*</code></td><td><code>nil</code></td><td>True to have the grammars run, where there is no sandbox, for the files of projects you trust, in a program of their own that is not shut in.</td></tr>
+<tr><td><code>*sandbox-program*</code></td><td><code>&quot;bwrap&quot;</code></td><td>nil, or a file's name</td><td>The program that shuts in the programs decoding files for the editor, and LaTeX making PDFs.</td></tr>
+<tr><td><code>*sandbox-seconds*</code></td><td><code>10</code></td><td>a number, 1 or more</td><td>The seconds a program decoding a file may run before it is ended, and the processor time it may take.</td></tr>
+<tr><td><code>*sandbox-memory*</code></td><td><code>1073741824</code></td><td>nil, or a whole number, 1 or more</td><td>The memory a program decoding a file may take.</td></tr>
+<tr><td><code>*sandbox-total-memory*</code></td><td><code>2147483648</code></td><td>nil, or a whole number, 1 or more</td><td>The memory all the programs decoding one file may take together.</td></tr>
+<tr><td><code>*sandbox-input-limit*</code></td><td><code>1073741824</code></td><td>nil, or a whole number, 1 or more</td><td>The largest file a program decoding files is given.</td></tr>
+<tr><td><code>*sandbox-seccomp*</code></td><td><code>t</code></td><td>t, nil</td><td>Whether the kernel refuses a program decoding a file the system calls no decoder needs (see the file's header), on x86-64 and AArch64.</td></tr>
+<tr><td><code>*format-in-sandbox*</code></td><td><code>t</code></td><td>t, nil</td><td>Whether formatters run shut in the sandbox.</td></tr>
+<tr><td><code>*syntax-helper-unconfined*</code></td><td><code>nil</code></td><td>t, nil</td><td>Whether the grammars run, where there is no sandbox, for the files of projects you trust, in a program of their own that is not shut in.</td></tr>
 </tbody></table></div>
 <h2 id="repositories-you-only-look-at"><span class="num">12.4</span> Repositories you only look at</h2>
 <p>A git repository can run programs. Its hooks run when you commit. Its filters
@@ -485,10 +485,10 @@ a terminal inside the repository and run its build script, you have trusted it.<
 </tbody></table></div>
 <div class="tablewrap"><table>
 <thead>
-<tr><th>Setting</th><th>Standard</th><th>What it changes</th></tr>
+<tr><th>Setting</th><th>Default</th><th>Values</th><th>What it changes</th></tr>
 </thead>
 <tbody>
-<tr><td><code>*lsp-trusted-projects*</code></td><td><code>nil</code></td><td>Folders whose projects you trust to run their own programs: their language servers start by themselves as their files are opened, git runs the programs they name for themselves (hooks, filters), and M-x compile runs their build commands without asking.</td></tr>
+<tr><td><code>*lsp-trusted-projects*</code></td><td><code>nil</code></td><td>a list, each a folder's name</td><td>Folders whose projects you trust to run their own programs.</td></tr>
 </tbody></table></div>
 <div class="tablewrap"><table>
 <thead>
@@ -623,12 +623,12 @@ from. The folder list (chapter 10) has keys for the same jobs on files.</p>
 </tbody></table></div>
 <div class="tablewrap"><table>
 <thead>
-<tr><th>Setting</th><th>Standard</th><th>What it changes</th></tr>
+<tr><th>Setting</th><th>Default</th><th>Values</th><th>What it changes</th></tr>
 </thead>
 <tbody>
-<tr><td><code>*gpg-program*</code></td><td><code>&quot;gpg&quot;</code></td><td>The GnuPG program that decrypts and encrypts .gpg files, by its full path, from the root (/opt/gnupg/bin/gpg), or by name, then looked for only in the system's own folders of programs (/usr/local/bin, /usr/bin, /bin), never in a folder of yours your PATH may name, nor in the folder the editor is in.</td></tr>
-<tr><td><code>*gpg-passphrase-from*</code></td><td><code>:auto</code></td><td>Who asks for a passphrase gpg needs.</td></tr>
-<tr><td><code>*gpg-loopback-warning*</code></td><td><code>t</code></td><td>When true, the minibuffer asking for a passphrase for gpg's loopback shows above it, while it asks, a window saying why it asks, how the passphrase goes and what that risks (the garbage collector's copies, memory not locked, no keyboard grab, a look-alike).</td></tr>
+<tr><td><code>*gpg-program*</code></td><td><code>&quot;gpg&quot;</code></td><td>a file's name</td><td>The GnuPG program that decrypts and encrypts .gpg files.</td></tr>
+<tr><td><code>*gpg-passphrase-from*</code></td><td><code>:auto</code></td><td>:agent, :terminal, :minibuffer, :auto</td><td>Who asks for a passphrase gpg needs.</td></tr>
+<tr><td><code>*gpg-loopback-warning*</code></td><td><code>t</code></td><td>t, nil</td><td>Whether the minibuffer asking for a passphrase for gpg's loopback shows a window above it, while it asks.</td></tr>
 </tbody></table></div>
 <div class="node end"><span>Previous: <a href="11-large-files-and-background-work.html">Large files and work in the background</a></span><span>Next: <a href="13-writing-code.html">Writing code</a></span><span>Up: <a href="index.html">Contents</a></span></div>
 </article>

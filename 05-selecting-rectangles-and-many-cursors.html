@@ -192,10 +192,10 @@ row.</p>
 </tbody></table></div>
 <div class="tablewrap"><table>
 <thead>
-<tr><th>Setting</th><th>Standard</th><th>What it changes</th></tr>
+<tr><th>Setting</th><th>Default</th><th>Values</th><th>What it changes</th></tr>
 </thead>
 <tbody>
-<tr><td><code>*pair-delimiters*</code></td><td><code>((#\{ . #\}) (#\[ . #\]) (#\( . #\)) (#\...</code></td><td>The pairs of delimiters, each (OPEN .</td></tr>
+<tr><td><code>*pair-delimiters*</code></td><td><code>((#\{ . #\}) (#\[ . #\]) (#\( . #\)) (#\...</code></td><td>a list, each (OPEN . CLOSE)</td><td>The pairs of delimiters.</td></tr>
 </tbody></table></div>
 <h3 id="the-emacs-keys-for-the-same"><span class="num">5.2.2</span> The Emacs keys for the same</h3>
 <p>These keys do much the same with Emacs's names for them. They work in both
@@ -464,10 +464,10 @@ width, and <kbd>C-f</kbd> and <kbd>C-n</kbd> (modal: <kbd>l</kbd>, <kbd>j</kbd>)
 </tbody></table></div>
 <div class="tablewrap"><table>
 <thead>
-<tr><th>Setting</th><th>Standard</th><th>What it changes</th></tr>
+<tr><th>Setting</th><th>Default</th><th>Values</th><th>What it changes</th></tr>
 </thead>
 <tbody>
-<tr><td><code>*rectangle-cursors-limit*</code></td><td><code>10000</code></td><td>The most rows M-x tuatara-change on a rectangle (M-x rectangle-mark-mode) puts a cursor on, or NIL for as many as the memory has room for: the block is emptied and what is typed appears on every row, as at the cursors of M-x add-cursor-below.</td></tr>
+<tr><td><code>*rectangle-cursors-limit*</code></td><td><code>10000</code></td><td>nil, or a whole number, 0 or more</td><td>The most rows M-x tuatara-change on a rectangle (M-x rectangle-mark-mode) puts a cursor on.</td></tr>
 </tbody></table></div>
 <h2 id="many-cursors"><span class="num">5.6</span> Many cursors</h2>
 <p><kbd>t</kbd> (non-modal: <kbd>C-z t</kbd>) puts another cursor on the line below, at the same
@@ -593,10 +593,10 @@ leaves them as they were.</p>
 </tbody></table></div>
 <div class="tablewrap"><table>
 <thead>
-<tr><th>Setting</th><th>Standard</th><th>What it changes</th></tr>
+<tr><th>Setting</th><th>Default</th><th>Values</th><th>What it changes</th></tr>
 </thead>
 <tbody>
-<tr><td><code>*cursors-limit*</code></td><td><code>10000</code></td><td>The most cursors M-x add-cursor-below and M-x add-cursor-above make, or NIL for as many as the memory has room for: every key but typing runs once at every cursor, so a great many make every key slow; what is typed is written as it is typed only at the cursors in sight, the others when the typing ends.</td></tr>
+<tr><td><code>*cursors-limit*</code></td><td><code>10000</code></td><td>nil, or a whole number, 0 or more</td><td>The most cursors M-x add-cursor-below and M-x add-cursor-above make.</td></tr>
 </tbody></table></div>
 <h3 id="showing-the-cursors"><span class="num">5.6.3</span> Showing the cursors</h3>
 <p>The cursors other than the real one are drawn in their own colours, one for
@@ -667,11 +667,11 @@ hold them all even so.</p>
 </tbody></table></div>
 <div class="tablewrap"><table>
 <thead>
-<tr><th>Setting</th><th>Standard</th><th>What it changes</th></tr>
+<tr><th>Setting</th><th>Default</th><th>Values</th><th>What it changes</th></tr>
 </thead>
 <tbody>
-<tr><td><code>*split-limit*</code></td><td><code>100000</code></td><td>The most places M-x split-selection holds, or NIL for as many as the memory has room for, 100000 as standard.</td></tr>
-<tr><td><code>*split-limit-ask*</code></td><td><code>nil</code></td><td>True to be asked, when the places would pass their limit, whether to hold them all the same, the memory having room, rather than those in sight only.</td></tr>
+<tr><td><code>*split-limit*</code></td><td><code>100000</code></td><td>nil, or a whole number, 0 or more</td><td>The most places M-x split-selection holds.</td></tr>
+<tr><td><code>*split-limit-ask*</code></td><td><code>nil</code></td><td>t, nil</td><td>Whether to be asked, when the places would pass their limit, to hold them all the same, the memory having room, rather than those in sight only.</td></tr>
 </tbody></table></div>
 <h2 id="summary-of-the-normal-keys"><span class="num">5.8</span> Summary of the NORMAL keys</h2>
 <p>For quick reference, in one place.</p>

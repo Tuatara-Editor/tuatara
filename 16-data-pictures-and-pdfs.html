@@ -157,12 +157,12 @@ line the header once more. If none of your files has a header, set
 </tbody></table></div>
 <div class="tablewrap"><table>
 <thead>
-<tr><th>Setting</th><th>Standard</th><th>What it changes</th></tr>
+<tr><th>Setting</th><th>Default</th><th>Values</th><th>What it changes</th></tr>
 </thead>
 <tbody>
-<tr><td><code>*csv-separator*</code></td><td><code>:detect</code></td><td>What separates the fields of the files CSV mode shows.</td></tr>
-<tr><td><code>*csv-header*</code></td><td><code>t</code></td><td>True when the first line of the files CSV mode shows is their header, naming the columns: always shown by search filters, never deleted by M-x list-keep-records, its names offered for a column.</td></tr>
-<tr><td><code>*list-header-lock*</code></td><td><code>nil</code></td><td>True to keep the header of a file of records at the top of the window as the rest scrolls under it, wherever there is one: a CSV's first line, a log's once M-x list-toggle-header makes it a header; as M-x list-toggle-header-lock does for one buffer.</td></tr>
+<tr><td><code>*csv-separator*</code></td><td><code>:detect</code></td><td>:detect, or a character</td><td>What separates the fields of the files CSV mode shows.</td></tr>
+<tr><td><code>*csv-header*</code></td><td><code>t</code></td><td>t, nil</td><td>Whether the first line of the files CSV mode shows is their header, naming the columns.</td></tr>
+<tr><td><code>*list-header-lock*</code></td><td><code>nil</code></td><td>t, nil</td><td>Whether the header of a file of records stays at the top of the window as the rest scrolls under it, wherever there is one: a CSV's first line, a log's once M-x list-toggle-header makes it a header.</td></tr>
 </tbody></table></div>
 <div class="tablewrap"><table>
 <thead>
@@ -258,10 +258,10 @@ words, apart by spaces.</p>
 </tbody></table></div>
 <div class="tablewrap"><table>
 <thead>
-<tr><th>Setting</th><th>Standard</th><th>What it changes</th></tr>
+<tr><th>Setting</th><th>Default</th><th>Values</th><th>What it changes</th></tr>
 </thead>
 <tbody>
-<tr><td><code>*line-record-modes*</code></td><td><code>(tuatara.defaults::log-mode tuatara.defa...</code></td><td>The major modes whose files hold a record a line, as a log does: search filters (M-x search-filter-regex) narrow them, and the modes made from them, by hiding the lines they leave out, as they narrow a CSV.</td></tr>
+<tr><td><code>*line-record-modes*</code></td><td><code>(tuatara.defaults::log-mode tuatara.defa...</code></td><td>a list, each a mode's name</td><td>The major modes whose files hold a record a line, as a log does.</td></tr>
 </tbody></table></div>
 <div class="tablewrap"><table>
 <thead>
@@ -420,10 +420,10 @@ rubbish. If you would sooner see such files as text, set
 </tbody></table></div>
 <div class="tablewrap"><table>
 <thead>
-<tr><th>Setting</th><th>Standard</th><th>What it changes</th></tr>
+<tr><th>Setting</th><th>Default</th><th>Values</th><th>What it changes</th></tr>
 </thead>
 <tbody>
-<tr><td><code>*hex-view-binary-files*</code></td><td><code>t</code></td><td>True to show a file that looks binary in the hex view (M-x hex-mode) when it is opened: one with a null (NUL) octet in its first 64 KB, as executables, archives and disk images have and text has not.</td></tr>
+<tr><td><code>*hex-view-binary-files*</code></td><td><code>t</code></td><td>t, nil</td><td>Whether a file that looks binary is shown in the hex view (M-x hex-mode) when it is opened.</td></tr>
 </tbody></table></div>
 <div class="tablewrap"><table>
 <thead>
@@ -496,11 +496,11 @@ picture.</p>
 </tbody></table></div>
 <div class="tablewrap"><table>
 <thead>
-<tr><th>Setting</th><th>Standard</th><th>What it changes</th></tr>
+<tr><th>Setting</th><th>Default</th><th>Values</th><th>What it changes</th></tr>
 </thead>
 <tbody>
-<tr><td><code>*tui-pictures*</code></td><td><code>:auto</code></td><td>Whether pictures (a preview of an image, a PDF's pages) are shown in the terminal.</td></tr>
-<tr><td><code>*picture-memory*</code></td><td><code>4294967296</code></td><td>The most memory the program drawing a large picture is given (4 GB): a picture's own size, read from its file, tells how much it needs (about 32 octets a pixel, a hundred-megapixel PNG some 3.9 GB), never less than <strong>SANDBOX-MEMORY</strong>; one needing more than this is not drawn, and says so.</td></tr>
+<tr><td><code>*tui-pictures*</code></td><td><code>:auto</code></td><td>:auto, t, nil</td><td>Whether pictures (a preview of an image, a PDF's pages) are shown in the terminal.</td></tr>
+<tr><td><code>*picture-memory*</code></td><td><code>4294967296</code></td><td>nil, or a whole number, 0 or more</td><td>The most memory the program drawing a large picture is given.</td></tr>
 </tbody></table></div>
 <h2 id="pdfs"><span class="num">16.6</span> PDFs</h2>
 <p>A PDF is a document fixed on its pages: a bank statement, a manual, a form
@@ -635,10 +635,10 @@ file. If the PDF has none, the echo area says so.</p>
 </tbody></table></div>
 <div class="tablewrap"><table>
 <thead>
-<tr><th>Setting</th><th>Standard</th><th>What it changes</th></tr>
+<tr><th>Setting</th><th>Default</th><th>Values</th><th>What it changes</th></tr>
 </thead>
 <tbody>
-<tr><td><code>*pdf-view-dark-pages*</code></td><td><code>nil</code></td><td>True to show a PDF's pages dark: white as the theme's background, black as its text, the colours between in proportion.</td></tr>
+<tr><td><code>*pdf-view-dark-pages*</code></td><td><code>nil</code></td><td>t, nil</td><td>Whether a PDF's pages are shown dark.</td></tr>
 </tbody></table></div>
 <h2 id="office-documents"><span class="num">16.7</span> Office documents</h2>
 <p>Word documents, Excel workbooks and PowerPoint presentations open with
@@ -676,12 +676,12 @@ ends in <code>...</code>.</p>
 </tbody></table></div>
 <div class="tablewrap"><table>
 <thead>
-<tr><th>Setting</th><th>Standard</th><th>What it changes</th></tr>
+<tr><th>Setting</th><th>Default</th><th>Values</th><th>What it changes</th></tr>
 </thead>
 <tbody>
-<tr><td><code>*office-view-pages*</code></td><td><code>t</code></td><td>True to show a Word document, an Excel workbook, a PowerPoint presentation (and the older and OpenDocument kinds of them) opened as its pages, drawn by LibreOffice shut in by the sandbox, when it is installed; M-x pdf-view-toggle-text switches to it read as text.</td></tr>
-<tr><td><code>*office-note-size-limit*</code></td><td><code>16777216</code></td><td>The most characters a note read from a Word document, an Excel workbook, a PowerPoint presentation or an OpenDocument file may have: past them the rest of its text is left out, and the note says so, so that a file whose few octets stand for text copied many times cannot fill the memory.</td></tr>
-<tr><td><code>*office-value-length-limit*</code></td><td><code>2000</code></td><td>The most characters of one value an office file's note shows (a cell of a sheet or a table, a formula): a longer one is cut after a word, with …</td></tr>
+<tr><td><code>*office-view-pages*</code></td><td><code>t</code></td><td>t, nil</td><td>Whether a Word document, an Excel workbook or a PowerPoint presentation (and the older and OpenDocument kinds of them) opens as its pages.</td></tr>
+<tr><td><code>*office-note-size-limit*</code></td><td><code>16777216</code></td><td>a whole number, 1 or more</td><td>The most characters a note read from an office file may have.</td></tr>
+<tr><td><code>*office-value-length-limit*</code></td><td><code>2000</code></td><td>a whole number, 1 or more</td><td>The most characters of one value an office file's note shows.</td></tr>
 </tbody></table></div>
 <h2 id="what-a-file-says-of-itself"><span class="num">16.8</span> What a file says of itself</h2>
 <p>Many files carry facts about themselves that you do not see when you look at
@@ -745,10 +745,10 @@ file itself is never handed to gpg.</p>
 </tbody></table></div>
 <div class="tablewrap"><table>
 <thead>
-<tr><th>Setting</th><th>Standard</th><th>What it changes</th></tr>
+<tr><th>Setting</th><th>Default</th><th>Values</th><th>What it changes</th></tr>
 </thead>
 <tbody>
-<tr><td><code>*metadata-look-up-key-owners*</code></td><td><code>:ask</code></td><td>Whether M-x show-file-metadata looks up, in your own GnuPG keyring, whose the keys an encrypted file is for are, running gpg –list-keys (the file itself is never given to gpg): true looks them up, :ask asks each time, false (nil) never does, the keys then shown by their IDs alone.</td></tr>
+<tr><td><code>*metadata-look-up-key-owners*</code></td><td><code>:ask</code></td><td>t, :ask, nil</td><td>Whether M-x show-file-metadata looks up, in your own GnuPG keyring, whose the keys an encrypted file is for are.</td></tr>
 </tbody></table></div>
 <h2 id="when-a-file-cannot-be-drawn"><span class="num">16.9</span> When a file cannot be drawn</h2>
 <p>Things go wrong with files. A download stops halfway and leaves half a

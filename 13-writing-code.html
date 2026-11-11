@@ -121,11 +121,11 @@ is missing a piece or you are missing a program.</p>
 </tbody></table></div>
 <div class="tablewrap"><table>
 <thead>
-<tr><th>Setting</th><th>Standard</th><th>What it changes</th></tr>
+<tr><th>Setting</th><th>Default</th><th>Values</th><th>What it changes</th></tr>
 </thead>
 <tbody>
-<tr><td><code>*grammars-on*</code></td><td><code>(:common)</code></td><td>The languages whose grammars read text without asking: a file in such a language is coloured and parsed as it opens, and so is the text in it inside another file (a code block in a note or a Markdown file).</td></tr>
-<tr><td><code>*syntax-helper-unconfined*</code></td><td><code>nil</code></td><td>True to have the grammars run, where there is no sandbox, for the files of projects you trust, in a program of their own that is not shut in.</td></tr>
+<tr><td><code>*grammars-on*</code></td><td><code>(:common)</code></td><td>a list, each a language's name, or :common</td><td>The languages whose grammars read text without asking.</td></tr>
+<tr><td><code>*syntax-helper-unconfined*</code></td><td><code>nil</code></td><td>t, nil</td><td>Whether the grammars run, where there is no sandbox, for the files of projects you trust, in a program of their own that is not shut in.</td></tr>
 </tbody></table></div>
 <p>The colours themselves come from the theme. These are the faces the syntax
 colours use most.</p>
@@ -162,7 +162,7 @@ press <kbd>C-g</kbd>.</p>
 <p><kbd>TAB</kbd> indents the line the cursor is on. The cursor can be anywhere in the
 line. When the line is already right, <kbd>TAB</kbd> does something else: it completes
 the name before the cursor, as the section on language servers describes. The
-setting <code>*tab-always-indent*</code> says what <kbd>TAB</kbd> does. Its standard value,
+setting <code>*tab-always-indent*</code> says what <kbd>TAB</kbd> does. Its default,
 <code>:complete</code>, indents and then completes. With <code>t</code> it only indents. With <code>nil</code>
 it indents only while the cursor is in the blanks at the start of the line, and
 anywhere else it moves on to the next tab stop.</p>
@@ -250,14 +250,14 @@ shfmt for shell scripts. The section on language servers covers it.</p>
 </tbody></table></div>
 <div class="tablewrap"><table>
 <thead>
-<tr><th>Setting</th><th>Standard</th><th>What it changes</th></tr>
+<tr><th>Setting</th><th>Default</th><th>Values</th><th>What it changes</th></tr>
 </thead>
 <tbody>
-<tr><td><code>*tab-always-indent*</code></td><td><code>:complete</code></td><td>What M-x indent-for-tab-command does where the major mode indents lines (Lisp, Rust, C, shell scripts): :COMPLETE (the standard) indents the current line, and when that changes nothing completes the name at point, as M-x completion-at-point does in Lisp.</td></tr>
-<tr><td><code>*indent-new-lines*</code></td><td><code>t</code></td><td>True to indent a line as it is begun: after RET, and on a line opened with NORMAL state's M-x tuatara-open-below or M-x tuatara-open-above, the new line goes to its column as the language's mode indents it (Lisp, Rust and shell scripts among them).</td></tr>
-<tr><td><code>*tab-width*</code></td><td><code>4</code></td><td>The columns from one tab stop to the next: a tab character shows its text on at the next stop, and M-x indent-for-tab-command goes on to it.</td></tr>
-<tr><td><code>*indent-tabs-mode*</code></td><td><code>nil</code></td><td>True to put tab characters in where M-x indent-for-tab-command and indentation go on to a tab stop, NIL to put spaces in; for every buffer whose major mode says nothing of its own (set-indent-tabs-mode).</td></tr>
-<tr><td><code>*file-local-variables*</code></td><td><code>t</code></td><td>True for a file's own settings (-<strong>- mode: org -</strong>- on its first line, a Local Variables block near its end) to be taken as it is opened, namely its major mode, tab width, tabs or spaces, fill column and spaces between sentences, and those a package takes; nothing else.</td></tr>
+<tr><td><code>*tab-always-indent*</code></td><td><code>:complete</code></td><td>:complete, t, nil</td><td>What M-x indent-for-tab-command does where the major mode indents lines (Lisp, Rust, C, shell scripts).</td></tr>
+<tr><td><code>*indent-new-lines*</code></td><td><code>t</code></td><td>t, nil</td><td>Whether a line is indented as it is begun.</td></tr>
+<tr><td><code>*tab-width*</code></td><td><code>4</code></td><td>a whole number from 1 to 64</td><td>The columns from one tab stop to the next: a tab character shows its text on at the next stop, and M-x indent-for-tab-command goes on to it.</td></tr>
+<tr><td><code>*indent-tabs-mode*</code></td><td><code>nil</code></td><td>t, nil</td><td>Whether indentation puts tab characters in where M-x indent-for-tab-command and indentation go on to a tab stop, for every buffer whose major mode says nothing of its own (set-indent-tabs-mode).</td></tr>
+<tr><td><code>*file-local-variables*</code></td><td><code>t</code></td><td>t, nil</td><td>Whether a file's own settings are taken as it is opened.</td></tr>
 </tbody></table></div>
 <h2 id="comments"><span class="num">13.3</span> Comments</h2>
 <p>You comment out a line to stop the program running it without losing it, and
@@ -312,7 +312,7 @@ when it is already there steps over it, and <kbd>DEL</kbd> between an empty pair
 both away. It is off as standard. To turn it on for every session, put
 <code>(setf *electric-pair-mode* t)</code> in your init file. It does not pair everything,
 because some characters are usually plain text: the apostrophe in &quot;don't&quot;, for
-example. <code>*electric-pair-typing*</code> says which are paired. Its standard value,
+example. <code>*electric-pair-typing*</code> says which are paired. Its default,
 <code>:safe</code>, pairs the delimiters of <code>*pair-delimiters*</code> except those in
 <code>*electric-pair-safe-exclusions*</code>. <code>:all</code> pairs every one.</p>
 <p><em>Putting a pair round something.</em> Select some text and press <kbd>M-(</kbd>
@@ -366,15 +366,15 @@ The second line is indented one level.</p>
 </tbody></table></div>
 <div class="tablewrap"><table>
 <thead>
-<tr><th>Setting</th><th>Standard</th><th>What it changes</th></tr>
+<tr><th>Setting</th><th>Default</th><th>Values</th><th>What it changes</th></tr>
 </thead>
 <tbody>
-<tr><td><code>*show-paren-mode*</code></td><td><code>t</code></td><td>True to show the bracket that pairs with the one at point: the one before point when it closes, else the one after it when it opens.</td></tr>
-<tr><td><code>*blink-matching-paren*</code></td><td><code>t</code></td><td>True to say, when a closing bracket is typed, what its partner is when it is out of sight (&quot;Matches (defun foo ()&quot;), or that it has none.</td></tr>
-<tr><td><code>*electric-pair-mode*</code></td><td><code>nil</code></td><td>True to close delimiters as they are typed: an opening one writes its closing half after point, a closing half typed where it stands steps over it, and M-x delete-backward-char between an empty pair takes both.</td></tr>
-<tr><td><code>*electric-pair-typing*</code></td><td><code>:safe</code></td><td>Which delimiters close themselves as they are typed: :safe, the pairs of <strong>PAIR-DELIMITERS</strong> less those <strong>ELECTRIC-PAIR-SAFE-EXCLUSIONS</strong> names; :all, every one of them; or a list of the opening characters, taken as it is (an empty list pairs nothing).</td></tr>
-<tr><td><code>*electric-pair-safe-exclusions*</code></td><td><code>(#\&lt; #\' #\` #\</code> #\* #\~ #\| #\\ #\/ #\:…=</td><td>The delimiters :safe leaves out: ordinary text far more often than a delimiter, such as the apostrophe in don't, a colon, less-than.</td></tr>
-<tr><td><code>*pair-delimiters*</code></td><td><code>((#\{ . #\}) (#\[ . #\]) (#\( . #\)) (#\...</code></td><td>The pairs of delimiters, each (OPEN .</td></tr>
+<tr><td><code>*show-paren-mode*</code></td><td><code>t</code></td><td>t, nil</td><td>Whether the bracket that pairs with the one at point is shown: the one before point when it closes, else the one after it when it opens.</td></tr>
+<tr><td><code>*blink-matching-paren*</code></td><td><code>t</code></td><td>t, nil</td><td>Whether typing a closing bracket says what its partner is when it is out of sight (&quot;Matches (defun foo ()&quot;), or that it has none.</td></tr>
+<tr><td><code>*electric-pair-mode*</code></td><td><code>nil</code></td><td>t, nil</td><td>Whether delimiters are closed as they are typed.</td></tr>
+<tr><td><code>*electric-pair-typing*</code></td><td><code>:safe</code></td><td>:safe, :all, or a list, each an opening character</td><td>Which delimiters close themselves as they are typed, once M-x electric-pair-mode is on.</td></tr>
+<tr><td><code>*electric-pair-safe-exclusions*</code></td><td><code>(#\&lt; #\' #\` #\</code> #\* #\~ #\| #\\ #\/ #\:…=</td><td>a list, each a character</td><td>The delimiters :safe leaves out of <strong>ELECTRIC-PAIR-TYPING</strong>: ordinary text far more often than a delimiter, such as the apostrophe in don't, a colon, less-than.</td></tr>
+<tr><td><code>*pair-delimiters*</code></td><td><code>((#\{ . #\}) (#\[ . #\]) (#\( . #\)) (#\...</code></td><td>a list, each (OPEN . CLOSE)</td><td>The pairs of delimiters.</td></tr>
 </tbody></table></div>
 <div class="tablewrap"><table>
 <thead>
@@ -711,31 +711,31 @@ the steps still show what Tuatara says.</p>
 <h3 id="settings-and-faces"><span class="num">13.7.8</span> Settings and faces</h3>
 <div class="tablewrap"><table>
 <thead>
-<tr><th>Setting</th><th>Standard</th><th>What it changes</th></tr>
+<tr><th>Setting</th><th>Default</th><th>Values</th><th>What it changes</th></tr>
 </thead>
 <tbody>
-<tr><td><code>*lsp-trusted-projects*</code></td><td><code>nil</code></td><td>Folders whose projects you trust to run their own programs: their language servers start by themselves as their files are opened, git runs the programs they name for themselves (hooks, filters), and M-x compile runs their build commands without asking.</td></tr>
-<tr><td><code>*lsp-languages*</code></td><td><code>t</code></td><td>The languages whose language servers are used: T, every language with a server installed; a list of languages, those alone, '(rust go python); or :NOT and languages, every one but those, '(:not markdown latex).</td></tr>
-<tr><td><code>*language-servers*</code></td><td><code>nil</code></td><td>The language servers of languages you choose yourself, in place of the language's usual ones: each (LANGUAGE SERVER…), LANGUAGE a symbol (python, rust), each SERVER a known server's name (&quot;basedpyright&quot;) or a list of a program and its arguments ((&quot;my-server&quot; &quot;–stdio&quot;)); (LANGUAGE) alone for none.</td></tr>
-<tr><td><code>*lsp-idle-delay*</code></td><td><code>0.5</code></td><td>The seconds the cursor rests before what is known of where it stands is shown: what a server found wrong there, the parameters of the call, what the thing is, 0.5 as standard.</td></tr>
-<tr><td><code>*lsp-signature-help*</code></td><td><code>t</code></td><td>True for the echo area to show the parameters of the call the cursor is in, as the language server knows them, once the cursor rests there.</td></tr>
-<tr><td><code>*lsp-hover-echo*</code></td><td><code>t</code></td><td>True for the echo area to show what the thing the cursor rests on is (its type, its signature), as the language server knows it, when the cursor is in no call whose parameters are shown.</td></tr>
-<tr><td><code>*lsp-highlight-symbol*</code></td><td><code>t</code></td><td>True for the name the cursor rests on, and its other uses the language server finds in the file, to be shown in :symbol-highlight.</td></tr>
-<tr><td><code>*lsp-diagnostics-display*</code></td><td><code>:box</code></td><td>How what a language server found where the cursor rests is said: :box, in a box under the cursor; :echo, in the echo area; NIL, not at all (the list of M-x lsp-diagnostics still has it).</td></tr>
-<tr><td><code>*lsp-diagnostics-style*</code></td><td><code>:wave</code></td><td>How the text a language server finds something wrong in is marked: :wave, errors and warnings underlined wavy, information and hints dotted; :dotted, all dotted; :line, all with a straight line; :background, the text on a ground of its kind's colour (the theme's error, warning and information grounds), not underlined.</td></tr>
-<tr><td><code>*lsp-inlay-hints*</code></td><td><code>t</code></td><td>True for language servers' inlay hints to be shown within the code: the types of bindings, the names of the parameters arguments go to.</td></tr>
-<tr><td><code>*lsp-semantic-tokens*</code></td><td><code>nil</code></td><td>True for code to be coloured as its language server sees it: each name in the face <strong>LSP-SEMANTIC-FACES</strong> gives its kind, over the mode's colours.</td></tr>
-<tr><td><code>*lsp-semantic-faces*</code></td><td><code>((&quot;namespace&quot; . :namespace) (&quot;type&quot; . :t...</code></td><td>The face each kind of name a language server tells apart is coloured in, as (KIND .</td></tr>
-<tr><td><code>*lsp-code-lenses*</code></td><td><code>nil</code></td><td>True for what language servers say of lines (3 references, Run test) to be shown faint at each line's end.</td></tr>
-<tr><td><code>*lsp-outline*</code></td><td><code>t</code></td><td>True for M-x buffer-outline to list a file's names as its language server knows them (functions, types, their fields and methods, nested), where it has one that does; else as the mode finds its headings.</td></tr>
-<tr><td><code>*lsp-wait*</code></td><td><code>2</code></td><td>The seconds a command waits for a language server's answer it needs at once (a completion, a definition), a key stopping the wait sooner, 2 as standard.</td></tr>
-<tr><td><code>*lsp-watch-files*</code></td><td><code>t</code></td><td>True for language servers that ask to be told of their project's files changed on disk, made or deleted, by programs other than the editor, to be told.</td></tr>
-<tr><td><code>*lsp-watch-skipped*</code></td><td><code>(&quot;target&quot; &quot;node_modules&quot; &quot;__pycache__&quot; &quot;...</code></td><td>The folders of a project whose files are never watched for its language servers, by name (hidden folders, whose names begin with a dot, never are): what a build makes.</td></tr>
-<tr><td><code>*language-formatters*</code></td><td><code>nil</code></td><td>The formatters of languages you choose yourself, in place of the language's usual one: each (LANGUAGE PROGRAM ARGUMENT…), the code given on its standard input and taken back laid out from its standard output; (LANGUAGE) alone for none, the language server or Tuatara's own indentation laying it out instead.</td></tr>
-<tr><td><code>*format-on-save*</code></td><td><code>nil</code></td><td>The languages whose buffers are formatted (M-x format-buffer) before each save, the save going on once the text is laid out: a list of language names, (rust python), or T for every language with a formatter installed.</td></tr>
-<tr><td><code>*format-in-sandbox*</code></td><td><code>t</code></td><td>True for formatters to run shut in the sandbox: the project's folder and the formatter's own seen, read only, nothing written, no network.</td></tr>
-<tr><td><code>*format-seconds*</code></td><td><code>30</code></td><td>The seconds a formatter may take before it is stopped and nothing is changed, 30 as standard; a language server laying out code that has not answered by then is no longer waited for.</td></tr>
-<tr><td><code>*word-completion-keep-case*</code></td><td><code>t</code></td><td>True to find words that start with what is typed whatever the case, and to keep the case typed: with &quot;foo&quot; typed, a word Foobar is put in as foobar, and with &quot;FOO&quot; typed, it is put in as FOOBAR.</td></tr>
+<tr><td><code>*lsp-trusted-projects*</code></td><td><code>nil</code></td><td>a list, each a folder's name</td><td>Folders whose projects you trust to run their own programs.</td></tr>
+<tr><td><code>*lsp-languages*</code></td><td><code>t</code></td><td>t, or a list, each a language's name, or :not first</td><td>The languages whose language servers are used.</td></tr>
+<tr><td><code>*language-servers*</code></td><td><code>nil</code></td><td>a list, each (LANGUAGE SERVER…)</td><td>The language servers of languages you choose yourself, in place of the language's usual ones.</td></tr>
+<tr><td><code>*lsp-idle-delay*</code></td><td><code>0.5</code></td><td>a number, 0 or more</td><td>How long the cursor rests before what is known of where it stands is shown: what a server found wrong there, the parameters of the call, what the thing is.</td></tr>
+<tr><td><code>*lsp-signature-help*</code></td><td><code>t</code></td><td>t, nil</td><td>Whether the echo area shows the parameters of the call the cursor is in, as the language server knows them, once the cursor rests there.</td></tr>
+<tr><td><code>*lsp-hover-echo*</code></td><td><code>t</code></td><td>t, nil</td><td>Whether the echo area shows what the thing the cursor rests on is (its type, its signature), as the language server knows it, when the cursor is in no call whose parameters are shown.</td></tr>
+<tr><td><code>*lsp-highlight-symbol*</code></td><td><code>t</code></td><td>t, nil</td><td>Whether the name the cursor rests on, and its other uses the language server finds in the file, are shown in :symbol-highlight.</td></tr>
+<tr><td><code>*lsp-diagnostics-display*</code></td><td><code>:box</code></td><td>:box, :echo, nil</td><td>How what a language server found where the cursor rests is said.</td></tr>
+<tr><td><code>*lsp-diagnostics-style*</code></td><td><code>:wave</code></td><td>:wave, :dotted, :line, :background</td><td>How the text a language server finds something wrong in is marked.</td></tr>
+<tr><td><code>*lsp-inlay-hints*</code></td><td><code>t</code></td><td>t, nil</td><td>Whether language servers' inlay hints are shown within the code: the types of bindings, the names of the parameters arguments go to.</td></tr>
+<tr><td><code>*lsp-semantic-tokens*</code></td><td><code>nil</code></td><td>t, nil</td><td>Whether code is coloured as its language server sees it: each name in the face <strong>LSP-SEMANTIC-FACES</strong> gives its kind, over the mode's colours.</td></tr>
+<tr><td><code>*lsp-semantic-faces*</code></td><td><code>((&quot;namespace&quot; . :namespace) (&quot;type&quot; . :t...</code></td><td>a list, each (KIND . FACE)</td><td>The face each kind of name a language server tells apart is coloured in; a kind not listed keeps the mode's colour.</td></tr>
+<tr><td><code>*lsp-code-lenses*</code></td><td><code>nil</code></td><td>t, nil</td><td>Whether what language servers say of lines (3 references, Run test) is shown faint at each line's end.</td></tr>
+<tr><td><code>*lsp-outline*</code></td><td><code>t</code></td><td>t, nil</td><td>Whether M-x buffer-outline lists a file's names as its language server knows them (functions, types, their fields and methods, nested), where it has one that does.</td></tr>
+<tr><td><code>*lsp-wait*</code></td><td><code>2</code></td><td>a number, 0 or more</td><td>How long a command waits for a language server's answer it needs at once (a completion, a definition), a key stopping the wait sooner.</td></tr>
+<tr><td><code>*lsp-watch-files*</code></td><td><code>t</code></td><td>t, nil</td><td>Whether language servers that ask to be told of their project's files changed on disk, made or deleted, by programs other than the editor, are told.</td></tr>
+<tr><td><code>*lsp-watch-skipped*</code></td><td><code>(&quot;target&quot; &quot;node_modules&quot; &quot;__pycache__&quot; &quot;...</code></td><td>a list, each text</td><td>The folders of a project whose files are never watched for its language servers (hidden folders, whose names begin with a dot, never are): what a build makes.</td></tr>
+<tr><td><code>*language-formatters*</code></td><td><code>nil</code></td><td>a list, each (LANGUAGE PROGRAM ARGUMENT…)</td><td>The formatters of languages you choose yourself, in place of the language's usual one.</td></tr>
+<tr><td><code>*format-on-save*</code></td><td><code>nil</code></td><td>t, or a list, each a language's name</td><td>The languages whose buffers are formatted (M-x format-buffer) before each save, the save going on once the text is laid out.</td></tr>
+<tr><td><code>*format-in-sandbox*</code></td><td><code>t</code></td><td>t, nil</td><td>Whether formatters run shut in the sandbox.</td></tr>
+<tr><td><code>*format-seconds*</code></td><td><code>30</code></td><td>a number, 0 or more</td><td>How long a formatter may take before it is stopped and nothing is changed; a language server laying out code that has not answered by then is no longer waited for.</td></tr>
+<tr><td><code>*word-completion-keep-case*</code></td><td><code>t</code></td><td>t, nil</td><td>Whether word completion finds words whatever the case typed, and keeps the case typed: with &quot;foo&quot; typed, a word Foobar is put in as foobar, and with &quot;FOO&quot; typed, it is put in as FOOBAR.</td></tr>
 </tbody></table></div>
 <div class="tablewrap"><table>
 <thead>
@@ -812,12 +812,12 @@ yours takes the place of Tuatara's.</p>
 </tbody></table></div>
 <div class="tablewrap"><table>
 <thead>
-<tr><th>Setting</th><th>Standard</th><th>What it changes</th></tr>
+<tr><th>Setting</th><th>Default</th><th>Values</th><th>What it changes</th></tr>
 </thead>
 <tbody>
-<tr><td><code>*snippet-directories*</code></td><td><code>nil</code></td><td>The folders your snippets are in, each with a folder for each major mode (org-mode/, prog-mode/, fundamental-mode/), a snippet a file in it; NIL, as standard, for snippets/ in your configuration folder (~/.config/tuatara/snippets/, XDG_CONFIG_HOME's when it is set).</td></tr>
-<tr><td><code>*snippet-tab*</code></td><td><code>t</code></td><td>True for a snippet's key before the cursor and TAB to put the snippet in.</td></tr>
-<tr><td><code>*user-full-name*</code></td><td><code>nil</code></td><td>Your full name, as &quot;Ann Taranaki&quot;: the author of an exported document with no #+author:, %author% in a note template and $AUTHOR in a snippet.</td></tr>
+<tr><td><code>*snippet-directories*</code></td><td><code>nil</code></td><td>a list, each a folder's name</td><td>The folders your snippets are in, each with a folder for each major mode (org-mode/, prog-mode/, fundamental-mode/), a snippet a file in it.</td></tr>
+<tr><td><code>*snippet-tab*</code></td><td><code>t</code></td><td>t, nil</td><td>Whether TAB puts in the snippet whose key is before the cursor.</td></tr>
+<tr><td><code>*user-full-name*</code></td><td><code>nil</code></td><td>nil, or text</td><td>Your full name, as &quot;Ann Taranaki&quot;: the author of an exported document with no #+author:, %author% in a note template and $AUTHOR in a snippet.</td></tr>
 </tbody></table></div>
 <h2 id="running-a-build-or-the-tests"><span class="num">13.9</span> Running a build or the tests</h2>
 <p>Writing code is a loop. You change something, run it, read what went wrong, go
@@ -886,11 +886,11 @@ In <code>*compile*</code>, <kbd>RET</kbd> on a line opens that place.</p>
 </tbody></table></div>
 <div class="tablewrap"><table>
 <thead>
-<tr><th>Setting</th><th>Standard</th><th>What it changes</th></tr>
+<tr><th>Setting</th><th>Default</th><th>Values</th><th>What it changes</th></tr>
 </thead>
 <tbody>
-<tr><td><code>*compile-command*</code></td><td><code>&quot;make -k &quot;</code></td><td>The command M-x compile offers the first time, before you have typed one; after that it offers the one typed last.</td></tr>
-<tr><td><code>*compile-output-limit*</code></td><td><code>268435456</code></td><td>The most octets of a command's output M-x compile keeps in <strong>compile</strong>: 256 MB as standard.</td></tr>
+<tr><td><code>*compile-command*</code></td><td><code>&quot;make -k &quot;</code></td><td>text</td><td>The command M-x compile offers the first time, before you have typed one; after that it offers the one typed last.</td></tr>
+<tr><td><code>*compile-output-limit*</code></td><td><code>268435456</code></td><td>nil, or a whole number, 0 or more</td><td>The most octets of a command's output M-x compile keeps in <strong>compile</strong>.</td></tr>
 </tbody></table></div>
 <div class="tablewrap"><table>
 <thead>
@@ -1071,10 +1071,10 @@ The setting <code>*debug-on-error*</code> makes that the standard.</p>
 <h3 id="settings"><span class="num">13.11.2</span> Settings</h3>
 <div class="tablewrap"><table>
 <thead>
-<tr><th>Setting</th><th>Standard</th><th>What it changes</th></tr>
+<tr><th>Setting</th><th>Default</th><th>Values</th><th>What it changes</th></tr>
 </thead>
 <tbody>
-<tr><td><code>*debug-on-error*</code></td><td><code>nil</code></td><td>True to show the calls under way when a command or an evaluation meets an error, in <strong>Backtrace</strong>; M-x toggle-debug-on-error switches it.</td></tr>
+<tr><td><code>*debug-on-error*</code></td><td><code>nil</code></td><td>t, nil</td><td>Whether a command or an evaluation that meets an error shows the calls under way, in <strong>Backtrace</strong>.</td></tr>
 </tbody></table></div>
 <h2 id="the-commands-of-each-language"><span class="num">13.12</span> The commands of each language</h2>
 <p>Each language has a command that switches the current buffer to its major mode,

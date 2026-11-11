@@ -208,20 +208,20 @@ name. The settings below change the standard for every list.</p>
 <h3 id="settings-for-what-a-list-shows"><span class="num">10.3.2</span> Settings for what a list shows</h3>
 <div class="tablewrap"><table>
 <thead>
-<tr><th>Setting</th><th>Standard</th><th>What it changes</th></tr>
+<tr><th>Setting</th><th>Default</th><th>Values</th><th>What it changes</th></tr>
 </thead>
 <tbody>
-<tr><td><code>*rimu-details*</code></td><td><code>nil</code></td><td>True for rimu to show the details of each entry before its name: its inode number, as ls -i does, then as ls -l does its permissions, links, owner, group, size and when it last changed, and after the name where a symbolic link leads.</td></tr>
-<tr><td><code>*rimu-permissions*</code></td><td><code>:symbolic</code></td><td>How rimu's details write each entry's permissions: :SYMBOLIC, as ls -l does, drwxr-xr-x; :OCTAL, its kind's letter and the number chmod takes, d755, -644, -4755 with the set-user, set-group or sticky bit.</td></tr>
-<tr><td><code>*rimu-dotfiles*</code></td><td><code>nil</code></td><td>True for rimu to show the entries whose names start with a dot, .</td></tr>
-<tr><td><code>*rimu-sort*</code></td><td><code>:name</code></td><td>The order rimu lists entries in: :NAME, by name, octet by octet as ls orders names in the C locale (capitals before small letters); :TIME, those changed last first.</td></tr>
-<tr><td><code>*rimu-directories-first*</code></td><td><code>t</code></td><td>True for rimu to list directories, and the symbolic links that lead to directories, before everything else, as ls –group-directories-first does.</td></tr>
-<tr><td><code>*rimu-directory-sizes*</code></td><td><code>nil</code></td><td>True for rimu's lists to show each entry's size before its name, a directory's with everything under it; NIL, as standard, to show them only on M-x rimu-toggle-sizes in a list.</td></tr>
-<tr><td><code>*rimu-git-info*</code></td><td><code>nil</code></td><td>True for rimu's lists to show, after each name, the entry's last commit in git's history: when it was made and the first line of its message.</td></tr>
-<tr><td><code>*rimu-hidden-columns*</code></td><td><code>nil</code></td><td>The columns rimu's lists never show, however they are asked for: among the details :INODE, :PERMISSIONS, :LINKS, :OWNER, :GROUP, :SIZE and :TIME, and the columns of their own :SIZES (directories' sizes) and :GIT (the last commits).</td></tr>
-<tr><td><code>*rimu-ignored-extensions*</code></td><td><code>(&quot;.o&quot; &quot;.so&quot; &quot;.a&quot; &quot;.fasl&quot; &quot;.elc&quot; &quot;.pyc&quot; &quot;...</code></td><td>Endings of names rimu shows set back, in the :list-dim face: compiled files, backups (~) and the files some editors save as you type (#).</td></tr>
-<tr><td><code>*rimu-follow-changes*</code></td><td><code>t</code></td><td>True for rimu's lists to be read again by themselves when their directory changes on disk: a file made, deleted, renamed or finished being written by another program, many at once as one; NIL to read one again only with M-x revert-buffer.</td></tr>
-<tr><td><code>*rimu-reuse-lists*</code></td><td><code>t</code></td><td>True for a folder a bookmark goes to (M-x bookmark-jump), or a list goes to across a project's edge, to be listed in a rimu list there is of its project, moved there, the one used last (for a folder in no project, one in none): a list of its own only when there is none.</td></tr>
+<tr><td><code>*rimu-details*</code></td><td><code>nil</code></td><td>t, nil</td><td>Whether rimu shows the details of each entry before its name.</td></tr>
+<tr><td><code>*rimu-permissions*</code></td><td><code>:symbolic</code></td><td>:symbolic, :octal</td><td>How rimu's details write each entry's permissions.</td></tr>
+<tr><td><code>*rimu-dotfiles*</code></td><td><code>nil</code></td><td>t, nil</td><td>Whether rimu shows the entries whose names start with a dot, .</td></tr>
+<tr><td><code>*rimu-sort*</code></td><td><code>:name</code></td><td>:name, :time</td><td>The order rimu lists entries in.</td></tr>
+<tr><td><code>*rimu-directories-first*</code></td><td><code>t</code></td><td>t, nil</td><td>Whether rimu lists directories, and the symbolic links that lead to directories, before everything else, as ls –group-directories-first does.</td></tr>
+<tr><td><code>*rimu-directory-sizes*</code></td><td><code>nil</code></td><td>t, nil</td><td>Whether rimu's lists show each entry's size before its name, a directory's with everything under it.</td></tr>
+<tr><td><code>*rimu-git-info*</code></td><td><code>nil</code></td><td>t, nil</td><td>Whether rimu's lists show, after each name, the entry's last commit in git's history.</td></tr>
+<tr><td><code>*rimu-hidden-columns*</code></td><td><code>nil</code></td><td>a list, each :inode, :permissions, :links, :owner, :group, :size, :time, :sizes, :git</td><td>The columns rimu's lists never show, however they are asked for.</td></tr>
+<tr><td><code>*rimu-ignored-extensions*</code></td><td><code>(&quot;.o&quot; &quot;.so&quot; &quot;.a&quot; &quot;.fasl&quot; &quot;.elc&quot; &quot;.pyc&quot; &quot;...</code></td><td>a list, each text</td><td>Endings of names rimu shows set back, in the :list-dim face.</td></tr>
+<tr><td><code>*rimu-follow-changes*</code></td><td><code>t</code></td><td>t, nil</td><td>Whether rimu's lists are read again by themselves when their directory changes on disk.</td></tr>
+<tr><td><code>*rimu-reuse-lists*</code></td><td><code>t</code></td><td>t, nil</td><td>Whether a folder a bookmark goes to (M-x bookmark-jump), or a list goes to across a project's edge, is listed in a rimu list that already belongs to its project.</td></tr>
 </tbody></table></div>
 <h2 id="the-preview-beside-the-list"><span class="num">10.4</span> The preview beside the list</h2>
 <p>When you rest the cursor on an entry, Tuatara shows it in a window beside the
@@ -284,13 +284,13 @@ video that Tuatara cannot.</p>
 <h3 id="settings-for-the-preview"><span class="num">10.4.3</span> Settings for the preview</h3>
 <div class="tablewrap"><table>
 <thead>
-<tr><th>Setting</th><th>Standard</th><th>What it changes</th></tr>
+<tr><th>Setting</th><th>Default</th><th>Values</th><th>What it changes</th></tr>
 </thead>
 <tbody>
-<tr><td><code>*rimu-preview*</code></td><td><code>t</code></td><td>True for rimu lists to show the entry on the current line in a window beside the list, once point has rested on it <strong>RIMU-PREVIEW-DELAY</strong> seconds: the start of a file, a binary one in the hex view; the list of a directory; what a named pipe, a socket or a device is, never opening it.</td></tr>
-<tr><td><code>*rimu-preview-delay*</code></td><td><code>0.1</code></td><td>Seconds point rests on an entry of a rimu list before the preview shows it, so that moving over many lines quickly reads none of them, 0.1 as standard.</td></tr>
-<tr><td><code>*rimu-preview-size*</code></td><td><code>1048576</code></td><td>The most of a file rimu's preview shows, in octets from its start: 1 MB by default.</td></tr>
-<tr><td><code>*remote-preview-size-limit*</code></td><td><code>20000000</code></td><td>The most octets a file on another machine may hold to be shown in the preview of its list (M-x list-toggle-preview), 20 MB by default: all of it has to come from the server first.</td></tr>
+<tr><td><code>*rimu-preview*</code></td><td><code>t</code></td><td>t, nil</td><td>Whether rimu lists show the entry on the current line in a window beside the list, once point has rested on it <strong>RIMU-PREVIEW-DELAY</strong> seconds.</td></tr>
+<tr><td><code>*rimu-preview-delay*</code></td><td><code>0.1</code></td><td>a number, 0 or more</td><td>Seconds point rests on an entry of a rimu list before the preview shows it.</td></tr>
+<tr><td><code>*rimu-preview-size*</code></td><td><code>1048576</code></td><td>a whole number, 0 or more</td><td>The most of a file rimu's preview shows, in octets from its start.</td></tr>
+<tr><td><code>*remote-preview-size-limit*</code></td><td><code>20000000</code></td><td>a whole number, 0 or more</td><td>The most octets a file on another machine may hold to be shown in the preview of its list (M-x list-toggle-preview).</td></tr>
 </tbody></table></div>
 <h2 id="marks"><span class="num">10.5</span> Marks</h2>
 <p>Marking works as it does in the buffer list. <kbd>m</kbd> puts a <code>&gt;</code> on the entry and
@@ -431,10 +431,10 @@ does. With two folders marked, it compares the files that have the same name.</p
 <h3 id="settings-for-copying-and-moving"><span class="num">10.7.2</span> Settings for copying and moving</h3>
 <div class="tablewrap"><table>
 <thead>
-<tr><th>Setting</th><th>Standard</th><th>What it changes</th></tr>
+<tr><th>Setting</th><th>Default</th><th>Values</th><th>What it changes</th></tr>
 </thead>
 <tbody>
-<tr><td><code>*folder-tree-depth-limit*</code></td><td><code>200</code></td><td>The most folders, one inside another, that copying, moving or deleting a folder goes down through.</td></tr>
+<tr><td><code>*folder-tree-depth-limit*</code></td><td><code>200</code></td><td>a whole number, 1 or more</td><td>The most folders, one inside another, that copying, moving or deleting a folder goes down through.</td></tr>
 </tbody></table></div>
 <h2 id="renaming"><span class="num">10.8</span> Renaming</h2>
 <p><kbd>R</kbd> renames the entry under the cursor in its place. The question offers the
@@ -529,10 +529,10 @@ what you put there.</p>
 <h3 id="settings-for-deleting"><span class="num">10.9.2</span> Settings for deleting</h3>
 <div class="tablewrap"><table>
 <thead>
-<tr><th>Setting</th><th>Standard</th><th>What it changes</th></tr>
+<tr><th>Setting</th><th>Default</th><th>Values</th><th>What it changes</th></tr>
 </thead>
 <tbody>
-<tr><td><code>*rimu-delete-to-trash*</code></td><td><code>t</code></td><td>True for rimu's deletions (M-x list-delete-marked, M-x list-execute) to move files and directories to the trash the desktop's file managers use, from which they can be put back; NIL to delete them for good, after asking twice.</td></tr>
+<tr><td><code>*rimu-delete-to-trash*</code></td><td><code>t</code></td><td>t, nil</td><td>Whether rimu's deletions (M-x list-delete-marked, M-x list-execute) move files and directories to the trash.</td></tr>
 </tbody></table></div>
 <h2 id="archives"><span class="num">10.10</span> Archives</h2>
 <p>An archive is one file that holds many files, often squeezed to take less
@@ -591,12 +591,12 @@ deal cannot fill the drive. Archives inside an archive stay packed.</p>
 <h3 id="settings-for-archives"><span class="num">10.10.2</span> Settings for archives</h3>
 <div class="tablewrap"><table>
 <thead>
-<tr><th>Setting</th><th>Standard</th><th>What it changes</th></tr>
+<tr><th>Setting</th><th>Default</th><th>Values</th><th>What it changes</th></tr>
 </thead>
 <tbody>
-<tr><td><code>*archive-free-reserve*</code></td><td><code>1073741824</code></td><td>The octets left free on the drive an archive is unpacked onto (1 GB): unpacking stops before the drive has less, so that an archive holding far more than it takes up cannot fill the drive.</td></tr>
-<tr><td><code>*archive-listing-limit*</code></td><td><code>67108864</code></td><td>The most octets of an archive's list of contents shown (64 MB); a longer one is not shown, and that is said.</td></tr>
-<tr><td><code>*archive-seconds*</code></td><td><code>86400</code></td><td>The seconds tar, 7-Zip or bsdtar may take to make, list or unpack one archive before it is ended: a day, for the largest; M-x stop-job ends it sooner.</td></tr>
+<tr><td><code>*archive-free-reserve*</code></td><td><code>1073741824</code></td><td>a whole number, 0 or more</td><td>The octets left free on the drive an archive is unpacked onto.</td></tr>
+<tr><td><code>*archive-listing-limit*</code></td><td><code>67108864</code></td><td>a whole number, 0 or more</td><td>The most octets of an archive's list of contents shown.</td></tr>
+<tr><td><code>*archive-seconds*</code></td><td><code>86400</code></td><td>a number, 0 or more</td><td>The seconds tar, 7-Zip or bsdtar may take to make, list or unpack one archive before it is ended.</td></tr>
 </tbody></table></div>
 <h2 id="drives-and-the-folder-tree"><span class="num">10.11</span> Drives and the folder tree</h2>
 <p>A drive is a disk, a USB stick or a network share that has been attached to
