@@ -95,6 +95,8 @@ table { border-collapse: collapse; width: 100%; font-size: 16px; }
 caption { font: 14px/1.45 var(--head); color: var(--soft); text-align: left; margin-bottom: 6px; }
 th { font: 600 14px var(--head); text-align: left; color: var(--soft); }
 th, td { padding: 7px 14px 7px 0; border-bottom: 1px solid var(--rule); vertical-align: top; }
+td { overflow-wrap: anywhere; }
+td kbd, td code { white-space: normal; }
 th.right, td.right { text-align: right; }
 th.centre, td.centre { text-align: center; }
 pre.ex { background: var(--panel); padding: 12px 14px; overflow-x: auto; font: 14px/1.55 var(--mono); }
