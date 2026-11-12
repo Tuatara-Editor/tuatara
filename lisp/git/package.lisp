@@ -11,7 +11,7 @@
   (:import-from #:tuatara.defaults
                 #:*after-save-functions* #:*command-refusal-functions* #:*file-changing-commands* #:*global-keymap*
                 #:*made-text-keymap* #:*rimu-keymap* #:*trust-changed-functions*
-                #:ask-project-trust #:buffer-in-mode #:buffer-private-directory #:check-not-saving #:column-text
+                #:ask-project-trust #:buffer-in-mode #:buffer-private-directory #:call-with-details-shown #:check-not-saving #:column-text
                 #:commands-for-buffers #:commands-for-mode #:conflict-look-through #:delete-private-directory
                 #:diff-files #:diff-mode #:drop-selection #:entry-lines #:entry-member #:show-file-metadata
                 #:directory-holds-evidence-p

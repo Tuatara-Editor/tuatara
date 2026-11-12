@@ -1331,15 +1331,21 @@ loaded, and what it returns returned (LOADING-PACKAGE)."
 (defun package-question (name where directory then &optional signer)
   "Ask whether to compile and load the package NAME from WHERE, kept in
 DIRECTORY, SIGNER saying who signed it when given, answered by one key pressed
-once the question is shown (READ-ANSWER-KEY): y calls THEN, v lists its
+once the question is shown (READ-ANSWER-KEY), where it is from and what each
+key does shown below it (CALL-WITH-DETAILS-SHOWN): y calls THEN, v lists its
 directory, opened safely, n leaves it, as \\`C-g' does (\"not now\"), asked again
 at the next start. Any other key says which keys answer and asks again.
 THEN at once with *PACKAGE-ASK-BEFORE-LOADING* NIL."
   (if (not *package-ask-before-loading*)
       (funcall then)
-      (case (handler-case (read-answer-key (format nil "Compile and load the package ~a from ~a~@[, ~a~]? (y, n, or v to view its source) "
-                                                   name (abbreviated-path where) signer)
-                                           '(#\y #\n #\v) :fresh t)
+      (case (handler-case
+                (call-with-details-shown
+                 (format nil "The package ~a, from ~a~@[, ~a~].~%~%y  compiles and loads it now~%n  leaves it, ~
+                              asked about again at the next start~%v  shows its source, opened safely~%"
+                         name (abbreviated-path where) signer)
+                 (lambda ()
+                   (read-answer-key (format nil "Compile and load the package ~a? (y, n or v) " name)
+                                    '(#\y #\n #\v) :fresh t)))
               (quit () nil))
         (#\y (funcall then))
         (#\v (rimu-show-directory (tuatara.io:native directory)
@@ -1822,9 +1828,28 @@ decided on serves), else in *Messages* alone."
         (progn (push (cons name job) *packages-in-hand*)
                t))))
 
+(defvar *package-update-round* '()
+  "The names of the packages \\[package-update] fetches again now, more than one,
+for the echo area to say when none of them is in hand any more; NIL else.")
+
 (defun let-package-go (job)
-  "Let the package JOB holds in hand go (TAKE-PACKAGE-IN-HAND), when JOB still holds it."
-  (setf *packages-in-hand* (remove job *packages-in-hand* :key #'cdr)))
+  "Let the package JOB holds in hand go (TAKE-PACKAGE-IN-HAND), when JOB still
+holds it. When that was the last of *PACKAGE-UPDATE-ROUND* in hand, the update
+is said to be done once what is doing now has said its own (SAY-PACKAGE-UPDATE-DONE)."
+  (setf *packages-in-hand* (remove job *packages-in-hand* :key #'cdr))
+  (let ((round *package-update-round*))
+    (when (and round (notany (lambda (name) (assoc name *packages-in-hand* :test #'string=)) round))
+      (setf *package-update-round* '())
+      (defer-action (lambda () (say-package-update-done round))))))
+
+(defun say-package-update-done (names)
+  "Say that the update of the packages called NAMES is done, and which of them
+are not loaded, *Messages* holding why."
+  (let ((missing (remove-if #'package-loaded-p names)))
+    (if missing
+        (message "The package update is done: ~d of ~d loaded; not loaded: ~{~a~^, ~} (\\[view-echo-area-messages] says why)"
+                 (- (length names) (length missing)) (length names) missing)
+        (message "The package update is done: the ~d packages are loaded" (length names)))))
 
 (defun start-package-job (job work thread &key quiet)
   "Start JOB, a fetch or check of a package, in the background on a thread

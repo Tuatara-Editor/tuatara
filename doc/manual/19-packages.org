@@ -125,10 +125,11 @@ The first time Tuatara meets a package it fetches it, in the background, and
 asks before it compiles and loads it:
 
 #+begin_example
-Compile and load the package themes from https://github.com/...? (y, n, or v to view its source)
+Compile and load the package themes? (y, n or v)
 #+end_example
 
-You answer with one key, with no =RET=. ~y~ goes on. ~n~ leaves the package
+Below the question it shows where the package comes from, who signed it and
+with which key, when it is signed, and what each answer does. You answer with one key, with no =RET=. ~y~ goes on. ~n~ leaves the package
 unloaded, and Tuatara asks again at the next start. ~v~ lists the package's
 directory so that you can read its source first, opened safely so that nothing
 in it runs. ~C-g~ means "not now" and also asks again next time. Any other key
@@ -231,8 +232,9 @@ repository for the version the =load-package= line wants (the newest tag, the
 newest commit, or the tag, branch or commit you named), fetches what is new in
 the background and, when it is a different commit from the one you have, asks
 the question of the first load again. Packages that are already up to date
-are said to be so. Directories of your own disk are left alone, since you change
-those yourself.
+are said to be so. When several were fetched, the echo row says once they are
+all done, and names any that are not loaded. Directories of your own disk are
+left alone, since you change those yourself.
 
 ~M-x package-update-marked~, or ~f~ in the package manager, does the same for
 only the packages you marked, or for the one on the line.

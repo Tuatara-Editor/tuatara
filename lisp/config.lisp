@@ -221,12 +221,34 @@ editor starts."
   "Say that the editor started without its init file and packages, with state of its own."
   (message "Started with -Q: no init file, no packages, and what is kept between sessions kept apart"))
 
+(defparameter *renamed-settings*
+  '(("*EXPORT-TRUSTED-FOLDERS*" . tuatara-user::*export-trusted-directories*)
+    ("*EVIDENCE-FOLDERS*" . tuatara-user::*evidence-directories*)
+    ("*CODE-FILES-MAKE-FOLDERS*" . tuatara-user::*code-files-make-directories*)
+    ("*FOLDER-TREE-DEPTH-LIMIT*" . tuatara-user::*directory-tree-depth-limit*))
+  "Settings renamed before Tuatara 1.0, each (OLD-NAME . SETTING): an init file
+that still sets one by its old name has its value given to the setting
+\(CARRY-RENAMED-SETTINGS).")
+
+(defun carry-renamed-settings ()
+  "Give each setting the init file set by an old name (*RENAMED-SETTINGS*)
+that value, and say which name to write there instead."
+  (loop for (old . new) in *renamed-settings*
+        for symbol = (find-symbol old :tuatara-user)
+        when (and symbol (boundp symbol))
+          do (setf (symbol-value new) (symbol-value symbol))
+             (makunbound symbol)
+             (message "Your init file sets ~(~a~), now called ~(~a~): its value is used; rename it there"
+                      old (symbol-name new))))
+
 (defun load-user-config ()
   "Load the init file if it exists, in the TUATARA-USER package, form by form
 \(READ-INIT-FILE), the packages it loads said with their times
-\(CALL-WITH-START-PACKAGES); an error in it is said and the rest is read. The first time the editor runs
-without an init file of its own (*CONFIG-FILE* NIL: not a test's), a starter
-is written there first (WRITE-STARTER-CONFIG) and said."
+\(CALL-WITH-START-PACKAGES); an error in it is said and the rest is read; a
+setting set by its old name is carried over (CARRY-RENAMED-SETTINGS). The
+first time the editor runs without an init file of its own (*CONFIG-FILE*
+NIL: not a test's), a starter is written there first (WRITE-STARTER-CONFIG)
+and said."
   (let ((file (config-file)))
     (when (and (null *config-file*) (not (probe-file file)))
       (multiple-value-bind (written why) (write-starter-config file)
@@ -237,6 +259,7 @@ is written there first (WRITE-STARTER-CONFIG) and said."
           (setf *init-file-outcome* :read
                 *init-file-stop* nil)
           (tuatara.packages:call-with-start-packages (lambda () (read-init-file file)))
+          (carry-renamed-settings)
           (eq *init-file-outcome* :read))
         (progn (setf *init-file-outcome* :none) nil))))
 

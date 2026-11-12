@@ -239,12 +239,14 @@ that makes the PDF again, named when there is no PDF or no SyncTeX file."
 (define-command show-line-in-pdf ()
   "Show the line point is on in the PDF made of this LaTeX file: the PDF's
 view shown beside when it is not, turned to the page the line is on, the
-place scrolled into sight and marked for a moment. The PDF must have been made
-by \\[export-latex-compile-pdf-buffer] (or \\[export-latex-compile-pdf]),
-which leaves where each line went beside its working files; when the file has
-changed since, or there is no such PDF, that is said and nothing shown. In an
-Org file, \\[execute-extended-command] show-line-in-pdf does the same for the
-PDF \\[org-export-latex-pdf-buffer] made of it in this session. In the PDF,
+place scrolled into sight and marked for a moment. The PDF is made by
+\\[export-latex-compile-pdf-buffer] (or \\[export-latex-compile-pdf]),
+which leaves where each line went beside its working files; when there is no
+such PDF, or the file has changed since, the file is saved and the PDF made
+again first, in the background, the line shown once it is. In an Org file,
+\\[execute-extended-command] show-line-in-pdf does the same for the PDF
+\\[org-export-latex-pdf-buffer] made of it in this session, exported again
+alike when the note has changed. In the PDF,
 \\<pdf-view-mode>\\[pdf-view-show-source] goes the other way. Where pictures
 are not shown, the PDF's text is turned to the page."
   (let* ((buffer (current-buffer))
@@ -255,25 +257,28 @@ are not shown, the PDF's text is turned to the page."
       (:latex
        (let* ((pdf (replaced-type file "pdf"))
               (pdf-stamp (tuatara.io:path-stamp pdf))
-              (stamp (tuatara.io:path-stamp file)))
-         (if (and pdf-stamp (or (tuatara.buffer:buffer-modified-p buffer)
-                                (and stamp (> (tuatara.io:stamp-mtime stamp) (tuatara.io:stamp-mtime pdf-stamp)))))
-             (message "~a is older than ~a: ~a makes it again" (tuatara.io:native-file-name pdf)
-                      (tuatara.io:native-file-name file) (substitute-command-keys "\\[export-latex-compile-pdf-buffer]"))
-             (show-line-in-pdf-at (format nil "~a line ~d" (tuatara.io:native-file-name file) line) file line pdf
-                                  'export-latex-compile-pdf-buffer))))
+              (stamp (tuatara.io:path-stamp file))
+              (asked (format nil "~a line ~d" (tuatara.io:native-file-name file) line)))
+         (flet ((show (&optional job)
+                  (declare (ignore job))
+                  (show-line-in-pdf-at asked file line pdf 'export-latex-compile-pdf-buffer)))
+           (if (or (null pdf-stamp) (tuatara.buffer:buffer-modified-p buffer)
+                   (and stamp (> (tuatara.io:stamp-mtime stamp) (tuatara.io:stamp-mtime pdf-stamp))))
+               (start-latex-export :view :after #'show)
+               (show)))))
       (:org
        (let ((job (loop for job being the hash-values of *org-pdf-exports*
                         when (equal (pdf-export-source job) file) return job)))
          (cond ((null job)
                 (message "~a was not made into a PDF in this session: ~a makes it"
                          (tuatara.io:native-file-name file) (substitute-command-keys "\\[org-export-latex-pdf-buffer]")))
-               ((not (org-export-current-p job buffer))
-                (message "~a is older than ~a: ~a makes it again" (tuatara.io:native-file-name (pdf-export-pdf job))
-                         (tuatara.io:native-file-name file) (substitute-command-keys "\\[org-export-latex-pdf-buffer]")))
-               (t (show-line-in-pdf-at (format nil "~a line ~d" (tuatara.io:native-file-name file) line)
-                                       (pdf-export-tex job) (org-latex-line job line) (pdf-export-pdf job)
-                                       'org-export-latex-pdf-buffer)))))
+               (t (flet ((show (job)
+                           (show-line-in-pdf-at (format nil "~a line ~d" (tuatara.io:native-file-name file) line)
+                                                (pdf-export-tex job) (org-latex-line job line) (pdf-export-pdf job)
+                                                'org-export-latex-pdf-buffer)))
+                    (if (org-export-current-p job buffer)
+                        (show job)
+                        (start-latex-export :view :enhanced (pdf-export-enhanced job) :after #'show)))))))
       (t (message "Not a LaTeX or Org file")))))
 
 (defun show-source-of (buffer page fx fy)

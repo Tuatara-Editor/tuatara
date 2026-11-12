@@ -374,24 +374,30 @@ running job's shading is laid over it."
                                 (tuatara.buffer:buffer-name (queued-job-buffer job))))
 
 (defun jobs-question-words (running waiting)
-  "The jobs RUNNING, each as BUFFER: state, and how many are WAITING their
-turn, as the questions before a kill or an exit list them."
-  (format nil "~{~a~^, ~}~:[~;, ~]~[~:;~:*~d queued~]"
+  "The jobs RUNNING, each as BUFFER: state on a line of its own, and how many
+are WAITING their turn, as shown below the question before a kill or an exit."
+  (format nil "In the background:~%~%~{  ~a~%~}~[~:;~:*  ~d queued~%~]"
           (mapcar (lambda (job) (format nil "~a: ~a" (tuatara.runtime:job-buffer-name job)
                                         (tuatara.runtime:job-state-words job)))
                   running)
-          (and running (plusp waiting)) waiting))
+          waiting))
 
 (defun jobs-ask (running waiting then)
   "Ask once before the jobs RUNNING are stopped, or waited for when they save
 \(TUATARA.RUNTIME:JOB-AT-EXIT), and the WAITING jobs queued dropped, THEN (kill
-the buffer, exit) being done, as in `In the background: *scratch*: Sorting 42%, 1 queued; stop them, then exit?'
-True to go on."
+the buffer, exit) being done, as in `Stop them, then exit?', the jobs listed
+below the question (JOBS-QUESTION-WORDS). True to go on."
   (let ((waits (find :wait running :key #'tuatara.runtime:job-at-exit))
         (stops (or (find :stop running :key #'tuatara.runtime:job-at-exit) (plusp waiting)))
         (many (> (+ (length running) waiting) 1)))
-    (y-or-n-p* (format nil "In the background: ~a; ~:[stop ~:[it~;them~]~*~;~*~:[wait for the saving~;wait for the saving, stop the rest~]~], then ~a?"
-                          (jobs-question-words running waiting) waits many (and stops t) then))))
+    (call-with-details-shown
+     (jobs-question-words running waiting)
+     (lambda ()
+       (y-or-n-p* (format nil "~a, then ~a?"
+                          (cond ((not waits) (if many "Stop them" "Stop it"))
+                                (stops "Wait for the saving, stop the rest")
+                                (t "Wait for the saving"))
+                          then))))))
 
 (defun wait-for-saving (running)
   "Wait for those of the jobs RUNNING that are waited for at a kill or an exit

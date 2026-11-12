@@ -14,7 +14,7 @@
                 #:*git-safety* #:git-failure-words #:git-hash-p #:git-network-environment #:run-git-program)
   (:import-from #:tuatara.defaults
                 #:*display-toggles* #:*global-keymap* #:*init-file-stop* #:*mode-commands*
-                #:act-on-list #:buffer-in-mode #:commands-for-mode #:config-file #:define-state-list #:delete-entries
+                #:act-on-list #:buffer-in-mode #:call-with-details-shown #:commands-for-mode #:config-file #:define-state-list #:delete-entries
                 #:display-toggle-name #:entry-list-keys #:entry-preview-again #:entry-preview-keys #:entry-preview-width
                 #:escape-path #:field-line-key #:keep-shown-current #:list-entry-at #:list-entry-noun #:list-mark-face
                 #:list-mark-sign #:list-preview-p #:list-question #:map-text-forms #:marked-list-mode #:mode-named

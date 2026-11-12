@@ -59,13 +59,21 @@ mode, one made from HELP-MODE."
   "Call FUNCTION, which asks a question at a short prompt, with DETAILS, words
 or pieces too long for that, in a buffer called NAME at the bottom of the
 frame, as tall as they need, long lines wrapped. It goes when the question
-ends, however that is. FUNCTION's values."
+ends, however that is. With no editor running, FUNCTION alone. FUNCTION's
+values."
+  (unless *editor*
+    (return-from call-with-details-shown (funcall function)))
   (let ((buffer (buffer-in-mode name 'help-mode)))
     (setf (buffer-kind buffer) :help)
     (render-pieces buffer (constantly (if (listp details) details (list details))) :point :start)
     (let ((window (display-buffer-at buffer :bottom :size :fit)))
       (when window
-        (setf (tuatara.display:window-start window) 0 (tuatara.display:window-point window) 0))
+        (setf (tuatara.display:window-start window) 0 (tuatara.display:window-point window) 0)
+        ;; as tall as its lines are once wrapped, up to half the screen
+        (let ((needed (length (tuatara.display:window-layout-rows
+                               window 0 (floor (tuatara.display:area-height (tuatara.display:area-root window)) 2))))
+              (shown (- (tuatara.display:area-height window) 1 (tuatara.display:window-header-rows window))))
+          (tuatara.display:resize-area window (- needed shown) :stacked)))
       (unwind-protect (funcall function)
         (when (and window (member window (editor-windows *editor*))) (leave-window window))
         (tuatara.buffer:kill-buffer buffer)))))

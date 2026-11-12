@@ -135,7 +135,9 @@ remote asked for. \\`C-h' there lists every action."
   "True when a push with ARGUMENTS may go: one forcing the remote, which can
 take away commits it has, only once asked."
   (cond ((member "--force" arguments :test #'string=)
-         (yes-or-no-p* "Force the push? Commits the remote has that this branch has not are taken away"))
+         (call-with-details-shown
+          "Commits the remote has that this branch has not are taken away."
+          (lambda () (yes-or-no-p* "Force the push?"))))
         ((member "--force-with-lease" arguments :test #'string=)
          (yes-or-no-p* "Force the push, if the remote has nothing new since the last fetch?"))
         (t t)))

@@ -1084,3 +1084,22 @@ second frame waiting its turn on it."
           (is equal (format nil "l1~%") during)
           (is equal (format nil "l1~%l2~%") (tuatara.buffer:buffer-string (tuatara.buffer:find-buffer "lines.txt")))
           (tuatara.buffer:kill-buffer (tuatara.buffer:find-buffer "lines.txt")))))))
+
+(define-test (frames question-kept-over-job-messages)
+  ;; work in the background saying something while a question of one key waits: the question stays in
+  ;; the echo area, what was said kept in *Messages*
+  (let ((go (sb-thread:make-semaphore)) (job nil) (shown :unset) (answer :unset))
+    (with-messages-said (said)
+      (with-frames (editor (first second))
+          (list '(1 "C-x b k i w i C-j") '(0 "C-n")
+                (list 0 (lambda ()
+                          (setf job (start-frames-test-job (lambda ()
+                                                             (sb-thread:wait-on-semaphore go :timeout 5)
+                                                             (tuatara.command:message "Compiling in the background..."))))
+                          (setf answer (tuatara.command:y-or-n-p* "Carry on?"))))
+                (list 0 (lambda () (sb-thread:signal-semaphore go) (wait-for-job job)))
+                (frames-probe 0 (lambda (frames) (setf shown (tuatara.command::frame-message (first frames)))))
+                '(0 "y"))
+        (true (search "Carry on?" shown) "~s" shown)
+        (true answer)
+        (true (search "Compiling in the background..." (said)))))))

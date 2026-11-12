@@ -250,8 +250,10 @@ what the export writes is not encrypted. Never into an evidence directory
 \(*EVIDENCE-DIRECTORIES*): NIL then, and as a second value the words saying why
 \(EVIDENCE-REFUSAL)."
   (unless (or (not (tuatara.io:buffer-plaintext-p buffer))
-              (yes-or-no-p* (format nil "~a is encrypted, but its export and what is made for it are not; export it all the same?"
-                                    (tuatara.buffer:buffer-name buffer))))
+              (call-with-details-shown
+               (format nil "~a is encrypted, but its export and what is made for it are not."
+                       (tuatara.buffer:buffer-name buffer))
+               (lambda () (yes-or-no-p* "Export it all the same?"))))
     (return-from export-target-allowed-p nil))
   (let* ((file (tuatara.io:native (tuatara.io:expand-path (tuatara.buffer:buffer-file buffer))))
          (named (and (eq (export-kind buffer) :org)
@@ -271,11 +273,12 @@ what the export writes is not encrypted. Never into an evidence directory
     (when refusal
       (return-from export-target-allowed-p (values nil refusal)))
     (or (not outside)
-        (yes-or-no-p* (if existing
-                          (format nil "#+EXPORT_FILE_NAME writes over ~a, outside the note's directory or in one of your own; go on?"
-                                  (abbreviated-path existing))
-                          (format nil "#+EXPORT_FILE_NAME writes ~a, outside the note's directory or in one of your own; go on?"
-                                  (abbreviated-path (replaced-type named (first types)))))))))
+        (let ((target (abbreviated-path (or existing (replaced-type named (first types))))))
+          (call-with-details-shown
+           (format nil "#+EXPORT_FILE_NAME writes ~:[~;over ~]~a, outside the note's directory or in one of ~
+                        your own: your templates, logos or trusted directories."
+                   existing target)
+           (lambda () (yes-or-no-p* (format nil "Export to ~a?" target))))))))
 
 (defun redactions-allow-export-p (buffer &optional (text (tuatara.buffer:buffer-string buffer)))
   "True when a PDF may be made of BUFFER, whose text is TEXT, as far as its
@@ -283,9 +286,10 @@ hidden texts go: none shows elsewhere, or you say to go on when *Redactions*
 lists where they do."
   (let ((count (check-buffer-redactions buffer :quiet t :text text)))
     (or (zerop count)
-        (yes-or-no-p* (format nil
-                              "~d place~:p show~:[~;s~] text hidden elsewhere (see *Redactions*); make the PDF anyway?"
-                              count (= 1 count))))))
+        (call-with-details-shown
+         (format nil "~d place~:p show~:[~;s~] text hidden elsewhere in the note: *Redactions* lists where."
+                 count (= 1 count))
+         (lambda () (yes-or-no-p* "Make the PDF anyway?"))))))
 
 ;;; Wrapping text in a macro: R and P to hide it, or any the note declares
 

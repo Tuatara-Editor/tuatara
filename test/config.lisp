@@ -551,3 +551,18 @@ commented inside another one commented (;;   ;; (setf ...) in a load-package's
                      "~s" texts)))
         (sb-posix:chmod (namestring directory) #o700)
         (drain-debug-reports)))))
+
+(define-test (config renamed-setting-carried-over)
+  ;; a setting set by its name before a rename still takes effect, and the name to write instead is said
+  (with-test-directory (dir)
+    (let ((file (merge-pathnames "init.lisp" dir))
+          (tuatara-user:*export-trusted-directories* '()))
+      (alexandria:write-string-into-file (format nil "(setf *export-trusted-folders* '(\"~~/latex/\"))~%") file)
+      (unwind-protect
+           (let ((tuatara.defaults:*config-file* file))
+             (with-messages-said (said)
+               (run-keys "" :text "")
+               (is equal '("~/latex/") tuatara-user:*export-trusted-directories*)
+               (true (search "*export-trusted-folders*, now called *export-trusted-directories*" (said)) "~a" (said))))
+        (let ((old (find-symbol "*EXPORT-TRUSTED-FOLDERS*" :tuatara-user)))
+          (when old (makunbound old)))))))

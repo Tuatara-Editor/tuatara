@@ -598,7 +598,10 @@ yours with its secret part, asked twice."
                                       (mapcar (lambda (k) (or (getf k :name) (getf k :id))) keys))))
            (message "Nothing deleted"))
           ((and (some (lambda (k) (getf k :secret)) keys)
-                (not (yes-or-no-p* "Some are your own keys: their secret parts go too, and what they encrypted cannot be read again; really?")))
+                (not (call-with-details-shown
+                      (format nil "Some are your own keys: their secret parts go too, and what was encrypted ~
+                                   to them cannot be read again.")
+                      (lambda () (yes-or-no-p* "Delete your own keys too?")))))
            (message "Nothing deleted"))
           (t (gpg-in-background (format nil "deleting ~d key~:p" (length keys))
                                 (lambda (cancel)

@@ -222,14 +222,14 @@ decided on."
       (multiple-value-bind (bob bob-print) (trust-ssh-key dir "bob")
         (trust-version dir "one" :signer alice)
         (let ((tuatara-user:*package-ask-before-loading* t))
-          (let ((f (auto-save-session
-                    (list (list :until (lambda () (tuatara-user:load-package "pkgv" :source where :version "latest") t))
-                          (list :until #'package-question-shown)
-                          "y"
-                          (list :until (lambda () (trust-version-loaded))))
-                    :width 240)))
-            (true (tuatara.frontend.fake:fake-frame-showing-across-rows f (format nil "signed by the key ~a" alice-print)))
-            (is equal alice-print (second (tuatara.defaults::state-list-find tuatara.packages::*package-trust* where)))))
+          (auto-save-session
+           (list (list :until (lambda () (tuatara-user:load-package "pkgv" :source where :version "latest") t))
+                 (list :until #'package-question-shown)
+                 "y"
+                 (list :until (lambda () (trust-version-loaded))))
+           :width 240)
+          (true (search (format nil "signed by the key ~a" alice-print) *package-question-details*))
+          (is equal alice-print (second (tuatara.defaults::state-list-find tuatara.packages::*package-trust* where))))
         (let ((tuatara-user:*package-ask-before-loading* nil))
           ;; the same key: taken
           (auto-save-session
@@ -381,12 +381,12 @@ the tests' own keyring lacks: the directory and the key's fingerprint."
           ;; the next start
           (setf tuatara.packages::*loaded-packages* '())
           (makunbound 'tuatara-user::*package-trust-version*)
-          (let ((f (auto-save-session
-                    (list (list :until (lambda () (tuatara-user:load-package "pkgv" :source where :version "latest") t))
-                          (list :until #'package-question-shown)
-                          "y" (list :until (lambda () (trust-version-loaded))))
-                    :width 240)))
-            (true (tuatara.frontend.fake:fake-frame-showing-across-rows f (format nil "signed by the key ~a" alice-print))))
+          (auto-save-session
+           (list (list :until (lambda () (tuatara-user:load-package "pkgv" :source where :version "latest") t))
+                 (list :until #'package-question-shown)
+                 "y" (list :until (lambda () (trust-version-loaded))))
+           :width 240)
+          (true (search (format nil "signed by the key ~a" alice-print) *package-question-details*))
           (is equal "two" (trust-version-loaded))
           (is equal alice-print (second (tuatara.defaults::state-list-find tuatara.packages::*package-trust* where)))
           (let ((entry (tuatara.packages::package-state "pkgv" where "latest")))
@@ -495,7 +495,7 @@ the tests' own keyring lacks: the directory and the key's fingerprint."
                           "y" (list :until (lambda () (trust-version-loaded))))
                     :width 240)))
             (true (tuatara.frontend.fake:fake-frame-showing-across-rows f "from"))
-            (true (tuatara.frontend.fake:fake-frame-showing-across-rows f ", unsigned?"))))
+            (true (search ", unsigned." *package-question-details*))))
         (is equal "unsigned" (second (tuatara.defaults::state-list-find tuatara.packages::*package-trust* where)))))))
 
 (define-test (package-trust plain-and-ftp-kept-out)
@@ -840,3 +840,56 @@ the tests' own keyring lacks: the directory and the key's fingerprint."
           (true (tuatara.frontend.fake:fake-frame-showing
                  (run-keys "M-x c h e c k - h e a l t h RET" :width 130 :height 50) "signatures are not checked")))))
     (true (tuatara.packages::kept-version-check-needed-p "https://example.org/x.git" (list nil nil nil nil nil nil nil)))))
+
+(define-test (package-trust update-said-done)
+  ;; package-update of several packages says when all of them are done, and which are not loaded
+  (with-trust-repository (dir where)
+    (let ((tuatara-user:*package-ask-before-loading* nil))
+      (flet ((second-package (version)
+               (alexandria:write-string-into-file
+                (format nil ";;;; pkgw.lisp --- A second package for the tests.~%~%(defparameter *package-trust-w* ~s)~%"
+                        version)
+                (ensure-directories-exist (merge-pathnames "pkgw/pkgw.lisp" dir)) :if-exists :supersede)
+               (trust-git dir "add" ".")
+               (trust-git dir "commit" "-q" "--no-gpg-sign" "-m" version)))
+        (unwind-protect
+             (progn
+               (trust-version dir "one")
+               (second-package "w1")
+               (auto-save-session
+                (list (list :until (lambda ()
+                                     (tuatara-user:load-package "pkgv" :source where :version "latest")
+                                     (tuatara-user:load-package "pkgw" :source where :version "latest")
+                                     t))
+                      (list :until (lambda () (and (trust-version-loaded) (boundp 'tuatara-user::*package-trust-w*))))
+                      (list :until (lambda () (trust-version dir "two") (second-package "w2") t))
+                      (list :until (lambda () (tuatara.packages::update-packages (list "pkgv" "pkgw")) t))
+                      (list :until (lambda () (echo-says "The package update is done: the 2 packages are loaded"))))
+                :width 240)
+               (is equal "two" (trust-version-loaded))
+               (is equal "w2" (symbol-value 'tuatara-user::*package-trust-w*))
+               (false tuatara.packages::*package-update-round*))
+          (makunbound 'tuatara-user::*package-trust-w*))))))
+
+(define-test (package-trust question-short-details-below)
+  ;; the question whether to load a package is short; where it is from, who signed it and what each key does
+  ;; are shown below it while it waits, and go with it
+  (with-trust-repository (dir where)
+    (multiple-value-bind (alice alice-print) (trust-ssh-key dir "alice")
+      (trust-version dir "one" :signer alice)
+      (let ((tuatara-user:*package-ask-before-loading* t) (asked nil) (details nil))
+        (auto-save-session
+         (list (list :until (lambda () (tuatara-user:load-package "pkgv" :source where :version "latest") t))
+               (list :until #'package-question-shown)
+               (list :until (lambda ()
+                              (setf asked (tuatara.command:editor-message tuatara.command:*editor*)
+                                    details (let ((buffer (tuatara.buffer:find-buffer "*Question*")))
+                                              (and buffer (tuatara.buffer:buffer-string buffer))))
+                              t))
+               "y"
+               (list :until (lambda () (trust-version-loaded)))))
+        (is string= "Compile and load the package pkgv? (y, n or v) " asked)
+        (true (search where details) "~s" details)
+        (true (search (format nil "signed by the key ~a" alice-print) details) "~s" details)
+        (true (search "v  shows its source" details))
+        (false (tuatara.buffer:find-buffer "*Question*"))))))

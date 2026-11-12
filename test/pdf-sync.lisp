@@ -8,8 +8,9 @@
 In the LaTeX file C-c C-v (show-line-in-pdf) shows the line at point in the PDF's view beside, its page
 turned and the place marked; in the view C-c C-v (pdf-view-show-source) shows the line of the part
 shown, and a double click on the page the line of that point. Both work from an Org file exported in
-the session. A PDF older than the file, or without a SyncTeX file, is said. The SyncTeX file and the
-PDF's page tree are read as data alone, every number and count bounded.")
+the session. A PDF missing or older than the file is made again before the line is shown; one without
+a SyncTeX file is said. The SyncTeX file and the PDF's page tree are read as data alone, every number
+and count bounded.")
 
 (defparameter *synctex-sample*
   "SyncTeX Version:1
@@ -286,22 +287,43 @@ Third page words at last.
                                                            (session-point editor)))))
           (pdf-forget)))))
 
+(define-test (pdf-sync made-again-then-shown)
+  ;; no PDF yet, or one older than the file or its changes: saved, made again, then the line shown in it
+  (if (not (sync-ready-p))
+      (skip "no xelatex or no sandbox here" (true nil))
+      (with-test-directory (dir)
+        (let ((tex (merge-pathnames "doc.tex" dir))
+              (pdf (merge-pathnames "doc.pdf" dir))
+              (tuatara-user:*latex-engines* '("xelatex"))
+              (made nil))
+          (alexandria:write-string-into-file *sync-tex* tex)
+          (pdf-forget)
+          (let ((f (export-session tex (list (goto-file-line "doc.tex" 8) "C-c C-v"
+                                             (lambda ()
+                                               (setf made (tuatara.io:stamp-mtime (tuatara.io:path-stamp pdf))))
+                                             ;; a change not saved: a word typed on line 8
+                                             (lambda ()
+                                               (let ((buffer (tuatara.buffer:find-buffer "doc.tex")))
+                                                 (tuatara.buffer:buffer-insert
+                                                  buffer (tuatara.buffer:buffer-goto-line buffer 7) "More ")))
+                                             (lambda () (sleep 1.1))
+                                             (goto-file-line "doc.tex" 6) "C-c C-v")
+                                   :width 200)))
+            (true made)
+            (true (tuatara.frontend.fake:fake-frame-showing f "doc.tex line 8: page 3"))
+            (true (tuatara.frontend.fake:fake-frame-showing f "doc.tex line 6: page 2"))
+            (false (tuatara.buffer:buffer-modified-p (tuatara.buffer:find-buffer "doc.tex")))
+            (true (search "More Third" (alexandria:read-file-into-string tex)))
+            (true (> (tuatara.io:stamp-mtime (tuatara.io:path-stamp pdf)) made)))
+          (pdf-forget)))))
+
 (define-test (pdf-sync older-or-without-said)
   (with-test-directory (dir)
     (let ((tex (merge-pathnames "doc.tex" dir))
           (pdf (merge-pathnames "doc.pdf" dir)))
       (alexandria:write-string-into-file *sync-tex* tex)
-      ;; no PDF yet
-      (let ((f (export-session tex "C-c C-v" :width 200)))
-        (true (tuatara.frontend.fake:fake-frame-showing f "There is no doc.pdf yet"))
-        (true (tuatara.frontend.fake:fake-frame-showing f "export-latex-compile-pdf-buffer")))
-      ;; a PDF older than the file
-      (alexandria:write-byte-vector-into-file (pdf-octets '("one")) pdf)
-      (sb-posix:utimes (namestring pdf) 1000000 1000000)
-      (let ((f (export-session tex "C-c C-v" :width 200)))
-        (true (tuatara.frontend.fake:fake-frame-showing f "doc.pdf is older than doc.tex"))
-        (true (tuatara.frontend.fake:fake-frame-showing f "export-latex-compile-pdf-buffer makes it again")))
       ;; a PDF made elsewhere, with no SyncTeX file among the working files: said, the view not shown
+      (alexandria:write-byte-vector-into-file (pdf-octets '("one")) pdf)
       (sb-posix:utimes (namestring tex) 1000 1000)
       (pdf-forget)
       (let ((f (export-session tex "C-c C-v" :width 200)))

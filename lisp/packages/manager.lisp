@@ -21,16 +21,20 @@ takes it); one that fails to load gives way to the version before it."
 
 (defun update-packages (names)
   "Fetch again the packages called NAMES that come from a repository, as
-\\[package-update] does; say so when none of them does."
+\\[package-update] does; say so when none of them does, and, when more than
+one is fetched, once all of them are done (SAY-PACKAGE-UPDATE-DONE)."
   (let ((fetched (remove-if-not (lambda (p) (and (member (first p) names :test #'string=)
                                                  (second p)
                                                  (not (local-source-p (package-where (second p))))))
                                 *declared-packages*)))
     (if (null fetched)
         (message "No package here is fetched from a repository")
-        (loop for (name source version file) in fetched
-              for where = (package-where source)
-              do (start-package-fetch name where version file (package-key name where version))))))
+        (let ((begun (loop for (name source version file) in fetched
+                           for where = (package-where source)
+                           when (start-package-fetch name where version file (package-key name where version))
+                             collect name)))
+          (when (rest begun)
+            (setf *package-update-round* (union begun *package-update-round* :test #'string=)))))))
 
 (define-major-mode packages-mode marked-list-mode
   "The package manager (\\[package-manager]): a line each package the init file

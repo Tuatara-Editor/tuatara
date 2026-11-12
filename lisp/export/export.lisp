@@ -208,9 +208,10 @@ NOTES, what else to say of it. PART, the words for a part exported alone (the
 subtree \"Findings\"), with ORIGINS, the line of the file each line of its text
 comes from, a vector, and LINES, the file's lines, for what is said of them.
 TRUSTED, the texts of its template and setup files that are your own, and
-PICTURES, the files its pictures are drawn from (ORG-LATEX-DOCUMENT)."
+PICTURES, the files its pictures are drawn from (ORG-LATEX-DOCUMENT). AFTER,
+a function of the job called once the PDF is made and THEN done, or NIL."
   source kind then save rope enhanced (step "starting") tex text map pdf engine (failed '()) errors
-  (missing '()) (notes '()) part origins lines (trusted '()) (pictures '()))
+  (missing '()) (notes '()) part origins lines (trusted '()) (pictures '()) after)
 
 (setf (documentation 'pdf-export-p 'function) "True when OBJECT is a PDF-EXPORT.")
 
@@ -1248,6 +1249,8 @@ show what the programs said when none made it."
          (case (pdf-export-then job)
            (:view (show-exported-pdf pdf))
            (:outside (open-externally-file pdf)))
+         (when (pdf-export-after job)
+           (funcall (pdf-export-after job) job))
          (when helpers
            (show-latex-errors job))))
       (:stopped (message "~a" (tuatara.runtime:job-ending-words job)))
@@ -1360,11 +1363,11 @@ hidden text shown elsewhere in it, unless you say to go on."
           (t (return-from export-refused-p nil)))
     t))
 
-(defun start-latex-export (then &key enhanced)
+(defun start-latex-export (then &key enhanced after)
   "Start making a PDF of the current buffer's Org text, or of its LaTeX file,
 saved first when it has changes, and then do THEN with it (PDF-EXPORT), with
-ENHANCED Tuatara's own improvements on Org's LaTeX (Org files only); or say
-why not."
+ENHANCED Tuatara's own improvements on Org's LaTeX (Org files only), and call
+AFTER, when given, with the job once the PDF is made; or say why not."
   (let* ((buffer (current-buffer))
          (name (tuatara.buffer:buffer-name buffer))
          (file (tuatara.buffer:buffer-file buffer))
@@ -1401,6 +1404,7 @@ why not."
                                           ((prefix-argument) :subtree))))
                         (job (make-pdf-export buffer (tuatara.io:native (tuatara.io:expand-path file)) kind then save
                                               (and (eq kind :org) (tuatara.buffer:buffer-text buffer)) enhanced)))
+                   (setf (pdf-export-after job) after)
                    ;; a part alone: its text, and where each of its lines is in the file
                    (unless scope
                      (multiple-value-bind (allowed why) (export-target-allowed-p buffer '("tex" "pdf") :text text)

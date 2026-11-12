@@ -66,16 +66,25 @@ when given, with the job. Returns the frontend, the editor and the job."
                                                 :buffer (tuatara.buffer:find-buffer "*scratch*"))))
       (values f editor job))))
 
+(defvar *question-details* '()
+  "What was shown below the questions WITH-QUESTIONS answered, the first first.")
+
 (defmacro with-questions ((prompts &optional answer) &body body)
   "Run BODY with every yes-or-no question, typed or of one key, answered
 ANSWER (NIL by default) at once, and PROMPTS bound to the list of the
-questions asked, the first first."
-  `(let ((,prompts '()))
+questions asked, the first first; what would be shown below them is kept in
+*QUESTION-DETAILS* instead."
+  `(let ((,prompts '()) (*question-details* '()))
      (dolist (asking '(tuatara.command:yes-or-no-p* tuatara.command:y-or-n-p*))
        (sb-int:encapsulate asking 'job-runner
                            (lambda (f prompt &rest how) (declare (ignore f how)) (setf ,prompts (append ,prompts (list prompt))) ,answer)))
+     (sb-int:encapsulate 'tuatara.defaults::call-with-details-shown 'job-runner
+                         (lambda (f details function &rest how)
+                           (declare (ignore f how))
+                           (setf *question-details* (append *question-details* (list details)))
+                           (funcall function)))
      (unwind-protect (progn ,@body)
-       (dolist (asking '(tuatara.command:yes-or-no-p* tuatara.command:y-or-n-p*))
+       (dolist (asking '(tuatara.command:yes-or-no-p* tuatara.command:y-or-n-p* tuatara.defaults::call-with-details-shown))
          (sb-int:unencapsulate asking 'job-runner)))))
 
 (define-test (job-runner stopping-every-kind)
@@ -136,8 +145,9 @@ questions asked, the first first."
         (multiple-value-bind (f editor) (run-keys "r r % a / b RET r r % b / c RET C-x k" :text "a a a" :width 150)
           (declare (ignore f))
           (is = 1 (length prompts) "~s" prompts)
-          (true (search "In the background: *scratch*: Replacing" (first prompts)) "~s" prompts)
-          (true (search ", 1 queued; stop them, then kill the buffer?" (first prompts)) "~s" prompts)
+          (is equal '("Stop them, then kill the buffer?") prompts)
+          (true (search "  *scratch*: Replacing" (first *question-details*)) "~s" *question-details*)
+          (true (search "  1 queued" (first *question-details*)) "~s" *question-details*)
           ;; answered no: the buffer and both jobs go on
           (is string= "c c c" (session-text editor)))))))
 
@@ -149,8 +159,9 @@ questions asked, the first first."
         (multiple-value-bind (f editor) (run-keys "r r % a / b RET r r % b / c RET C-x C-c" :text "a a a" :width 150)
           (declare (ignore f))
           (is = 1 (length prompts) "~s" prompts)
-          (true (search "In the background: *scratch*: Replacing" (first prompts)) "~s" prompts)
-          (true (search ", 1 queued; stop them, then exit?" (first prompts)) "~s" prompts)
+          (is equal '("Stop them, then exit?") prompts)
+          (true (search "  *scratch*: Replacing" (first *question-details*)) "~s" *question-details*)
+          (true (search "  1 queued" (first *question-details*)) "~s" *question-details*)
           (is string= "c c c" (session-text editor))))))
   (let ((b (tuatara.buffer:make-buffer "job-runner exit" :text "abc")))
     (unwind-protect
@@ -159,8 +170,10 @@ questions asked, the first first."
                (tuatara.defaults::*job-queue* (list :one :two)))
            (with-questions (prompts)
              (false (tuatara.defaults::jobs-quit-query))
-             (is equal '("In the background: job-runner exit: Saving 0%, job-runner exit: Sorting 0%, 2 queued; wait for the saving, stop the rest, then exit?")
-                 prompts)))
+             (is equal '("Wait for the saving, stop the rest, then exit?") prompts)
+             (is equal (list (format nil "In the background:~%~%  job-runner exit: Saving 0%~%  job-runner exit: ~
+                                          Sorting 0%~%  2 queued~%"))
+                 *question-details*)))
       (tuatara.buffer:kill-buffer b))))
 
 (define-test (job-runner quiet-jobs-not-asked)
@@ -182,7 +195,7 @@ questions asked, the first first."
                                                (tuatara.defaults::%make-sort-job :buffer b :words "Sorting"))))
              (with-questions (prompts)
                (false (tuatara.defaults::jobs-kill-query b))
-               (is equal '("In the background: job-runner quiet: Sorting 0%; stop it, then kill the buffer?") prompts))))
+               (is equal '("Stop it, then kill the buffer?") prompts))))
       (tuatara.buffer:kill-buffer b))))
 
 (define-test (job-runner exports-asked)
@@ -197,8 +210,8 @@ questions asked, the first first."
              (false (tuatara.defaults::jobs-kill-query b))
              (false (tuatara.defaults::jobs-quit-query))
              (is = 2 (length prompts))
-             (true (search "stop them, then kill the buffer?" (first prompts)) "~s" prompts)
-             (true (search "stop them, then exit?" (second prompts)) "~s" prompts)
+             (true (search "Stop them, then kill the buffer?" (first prompts)) "~s" prompts)
+             (true (search "Stop them, then exit?" (second prompts)) "~s" prompts)
              (true (notany (lambda (job) (car (tuatara.runtime:job-cancel job))) tuatara.runtime:*jobs*))))
       (tuatara.buffer:kill-buffer b))))
 
@@ -277,3 +290,10 @@ questions asked, the first first."
              (true (find-if (lambda (text) (search "tuatara adding failed: No figures to add." text)) texts)
                    "~s" texts))))
     (drain-debug-reports)))
+
+(define-test (job-runner long-questions-short)
+  ;; a question needing more than a line is asked short, what it is about shown below it
+  (with-questions (prompts)
+    (false (tuatara.git::git-push-allowed-p '("--force")))
+    (is equal '("Force the push?") prompts)
+    (is equal '("Commits the remote has that this branch has not are taken away.") *question-details*)))

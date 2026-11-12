@@ -2,7 +2,7 @@
 ;; ARGUMENTS (REQUIRED OPTIONAL KEYS REST OTHER-KEYS); (:setting NAME); (:init NAME KIND ARGUMENTS), the init
 ;; file's functions and macros; (:keywords LOAD-PACKAGE KEYWORDS); (:flag OPTION), the command line's
 ;; options; (:command PACKAGE NAME).
-(:version "0.90.26")
+(:version "0.90.27")
 (:api "*BUFFERS-ASKED-ABOUT*" :variable)
 (:api "*BUILD*" :variable)
 (:api "*BUILT-AT*" :variable)

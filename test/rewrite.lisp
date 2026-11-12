@@ -466,14 +466,14 @@ FACE)) in a job's face, as (ROW START END FACE)."
         (true (tuatara.frontend.fake:fake-frame-showing f "Stopped: nothing replaced"))
         (is string= "foo boo" (session-text editor)))
       ;; killing the buffer asks first
-      (multiple-value-bind (f editor) (run-keys "r r % o / 0 RET C-x k n RET" :text "foo boo" :width 120)
-        (true (tuatara.frontend.fake:fake-frame-showing f
-                                                        "In the background: *scratch*: Replacing"
-                                                        "stop it, then kill the buffer?"))
+      (multiple-value-bind (f editor) (run-keys "r r % o / 0 RET C-x k n RET" :text "foo boo" :width 120 :height 20)
+        (true (tuatara.frontend.fake:fake-frame-showing f "*scratch*: Replacing"))
+        (true (tuatara.frontend.fake:fake-frame-showing f "Stop it, then kill the buffer?"))
         (is string= "f00 b00" (session-text editor)))
       ;; so does leaving the editor; answering no, the job goes on and completes
-      (multiple-value-bind (f editor) (run-keys "r r % o / 0 RET C-x C-c n RET" :text "foo boo" :width 120)
-        (true (tuatara.frontend.fake:fake-frame-showing f "In the background: *scratch*: Replacing" "stop it, then exit?"))
+      (multiple-value-bind (f editor) (run-keys "r r % o / 0 RET C-x C-c n RET" :text "foo boo" :width 120 :height 20)
+        (true (tuatara.frontend.fake:fake-frame-showing f "*scratch*: Replacing"))
+        (true (tuatara.frontend.fake:fake-frame-showing f "Stop it, then exit?"))
         (is string= "f00 b00" (session-text editor))))))
 
 (define-modal-test (rewrite in-sight-first)

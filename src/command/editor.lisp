@@ -657,7 +657,8 @@ where what was meant for FRAME goes once FRAME has gone."
 threads since last time, in the order they were said, and have the functions
 given to DEFER-ACTION there run as EDITOR's next commands, in that order too.
 Each message shows in the frame it is for while that frame is open, else in
-the frame you are in; each function waits among the things to be done in
+the frame you are in, but only in *Messages* while a question of one key
+waits in that frame, the question staying in view; each function waits among the things to be done in
 that frame likewise (FRAME-DEFERRED), to run with it the one worked in. True
 when there was anything to take in."
   (when (or *messages-from-threads* *actions-from-threads*)
@@ -667,8 +668,9 @@ when there was anything to take in."
               actions (shiftf *actions-from-threads* '())))
       (loop for (frame . text) in (reverse texts)
             do (let ((shown (frame-or-current editor frame)))
-                 (setf (frame-message shown) text
-                       (frame-painted shown) nil))
+                 (unless (frame-key-question-p shown)
+                   (setf (frame-message shown) text
+                         (frame-painted shown) nil)))
                (tuatara.runtime:ignoring-errors-reported ("keeping a message in *Messages*") (log-message text)))
       (loop for (frame . action) in (reverse actions)
             do (let ((done-in (frame-or-current editor frame)))

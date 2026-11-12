@@ -12,7 +12,7 @@
   (:import-from #:tuatara.defaults
                 #:*built-in-latex-templates* #:*export-languages* #:*org-macro-call-re*
                 #:*pdf-views*
-                #:buffer-in-mode #:commands-for-mode #:copy-chosen-own-file #:docx-import #:docx-templates-directory
+                #:buffer-in-mode #:call-with-details-shown #:commands-for-mode #:copy-chosen-own-file #:docx-import #:docx-templates-directory
                 #:drop-selection #:end-safe-visit-words #:entry-lines #:entry-list-keys #:entry-place #:entry-places
                 #:evidence-refusal
                 #:export-directory-p #:export-language #:export-trusted-path-p #:file-kind #:file-sha256

@@ -13,7 +13,7 @@
 
 ;;; Kinds and bounds
 
-(defconstant +protocol+ 5
+(defconstant +protocol+ 6
   "The number of the messages' format, said first both ways: a client and an
 editor of different numbers, or of different builds, do not talk.")
 
@@ -854,7 +854,7 @@ names as their NAMES numbers."
 
 (defun put-proportion (box value most)
   "Put VALUE, a rational from 0 to MOST whose denominator is at most 65535 (a
-scale, or a shift in rows), in BOX; anything else as 0."
+scale, a shift in rows, a picture's place or size), in BOX; anything else as 0."
   (let ((value (if (and (rationalp value) (<= 0 value most) (<= (denominator value) 65535)) value 0)))
     (put-number box (numerator value) 4)
     (put-number box (denominator value) 2)))
@@ -957,18 +957,19 @@ SCALES, OVER and PARTS)."
 
 (defun put-picture-call (box id row column columns rows offset)
   "Put in BOX the picture numbered ID shown (FRONTEND-PUT-IMAGE with ROW,
-COLUMN, COLUMNS, ROWS and OFFSET); its pixels go in messages of their own
+COLUMN, COLUMNS, ROWS and OFFSET, each a whole number of cells or, placed
+exactly in a window, parts of one); its pixels go in messages of their own
 \(PUT-PICTURE, or for a client on another machine PUT-PICTURE-BEGIN)."
   (put-number box 4 1)
   (put-number box id 4)
-  (put-bounded box row +most-rows+)
-  (put-bounded box column +most-columns+)
-  (put-bounded box columns +most-columns+)
-  (put-bounded box rows +most-rows+)
+  (put-proportion box row +most-rows+)
+  (put-proportion box column +most-columns+)
+  (put-proportion box columns +most-columns+)
+  (put-proportion box rows +most-rows+)
   (put-number box (if offset 1 0) 1)
   (when offset
-    (put-bounded box (first offset) +most-place+)
-    (put-bounded box (second offset) +most-place+)))
+    (put-proportion box (first offset) +most-place+)
+    (put-proportion box (second offset) +most-place+)))
 
 (defun take-row-call (inbox names)
   "A row's painting read from INBOX, as PUT-ROW-CALL put it: (ROW STRING
@@ -1011,13 +1012,13 @@ PICTURES, a list of the pictures sent, gives each picture by its number."
                            (take-colour inbox)))
                   (4 (let* ((id (take-number inbox 4))
                             (image (or (find id pictures :key #'image-id) (malformed "picture ~d, never sent" id)))
-                            (row (take-bounded inbox 4 0 +most-rows+ "a picture's row"))
-                            (column (take-bounded inbox 4 0 +most-columns+ "a picture's column"))
-                            (columns (take-bounded inbox 4 0 +most-columns+ "a picture's columns"))
-                            (rows (take-bounded inbox 4 0 +most-rows+ "a picture's rows"))
+                            (row (take-proportion inbox +most-rows+))
+                            (column (take-proportion inbox +most-columns+))
+                            (columns (take-proportion inbox +most-columns+))
+                            (rows (take-proportion inbox +most-rows+))
                             (offset (and (= 1 (take-bounded inbox 1 0 1 "an offset's flag"))
-                                         (list (take-bounded inbox 4 0 +most-place+ "an offset")
-                                               (take-bounded inbox 4 0 +most-place+ "an offset")))))
+                                         (list (take-proportion inbox +most-place+)
+                                               (take-proportion inbox +most-place+)))))
                        (list :picture image row column columns rows offset))))))
 
 ;;; Pictures

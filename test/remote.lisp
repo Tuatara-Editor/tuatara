@@ -1820,3 +1820,17 @@ as messages from an editor; the client."
              (tuatara.frontend:frontend-stop remote)
              (client-done runner)))
       (sb-int:unencapsulate 'tuatara.frontend::queue-message 'test-fails))))
+
+(define-test (remote picture-between-cells-sent)
+  ;; a picture placed exactly in a window, at parts of cells, goes to a client at that place and size
+  (let* ((box (tuatara.frontend::make-outbox))
+         (image (tuatara.frontend::%make-image 2 2 3 (make-array 12 :element-type '(unsigned-byte 8) :initial-element 0)
+                                               77)))
+    (tuatara.frontend::put-picture-call box 77 339/19 437/18 355/9 46/19 '(1 0))
+    (tuatara.frontend::put-picture-call box 77 3 4 20 5 nil)
+    (let ((inbox (tuatara.frontend::make-inbox nil :client :octets (tuatara.frontend::outbox-octets box)
+                                                         :end (tuatara.frontend::outbox-fill box))))
+      (setf (tuatara.frontend::inbox-stop inbox) (tuatara.frontend::outbox-fill box))
+      (is equal (list (list :picture image 339/19 437/18 355/9 46/19 '(1 0))
+                      (list :picture image 3 4 20 5 nil))
+          (tuatara.frontend::take-frame inbox nil (vector) (list image))))))

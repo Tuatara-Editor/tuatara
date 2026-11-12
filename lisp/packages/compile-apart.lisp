@@ -248,7 +248,7 @@ signed it (PACKAGE-SIGNATURE), then ask and load it (PACKAGE-FETCHED). An
 address of http:// or git:// not allowed (PLAIN-SOURCE-REFUSAL) is not
 fetched from, said; nor is a package in hand already (START-PACKAGE-JOB),
 said too unless QUIET. One whose directory package-remove-unused is deleting
-waits for it (WAIT-FOR-SWEEP)."
+waits for it (WAIT-FOR-SWEEP). True when the fetch began now."
   (let ((refusal (plain-source-refusal name where)))
     (when refusal
       (setf *package-failures* (acons name refusal (remove name *package-failures* :key #'car :test #'string=)))
@@ -273,7 +273,8 @@ waits for it (WAIT-FOR-SWEEP)."
                        tag (package-fetch-passed job) passed (package-fetch-signature job) signature))))
            "tuatara package fetch" :quiet quiet)
       (setf *package-failures* (remove name *package-failures* :key #'car :test #'string=))
-      (log-message (format nil "Fetching the package ~a from ~a" name where)))))
+      (log-message (format nil "Fetching the package ~a from ~a" name where))
+      t)))
 
 (defun start-package-check (name where version file key entry &key quiet)
   "Check in the background who signed the version of the package NAME from

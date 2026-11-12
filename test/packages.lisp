@@ -91,10 +91,18 @@ WHERE its file:// address, all of it forgotten afterwards."
   "The version of pkgone loaded, or NIL."
   (and (boundp 'tuatara-user::*package-test-version*) (symbol-value 'tuatara-user::*package-test-version*)))
 
+(defvar *package-question-details* nil
+  "What the buffer below the last question whether to load a package showed
+(PACKAGE-QUESTION-SHOWN).")
+
 (defun package-question-shown ()
-  "True while the question whether to compile and load a package waits for its key."
+  "True while the question whether to compile and load a package waits for its
+key, what is shown below it then kept in *PACKAGE-QUESTION-DETAILS*."
   (and tuatara.command::*key-question*
-       (search "Compile and load the package" (or (tuatara.command:editor-message tuatara.command:*editor*) ""))))
+       (search "Compile and load the package" (or (tuatara.command:editor-message tuatara.command:*editor*) ""))
+       (let ((buffer (tuatara.buffer:find-buffer "*Question*")))
+         (setf *package-question-details* (and buffer (tuatara.buffer:buffer-string buffer)))
+         t)))
 
 (define-test (packages newest-tag-by-date)
   ;; no version asked for: the tag made last, though its name sorts first; only its directory kept
@@ -164,7 +172,7 @@ WHERE its file:// address, all of it forgotten afterwards."
                       (list :until #'package-question-shown)
                       "n" (list :wait 0.2))
                 :width 160)))
-        (true (tuatara.frontend.fake:fake-frame-showing-across-rows f "Compile and load the package pkgone from"))
+        (true (search "The package pkgone, from" *package-question-details*))
         (true (tuatara.frontend.fake:fake-frame-showing f "The package pkgone is not loaded"))
         (false (package-test-version))
         (false (fourth (tuatara.packages::package-state "pkgone" where nil)))

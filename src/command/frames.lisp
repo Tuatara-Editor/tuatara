@@ -426,6 +426,11 @@ it returns."
         (progv (first held) (second held) (funcall function))
         (progv *question-variables* (outside-question-values) (funcall function)))))
 
+(defun frame-key-question-p (frame)
+  "True while a question of one key (READ-KEY) waits in FRAME's echo area,
+held there as work is taken in inside it (FRAME-HELD)."
+  (call-with-question-of frame (lambda () *key-question*)))
+
 (defun paint-other-frame (editor frame)
   "Paint FRAME, one of EDITOR's frames other than the one worked in, a
 question waiting in it shown as it asks (CALL-WITH-QUESTION-OF), and keep

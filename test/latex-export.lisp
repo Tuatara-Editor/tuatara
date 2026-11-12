@@ -814,7 +814,9 @@ is not offered by M-x either; NIL when it runs there."
         (is = 2 (tuatara.buffer:buffer-line-number (tuatara.buffer:find-buffer "leak.org") (session-point editor))))
       ;; before the enhanced export: asked; no, and nothing is made
       (let ((f (export-session file (list (export-command "org-export-latex-pdf-enhanced") "n RET") :width 200)))
-        (true (tuatara.frontend.fake:fake-frame-showing f "1 place shows text hidden elsewhere (see *Redactions*); make the PDF anyway?"))
+        (true (tuatara.frontend.fake:fake-frame-showing-across-rows
+               f "1 place shows text hidden elsewhere in the note: *Redactions* lists where."))
+        (true (tuatara.frontend.fake:fake-frame-showing f "Make the PDF anyway?"))
         (true (tuatara.frontend.fake:fake-frame-showing f "Not exported: *Redactions* lists where hidden text shows"))
         (false (probe-file (merge-pathnames "leak.pdf" dir))))
       ;; yes: made
@@ -1444,7 +1446,9 @@ its text's size in half points, when given."
       (ensure-directories-exist made)
       (alexandria:write-string-into-file (format nil "#+export_file_name: setup/mine~%Text.~%") file)
       (let ((f (export-session file (list (export-command "org-export-docx") "n o RET") :width 300)))
-        (true (tuatara.frontend.fake:fake-frame-showing f "or in one of your own; go on?"))
+        (true (tuatara.frontend.fake:fake-frame-showing f "#+EXPORT_FILE_NAME writes "))
+        (true (tuatara.frontend.fake:fake-frame-showing f "trusted directories."))
+        (true (tuatara.frontend.fake:fake-frame-showing f "Export to "))
         (false (probe-file made))))))
 
 (define-test (latex-export tables-in-columns)
