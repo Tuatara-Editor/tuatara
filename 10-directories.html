@@ -1,0 +1,899 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src  'self'; img-src 'self' file:; script-src 'self'; base-uri 'none'; form-action 'none'">
+<title>Directories &ndash; Tuatara Manual</title>
+<link rel="icon" href="tuatara.png">
+<link rel="stylesheet" href="manual.css">
+<script src="manual.js" defer></script>
+</head>
+<body>
+<div class="site">
+<nav class="toc" id="contents" aria-label="Contents">
+<strong>Tuatara Manual</strong>
+<small>for version 0.90.26</small>
+<p class="tools"><a href="all.html">All on one page</a>
+<button type="button" class="theme" hidden>Dark</button></p>
+<input type="search" placeholder="Search the manual" aria-label="Search the manual">
+<ol class="chapters"><li id="nav-index"><a href="index.html">0 Contents</a></li><li id="nav-01-the-screen"><a href="01-the-screen.html">1 The screen</a><ol><li><a href="01-the-screen.html#keys-and-names">1.1 Keys and names</a></li><li><a href="01-the-screen.html#the-parts-of-the-screen">1.2 The parts of the screen</a></li><li><a href="01-the-screen.html#windows-and-buffers">1.3 Windows and buffers</a><ol><li><a href="01-the-screen.html#commands-for-windows">1.3.1 Commands for windows</a></li><li><a href="01-the-screen.html#moving-windows-and-changing-their-size">1.3.2 Moving windows and changing their size</a></li><li><a href="01-the-screen.html#scrolling-and-finding-out-where-buffers-go">1.3.3 Scrolling and finding out where buffers go</a></li><li><a href="01-the-screen.html#commands-for-buffers">1.3.4 Commands for buffers</a></li><li><a href="01-the-screen.html#settings">1.3.5 Settings</a></li></ol></li><li><a href="01-the-screen.html#frames-windows-of-their-own-and-terminals">1.4 Frames, windows of their own and terminals</a><ol><li><a href="01-the-screen.html#commands-for-frames-and-the-windows-font">1.4.1 Commands for frames and the window's font</a></li><li><a href="01-the-screen.html#settings-2">1.4.2 Settings</a></li></ol></li><li><a href="01-the-screen.html#the-mode-line">1.5 The mode line</a><ol><li><a href="01-the-screen.html#the-modal-state">1.5.1 The modal state</a></li><li><a href="01-the-screen.html#the-signs-p-u-s-and-d">1.5.2 The signs P, U, S and D</a></li><li><a href="01-the-screen.html#saved-or-not">1.5.3 Saved or not</a></li><li><a href="01-the-screen.html#words-about-the-buffer">1.5.4 Words about the buffer</a></li><li><a href="01-the-screen.html#the-name-the-line-and-the-column">1.5.5 The name, the line and the column</a></li><li><a href="01-the-screen.html#other-things-the-mode-line-says">1.5.6 Other things the mode line says</a></li><li><a href="01-the-screen.html#the-directory">1.5.7 The directory</a></li><li><a href="01-the-screen.html#commands">1.5.8 Commands</a></li><li><a href="01-the-screen.html#settings-3">1.5.9 Settings</a></li><li><a href="01-the-screen.html#faces">1.5.10 Faces</a></li></ol></li><li><a href="01-the-screen.html#the-echo-area-and-the-messages-log">1.6 The echo area and the messages log</a><ol><li><a href="01-the-screen.html#commands-2">1.6.1 Commands</a></li><li><a href="01-the-screen.html#settings-4">1.6.2 Settings</a></li></ol></li><li><a href="01-the-screen.html#the-minibuffer-and-its-prompt">1.7 The minibuffer and its prompt</a><ol><li><a href="01-the-screen.html#settings-5">1.7.1 Settings</a></li><li><a href="01-the-screen.html#faces-2">1.7.2 Faces</a></li></ol></li><li><a href="01-the-screen.html#the-choices-panel">1.8 The choices panel</a><ol><li><a href="01-the-screen.html#commands-3">1.8.1 Commands</a></li><li><a href="01-the-screen.html#settings-6">1.8.2 Settings</a></li></ol></li><li><a href="01-the-screen.html#key-hints">1.9 Key hints</a><ol><li><a href="01-the-screen.html#commands-4">1.9.1 Commands</a></li><li><a href="01-the-screen.html#settings-7">1.9.2 Settings</a></li></ol></li><li><a href="01-the-screen.html#the-cursor-the-gutter-and-header-lines">1.10 The cursor, the gutter and header lines</a><ol><li><a href="01-the-screen.html#commands-5">1.10.1 Commands</a></li><li><a href="01-the-screen.html#settings-8">1.10.2 Settings</a></li></ol></li></ol></li><li id="nav-02-moving-around"><a href="02-moving-around.html">2 Moving around</a><ol><li><a href="02-moving-around.html#two-sets-of-keys">2.1 Two sets of keys</a></li><li><a href="02-moving-around.html#by-character-and-by-line">2.2 By character and by line</a><ol><li><a href="02-moving-around.html#commands">2.2.1 Commands</a></li></ol></li><li><a href="02-moving-around.html#by-word">2.3 By word</a><ol><li><a href="02-moving-around.html#commands-2">2.3.1 Commands</a></li></ol></li><li><a href="02-moving-around.html#within-a-line">2.4 Within a line</a><ol><li><a href="02-moving-around.html#commands-3">2.4.1 Commands</a></li></ol></li><li><a href="02-moving-around.html#by-sentence-and-paragraph">2.5 By sentence and paragraph</a><ol><li><a href="02-moving-around.html#commands-4">2.5.1 Commands</a></li><li><a href="02-moving-around.html#settings">2.5.2 Settings</a></li></ol></li><li><a href="02-moving-around.html#to-the-start-or-the-end-of-the-text">2.6 To the start or the end of the text</a><ol><li><a href="02-moving-around.html#commands-5">2.6.1 Commands</a></li></ol></li><li><a href="02-moving-around.html#to-a-line">2.7 To a line</a><ol><li><a href="02-moving-around.html#commands-6">2.7.1 Commands</a></li></ol></li><li><a href="02-moving-around.html#scrolling-and-recentring">2.8 Scrolling and recentring</a></li><li><a href="02-moving-around.html#counts">2.9 Counts</a><ol><li><a href="02-moving-around.html#commands-7">2.9.1 Commands</a></li></ol></li><li><a href="02-moving-around.html#marks-and-going-back">2.10 Marks and going back</a><ol><li><a href="02-moving-around.html#commands-8">2.10.1 Commands</a></li><li><a href="02-moving-around.html#settings-2">2.10.2 Settings</a></li><li><a href="02-moving-around.html#faces">2.10.3 Faces</a></li></ol></li><li><a href="02-moving-around.html#going-to-the-next-place-in-a-list">2.11 Going to the next place in a list</a><ol><li><a href="02-moving-around.html#commands-9">2.11.1 Commands</a></li></ol></li><li><a href="02-moving-around.html#in-help-lists-and-other-read-only-buffers">2.12 In help, lists and other read-only buffers</a></li></ol></li><li id="nav-03-writing-and-changing-text"><a href="03-writing-and-changing-text.html">3 Writing and changing text</a><ol><li><a href="03-writing-and-changing-text.html#the-two-states">3.1 The two states</a><ol><li><a href="03-writing-and-changing-text.html#commands-for-starting-to-type">3.1.1 Commands for starting to type</a></li></ol></li><li><a href="03-writing-and-changing-text.html#typing">3.2 Typing</a><ol><li><a href="03-writing-and-changing-text.html#commands">3.2.1 Commands</a></li><li><a href="03-writing-and-changing-text.html#settings">3.2.2 Settings</a></li></ol></li><li><a href="03-writing-and-changing-text.html#deleting">3.3 Deleting</a><ol><li><a href="03-writing-and-changing-text.html#commands-2">3.3.1 Commands</a></li></ol></li><li><a href="03-writing-and-changing-text.html#changing-text">3.4 Changing text</a><ol><li><a href="03-writing-and-changing-text.html#commands-for-case">3.4.1 Commands for case</a></li><li><a href="03-writing-and-changing-text.html#commands-for-swapping-and-joining">3.4.2 Commands for swapping and joining</a></li></ol></li><li><a href="03-writing-and-changing-text.html#undo-redo-and-repeat">3.5 Undo, redo and repeat</a><ol><li><a href="03-writing-and-changing-text.html#commands-3">3.5.1 Commands</a></li><li><a href="03-writing-and-changing-text.html#settings-2">3.5.2 Settings</a></li></ol></li><li><a href="03-writing-and-changing-text.html#repeat-counts">3.6 Repeat counts</a></li><li><a href="03-writing-and-changing-text.html#special-characters">3.7 Special characters</a><ol><li><a href="03-writing-and-changing-text.html#commands-4">3.7.1 Commands</a></li><li><a href="03-writing-and-changing-text.html#settings-3">3.7.2 Settings</a></li></ol></li><li><a href="03-writing-and-changing-text.html#indentation-and-filling-in-plain-text">3.8 Indentation and filling in plain text</a><ol><li><a href="03-writing-and-changing-text.html#commands-5">3.8.1 Commands</a></li><li><a href="03-writing-and-changing-text.html#settings-4">3.8.2 Settings</a></li></ol></li><li><a href="03-writing-and-changing-text.html#spelling">3.9 Spelling</a><ol><li><a href="03-writing-and-changing-text.html#commands-6">3.9.1 Commands</a></li><li><a href="03-writing-and-changing-text.html#settings-5">3.9.2 Settings</a></li><li><a href="03-writing-and-changing-text.html#faces">3.9.3 Faces</a></li></ol></li><li><a href="03-writing-and-changing-text.html#sorting-and-tidying-lines">3.10 Sorting and tidying lines</a><ol><li><a href="03-writing-and-changing-text.html#commands-7">3.10.1 Commands</a></li><li><a href="03-writing-and-changing-text.html#settings-6">3.10.2 Settings</a></li></ol></li><li><a href="03-writing-and-changing-text.html#recording-keys">3.11 Recording keys</a><ol><li><a href="03-writing-and-changing-text.html#commands-8">3.11.1 Commands</a></li></ol></li></ol></li><li id="nav-04-cutting-and-pasting"><a href="04-cutting-and-pasting.html">4 Cutting and pasting</a><ol><li><a href="04-cutting-and-pasting.html#the-kill-ring">4.1 The kill ring</a></li><li><a href="04-cutting-and-pasting.html#cutting-copying-and-pasting-with-the-emacs-keys">4.2 Cutting, copying and pasting with the Emacs keys</a><ol><li><a href="04-cutting-and-pasting.html#commands">4.2.1 Commands</a></li></ol></li><li><a href="04-cutting-and-pasting.html#cutting-copying-and-pasting-in-normal-state">4.3 Cutting, copying and pasting in NORMAL state</a></li><li><a href="04-cutting-and-pasting.html#the-system-clipboard-and-the-primary-selection">4.4 The system clipboard and the primary selection</a><ol><li><a href="04-cutting-and-pasting.html#settings">4.4.1 Settings</a></li></ol></li><li><a href="04-cutting-and-pasting.html#registers">4.5 Registers</a></li><li><a href="04-cutting-and-pasting.html#banked-lines">4.6 Banked lines</a><ol><li><a href="04-cutting-and-pasting.html#faces">4.6.1 Faces</a></li></ol></li><li><a href="04-cutting-and-pasting.html#pasting-into-prompts">4.7 Pasting into prompts</a></li></ol></li><li id="nav-05-selecting-rectangles-and-many-cursors"><a href="05-selecting-rectangles-and-many-cursors.html">5 Selecting, rectangles and many cursors</a><ol><li><a href="05-selecting-rectangles-and-many-cursors.html#selections-and-the-mark">5.1 Selections and the mark</a><ol><li><a href="05-selecting-rectangles-and-many-cursors.html#keys-that-select">5.1.1 Keys that select</a></li></ol></li><li><a href="05-selecting-rectangles-and-many-cursors.html#text-objects-the-m-keys">5.2 Text objects, the m keys</a><ol><li><a href="05-selecting-rectangles-and-many-cursors.html#wrapping-a-selection">5.2.1 Wrapping a selection</a></li><li><a href="05-selecting-rectangles-and-many-cursors.html#the-emacs-keys-for-the-same">5.2.2 The Emacs keys for the same</a></li></ol></li><li><a href="05-selecting-rectangles-and-many-cursors.html#the-mark-run">5.3 The mark run</a></li><li><a href="05-selecting-rectangles-and-many-cursors.html#growing-a-selection-by-the-code">5.4 Growing a selection by the code</a></li><li><a href="05-selecting-rectangles-and-many-cursors.html#rectangles">5.5 Rectangles</a><ol><li><a href="05-selecting-rectangles-and-many-cursors.html#rectangles-in-normal-state">5.5.1 Rectangles in NORMAL state</a></li><li><a href="05-selecting-rectangles-and-many-cursors.html#rectangles-with-the-emacs-keys">5.5.2 Rectangles with the Emacs keys</a></li></ol></li><li><a href="05-selecting-rectangles-and-many-cursors.html#many-cursors">5.6 Many cursors</a><ol><li><a href="05-selecting-rectangles-and-many-cursors.html#what-each-key-does-at-the-cursors">5.6.1 What each key does at the cursors</a></li><li><a href="05-selecting-rectangles-and-many-cursors.html#limits">5.6.2 Limits</a></li><li><a href="05-selecting-rectangles-and-many-cursors.html#showing-the-cursors">5.6.3 Showing the cursors</a></li></ol></li><li><a href="05-selecting-rectangles-and-many-cursors.html#splitting-a-selection-on-what-matches">5.7 Splitting a selection on what matches</a></li><li><a href="05-selecting-rectangles-and-many-cursors.html#summary-of-the-normal-keys">5.8 Summary of the NORMAL keys</a></li></ol></li><li id="nav-06-searching-and-replacing"><a href="06-searching-and-replacing.html">6 Searching and replacing</a><ol><li><a href="06-searching-and-replacing.html#searching-a-buffer">6.1 Searching a buffer</a><ol><li><a href="06-searching-and-replacing.html#capital-letters">6.1.1 Capital letters</a></li><li><a href="06-searching-and-replacing.html#regular-expressions-and-plain-text">6.1.2 Regular expressions and plain text</a></li><li><a href="06-searching-and-replacing.html#starting-from-the-word-under-the-cursor">6.1.3 Starting from the word under the cursor</a></li><li><a href="06-searching-and-replacing.html#search-history">6.1.4 Search history</a></li><li><a href="06-searching-and-replacing.html#keeping-the-matches-lit">6.1.5 Keeping the matches lit</a></li><li><a href="06-searching-and-replacing.html#the-count-before-the-prompt">6.1.6 The count before the prompt</a></li><li><a href="06-searching-and-replacing.html#matches-that-cross-many-lines">6.1.7 Matches that cross many lines</a></li></ol></li><li><a href="06-searching-and-replacing.html#replacing">6.2 Replacing</a><ol><li><a href="06-searching-and-replacing.html#what-goes-in-the-new-text">6.2.1 What goes in the new text</a></li><li><a href="06-searching-and-replacing.html#replacing-with-questions">6.2.2 Replacing with questions</a></li></ol></li><li><a href="06-searching-and-replacing.html#narrowing-a-list-to-its-matches">6.3 Narrowing a list to its matches</a></li><li><a href="06-searching-and-replacing.html#searching-many-files">6.4 Searching many files</a><ol><li><a href="06-searching-and-replacing.html#changing-the-lines-a-search-found">6.4.1 Changing the lines a search found</a></li><li><a href="06-searching-and-replacing.html#keeping-directories-read">6.4.2 Keeping directories read</a></li></ol></li><li><a href="06-searching-and-replacing.html#the-outline-of-a-buffer">6.5 The outline of a buffer</a></li></ol></li><li id="nav-07-buffers-and-sessions"><a href="07-buffers-and-sessions.html">7 Buffers and sessions</a><ol><li><a href="07-buffers-and-sessions.html#the-buffer-list">7.1 The buffer list</a><ol><li><a href="07-buffers-and-sessions.html#sections">7.1.1 Sections</a></li><li><a href="07-buffers-and-sessions.html#folding">7.1.2 Folding</a></li><li><a href="07-buffers-and-sessions.html#marks">7.1.3 Marks</a></li><li><a href="07-buffers-and-sessions.html#opening-and-keeping-the-list-current">7.1.4 Opening, and keeping the list current</a></li><li><a href="07-buffers-and-sessions.html#commands-for-the-buffer-list">7.1.5 Commands for the buffer list</a></li><li><a href="07-buffers-and-sessions.html#settings-and-faces">7.1.6 Settings and faces</a></li></ol></li><li><a href="07-buffers-and-sessions.html#scratch-buffers">7.2 Scratch buffers</a></li><li><a href="07-buffers-and-sessions.html#saving-and-killing-buffers">7.3 Saving and killing buffers</a></li><li><a href="07-buffers-and-sessions.html#recent-files-and-places">7.4 Recent files and places</a></li><li><a href="07-buffers-and-sessions.html#bookmarks">7.5 Bookmarks</a></li><li><a href="07-buffers-and-sessions.html#registers">7.6 Registers</a></li><li><a href="07-buffers-and-sessions.html#the-session-kept">7.7 The session kept</a></li><li><a href="07-buffers-and-sessions.html#auto-save-and-getting-changes-back">7.8 Auto-save and getting changes back</a></li><li><a href="07-buffers-and-sessions.html#narrowing-to-a-part-of-a-buffer">7.9 Narrowing to a part of a buffer</a></li></ol></li><li id="nav-08-commands-keys-and-help"><a href="08-commands-keys-and-help.html">8 Commands, keys and help</a><ol><li><a href="08-commands-keys-and-help.html#running-a-command-by-name">8.1 Running a command by name</a><ol><li><a href="08-commands-keys-and-help.html#the-count-before-m-x">8.1.1 The count before M-x</a></li></ol></li><li><a href="08-commands-keys-and-help.html#counts">8.2 Counts</a></li><li><a href="08-commands-keys-and-help.html#giving-up">8.3 Giving up</a></li><li><a href="08-commands-keys-and-help.html#prefix-keys">8.4 Prefix keys</a></li><li><a href="08-commands-keys-and-help.html#key-hints">8.5 Key hints</a></li><li><a href="08-commands-keys-and-help.html#menus">8.6 Menus</a></li><li><a href="08-commands-keys-and-help.html#asking-what-a-key-does">8.7 Asking what a key does</a></li><li><a href="08-commands-keys-and-help.html#asking-what-a-command-does">8.8 Asking what a command does</a></li><li><a href="08-commands-keys-and-help.html#finding-a-command-when-you-do-not-know-its-name">8.9 Finding a command when you do not know its name</a></li><li><a href="08-commands-keys-and-help.html#what-a-face-looks-like">8.10 What a face looks like</a></li><li><a href="08-commands-keys-and-help.html#messages-notifications-and-the-log-of-what-tuatara-says">8.11 Messages, notifications and the log of what Tuatara says</a></li><li><a href="08-commands-keys-and-help.html#the-tutor-and-manual-pages">8.12 The tutor and manual pages</a></li><li><a href="08-commands-keys-and-help.html#about-tuatara-and-what-is-there">8.13 About Tuatara and what is there</a></li><li><a href="08-commands-keys-and-help.html#checking-what-your-system-has">8.14 Checking what your system has</a></li><li><a href="08-commands-keys-and-help.html#lisp-in-the-running-editor">8.15 Lisp in the running editor</a></li><li><a href="08-commands-keys-and-help.html#binding-keys-yourself">8.16 Binding keys yourself</a></li></ol></li><li id="nav-09-files"><a href="09-files.html">9 Files</a><ol><li><a href="09-files.html#opening-a-file">9.1 Opening a file</a><ol><li><a href="09-files.html#other-places-to-open-a-file">9.1.1 Other places to open a file</a></li><li><a href="09-files.html#the-files-own-settings">9.1.2 The file's own settings</a></li><li><a href="09-files.html#seeing-a-file-before-you-choose-it">9.1.3 Seeing a file before you choose it</a></li></ol></li><li><a href="09-files.html#creating-a-file">9.2 Creating a file</a></li><li><a href="09-files.html#saving">9.3 Saving</a><ol><li><a href="09-files.html#what-a-save-does-with-your-file">9.3.1 What a save does with your file</a></li><li><a href="09-files.html#when-a-save-asks-first">9.3.2 When a save asks first</a></li></ol></li><li><a href="09-files.html#save-as-and-a-new-name">9.4 Save as, and a new name</a></li><li><a href="09-files.html#read-only-files-and-buffers">9.5 Read-only files and buffers</a></li><li><a href="09-files.html#the-file-changed-on-disk">9.6 The file changed on disk</a><ol><li><a href="09-files.html#reading-it-again">9.6.1 Reading it again</a></li><li><a href="09-files.html#keeping-up-by-itself">9.6.2 Keeping up by itself</a></li></ol></li><li><a href="09-files.html#line-endings-and-letters-from-other-languages">9.7 Line endings and letters from other languages</a><ol><li><a href="09-files.html#line-endings">9.7.1 Line endings</a></li><li><a href="09-files.html#letters-from-other-languages">9.7.2 Letters from other languages</a></li></ol></li><li><a href="09-files.html#files-with-formatted-names">9.8 Files with formatted names</a><ol><li><a href="09-files.html#making-and-finding">9.8.1 Making and finding</a></li><li><a href="09-files.html#renaming">9.8.2 Renaming</a></li><li><a href="09-files.html#settings-for-new-files">9.8.3 Settings for new files</a></li></ol></li><li><a href="09-files.html#files-on-another-machine">9.9 Files on another machine</a><ol><li><a href="09-files.html#saving-2">9.9.1 Saving</a></li><li><a href="09-files.html#the-first-time-you-meet-a-machine">9.9.2 The first time you meet a machine</a></li><li><a href="09-files.html#passwords">9.9.3 Passwords</a></li><li><a href="09-files.html#directories-and-previews-on-a-server">9.9.4 Directories and previews on a server</a></li></ol></li><li><a href="09-files.html#encrypted-files">9.10 Encrypted files</a><ol><li><a href="09-files.html#a-file-that-ends-in-gpg">9.10.1 A file that ends in .gpg</a></li><li><a href="09-files.html#the-passphrase-prompt">9.10.2 The passphrase prompt</a></li><li><a href="09-files.html#encrypting-and-decrypting">9.10.3 Encrypting and decrypting</a></li><li><a href="09-files.html#signing-and-checking">9.10.4 Signing and checking</a></li><li><a href="09-files.html#keys">9.10.5 Keys</a></li><li><a href="09-files.html#commands-and-settings">9.10.6 Commands and settings</a></li></ol></li><li><a href="09-files.html#opening-a-file-with-another-program">9.11 Opening a file with another program</a></li><li><a href="09-files.html#starting-tuatara-with-files">9.12 Starting Tuatara with files</a><ol><li><a href="09-files.html#options">9.12.1 Options</a></li></ol></li></ol></li><li id="nav-10-directories" class="here"><a class="here" href="10-directories.html">10 Directories</a><ol><li><a href="10-directories.html#opening-a-directory">10.1 Opening a directory</a><ol><li><a href="10-directories.html#commands-for-opening-a-directory">10.1.1 Commands for opening a directory</a></li></ol></li><li><a href="10-directories.html#moving-about">10.2 Moving about</a><ol><li><a href="10-directories.html#commands-for-moving">10.2.1 Commands for moving</a></li></ol></li><li><a href="10-directories.html#what-a-list-shows">10.3 What a list shows</a><ol><li><a href="10-directories.html#commands-for-what-a-list-shows">10.3.1 Commands for what a list shows</a></li><li><a href="10-directories.html#settings-for-what-a-list-shows">10.3.2 Settings for what a list shows</a></li></ol></li><li><a href="10-directories.html#the-preview-beside-the-list">10.4 The preview beside the list</a><ol><li><a href="10-directories.html#quick-edit">10.4.1 Quick edit</a></li><li><a href="10-directories.html#commands-for-the-preview">10.4.2 Commands for the preview</a></li><li><a href="10-directories.html#settings-for-the-preview">10.4.3 Settings for the preview</a></li></ol></li><li><a href="10-directories.html#marks">10.5 Marks</a><ol><li><a href="10-directories.html#filtering-a-list">10.5.1 Filtering a list</a></li><li><a href="10-directories.html#commands-for-marks-and-filters">10.5.2 Commands for marks and filters</a></li></ol></li><li><a href="10-directories.html#making-things">10.6 Making things</a><ol><li><a href="10-directories.html#commands-for-making-things">10.6.1 Commands for making things</a></li></ol></li><li><a href="10-directories.html#copying-moving-and-linking">10.7 Copying, moving and linking</a><ol><li><a href="10-directories.html#commands-for-copying-moving-and-linking">10.7.1 Commands for copying, moving and linking</a></li><li><a href="10-directories.html#settings-for-copying-and-moving">10.7.2 Settings for copying and moving</a></li></ol></li><li><a href="10-directories.html#renaming">10.8 Renaming</a><ol><li><a href="10-directories.html#commands-for-renaming">10.8.1 Commands for renaming</a></li></ol></li><li><a href="10-directories.html#deleting-the-trash-and-wiping">10.9 Deleting, the trash and wiping</a><ol><li><a href="10-directories.html#commands-for-deleting-and-the-trash">10.9.1 Commands for deleting and the trash</a></li><li><a href="10-directories.html#settings-for-deleting">10.9.2 Settings for deleting</a></li></ol></li><li><a href="10-directories.html#archives">10.10 Archives</a><ol><li><a href="10-directories.html#looking-inside">10.10.1 Looking inside</a></li><li><a href="10-directories.html#extracting">10.10.2 Extracting</a></li><li><a href="10-directories.html#locked-archives">10.10.3 Locked archives</a></li><li><a href="10-directories.html#making-an-archive">10.10.4 Making an archive</a></li><li><a href="10-directories.html#locking-an-archive-with-a-password">10.10.5 Locking an archive with a password</a></li><li><a href="10-directories.html#which-program-does-what">10.10.6 Which program does what</a></li><li><a href="10-directories.html#when-tuatara-refuses">10.10.7 When Tuatara refuses</a></li><li><a href="10-directories.html#commands-for-archives">10.10.8 Commands for archives</a></li><li><a href="10-directories.html#settings-for-archives">10.10.9 Settings for archives</a></li></ol></li><li><a href="10-directories.html#drives-and-the-directory-tree">10.11 Drives and the directory tree</a></li><li><a href="10-directories.html#finding-checking-and-encrypting">10.12 Finding, checking and encrypting</a><ol><li><a href="10-directories.html#commands-for-finding-checking-and-encrypting">10.12.1 Commands for finding, checking and encrypting</a></li></ol></li><li><a href="10-directories.html#colours-of-a-list">10.13 Colours of a list</a></li></ol></li><li id="nav-11-large-files-and-background-work"><a href="11-large-files-and-background-work.html">11 Large files and work in the background</a><ol><li><a href="11-large-files-and-background-work.html#opening-a-very-large-file">11.1 Opening a very large file</a><ol><li><a href="11-large-files-and-background-work.html#the-line-number-while-the-lines-are-counted">11.1.1 The line number while the lines are counted</a></li><li><a href="11-large-files-and-background-work.html#going-to-a-line">11.1.2 Going to a line</a></li><li><a href="11-large-files-and-background-work.html#line-numbers-in-the-gutter">11.1.3 Line numbers in the gutter</a></li></ol></li><li><a href="11-large-files-and-background-work.html#jobs-work-in-the-background">11.2 Jobs: work in the background</a><ol><li><a href="11-large-files-and-background-work.html#what-runs-as-a-job">11.2.1 What runs as a job</a></li><li><a href="11-large-files-and-background-work.html#the-sign-p">11.2.2 The sign P</a></li><li><a href="11-large-files-and-background-work.html#what-a-job-will-change-is-painted">11.2.3 What a job will change is painted</a></li><li><a href="11-large-files-and-background-work.html#jobs-take-turns">11.2.4 Jobs take turns</a></li><li><a href="11-large-files-and-background-work.html#typing-while-a-job-runs">11.2.5 Typing while a job runs</a></li><li><a href="11-large-files-and-background-work.html#undo-and-jobs">11.2.6 Undo and jobs</a></li></ol></li><li><a href="11-large-files-and-background-work.html#the-list-of-jobs">11.3 The list of jobs</a><ol><li><a href="11-large-files-and-background-work.html#stopping-a-job">11.3.1 Stopping a job</a></li></ol></li><li><a href="11-large-files-and-background-work.html#searching-a-large-file">11.4 Searching a large file</a></li><li><a href="11-large-files-and-background-work.html#saving-a-large-file">11.5 Saving a large file</a><ol><li><a href="11-large-files-and-background-work.html#saving-in-place">11.5.1 Saving in place</a></li></ol></li><li><a href="11-large-files-and-background-work.html#memory-and-pauses-you-might-notice">11.6 Memory, and pauses you might notice</a><ol><li><a href="11-large-files-and-background-work.html#a-file-larger-than-your-memory">11.6.1 A file larger than your memory</a></li><li><a href="11-large-files-and-background-work.html#auto-save-and-large-buffers">11.6.2 Auto-save and large buffers</a></li><li><a href="11-large-files-and-background-work.html#undo">11.6.3 Undo</a></li><li><a href="11-large-files-and-background-work.html#collecting-garbage">11.6.4 Collecting garbage</a></li></ol></li><li><a href="11-large-files-and-background-work.html#a-large-file-on-another-machine">11.7 A large file on another machine</a><ol><li><a href="11-large-files-and-background-work.html#what-you-see-while-it-arrives">11.7.1 What you see while it arrives</a></li><li><a href="11-large-files-and-background-work.html#stopping-the-transfer-or-losing-the-connection">11.7.2 Stopping the transfer, or losing the connection</a></li></ol></li><li><a href="11-large-files-and-background-work.html#in-short">11.8 In short</a></li></ol></li><li id="nav-12-files-you-do-not-trust"><a href="12-files-you-do-not-trust.html">12 Files you do not trust</a><ol><li><a href="12-files-you-do-not-trust.html#opening-one-file-safely">12.1 Opening one file safely</a><ol><li><a href="12-files-you-do-not-trust.html#what-is-never-run">12.1.1 What is never run</a></li><li><a href="12-files-you-do-not-trust.html#why-a-files-own-settings-are-not-taken">12.1.2 Why a file's own settings are not taken</a></li><li><a href="12-files-you-do-not-trust.html#commands-for-opening-safely">12.1.3 Commands for opening safely</a></li><li><a href="12-files-you-do-not-trust.html#settings-and-faces">12.1.4 Settings and faces</a></li></ol></li><li><a href="12-files-you-do-not-trust.html#evidence-directories">12.2 Evidence directories</a><ol><li><a href="12-files-you-do-not-trust.html#naming-the-directories">12.2.1 Naming the directories</a></li><li><a href="12-files-you-do-not-trust.html#what-happens-to-a-file-of-evidence">12.2.2 What happens to a file of evidence</a></li><li><a href="12-files-you-do-not-trust.html#asking-and-copying-out">12.2.3 Asking, and copying out</a></li><li><a href="12-files-you-do-not-trust.html#what-the-guard-does-not-cover">12.2.4 What the guard does not cover</a></li><li><a href="12-files-you-do-not-trust.html#commands-settings-and-faces">12.2.5 Commands, settings and faces</a></li></ol></li><li><a href="12-files-you-do-not-trust.html#the-sandbox-around-decoders">12.3 The sandbox around decoders</a><ol><li><a href="12-files-you-do-not-trust.html#commands-and-settings">12.3.1 Commands and settings</a></li></ol></li><li><a href="12-files-you-do-not-trust.html#repositories-you-only-look-at">12.4 Repositories you only look at</a><ol><li><a href="12-files-you-do-not-trust.html#command-setting-and-faces">12.4.1 Command, setting and faces</a></li></ol></li></ol></li><li id="nav-13-writing-code"><a href="13-writing-code.html">13 Writing code</a><ol><li><a href="13-writing-code.html#what-tuatara-knows-about-code">13.1 What Tuatara knows about code</a><ol><li><a href="13-writing-code.html#how-much-colour">13.1.1 How much colour</a></li><li><a href="13-writing-code.html#seeing-what-a-language-has">13.1.2 Seeing what a language has</a></li><li><a href="13-writing-code.html#commands-settings-and-faces">13.1.3 Commands, settings and faces</a></li></ol></li><li><a href="13-writing-code.html#indentation-and-tabs">13.2 Indentation and tabs</a><ol><li><a href="13-writing-code.html#tabs-and-spaces">13.2.1 Tabs and spaces</a></li><li><a href="13-writing-code.html#commands-and-settings">13.2.2 Commands and settings</a></li></ol></li><li><a href="13-writing-code.html#comments">13.3 Comments</a><ol><li><a href="13-writing-code.html#commands">13.3.1 Commands</a></li></ol></li><li><a href="13-writing-code.html#brackets-and-pairs">13.4 Brackets and pairs</a><ol><li><a href="13-writing-code.html#commands-and-settings-2">13.4.1 Commands and settings</a></li></ol></li><li><a href="13-writing-code.html#moving-by-definitions-and-lists">13.5 Moving by definitions and lists</a><ol><li><a href="13-writing-code.html#selecting-by-the-code">13.5.1 Selecting by the code</a></li><li><a href="13-writing-code.html#an-outline-of-the-file">13.5.2 An outline of the file</a></li><li><a href="13-writing-code.html#commands-2">13.5.3 Commands</a></li></ol></li><li><a href="13-writing-code.html#finding-definitions">13.6 Finding definitions</a><ol><li><a href="13-writing-code.html#commands-3">13.6.1 Commands</a></li></ol></li><li><a href="13-writing-code.html#language-servers">13.7 Language servers</a><ol><li><a href="13-writing-code.html#starting-one-and-trust">13.7.1 Starting one, and trust</a></li><li><a href="13-writing-code.html#what-the-server-tells-you-as-you-type">13.7.2 What the server tells you as you type</a></li><li><a href="13-writing-code.html#completion">13.7.3 Completion</a></li><li><a href="13-writing-code.html#rename-fixes-and-tidying">13.7.4 Rename, fixes and tidying</a></li><li><a href="13-writing-code.html#formatting">13.7.5 Formatting</a></li><li><a href="13-writing-code.html#settings-of-your-own">13.7.6 Settings of your own</a></li><li><a href="13-writing-code.html#commands-4">13.7.7 Commands</a></li><li><a href="13-writing-code.html#settings-and-faces">13.7.8 Settings and faces</a></li></ol></li><li><a href="13-writing-code.html#snippets">13.8 Snippets</a><ol><li><a href="13-writing-code.html#commands-and-settings-3">13.8.1 Commands and settings</a></li></ol></li><li><a href="13-writing-code.html#running-a-build-or-the-tests">13.9 Running a build or the tests</a><ol><li><a href="13-writing-code.html#commands-and-settings-4">13.9.1 Commands and settings</a></li></ol></li><li><a href="13-writing-code.html#merge-conflicts">13.10 Merge conflicts</a><ol><li><a href="13-writing-code.html#commands-and-faces">13.10.1 Commands and faces</a></li></ol></li><li><a href="13-writing-code.html#lisp-development">13.11 Lisp development</a><ol><li><a href="13-writing-code.html#commands-5">13.11.1 Commands</a></li><li><a href="13-writing-code.html#settings">13.11.2 Settings</a></li></ol></li><li><a href="13-writing-code.html#latex">13.12 LaTeX</a></li><li><a href="13-writing-code.html#the-commands-of-each-language">13.13 The commands of each language</a></li></ol></li><li id="nav-14-org"><a href="14-org.html">14 Org</a><ol><li><a href="14-org.html#an-org-file">14.1 An Org file</a><ol><li><a href="14-org.html#how-a-note-is-shown">14.1.1 How a note is shown</a></li></ol></li><li><a href="14-org.html#headings-and-folding">14.2 Headings and folding</a><ol><li><a href="14-org.html#folding">14.2.1 Folding</a></li><li><a href="14-org.html#new-headings">14.2.2 New headings</a></li><li><a href="14-org.html#moving-and-changing-level">14.2.3 Moving and changing level</a></li></ol></li><li><a href="14-org.html#lists-and-checkboxes">14.3 Lists and checkboxes</a><ol><li><a href="14-org.html#checkboxes">14.3.1 Checkboxes</a></li></ol></li><li><a href="14-org.html#tasks">14.4 Tasks</a><ol><li><a href="14-org.html#tasks-with-parts">14.4.1 Tasks with parts</a></li><li><a href="14-org.html#notes-on-a-task">14.4.2 Notes on a task</a></li><li><a href="14-org.html#keywords-of-your-own">14.4.3 Keywords of your own</a></li><li><a href="14-org.html#priorities">14.4.4 Priorities</a></li></ol></li><li><a href="14-org.html#tags">14.5 Tags</a></li><li><a href="14-org.html#dates-and-scheduling">14.6 Dates and scheduling</a><ol><li><a href="14-org.html#answering-the-date-question">14.6.1 Answering the date question</a></li><li><a href="14-org.html#things-that-come-round-again">14.6.2 Things that come round again</a></li><li><a href="14-org.html#being-told-on-the-desktop">14.6.3 Being told on the desktop</a></li></ol></li><li><a href="14-org.html#the-agenda">14.7 The agenda</a><ol><li><a href="14-org.html#telling-tuatara-which-files-to-read">14.7.1 Telling Tuatara which files to read</a></li><li><a href="14-org.html#opening-it">14.7.2 Opening it</a></li><li><a href="14-org.html#what-the-agenda-shows">14.7.3 What the agenda shows</a></li><li><a href="14-org.html#moving-about">14.7.4 Moving about</a></li><li><a href="14-org.html#changing-tasks-from-the-agenda">14.7.5 Changing tasks from the agenda</a></li><li><a href="14-org.html#views-of-your-own">14.7.6 Views of your own</a></li></ol></li><li><a href="14-org.html#capture">14.8 Capture</a><ol><li><a href="14-org.html#templates-of-your-own">14.8.1 Templates of your own</a></li></ol></li><li><a href="14-org.html#moving-an-entry-to-another-place">14.9 Moving an entry to another place</a></li><li><a href="14-org.html#clocking">14.10 Clocking</a></li><li><a href="14-org.html#tables-and-formulas">14.11 Tables and formulas</a><ol><li><a href="14-org.html#making-a-table">14.11.1 Making a table</a></li><li><a href="14-org.html#formulas">14.11.2 Formulas</a></li></ol></li><li><a href="14-org.html#links">14.12 Links</a><ol><li><a href="14-org.html#making-and-following-links">14.12.1 Making and following links</a></li><li><a href="14-org.html#pictures-among-the-lines">14.12.2 Pictures among the lines</a></li><li><a href="14-org.html#formulas-as-pictures">14.12.3 Formulas as pictures</a></li></ol></li><li><a href="14-org.html#blocks-and-code">14.13 Blocks and code</a><ol><li><a href="14-org.html#writing-the-code-out-to-files">14.13.1 Writing the code out to files</a></li><li><a href="14-org.html#a-table-of-contents">14.13.2 A table of contents</a></li><li><a href="14-org.html#blocks-that-write-themselves">14.13.3 Blocks that write themselves</a></li></ol></li><li><a href="14-org.html#exporting">14.14 Exporting</a><ol><li><a href="14-org.html#what-goes-at-the-top-of-the-note">14.14.1 What goes at the top of the note</a></li><li><a href="14-org.html#making-a-pdf">14.14.2 Making a PDF</a></li><li><a href="14-org.html#bibliographies-and-indexes">14.14.3 Bibliographies and indexes</a></li><li><a href="14-org.html#making-a-word-document">14.14.4 Making a Word document</a></li><li><a href="14-org.html#two-kinds-of-export">14.14.5 Two kinds of export</a></li><li><a href="14-org.html#from-a-line-to-the-pdf-and-back">14.14.6 From a line to the PDF and back</a></li><li><a href="14-org.html#layout-in-plain-words">14.14.7 Layout in plain words</a></li><li><a href="14-org.html#your-own-look">14.14.8 Your own look</a></li><li><a href="14-org.html#hiding-names">14.14.9 Hiding names</a></li><li><a href="14-org.html#notes-from-other-people">14.14.10 Notes from other people</a></li></ol></li><li><a href="14-org.html#where-to-go-from-here">14.15 Where to go from here</a></li></ol></li><li id="nav-15-git"><a href="15-git.html">15 Git</a><ol><li><a href="15-git.html#what-git-keeps">15.1 What git keeps</a></li><li><a href="15-git.html#the-status">15.2 The status</a><ol><li><a href="15-git.html#menus">15.2.1 Menus</a></li><li><a href="15-git.html#commands-settings-and-faces-of-the-status">15.2.2 Commands, settings and faces of the status</a></li></ol></li><li><a href="15-git.html#staging">15.3 Staging</a><ol><li><a href="15-git.html#hunks-and-single-lines">15.3.1 Hunks and single lines</a></li><li><a href="15-git.html#reversing-a-change">15.3.2 Reversing a change</a></li><li><a href="15-git.html#from-the-file-itself">15.3.3 From the file itself</a></li></ol></li><li><a href="15-git.html#committing">15.4 Committing</a><ol><li><a href="15-git.html#changing-the-last-commit">15.4.1 Changing the last commit</a></li><li><a href="15-git.html#signing-commits">15.4.2 Signing commits</a></li><li><a href="15-git.html#commands-and-settings-for-committing">15.4.3 Commands and settings for committing</a></li></ol></li><li><a href="15-git.html#the-log-and-diffs">15.5 The log and diffs</a><ol><li><a href="15-git.html#the-log">15.5.1 The log</a></li><li><a href="15-git.html#diffs">15.5.2 Diffs</a></li></ol></li><li><a href="15-git.html#branches-and-tags">15.6 Branches and tags</a><ol><li><a href="15-git.html#branches">15.6.1 Branches</a></li><li><a href="15-git.html#merging">15.6.2 Merging</a></li><li><a href="15-git.html#tags">15.6.3 Tags</a></li></ol></li><li><a href="15-git.html#the-stash">15.7 The stash</a></li><li><a href="15-git.html#merge-conflicts">15.8 Merge conflicts</a></li><li><a href="15-git.html#rebase-cherry-pick-revert-and-reset">15.9 Rebase, cherry-pick, revert and reset</a><ol><li><a href="15-git.html#rebase">15.9.1 Rebase</a></li><li><a href="15-git.html#cherry-pick">15.9.2 Cherry-pick</a></li><li><a href="15-git.html#revert">15.9.3 Revert</a></li><li><a href="15-git.html#reset">15.9.4 Reset</a></li></ol></li><li><a href="15-git.html#pulling-and-pushing">15.10 Pulling and pushing</a></li><li><a href="15-git.html#blame-and-the-file-menu">15.11 Blame and the file menu</a><ol><li><a href="15-git.html#who-changed-each-line">15.11.1 Who changed each line</a></li><li><a href="15-git.html#the-file-menu">15.11.2 The file menu</a></li></ol></li><li><a href="15-git.html#rewind-a-file-as-it-was">15.12 Rewind: a file as it was</a></li><li><a href="15-git.html#repositories-you-only-look-at">15.13 Repositories you only look at</a></li><li><a href="15-git.html#less-common-work">15.14 Less common work</a><ol><li><a href="15-git.html#worktrees">15.14.1 Worktrees</a></li><li><a href="15-git.html#bisect-finding-the-commit-that-broke-something">15.14.2 Bisect: finding the commit that broke something</a></li><li><a href="15-git.html#ignoring-files">15.14.3 Ignoring files</a></li><li><a href="15-git.html#notes-on-commits">15.14.4 Notes on commits</a></li><li><a href="15-git.html#patches-and-bundles">15.14.5 Patches and bundles</a></li><li><a href="15-git.html#repositories-inside-repositories">15.14.6 Repositories inside repositories</a></li><li><a href="15-git.html#any-git-command">15.14.7 Any git command</a></li></ol></li></ol></li><li id="nav-16-data-pictures-and-pdfs"><a href="16-data-pictures-and-pdfs.html">16 Data, pictures and PDFs</a><ol><li><a href="16-data-pictures-and-pdfs.html#delimited-data-csv-and-tsv">16.1 Delimited data: CSV and TSV</a><ol><li><a href="16-data-pictures-and-pdfs.html#columns-are-counted-from-0">16.1.1 Columns are counted from 0</a></li><li><a href="16-data-pictures-and-pdfs.html#moving-in-a-table">16.1.2 Moving in a table</a></li><li><a href="16-data-pictures-and-pdfs.html#the-separator">16.1.3 The separator</a></li><li><a href="16-data-pictures-and-pdfs.html#the-header">16.1.4 The header</a></li><li><a href="16-data-pictures-and-pdfs.html#commands-settings-and-faces-for-tables">16.1.5 Commands, settings and faces for tables</a></li></ol></li><li><a href="16-data-pictures-and-pdfs.html#showing-only-some-records">16.2 Showing only some records</a><ol><li><a href="16-data-pictures-and-pdfs.html#deleting-records-for-good">16.2.1 Deleting records for good</a></li></ol></li><li><a href="16-data-pictures-and-pdfs.html#sorting-a-table">16.3 Sorting a table</a></li><li><a href="16-data-pictures-and-pdfs.html#the-hex-view">16.4 The hex view</a><ol><li><a href="16-data-pictures-and-pdfs.html#searching-for-octets">16.4.1 Searching for octets</a></li><li><a href="16-data-pictures-and-pdfs.html#changing-octets">16.4.2 Changing octets</a></li><li><a href="16-data-pictures-and-pdfs.html#files-that-open-in-hex-by-themselves">16.4.3 Files that open in hex by themselves</a></li></ol></li><li><a href="16-data-pictures-and-pdfs.html#pictures">16.5 Pictures</a><ol><li><a href="16-data-pictures-and-pdfs.html#pictures-in-a-terminal">16.5.1 Pictures in a terminal</a></li><li><a href="16-data-pictures-and-pdfs.html#very-large-pictures">16.5.2 Very large pictures</a></li></ol></li><li><a href="16-data-pictures-and-pdfs.html#pdfs">16.6 PDFs</a><ol><li><a href="16-data-pictures-and-pdfs.html#turning-pages">16.6.1 Turning pages</a></li><li><a href="16-data-pictures-and-pdfs.html#zoom">16.6.2 Zoom</a></li><li><a href="16-data-pictures-and-pdfs.html#searching-and-the-text-of-a-pdf">16.6.3 Searching, and the text of a PDF</a></li><li><a href="16-data-pictures-and-pdfs.html#what-the-pdf-says-of-itself-and-files-inside-it">16.6.4 What the PDF says of itself, and files inside it</a></li><li><a href="16-data-pictures-and-pdfs.html#the-latex-line-of-a-page">16.6.5 The LaTeX line of a page</a></li><li><a href="16-data-pictures-and-pdfs.html#commands-and-settings-for-pdfs">16.6.6 Commands and settings for PDFs</a></li></ol></li><li><a href="16-data-pictures-and-pdfs.html#office-documents">16.7 Office documents</a></li><li><a href="16-data-pictures-and-pdfs.html#what-a-file-says-of-itself">16.8 What a file says of itself</a></li><li><a href="16-data-pictures-and-pdfs.html#when-a-file-cannot-be-drawn">16.9 When a file cannot be drawn</a></li></ol></li><li id="nav-17-the-terminal"><a href="17-the-terminal.html">17 The terminal</a><ol><li><a href="17-the-terminal.html#opening-a-terminal">17.1 Opening a terminal</a><ol><li><a href="17-the-terminal.html#where-it-appears">17.1.1 Where it appears</a></li><li><a href="17-the-terminal.html#showing-and-hiding">17.1.2 Showing and hiding</a></li></ol></li><li><a href="17-the-terminal.html#typing-into-a-terminal">17.2 Typing into a terminal</a><ol><li><a href="17-the-terminal.html#sending-a-key-the-editor-keeps">17.2.1 Sending a key the editor keeps</a></li></ol></li><li><a href="17-the-terminal.html#the-history-view">17.3 The history view</a><ol><li><a href="17-the-terminal.html#searching-the-history">17.3.1 Searching the history</a></li></ol></li><li><a href="17-the-terminal.html#pasting">17.4 Pasting</a></li><li><a href="17-the-terminal.html#links">17.5 Links</a></li><li><a href="17-the-terminal.html#pictures-and-colours-from-programs">17.6 Pictures and colours from programs</a></li><li><a href="17-the-terminal.html#the-title">17.7 The title</a></li><li><a href="17-the-terminal.html#escape-nvim-and-the-shell">17.8 Escape, nvim and the shell</a></li><li><a href="17-the-terminal.html#the-terminal-library">17.9 The terminal library</a></li><li><a href="17-the-terminal.html#running-tuatara-inside-a-terminal">17.10 Running Tuatara inside a terminal</a><ol><li><a href="17-the-terminal.html#keys">17.10.1 Keys</a></li><li><a href="17-the-terminal.html#colours-and-pictures">17.10.2 Colours and pictures</a></li><li><a href="17-the-terminal.html#terminal-inside-the-terminal">17.10.3 Terminal inside the terminal</a></li></ol></li></ol></li><li id="nav-18-the-daemon-and-other-machines"><a href="18-the-daemon-and-other-machines.html">18 The daemon and other machines</a><ol><li><a href="18-the-daemon-and-other-machines.html#one-editor-in-the-background">18.1 One editor in the background</a><ol><li><a href="18-the-daemon-and-other-machines.html#the-commands-you-type-in-a-terminal">18.1.1 The commands you type in a terminal</a></li><li><a href="18-the-daemon-and-other-machines.html#names-for-several-daemons">18.1.2 Names for several daemons</a></li><li><a href="18-the-daemon-and-other-machines.html#closing-a-client">18.1.3 Closing a client</a></li><li><a href="18-the-daemon-and-other-machines.html#more-than-one-window-of-a-client">18.1.4 More than one window of a client</a></li><li><a href="18-the-daemon-and-other-machines.html#the-d-in-the-mode-line">18.1.5 The D in the mode line</a></li><li><a href="18-the-daemon-and-other-machines.html#commands-settings-and-faces-for-the-daemon">18.1.6 Commands, settings and faces for the daemon</a></li></ol></li><li><a href="18-the-daemon-and-other-machines.html#clients-in-the-buffer-list">18.2 Clients in the buffer list</a><ol><li><a href="18-the-daemon-and-other-machines.html#the-client-that-stays">18.2.1 The client that stays</a></li><li><a href="18-the-daemon-and-other-machines.html#commands-and-settings-for-clients">18.2.2 Commands and settings for clients</a></li></ol></li><li><a href="18-the-daemon-and-other-machines.html#stopping-the-daemon">18.3 Stopping the daemon</a></li><li><a href="18-the-daemon-and-other-machines.html#sessions-for-each-client">18.4 Sessions for each client</a></li><li><a href="18-the-daemon-and-other-machines.html#a-daemon-on-another-machine">18.5 A daemon on another machine</a><ol><li><a href="18-the-daemon-and-other-machines.html#starting-using-and-stopping">18.5.1 Starting, using and stopping</a></li><li><a href="18-the-daemon-and-other-machines.html#what-has-to-be-in-place">18.5.2 What has to be in place</a></li><li><a href="18-the-daemon-and-other-machines.html#keys-limited-with-command">18.5.3 Keys limited with command=</a></li><li><a href="18-the-daemon-and-other-machines.html#what-a-server-is-given">18.5.4 What a server is given</a></li></ol></li><li><a href="18-the-daemon-and-other-machines.html#the-trusted-servers">18.6 The trusted servers</a><ol><li><a href="18-the-daemon-and-other-machines.html#the-columns">18.6.1 The columns</a></li><li><a href="18-the-daemon-and-other-machines.html#the-keys-of-the-list">18.6.2 The keys of the list</a></li><li><a href="18-the-daemon-and-other-machines.html#the-ssh-agent">18.6.3 The ssh agent</a></li><li><a href="18-the-daemon-and-other-machines.html#the-gpg-agent">18.6.4 The gpg agent</a></li><li><a href="18-the-daemon-and-other-machines.html#the-clipboard-and-dropped-files">18.6.5 The clipboard and dropped files</a></li><li><a href="18-the-daemon-and-other-machines.html#a-language-server-for-a-server">18.6.6 A language server for a server</a></li><li><a href="18-the-daemon-and-other-machines.html#commands-for-the-trusted-servers">18.6.7 Commands for the trusted servers</a></li></ol></li></ol></li><li id="nav-19-packages"><a href="19-packages.html">19 Packages</a><ol><li><a href="19-packages.html#what-a-package-is">19.1 What a package is</a></li><li><a href="19-packages.html#naming-a-package-in-your-init-file">19.2 Naming a package in your init file</a><ol><li><a href="19-packages.html#the-keywords">19.2.1 The keywords</a></li><li><a href="19-packages.html#the-first-load">19.2.2 The first load</a></li></ol></li><li><a href="19-packages.html#the-package-manager">19.3 The package manager</a><ol><li><a href="19-packages.html#commands-of-the-package-manager">19.3.1 Commands of the package manager</a></li></ol></li><li><a href="19-packages.html#updating">19.4 Updating</a><ol><li><a href="19-packages.html#commands-for-updating">19.4.1 Commands for updating</a></li></ol></li><li><a href="19-packages.html#signatures-and-trust">19.5 Signatures and trust</a><ol><li><a href="19-packages.html#naming-the-signers-yourself">19.5.1 Naming the signers yourself</a></li><li><a href="19-packages.html#sources-that-are-not-encrypted">19.5.2 Sources that are not encrypted</a></li><li><a href="19-packages.html#settings">19.5.3 Settings</a></li></ol></li><li><a href="19-packages.html#unloading-and-removing">19.6 Unloading and removing</a><ol><li><a href="19-packages.html#commands-for-unloading-and-removing">19.6.1 Commands for unloading and removing</a></li><li><a href="19-packages.html#clearing-out-sources-no-longer-used">19.6.2 Clearing out sources no longer used</a></li><li><a href="19-packages.html#where-packages-are-kept">19.6.3 Where packages are kept</a></li></ol></li><li><a href="19-packages.html#what-a-package-needs-check-health">19.7 What a package needs: check-health</a></li><li><a href="19-packages.html#the-packages-the-project-publishes">19.8 The packages the project publishes</a><ol><li><a href="19-packages.html#palimpsest">19.8.1 palimpsest</a></li><li><a href="19-packages.html#csvdt">19.8.2 csvdt</a></li><li><a href="19-packages.html#csv-columns">19.8.3 csv-columns</a></li><li><a href="19-packages.html#facematch">19.8.4 facematch</a></li><li><a href="19-packages.html#garamond">19.8.5 garamond</a></li><li><a href="19-packages.html#kitty">19.8.6 kitty</a></li><li><a href="19-packages.html#outlook">19.8.7 outlook</a></li><li><a href="19-packages.html#caldav">19.8.8 caldav</a></li><li><a href="19-packages.html#themes">19.8.9 themes</a></li></ol></li><li><a href="19-packages.html#writing-a-package-of-your-own">19.9 Writing a package of your own</a></li></ol></li><li id="nav-20-making-it-your-own"><a href="20-making-it-your-own.html">20 Making it your own</a><ol><li><a href="20-making-it-your-own.html#the-init-file">20.1 The init file</a></li><li><a href="20-making-it-your-own.html#where-tuatara-keeps-its-files">20.2 Where Tuatara keeps its files</a><ol><li><a href="20-making-it-your-own.html#what-to-copy-to-another-computer">20.2.1 What to copy to another computer</a></li><li><a href="20-making-it-your-own.html#settings-for-the-directories">20.2.2 Settings for the directories</a></li></ol></li><li><a href="20-making-it-your-own.html#changing-a-setting">20.3 Changing a setting</a></li><li><a href="20-making-it-your-own.html#keys-of-your-own">20.4 Keys of your own</a></li><li><a href="20-making-it-your-own.html#a-leader-key-of-your-own">20.5 A leader key of your own</a></li><li><a href="20-making-it-your-own.html#modal-editing-and-turning-it-off">20.6 Modal editing, and turning it off</a></li><li><a href="20-making-it-your-own.html#themes-and-faces">20.7 Themes and faces</a><ol><li><a href="20-making-it-your-own.html#choosing-a-theme">20.7.1 Choosing a theme</a></li><li><a href="20-making-it-your-own.html#changing-one-face">20.7.2 Changing one face</a></li><li><a href="20-making-it-your-own.html#a-theme-of-your-own">20.7.3 A theme of your own</a></li><li><a href="20-making-it-your-own.html#the-faces">20.7.4 The faces</a></li></ol></li><li><a href="20-making-it-your-own.html#fonts">20.8 Fonts</a><ol><li><a href="20-making-it-your-own.html#commands-and-faces-for-fonts-and-the-window">20.8.1 Commands and faces for fonts and the window</a></li></ol></li><li><a href="20-making-it-your-own.html#your-name">20.9 Your name</a></li><li><a href="20-making-it-your-own.html#snippets-of-your-own">20.10 Snippets of your own</a></li><li><a href="20-making-it-your-own.html#how-lines-are-shown">20.11 How lines are shown</a></li><li><a href="20-making-it-your-own.html#the-calendar">20.12 The calendar</a><ol><li><a href="20-making-it-your-own.html#commands-settings-and-faces-for-the-calendar">20.12.1 Commands, settings and faces for the calendar</a></li></ol></li><li><a href="20-making-it-your-own.html#the-journal">20.13 The journal</a></li><li><a href="20-making-it-your-own.html#odds-and-ends">20.14 Odds and ends</a><ol><li><a href="20-making-it-your-own.html#changing-case-and-what-a-character-is">20.14.1 Changing case, and what a character is</a></li><li><a href="20-making-it-your-own.html#buttons-and-the-mouse">20.14.2 Buttons and the mouse</a></li><li><a href="20-making-it-your-own.html#modes-for-other-kinds-of-text">20.14.3 Modes for other kinds of text</a></li><li><a href="20-making-it-your-own.html#lists-and-the-cursors-popups">20.14.4 Lists and the cursor's popups</a></li><li><a href="20-making-it-your-own.html#limits-and-safety">20.14.5 Limits and safety</a></li><li><a href="20-making-it-your-own.html#about-the-tutor-and-lisp">20.14.6 About, the tutor and Lisp</a></li></ol></li></ol></li><li id="nav-21-every-setting"><a href="21-every-setting.html">21 Every setting</a></li><li id="nav-22-every-command"><a href="22-every-command.html">22 Every command</a><ol><li><a href="22-every-command.html#commands-that-switch-to-a-major-mode">22.1 Commands that switch to a major mode</a></li></ol></li></ol>
+</nav>
+<main>
+<article>
+<div class="node"><span>Previous: <a href="09-files.html">Files</a></span><span>Next: <a href="11-large-files-and-background-work.html">Large files and work in the background</a></span><span>Up: <a href="index.html">Contents</a></span></div>
+<h1 id="directories">Directories</h1>
+<p class="lead">Looking at a directory, and copying, moving, renaming and deleting what is in
+it.</p>
+<p>A directory holds files, and sometimes other directories. When you want to find
+a photo, tidy a pile of letters or clear out last year's downloads, you need to
+see what is there and then do something to it. Tuatara's file manager is called
+rimu. It shows a directory as a list, a line for each thing in it, and it lets
+you pick some of those lines and act on them. The picking works as it does in
+the buffer list of chapter 7, so most of what you learned there applies here.</p>
+<p>This chapter starts with opening a directory and moving about in it. Then it
+shows how to change what the list shows, how to look at a file without
+opening it, and how to choose entries. The rest is what you can do with the
+choice: make, copy, move, rename, delete, pack into an archive and compare.
+Chapter 9 explained how to open a single file. This chapter is about many
+files at a time.</p>
+<p>As in the other chapters, every key here is pressed in NORMAL state unless it
+starts with <kbd>C-x</kbd>. <kbd>i</kbd> starts INSERT state, and <kbd>C-g</kbd> or <kbd>ESC</kbd> returns to
+NORMAL. In a list you rarely need INSERT, because the keys are commands.</p>
+<h2 id="opening-a-directory"><span class="num">10.1</span> Opening a directory</h2>
+<p><kbd>C-x d</kbd> asks which directory you want and lists it. The question already holds
+the directory of the buffer you are in, so you often only press <kbd>RET</kbd>. To go
+elsewhere, type the rest of a path, or start again from your home directory with
+<code>~/</code>. <kbd>TAB</kbd> completes a name as you type it.</p>
+<p>If you are looking at a file and want to see what else is in its directory,
+<kbd>C-x C-j</kbd> lists that directory with the cursor on the file. <kbd>C-x 5 d</kbd> does what
+<kbd>C-x d</kbd> does in a new window of its own.</p>
+<p>From a terminal you can start Tuatara on a directory, for example with
+<code>tuatara ~/Photos/holiday/</code>, and the list is the first thing you see.</p>
+<p>Figure 10.1 shows a list for a directory of holiday photos.</p>
+<figure id="fig-rimu-list">
+<pre class="ex">  ~/Photos/holiday:
+  Napier
+  Rotorua
+  Wanaka
+&gt; IMG_0412.jpg
+  IMG_0413.jpg
+&gt; IMG_0414.jpg
+  itinerary.txt
+</pre>
+<figcaption>Figure 10.1. A list of a directory, with two entries marked.</figcaption>
+</figure>
+<p>The first line is the directory's whole name. Below it come the entries, one to
+a line, with directories first and then files. Names are in the order that <code>ls</code>
+uses, so capital letters come before small ones. The two spaces before each
+name are where marks go. In the figure, two photos have a <code>&gt;</code>.</p>
+<p>Names that start with a dot are hidden. Those are files that programs keep
+for themselves, such as <code>.bashrc</code>, and you seldom want to see them. Directory
+names have a colour of their own. Names of files that are only a by-product,
+such as compiled files, are set back in a fainter colour.</p>
+<p>The mode line at the bottom says <code>Rimu</code> and how the list is sorted. <kbd>q</kbd>
+leaves the list and returns to the buffer you were in before.</p>
+<p>Rimu keeps a list up to date. If another program adds, renames or removes a
+file in the directory, the line appears or goes within a moment. <kbd>r</kbd> reads the
+directory again at once, and your marks stay.</p>
+<h3 id="commands-for-opening-a-directory"><span class="num">10.1.1</span> Commands for opening a directory</h3>
+<div class="tablewrap"><table>
+<thead>
+<tr><th>Modal</th><th>Non-modal</th><th>Command</th><th>What it does</th></tr>
+</thead>
+<tbody>
+<tr><td>none</td><td><kbd>C-x d</kbd></td><td><code>rimu</code></td><td>List a directory with rimu, asked for with completion from the directory of the path chosen last in a question for a path, else the current buffer's: its name, then its entries a line each, directories first.</td></tr>
+<tr><td>none</td><td><kbd>C-x 5 d</kbd></td><td><code>rimu-other-frame</code></td><td>List a directory with rimu in another frame and work in it, the directory asked for as C-x d asks.</td></tr>
+<tr><td>none</td><td><kbd>C-x C-j</kbd></td><td><code>rimu-jump</code></td><td>List the directory of the current buffer's file with rimu, point on the file; a buffer with no file lists the directory it stands in.</td></tr>
+</tbody></table></div>
+<h2 id="moving-about"><span class="num">10.2</span> Moving about</h2>
+<p>Moving into a directory shows it in the same list. You do not collect a buffer
+for every directory you pass through. The keys are the ones you know from
+chapter 2, with a few more for the places a list has.</p>
+<div class="tablewrap"><table>
+<thead>
+<tr><th>Modal</th><th>Non-modal</th><th>What it does</th></tr>
+</thead>
+<tbody>
+<tr><td><kbd>j</kbd>, <kbd>k</kbd></td><td><kbd>C-n</kbd>, <kbd>C-p</kbd></td><td>Down and up a line</td></tr>
+<tr><td>none</td><td><kbd>l</kbd>, <kbd>RET</kbd></td><td>Open the entry: a directory in this list, a file</td></tr>
+<tr><td>none</td><td><kbd>h</kbd></td><td>Up to the directory that holds this one</td></tr>
+<tr><td><kbd>g g</kbd>, <kbd>g e</kbd></td><td><kbd>M-&lt;</kbd>, <kbd>M-&gt;</kbd></td><td>To the top of the list, to the end</td></tr>
+<tr><td>none</td><td><kbd>&gt;</kbd>, <kbd>&lt;</kbd></td><td>To the next directory in the list, to the previous</td></tr>
+<tr><td>none</td><td><kbd>g f</kbd></td><td>To an entry, by name, with completion</td></tr>
+<tr><td>none</td><td><kbd>g h</kbd></td><td>To your home directory</td></tr>
+<tr><td>none</td><td><kbd>g l</kbd></td><td>Back to the directory listed before</td></tr>
+<tr><td>none</td><td><kbd>q</kbd></td><td>Leave the list</td></tr>
+</tbody></table></div>
+<p>When you go up with <kbd>h</kbd>, the cursor lands on the directory you came from. So you
+can walk down into a directory and back out again without losing your place.
+<kbd>g l</kbd> swaps between the last two directories, so pressing it twice returns to
+where you started. This helps when you are working in two places.</p>
+<p><kbd>g f</kbd> is the quickest way to a name in a long list. Type a few letters of the
+name, and <kbd>RET</kbd> puts the cursor on it.</p>
+<p><kbd>h j k l</kbd> only move in a list. The keys that move by word or select text do
+nothing here, and the echo area says so. Each line is one whole entry, so
+there is nothing to select inside it.</p>
+<p><kbd>RET</kbd> on a file opens it as <kbd>C-x C-f</kbd> does (chapter 9). A file that looks
+like a program's data rather than text opens in a safe view. <kbd>C-u RET</kbd> opens
+any file that way. Chapter 12 explains what a safe view is.</p>
+<div class="try">
+<h3>Try it, with a directory of photos</h3>
+<ol>
+<li>Press <kbd>C-x d</kbd>. The question holds the directory you are in. Type
+   <code>~/Pictures/</code> after clearing it with <kbd>C-a C-k</kbd>, and press <kbd>RET</kbd>. Use any
+   directory you like if you have no <code>Pictures</code>.</li>
+<li>Press <kbd>j</kbd> (non-modal: <kbd>C-n</kbd>) a few times, then <kbd>l</kbd> on a directory to go into it.</li>
+<li>Press <kbd>h</kbd>. You are back, with the cursor on the directory you left.</li>
+<li>Press <kbd>g l</kbd> to go into it again, and <kbd>g l</kbd> once more to come back.</li>
+<li>Press <kbd>g f</kbd>, type the first letters of a name and press <kbd>RET</kbd>.</li>
+<li>Press <kbd>g h</kbd> to see your home directory, and <kbd>q</kbd> to leave the list.</li>
+</ol>
+</div>
+<h3 id="commands-for-moving"><span class="num">10.2.1</span> Commands for moving</h3>
+<div class="tablewrap"><table>
+<thead>
+<tr><th>Modal</th><th>Non-modal</th><th>Command</th><th>What it does</th></tr>
+</thead>
+<tbody>
+<tr><td>none</td><td><kbd>l</kbd>, <kbd>RET</kbd>, <kbd>C-c l</kbd></td><td><code>rimu-open</code></td><td>Open the entry on the current line: a directory is listed in its place in this list; a file is visited as C-x C-f visits it, safely where that would be, and with a prefix argument (C-u) safely always.</td></tr>
+<tr><td>none</td><td><kbd>C-o</kbd></td><td><code>rimu-display</code></td><td>Show the entry on the current line in another window, staying in the list: a directory in a list of its own, a file as l opens it.</td></tr>
+<tr><td>none</td><td><kbd>h</kbd>, <kbd>C-c h</kbd></td><td><code>rimu-up</code></td><td>List the directory holding this one, in this list, point on the one left; in a list of files found, list the directory they were found in.</td></tr>
+<tr><td>none</td><td><kbd>&gt;</kbd>, <kbd>C-c &gt;</kbd></td><td><code>rimu-next-directory</code></td><td>Go to the next directory of this list.</td></tr>
+<tr><td>none</td><td><kbd>&lt;</kbd>, <kbd>C-c &lt;</kbd></td><td><code>rimu-previous-directory</code></td><td>Go to the previous directory of this list.</td></tr>
+<tr><td>none</td><td><kbd>g f</kbd></td><td><code>rimu-goto-file</code></td><td>Go to an entry of this list, its name asked for with completion; among those the search filters leave, while they narrow the list.</td></tr>
+<tr><td>none</td><td><kbd>g h</kbd></td><td><code>rimu-home</code></td><td>List your home directory in this list's place.</td></tr>
+<tr><td>none</td><td><kbd>g l</kbd></td><td><code>rimu-last-directory</code></td><td>List again the directory this list listed before, point on the entry it was on; again, back to this one, as cd - goes back and forth.</td></tr>
+</tbody></table></div>
+<h2 id="what-a-list-shows"><span class="num">10.3</span> What a list shows</h2>
+<p>At first a list shows only names. You can ask for more, one part at a time.
+Each key switches its part on and off for the list you are in, and none of
+them changes a file.</p>
+<p><kbd>I</kbd> shows details before each name: the same ones that <code>ls -l</code> gives, which
+are permissions, the number of links, the owner, the group, the size and the
+time of the last change. The inode number, which says where the file sits on
+the disk, comes first. The line under the directory's name then gives how much
+free space the drive has. Here is a directory with details on.</p>
+<figure id="fig-rimu-details">
+<pre class="ex">  ~/Photos/holiday:
+  total used in directory 1.9M available 59G
+  1282547 drwxr-xr-x. 2 aroha aroha  100 Jan  4 14:11 Napier
+  1282558 -rw-r--r--. 1 aroha aroha 640K Jan  4 14:20 IMG_0412.jpg
+  1282559 -rw-r--r--. 1 aroha aroha 610K Jan  4 14:21 IMG_0413.jpg
+  1282560 -rw-r--r--. 1 aroha aroha  31K Jan  5 09:02 itinerary.txt
+</pre>
+<figcaption>Figure 10.2. The same directory with details shown.</figcaption>
+</figure>
+<p>The permissions say who may read, write and run a file. The first letter is
+<code>d</code> for a directory and <code>-</code> for a file. The next nine are three groups of three,
+for the owner, for the owner's group and for everyone else. In each group,
+<code>r</code> means may read, <code>w</code> may write and <code>x</code> may run or, for a directory, may go
+into it. So <code>-rw-r--r--</code> is a file its owner may read and change and everyone
+else may only read. Rimu shows these but does not change them. If you would
+rather read them as numbers, as the <code>chmod</code> command does, set
+<code>*rimu-permissions*</code> to <code>:octal</code>.</p>
+<p><kbd>H</kbd> shows the names that start with a dot. <kbd>s</kbd> swaps the order between by
+name and by time, with the most recently changed first. The mode line says
+which one is in force. <kbd>S</kbd> shows a size before each name. For a directory it is
+the size of everything inside, and it is worked out in the background, so the
+column fills in after a moment while you carry on. <kbd>G</kbd> shows, after each
+name, when the file was last committed to git and the first line of what the
+commit said. Chapter 15 describes git.</p>
+<p>The standard for each of these is off, with directories first and the order by
+name. The settings below change the standard for every list.</p>
+<div class="try">
+<h3>Try it, with a directory of letters</h3>
+<ol>
+<li>Open a directory of letters with <kbd>C-x d</kbd>. If you have none, make one in a
+   terminal first, or use any directory with several files.</li>
+<li>Press <kbd>I</kbd>. Details appear. Press <kbd>I</kbd> again to hide them.</li>
+<li>Press <kbd>s</kbd>. The list is now ordered by time, the newest first. Press <kbd>s</kbd>
+   again to go back to names.</li>
+<li>Press <kbd>S</kbd> and wait a moment for the sizes. Find the largest one.</li>
+<li>Press <kbd>H</kbd> to see the hidden names, and <kbd>H</kbd> again to hide them.</li>
+</ol>
+</div>
+<h3 id="commands-for-what-a-list-shows"><span class="num">10.3.1</span> Commands for what a list shows</h3>
+<div class="tablewrap"><table>
+<thead>
+<tr><th>Modal</th><th>Non-modal</th><th>Command</th><th>What it does</th></tr>
+</thead>
+<tbody>
+<tr><td>none</td><td><kbd>I</kbd>, <kbd>C-c I</kbd></td><td><code>rimu-toggle-details</code></td><td>Show or hide the details before each name in this list: its inode number, as ls -i shows it, then its permissions, links, owner, group, size and when it last changed, as ls -l shows them, and where a symbolic link leads.</td></tr>
+<tr><td>none</td><td><kbd>H</kbd>, <kbd>C-c H</kbd></td><td><code>rimu-toggle-dotfiles</code></td><td>Show or hide the entries of this list whose names start with a dot, .</td></tr>
+<tr><td>none</td><td><kbd>s</kbd></td><td><code>rimu-toggle-sort</code></td><td>Order this list by name or by time, those changed last first; the mode line says which.</td></tr>
+<tr><td>none</td><td><kbd>S</kbd>, <kbd>C-c S</kbd></td><td><code>rimu-toggle-sizes</code></td><td>Show or hide, before each name in this list, how much it takes: a file its size, a directory the size of everything in it and under it, hidden files too, directories of another drive mounted in it left out, worked out in the background while the list shows it.</td></tr>
+<tr><td>none</td><td><kbd>G</kbd>, <kbd>C-c G</kbd></td><td><code>rimu-toggle-git</code></td><td>Show or hide, after each name in this list, the entry's last commit in git's history: when it was made and the first line of its message.</td></tr>
+</tbody></table></div>
+<h3 id="settings-for-what-a-list-shows"><span class="num">10.3.2</span> Settings for what a list shows</h3>
+<div class="tablewrap"><table>
+<thead>
+<tr><th>Setting</th><th>Default</th><th>Values</th><th>What it changes</th></tr>
+</thead>
+<tbody>
+<tr><td><code>*rimu-details*</code></td><td><code>nil</code></td><td>t, nil</td><td>Whether rimu shows the details of each entry before its name.</td></tr>
+<tr><td><code>*rimu-permissions*</code></td><td><code>:symbolic</code></td><td>:symbolic, :octal</td><td>How rimu's details write each entry's permissions.</td></tr>
+<tr><td><code>*rimu-dotfiles*</code></td><td><code>nil</code></td><td>t, nil</td><td>Whether rimu shows the entries whose names start with a dot, .</td></tr>
+<tr><td><code>*rimu-sort*</code></td><td><code>:name</code></td><td>:name, :time</td><td>The order rimu lists entries in.</td></tr>
+<tr><td><code>*rimu-directories-first*</code></td><td><code>t</code></td><td>t, nil</td><td>Whether rimu lists directories, and the symbolic links that lead to directories, before everything else, as ls –group-directories-first does.</td></tr>
+<tr><td><code>*rimu-directory-sizes*</code></td><td><code>nil</code></td><td>t, nil</td><td>Whether rimu's lists show each entry's size before its name, a directory's with everything under it.</td></tr>
+<tr><td><code>*rimu-git-info*</code></td><td><code>nil</code></td><td>t, nil</td><td>Whether rimu's lists show, after each name, the entry's last commit in git's history.</td></tr>
+<tr><td><code>*rimu-hidden-columns*</code></td><td><code>nil</code></td><td>a list, each :inode, :permissions, :links, :owner, :group, :size, :time, :sizes, :git</td><td>The columns rimu's lists never show, however they are asked for.</td></tr>
+<tr><td><code>*rimu-ignored-extensions*</code></td><td><code>(&quot;.o&quot; &quot;.so&quot; &quot;.a&quot; &quot;.fasl&quot; &quot;.elc&quot; &quot;.pyc&quot; &quot;...</code></td><td>a list, each text</td><td>Endings of names rimu shows set back, in the :list-dim face.</td></tr>
+<tr><td><code>*rimu-follow-changes*</code></td><td><code>t</code></td><td>t, nil</td><td>Whether rimu's lists are read again by themselves when their directory changes on disk.</td></tr>
+<tr><td><code>*rimu-reuse-lists*</code></td><td><code>t</code></td><td>t, nil</td><td>Whether a directory a bookmark goes to (M-x bookmark-jump), or a list goes to across a project's edge, is listed in a rimu list that already belongs to its project.</td></tr>
+</tbody></table></div>
+<p>Each key above has a setting that sets what a list starts with. They are all
+written in the init file (chapter 8).</p>
+<p><code>*rimu-details*</code> is <code>nil</code> as standard. With <code>t</code> every list opens with the
+details of <kbd>I</kbd> shown:</p>
+<pre class="ex">(setf *rimu-details* t)
+</pre>
+<p><code>*rimu-hidden-columns*</code> leaves parts out, however a list is asked for them. It
+is a list of the names <code>:inode</code>, <code>:permissions</code>, <code>:links</code>, <code>:owner</code>, <code>:group</code>,
+<code>:size</code> and <code>:time</code>, which are the details, and <code>:sizes</code> and <code>:git</code>, which are
+the columns of <kbd>S</kbd> and <kbd>G</kbd>. It is empty as standard. This leaves out the inode
+numbers and the groups, so a line of Figure 10.2 starts at the permissions
+and has no group:</p>
+<pre class="ex">(setf *rimu-hidden-columns* '(:inode :group))
+</pre>
+<p><code>*rimu-dotfiles*</code> is <code>nil</code>, so names that start with a dot stay hidden. Set it
+to <code>t</code> to start with them shown, as <kbd>H</kbd> does.</p>
+<p><code>*rimu-sort*</code> is <code>:name</code> or <code>:time</code>. <code>:name</code> puts capital letters before small
+ones, as <code>ls</code> does in its plain mode. <code>:time</code> puts the newest change first.
+For a directory you open to find what changed last:</p>
+<pre class="ex">(setf *rimu-sort* :time)
+</pre>
+<p><code>*rimu-directories-first*</code> is <code>t</code>, so directories, and links that lead to
+directories, come before the files. With <code>nil</code> everything is in the one order,
+directories among the files.</p>
+<p><code>*rimu-directory-sizes*</code> and <code>*rimu-git-info*</code> are <code>nil</code>, so the size column
+and the git column wait until you press <kbd>S</kbd> or <kbd>G</kbd>. Set either to <code>t</code> and it
+is there when the list opens. The size of a directory is still worked out in the
+background.</p>
+<p><code>*rimu-ignored-extensions*</code> is a list of endings. A file whose name ends in
+one of them is shown faint, in the <code>:list-dim</code> face, so the files you work on
+stand out from those a program made. Nothing more is done to it: it is still
+listed, and you can still open, mark, copy and delete it as any other. As
+standard the endings are <code>.o</code>, <code>.so</code>, <code>.a</code>, <code>.fasl</code>, <code>.elc</code>, <code>.pyc</code>, <code>.pyo</code>,
+<code>.class</code>, <code>~</code> and <code>#</code>: compiled files, backups and the files some editors
+keep while you type.</p>
+<p>An ending is any text the name ends with, not only what follows a dot: <code>~</code>
+sets back <code>notes.org~</code>, and <code>-old</code> would set back <code>report-old</code>. Capital
+letters count, so <code>.log</code> sets back <code>build.log</code> but not <code>BUILD.LOG</code>; give both
+to have both. The name must be longer than the ending, so a file called just
+<code>.o</code> is not set back. Directories and links are never set back, whatever their
+names end with.</p>
+<p>To add your own endings to the standard ones, add them to the list:</p>
+<pre class="ex">(setf *rimu-ignored-extensions*
+      (append *rimu-ignored-extensions* '(&quot;.log&quot; &quot;.tmp&quot; &quot;.LOG&quot;)))
+</pre>
+<p>Setting the list itself replaces the standard endings. This sets back only
+backups and Python's compiled files:</p>
+<pre class="ex">(setf *rimu-ignored-extensions* '(&quot;~&quot; &quot;.pyc&quot;))
+</pre>
+<p>With <code>nil</code> no name is set back, and every file is shown alike.</p>
+<p><code>*rimu-follow-changes*</code> is <code>t</code>, so a list reads its directory again by itself
+when a file in it is made, deleted, renamed or finished being written by
+another program. You see the list change as you watch it. Many changes at
+once are read as one. Set it to <code>nil</code> and the list stays as it was until you
+press <kbd>g r</kbd> (non-modal: <kbd>M-x revert-buffer</kbd>). On a directory that changes
+without stopping, for example one a program writes to all day, that quiets
+the list:</p>
+<pre class="ex">(setf *rimu-follow-changes* nil)
+</pre>
+<p><code>*rimu-reuse-lists*</code> is <code>t</code>. When a bookmark takes you to a directory, or you go
+to a directory across the edge of a project, Tuatara lists it in the list that
+already belongs to that project, the one used last, and does not open another.
+If a list shows that directory already, you are taken to it either way. With
+<code>nil</code> such a directory gets a list of its own each time.</p>
+<h2 id="the-preview-beside-the-list"><span class="num">10.4</span> The preview beside the list</h2>
+<p>When you rest the cursor on an entry, Tuatara shows it in a window beside the
+list: the start of a file, or for a directory the list of what is inside. It
+follows the cursor as you move, so you can look through a directory of notes or
+photos without opening any of them. On a wide screen the preview stands to
+the right of the list, and on a narrow one below it. It closes when you leave
+the list.</p>
+<p>A text file shows its text. A picture shows the picture itself in the window
+(<code>tuatara --gui</code>) and in terminals that can draw pictures, such as kitty. In
+other terminals you see a line that describes it, such as its kind and
+size. A PDF shows its first page. <kbd>T</kbd> switches between a file's picture and
+its text. For a PDF the text is the words on all of its pages, which is a
+quick way to read one. Binary files show in the hex view, as bytes. The
+preview shows only the first megabyte of a file, so a very large file does
+not slow the list down.</p>
+<p><kbd>P</kbd> turns the preview off and on in the list you are in. If it gets in your
+way, <kbd>P</kbd> is the quickest answer. To turn it off for every list, set
+<code>*rimu-preview*</code> to <code>nil</code> in your init file (chapter 20).</p>
+<p><kbd>C-o</kbd> shows the entry in another window and leaves the cursor in the list.
+With the preview off it opens a window of its own for the purpose.</p>
+<h3 id="quick-edit"><span class="num">10.4.1</span> Quick edit</h3>
+<p>Sometimes you only want to fix a word in a file. <kbd>o</kbd> turns the preview into
+the file itself and puts the cursor in it. You can type there as in any
+buffer. When you are done, press <kbd>q</kbd> in NORMAL state, or <kbd>C-c C-c</kbd> in any
+state, and Tuatara asks whether to save what you changed. Then the preview
+shows the file again and you are back in the list.</p>
+<div class="try">
+<h3>Try it, with a directory of letters</h3>
+<ol>
+<li>In your directory of letters, move to a text file. A window opens beside the
+   list and shows the start of it. If not, press <kbd>P</kbd>.</li>
+<li>Press <kbd>P</kbd> to close the preview, and <kbd>P</kbd> again to open it.</li>
+<li>Press <kbd>o</kbd>. The cursor is now in the file.</li>
+<li>Press <kbd>g e</kbd> (non-modal: <kbd>M-&gt;</kbd>) to go to the end, <kbd>i</kbd> to type, and add a line
+   such as <code>Thank you.</code> Press <kbd>C-g</kbd>.</li>
+<li>Press <kbd>q</kbd>. Tuatara asks <code>Save letter.txt? (y or n)</code>. Press <kbd>y</kbd>.</li>
+<li>Press <kbd>k</kbd> and <kbd>j</kbd> (non-modal: <kbd>C-p</kbd>, <kbd>C-n</kbd>) to move over other entries and
+   watch the preview change.</li>
+</ol>
+</div>
+<p>Two more keys help when you are deciding what a file is. <kbd>g i</kbd> shows what the
+system knows of it: its kind, size, owner, times and checksum. It leaves the
+file's access time as it was. <kbd>O</kbd> hands a copy of a picture, a PDF, a sound
+or a video to your desktop's own program, after asking, so you can play a
+video that Tuatara cannot.</p>
+<h3 id="commands-for-the-preview"><span class="num">10.4.2</span> Commands for the preview</h3>
+<div class="tablewrap"><table>
+<thead>
+<tr><th>Modal</th><th>Non-modal</th><th>Command</th><th>What it does</th></tr>
+</thead>
+<tbody>
+<tr><td>none</td><td><kbd>P</kbd>, <kbd>C-c P</kbd></td><td><code>list-toggle-preview</code></td><td>Turn the preview beside this list on or off: the entry on the current line shown in a window beside the list, on its right when there is room, else below it, following the cursor from line to line.</td></tr>
+<tr><td>none</td><td><kbd>T</kbd>, <kbd>C-c T</kbd></td><td><code>rimu-toggle-picture</code></td><td>Switch the preview between the picture of a file and its text: the first page of a PDF or its text, an image or its octets in the hex view.</td></tr>
+<tr><td>none</td><td><kbd>o</kbd>, <kbd>C-c o</kbd></td><td><code>rimu-quick-edit</code></td><td>Edit the file on the current line where the preview shows it, the quick edit: the preview becomes the file itself, opened as C-x C-f opens it (safely where that would be, and with C-u safely always), and the cursor goes there.</td></tr>
+<tr><td>none</td><td><kbd>M-x rimu-quick-edit-finish</kbd></td><td><code>rimu-quick-edit-finish</code></td><td>Go back from the quick edit of this file to the preview beside the rimu list (as the cursor going back to the list does), asking first whether to save the changes made: y saves them; n lets them go (a buffer open before the quick edit keeps them); M-x keyboard-quit goes on with the quick edit.</td></tr>
+<tr><td>none</td><td><kbd>g i</kbd></td><td><code>show-file-metadata</code></td><td>Show what the file shown is and what it says of itself, in a buffer of its own, which q closes: the file the buffer visits, the entry on the line in a list of a directory, the PDF or picture in its view; with C-u, or where there is none, asked for.</td></tr>
+<tr><td>none</td><td><kbd>O</kbd>, <kbd>C-c O</kbd></td><td><code>open-externally</code></td><td>Open the file shown, in the desktop's own program for its kind (xdg-open), or the one <strong>OPEN-EXTERNALLY-PROGRAMS</strong> gives its Multipurpose Internet Mail Extensions (MIME) type, for what Tuatara does not do: printing, forms, playing.</td></tr>
+</tbody></table></div>
+<h3 id="settings-for-the-preview"><span class="num">10.4.3</span> Settings for the preview</h3>
+<div class="tablewrap"><table>
+<thead>
+<tr><th>Setting</th><th>Default</th><th>Values</th><th>What it changes</th></tr>
+</thead>
+<tbody>
+<tr><td><code>*rimu-preview*</code></td><td><code>t</code></td><td>t, nil</td><td>Whether rimu lists show the entry on the current line in a window beside the list, once point has rested on it <strong>RIMU-PREVIEW-DELAY</strong> seconds.</td></tr>
+<tr><td><code>*rimu-preview-delay*</code></td><td><code>0.1</code></td><td>a number, 0 or more</td><td>Seconds point rests on an entry of a rimu list before the preview shows it.</td></tr>
+<tr><td><code>*rimu-preview-size*</code></td><td><code>1048576</code></td><td>a whole number, 0 or more</td><td>The most of a file rimu's preview shows, in octets from its start.</td></tr>
+<tr><td><code>*remote-preview-size-limit*</code></td><td><code>20000000</code></td><td>a whole number, 0 or more</td><td>The most octets a file on another machine may hold to be shown in the preview of its list (M-x list-toggle-preview).</td></tr>
+</tbody></table></div>
+<p><code>*rimu-preview-delay*</code> is how long the cursor rests on an entry before the
+preview reads it, 0.1 seconds as standard. Moving quickly down the list reads
+none of the files passed over. A longer wait reads fewer files as you move,
+which helps on a slow disk or a directory on another machine. A shorter one
+shows the preview at once and reads more.</p>
+<pre class="ex">(setf *rimu-preview-delay* 0.4)
+</pre>
+<p><code>*rimu-preview-size*</code> is how much of a file the preview shows, counted in
+octets (bytes) from its start. It is a megabyte as standard, as said above. A
+larger file shows its start, and its name says that. To see less of a big
+file, so the preview is quicker, or more, to read further in:</p>
+<pre class="ex">(setf *rimu-preview-size* (* 256 1024))
+</pre>
+<h2 id="marks"><span class="num">10.5</span> Marks</h2>
+<p>Marking works as it does in the buffer list. <kbd>m</kbd> puts a <code>&gt;</code> on the entry and
+moves down a line, so pressing it again and again marks a run. A number
+before it marks that many. <kbd>u</kbd> takes the mark off, <kbd>U</kbd> takes every mark off,
+and <kbd>t</kbd> turns the marks about, which is the quick way to say &quot;everything but
+these&quot;. <kbd>d</kbd> puts a <code>D</code> on an entry instead, which means &quot;delete this one&quot;. It
+does nothing until you press <kbd>x</kbd>.</p>
+<p>With nothing marked, a command acts on the entry the cursor is on. With
+entries marked, it acts on them.</p>
+<p>A mark stays with its file when you go to another directory. You can mark two
+photos in one directory, go to another and mark a third, and then copy all
+three at once. This is useful and also something to watch. Under the directory's
+name the list says how many entries are marked in other directories, so you are
+never surprised, and the question that a command asks counts all of them.
+<kbd>U</kbd> takes away every mark in every directory.</p>
+<p><kbd>K</kbd> takes the lines of the marked entries out of the list. The files stay as
+they are, and only the list shows fewer lines. It is a way to cross off what
+you have dealt with and look at what is left. <kbd>r</kbd> brings the lines back.</p>
+<h3 id="filtering-a-list"><span class="num">10.5.1</span> Filtering a list</h3>
+<p>A long list is easier to use when it shows only what you want. <kbd>C-x / s</kbd>
+asks for a pattern and keeps the lines that contain it. If you type <code>jpg</code>,
+only the lines with <code>jpg</code> in them remain, and a line at the top says how
+many of the entries are shown. A second <kbd>C-x / s</kbd> narrows it further.
+<kbd>C-x / r</kbd> takes every filter away. <kbd>C-x / l</kbd> lists the filters in force.
+Marks stay on entries that a filter hides, and a question that counts the
+entries says how many are hidden, so nothing goes without your knowing.</p>
+<p>With the details shown, <kbd>C-x / f</kbd> and <kbd>C-x / h</kbd> ask for a column first, such
+as the owner or the size, and then keep or hide the entries whose value in
+that column matches. Chapter 6 describes the pattern language.</p>
+<div class="try">
+<h3>Try it, with holiday photos</h3>
+<ol>
+<li>Open your directory of holiday photos with <kbd>C-x d</kbd>.</li>
+<li>Press <kbd>m</kbd> on three photos you like. Each gets a <code>&gt;</code>.</li>
+<li>Press <kbd>t</kbd>. Now every other entry is marked, and the three are not.
+   Press <kbd>t</kbd> again to turn them back.</li>
+<li>Press <kbd>U</kbd> to clear every mark.</li>
+<li>Press <kbd>C-x / s</kbd>, type <code>jpg</code> and press <kbd>RET</kbd>. Only the pictures stay.</li>
+<li>Press <kbd>C-x / r</kbd> to see the whole directory again.</li>
+</ol>
+</div>
+<h3 id="commands-for-marks-and-filters"><span class="num">10.5.2</span> Commands for marks and filters</h3>
+<div class="tablewrap"><table>
+<thead>
+<tr><th>Modal</th><th>Non-modal</th><th>Command</th><th>What it does</th></tr>
+</thead>
+<tbody>
+<tr><td>none</td><td><kbd>m</kbd>, <kbd>C-c m</kbd></td><td><code>list-mark-entry</code></td><td>Mark the entry on the current line of the list (&gt;), for the list's commands that act on those marked, and move down; with a count, as many entries, up the list for a negative one.</td></tr>
+<tr><td>none</td><td><kbd>u</kbd>, <kbd>C-c u</kbd></td><td><code>list-unmark-entry</code></td><td>Take the mark off the entry on the current line of the list, of any kind, and move down; with a count, off as many entries, up the list for a negative one.</td></tr>
+<tr><td>none</td><td><kbd>U</kbd>, <kbd>C-c U</kbd></td><td><code>list-unmark-all</code></td><td>Take every mark off the entries of the list, of any kind; in rimu, those of the files marked in other directories too.</td></tr>
+<tr><td>none</td><td><kbd>t</kbd></td><td><code>list-toggle-marks</code></td><td>Mark the entries the list shows that are not marked and take the mark off those marked; those marked for deletion (D), or given a mark of another kind, stay so, as do the entries a filter or a folded section hides.</td></tr>
+<tr><td>none</td><td><kbd>d</kbd>, <kbd>C-c d</kbd></td><td><code>list-mark-for-deletion</code></td><td>Mark the entry on the current line of the list for deletion (D), for the list's command that deletes them, and move down; with a count, as many entries, up the list for a negative one.</td></tr>
+<tr><td>none</td><td><kbd>K</kbd>, <kbd>C-c K</kbd></td><td><code>rimu-take-out-lines</code></td><td>Take the lines of the entries marked in this directory out of this list, or with none marked here the line point is on, their marks taken away: the files stay as they are, only the list shows fewer, to look at what is left.</td></tr>
+<tr><td>none</td><td><kbd>C-c f m</kbd></td><td><code>rimu-mark-master</code></td><td>Mark the file on the line of this rimu list as a master (M), a file that the files marked (m) are compared with by the commands that compare files, a photo of the person looked for among photos, and go to the next line; u takes the mark away.</td></tr>
+<tr><td>none</td><td><kbd>C-x / s</kbd></td><td><code>search-filter-regex</code></td><td>Narrow the list here to the entries a regular expression matches, as it is typed: those whose line matches, or what more the list holds of them (a mailbox the headers and contents of its messages).</td></tr>
+<tr><td>none</td><td><kbd>C-x / l</kbd></td><td><code>search-filter-list</code></td><td>List the search filters narrowing the list here (C-x / s) in a buffer of their own, each with how many entries it leaves; there d takes away the filter on the line and D all of them.</td></tr>
+<tr><td>none</td><td><kbd>D</kbd>, <kbd>C-c D</kbd>, <kbd>C-x / r</kbd></td><td><code>search-filter-remove-all</code></td><td>Take away every search filter narrowing the list here, or the list the list of filters here is for: the whole list is shown again.</td></tr>
+<tr><td>none</td><td><kbd>C-x / f</kbd></td><td><code>search-filter-show-records</code></td><td>Show only the records whose line a regular expression matches, hiding the others, as C-x / s does, deleting nothing.</td></tr>
+<tr><td>none</td><td><kbd>C-x / h</kbd></td><td><code>search-filter-hide-records</code></td><td>Hide the records whose line a regular expression matches, showing the others, deleting nothing: asked for as C-x / f asks, kept with the other filters.</td></tr>
+</tbody></table></div>
+<h2 id="making-things"><span class="num">10.6</span> Making things</h2>
+<p><kbd>+</kbd> makes a new directory in the directory the list shows. Type the name after
+the directory that is offered. If you type <code>Napier/Hawke/2026</code>, Tuatara makes
+every directory along the way that is not there yet.</p>
+<p><kbd>a</kbd> touches a name. The word comes from the <code>touch</code> command. A name that does
+not exist becomes a new empty file, with the cursor on it so that <kbd>l</kbd> opens
+it. A name that exists has its times set to now and nothing else changes. If
+you press <kbd>RET</kbd> at the question without typing, the marked entries are
+touched, or the one under the cursor.</p>
+<p><kbd>A</kbd> makes a file with a formatted name, such as one that starts with the date
+and time and has your keywords at its end. It asks for a title and
+keywords, and writes the header of the file for you.</p>
+<h3 id="commands-for-making-things"><span class="num">10.6.1</span> Commands for making things</h3>
+<div class="tablewrap"><table>
+<thead>
+<tr><th>Modal</th><th>Non-modal</th><th>Command</th><th>What it does</th></tr>
+</thead>
+<tbody>
+<tr><td>none</td><td><kbd>+</kbd>, <kbd>C-c +</kbd></td><td><code>rimu-make-directory</code></td><td>Make a directory, asked for, in this list's directory unless given elsewhere, with those above it that are not there; the list shows it.</td></tr>
+<tr><td>none</td><td><kbd>a</kbd>, <kbd>C-c a</kbd></td><td><code>rimu-touch</code></td><td>Touch a name asked for in this list's directory, as touch does: a name not there is made a new, empty file, the list on it for l to open it; a file or directory there has its times set to now (a link's own, not those of where it leads).</td></tr>
+<tr><td>none</td><td><kbd>A</kbd>, <kbd>C-c A</kbd></td><td><code>rimu-make-formatted-file</code></td><td>Make a new file with a formatted name in this list's directory, asking what new-file-formatted asks but the subdirectory (the title, the keywords, the kind and the template), with the header of its kind, saved at once; the list shows it, point on it.</td></tr>
+</tbody></table></div>
+<h2 id="copying-moving-and-linking"><span class="num">10.7</span> Copying, moving and linking</h2>
+<p><kbd>C</kbd> copies the marked entries, or the one under the cursor. <kbd>M</kbd> moves them.
+The question asks where to, as <kbd>C-x C-f</kbd> asks for a file: you type a path,
+and <kbd>TAB</kbd> completes it. If another rimu list is open in the next window, its
+directory is offered first. That makes it easy to copy from one directory to
+another that you can see.</p>
+<p>A directory goes with everything in it, however many directories are inside. The
+setting <code>*directory-tree-depth-limit*</code> stops this at a very deep nesting, so
+that a loop made by mistake cannot run for ever.</p>
+<p><kbd>M</kbd> moves only into a directory. To move a file and also give it a new name, use
+<kbd>R</kbd> and a path, or copy it. When you copy a single entry you may type the
+whole new path, name included.</p>
+<p>A large copy runs in the background and the editor stays free. <kbd>P</kbd> lights at
+the front of the mode line while it works. <kbd>C-x j</kbd> lists the jobs with how
+far each has got, and <kbd>C-x J</kbd> stops one, taking away a file only half
+copied.</p>
+<p>Nothing is replaced without asking. If a file of that name is already there,
+Tuatara asks whether to replace it, and the old one goes to the trash first,
+so you can still get it back. Tuatara also never puts a file on top of
+itself. Asking to copy a link onto the file it leads to is refused.</p>
+<p><kbd>Y</kbd> makes a symbolic link, which is a small file that says where another
+file is. <kbd>L</kbd> makes a hard link, which is a second name for the very same
+file. A change made through one name shows under the other, and the file
+stays until both names are gone. A hard link can only be made on the same
+drive, and never to a directory.</p>
+<p><kbd>=</kbd> compares two marked entries and shows what differs, line by line, as git
+does. With two directories marked, it compares the files that have the same
+name.</p>
+<div class="try">
+<h3>Try it, with holiday photos</h3>
+<ol>
+<li>In your directory of photos, press <kbd>m</kbd> on three photos.</li>
+<li>Press <kbd>M</kbd>. At the question type the name of a directory, such as <code>Napier/</code>,
+   and press <kbd>RET</kbd>. If the directory is not there, Tuatara says so and moves
+   nothing: make it with <kbd>+</kbd> and try again.</li>
+<li>The three photos leave the list, and Tuatara says <code>Moved 3 files</code>.</li>
+<li>Press <kbd>g f</kbd>, go to <code>Napier</code>, and press <kbd>l</kbd>. They are there.</li>
+<li>Put the cursor on one photo and press <kbd>C</kbd>. Copy it to your home directory
+   by typing <code>~/</code> after clearing the question with <kbd>C-a C-k</kbd>.</li>
+<li>Press <kbd>C-x j</kbd> to see the job list. A small copy has finished already, so
+   the list says there are no jobs.</li>
+</ol>
+</div>
+<h3 id="commands-for-copying-moving-and-linking"><span class="num">10.7.1</span> Commands for copying, moving and linking</h3>
+<div class="tablewrap"><table>
+<thead>
+<tr><th>Modal</th><th>Non-modal</th><th>Command</th><th>What it does</th></tr>
+</thead>
+<tbody>
+<tr><td>none</td><td><kbd>C</kbd>, <kbd>C-c C</kbd></td><td><code>rimu-copy</code></td><td>Copy the marked entries, or the one on the line, to a place asked for: the directory of the other list beside this one offered first, or this one; one entry may be given a new name.</td></tr>
+<tr><td>none</td><td><kbd>M</kbd>, <kbd>C-c M</kbd></td><td><code>rimu-move</code></td><td>Move the marked entries, or the one on the line, into a directory asked for, navigating to it as C-x C-f does, only directories offered: the directory of the other list beside this one offered first.</td></tr>
+<tr><td>none</td><td><kbd>Y</kbd>, <kbd>C-c Y</kbd></td><td><code>rimu-symlink</code></td><td>Make symbolic links to the marked entries, or the one on the line, in a place asked for, as C asks: the directory of the other list beside this one offered first; one entry's link may be given a new name.</td></tr>
+<tr><td>none</td><td><kbd>L</kbd>, <kbd>C-c L</kbd></td><td><code>rimu-hardlink</code></td><td>Give the marked files, or the one on the line, a second name in a place asked for, as C asks: one file, two names, on the same drive only, and no directory.</td></tr>
+<tr><td>none</td><td><kbd>=</kbd>, <kbd>C-c =</kbd></td><td><code>rimu-diff</code></td><td>Compare the two entries marked, from every directory they are marked in, the one shown first taken as the old, and show the differences in a buffer of their own, which q closes, as M-x diff-files does: unified, the old's lines taken out after -, the other's put in after +; two directories with all in them.</td></tr>
+</tbody></table></div>
+<h3 id="settings-for-copying-and-moving"><span class="num">10.7.2</span> Settings for copying and moving</h3>
+<div class="tablewrap"><table>
+<thead>
+<tr><th>Setting</th><th>Default</th><th>Values</th><th>What it changes</th></tr>
+</thead>
+<tbody>
+<tr><td><code>*directory-tree-depth-limit*</code></td><td><code>200</code></td><td>a whole number, 1 or more</td><td>The most directories, one inside another, that copying, moving or deleting a directory goes down through.</td></tr>
+</tbody></table></div>
+<h2 id="renaming"><span class="num">10.8</span> Renaming</h2>
+<p><kbd>R</kbd> renames the entry under the cursor in its place. The question offers the
+old name, so you can edit it rather than type it all again. A name only: a
+slash is refused, because moving is <kbd>M</kbd>'s job. A buffer that visits the file
+follows it to its new name, and so do the recent files and other lists of the
+same directory.</p>
+<p>To rename many names at once, press <kbd>C-x C-q</kbd>. The names of the directory's
+entries appear as text in a buffer of their own, one to a line. You can now
+change them with every key that edits text. You can add a word to the start
+of each line with a many-cursor edit (chapter 5), or run a replacement over
+all of them (chapter 6). When you press <kbd>C-c C-c</kbd>, every line that changed is
+renamed. <kbd>C-c C-k</kbd> leaves the names as they were.</p>
+<p>Each line stands for one file. If you delete a line, add one or join two,
+nothing is renamed, and Tuatara tells you why. Before it renames anything it
+checks all the names together, so a name used twice, or one that another file
+already has, is reported and no file is renamed. You can swap two names.</p>
+<div class="try">
+<h3>Try it, with a directory of photos</h3>
+<ol>
+<li>Open a directory that holds a few photos, such as <code>IMG_0412.jpg</code>.</li>
+<li>Press <kbd>C-x C-q</kbd>. The names appear as text, with the cursor on the first.</li>
+<li>Press <kbd>I</kbd> to start INSERT at the beginning of the line. Type <code>Napier-</code>
+   and press <kbd>C-g</kbd>.</li>
+<li>Press <kbd>j</kbd> (non-modal: <kbd>C-n</kbd>) and repeat on the next line.</li>
+<li>Press <kbd>C-c C-c</kbd>. Tuatara says how many were renamed and the list shows
+   the new names.</li>
+</ol>
+</div>
+<h3 id="commands-for-renaming"><span class="num">10.8.1</span> Commands for renaming</h3>
+<div class="tablewrap"><table>
+<thead>
+<tr><th>Modal</th><th>Non-modal</th><th>Command</th><th>What it does</th></tr>
+</thead>
+<tbody>
+<tr><td>none</td><td><kbd>R</kbd>, <kbd>C-c R</kbd></td><td><code>rimu-rename</code></td><td>Rename the entry on the line, or the one marked, in its place, the new name asked for, the old offered: a name only, no directory; a name there already is refused.</td></tr>
+<tr><td>none</td><td><kbd>C-x C-q</kbd></td><td><code>rimu-edit-names</code></td><td>Edit the names of this list's entries as text, a line each, in its window, with every key that edits text: C-c C-c renames those whose line changed, C-c C-k leaves them.</td></tr>
+<tr><td>none</td><td><kbd>C-c C-c</kbd></td><td><code>rimu-names-finish</code></td><td>Rename the entries whose line changed, and go back to the list: all or, when a line does not do, none, and why is said.</td></tr>
+<tr><td>none</td><td><kbd>C-c C-k</kbd></td><td><code>rimu-names-cancel</code></td><td>Leave the names as they are, and go back to the list.</td></tr>
+</tbody></table></div>
+<h2 id="deleting-the-trash-and-wiping"><span class="num">10.9</span> Deleting, the trash and wiping</h2>
+<p><kbd>D</kbd> puts the marked entries, or the one under the cursor, in the trash. This
+is the same trash your desktop's file manager uses, so a file you delete here
+can be put back from there too. <kbd>x</kbd> does the same for the entries marked with
+<code>D</code>. Deleting is a two-step in that case: first mark with <kbd>d</kbd>, then press <kbd>x</kbd>
+when you are sure.</p>
+<p><kbd>C-u D</kbd> deletes for good, and asks twice. Nothing deleted this way can come
+back. The setting <code>*rimu-delete-to-trash*</code> decides what <kbd>D</kbd> does. If you set
+it to <code>nil</code>, every deletion is for good, after asking twice.</p>
+<p><kbd>g t</kbd> lists the trash, as the buffer list lists buffers: a section for your
+own trash and a section for each drive that has one. The thing that was put
+in last is at the top, and each line says when it was deleted and where it
+was. In the list, <kbd>R</kbd> puts the marked things back where they were, <kbd>D</kbd>
+deletes them for good and <kbd>x</kbd> deletes those marked with <code>D</code>. <kbd>X</kbd> empties the
+whole trash and asks twice. <kbd>RET</kbd> opens a thing safely so that you can look
+at it before you decide. <kbd>h</kbd> or <kbd>q</kbd> returns to your directory.</p>
+<p>A file that you trash on a USB stick goes to the stick's own trash and comes
+back to where it was. That is why the trash list has a section for each
+drive. When you pull the stick out, its trash goes with it.</p>
+<p>The trash only moves a file. The bytes stay on the drive until the space is
+used again. If you really want a file's contents gone, <kbd>g w</kbd> wipes the marked
+files: it writes over them and then deletes them. This is slow, and it asks
+once.</p>
+<div class="try">
+<h3>Try it, with some letters</h3>
+<ol>
+<li>Make two new files in a directory with <kbd>a</kbd>: type <code>old-1.txt</code> and <code>RET</code>, then
+   <code>old-2.txt</code> and <code>RET</code>.</li>
+<li>Put the cursor on <code>old-1.txt</code>. Press <kbd>d</kbd>, which marks it and moves down,
+   then <kbd>d</kbd> on the next, so both show <code>D</code>.</li>
+<li>Press <kbd>x</kbd> and answer <kbd>y</kbd>. Both are in the trash.</li>
+<li>Press <kbd>g t</kbd>. The two are at the top of the trash list.</li>
+<li>Put the cursor on <code>old-1.txt</code> and press <kbd>R</kbd>. Answer <kbd>y</kbd>. It is back.</li>
+<li>Press <kbd>q</kbd> to return. <code>old-1.txt</code> is in the list again.</li>
+</ol>
+</div>
+<p>Do not press <kbd>X</kbd> while you practise. It empties the whole trash, not only
+what you put there.</p>
+<h3 id="commands-for-deleting-and-the-trash"><span class="num">10.9.1</span> Commands for deleting and the trash</h3>
+<div class="tablewrap"><table>
+<thead>
+<tr><th>Modal</th><th>Non-modal</th><th>Command</th><th>What it does</th></tr>
+</thead>
+<tbody>
+<tr><td>none</td><td><kbd>x</kbd></td><td><code>list-execute</code></td><td>Delete the entries of the list marked for deletion (D), after asking, as the list deletes: the buffer list kills its buffers, rimu puts files in the trash, the list of jobs drops those waiting and stops those running.</td></tr>
+<tr><td>none</td><td><kbd>D</kbd>, <kbd>C-c D</kbd></td><td><code>list-delete-marked</code></td><td>Delete the marked entries of the list (&gt;), or with none marked the one on the current line, after asking, as the list deletes, as M-x list-execute does those marked for deletion; in rimu, with C-u, for good rather than to the trash.</td></tr>
+<tr><td>none</td><td><kbd>g t</kbd></td><td><code>rimu-trash</code></td><td>List what is in the trash, as the buffer list (C-x C-b) lists buffers: a section for your own trash and one for each drive's, the last to go there first, each thing's name, when it went and where it was.</td></tr>
+<tr><td>none</td><td><kbd>R</kbd>, <kbd>C-c R</kbd></td><td><code>rimu-trash-restore</code></td><td>Put the marked things (&gt;), or with none marked the one on the current line, back where they were, after asking, where they go said; another name asked for when one's is taken, the directories above it made again when they are gone.</td></tr>
+<tr><td>none</td><td><kbd>X</kbd>, <kbd>C-c X</kbd></td><td><code>rimu-trash-empty</code></td><td>Empty the trash: everything the list of the trash shows deleted for good, after asking twice, in the background.</td></tr>
+<tr><td>none</td><td><kbd>g w</kbd></td><td><code>rimu-wipe-files</code></td><td>Wipe the files marked (or the one on the line) as M-x wipe-file does, asked once: overwritten, then deleted.</td></tr>
+</tbody></table></div>
+<h3 id="settings-for-deleting"><span class="num">10.9.2</span> Settings for deleting</h3>
+<div class="tablewrap"><table>
+<thead>
+<tr><th>Setting</th><th>Default</th><th>Values</th><th>What it changes</th></tr>
+</thead>
+<tbody>
+<tr><td><code>*rimu-delete-to-trash*</code></td><td><code>t</code></td><td>t, nil</td><td>Whether rimu's deletions (M-x list-delete-marked, M-x list-execute) move files and directories to the trash.</td></tr>
+</tbody></table></div>
+<h2 id="archives"><span class="num">10.10</span> Archives</h2>
+<p>An archive is one file that holds many files, often squeezed to take less
+room. A zip of recipes that a friend sent you is an archive. Rimu works with
+the common kinds: tar archives (plain, or ending <code>.gz</code>, <code>.bz2</code>, <code>.xz</code> or
+<code>.zst</code>), zip, 7z and rar, ISO disc images and cpio. It reads all of them and
+makes tar, zip and 7z ones. <kbd>c</kbd> packs the marked entries into an archive,
+<kbd>Z</kbd> extracts archives and <kbd>C-c e</kbd> shows what one holds.</p>
+<h3 id="looking-inside"><span class="num">10.10.1</span> Looking inside</h3>
+<p><kbd>C-c e</kbd> shows what an archive holds, in a buffer of its own, without
+unpacking it. <kbd>q</kbd> closes it. It is a way to look inside a zip before you
+decide whether to unpack it. Each line gives the kind and permissions, the
+owner, the size, the time and the name, and where a link leads.</p>
+<p>Tuatara tells the kind from the first bytes of the file, never from its
+name, so an archive with a wrong name still works. Word, EPUB and Java files
+are zip archives and open as such.</p>
+<h3 id="extracting"><span class="num">10.10.2</span> Extracting</h3>
+<p><kbd>Z</kbd> extracts the archives marked, or the one under the cursor. It asks for a
+directory, and offers one named after the archive, which it makes if it is not
+there. Several marked archives go into the one directory you give.</p>
+<p>Unpacking is careful because an archive can hold anything. It happens in the
+background and shut in a sandbox. Nothing is written outside the directory you
+chose, whatever names are inside, and a file already there is left as it is.
+Everything is first unpacked into a new directory of its own and moved into
+place after, so a half-finished unpack never damages what you had. The files
+are yours, with the permissions your umask gives; none is setuid, and no named
+pipe or device is made. Unpacking stops before the drive has less than
+<code>*archive-free-reserve*</code> free, which is a gigabyte unless you change it, so
+that a small archive that holds a great deal cannot fill the drive. Archives
+inside an archive stay packed.</p>
+<h3 id="locked-archives"><span class="num">10.10.3</span> Locked archives</h3>
+<p>If an archive is locked with a password, Tuatara finds that out in the
+background and then asks for the password, showing only stars. The password
+reaches the unpacking program on its standard input, never on its command
+line, and a wrong one unpacks nothing. 7-Zip opens locked zip, 7z and rar
+archives; bsdtar opens only locked zip ones. The old zip encryption checks a
+password by a single byte, so one wrong password in 256 gets past the check
+and fails only while unpacking; Tuatara then says the password is not right
+or the archive is damaged.</p>
+<h3 id="making-an-archive"><span class="num">10.10.4</span> Making an archive</h3>
+<p><kbd>c</kbd> goes the other way. It packs the marked entries, or the one under the
+cursor, into one archive. The question asks for a name, and its ending says
+what kind of archive it is and how it is squeezed:</p>
+<div class="tablewrap"><table>
+<thead>
+<tr><th>Ending</th><th>Kind</th><th>Squeezed with</th></tr>
+</thead>
+<tbody>
+<tr><td><code>.tar</code></td><td>tar</td><td>nothing</td></tr>
+<tr><td><code>.tar.gz</code>, <code>.tgz</code></td><td>tar</td><td>gzip</td></tr>
+<tr><td><code>.tar.bz2</code>, <code>.tbz2</code>, <code>.tbz</code></td><td>tar</td><td>bzip2</td></tr>
+<tr><td><code>.tar.xz</code>, <code>.txz</code></td><td>tar</td><td>xz</td></tr>
+<tr><td><code>.tar.zst</code>, <code>.tzst</code></td><td>tar</td><td>zstd</td></tr>
+<tr><td><code>.zip</code></td><td>zip</td><td>Deflate</td></tr>
+<tr><td><code>.7z</code></td><td>7z</td><td>LZMA</td></tr>
+</tbody></table></div>
+<p>Another ending is refused. If you give a directory and no name, the archive
+is named after what it holds and ends <code>.tar.gz</code>. Entries marked in several
+directories go into one archive and keep their paths below the directory that
+holds them all. Directories go in with everything in them. A symbolic link
+goes in as a link, never as the file it leads to.</p>
+<p>The archive is made in the background, shut in the sandbox. The program sees
+what it packs only to read, and writes only in the directory the archive goes
+to. It writes under a passing name, and the archive gets its own name only
+once it is whole, so a failed or stopped one leaves nothing behind. If a file
+of that name is there already, Tuatara asks whether to replace it, and the old
+one goes to the trash.</p>
+<h3 id="locking-an-archive-with-a-password"><span class="num">10.10.5</span> Locking an archive with a password</h3>
+<p>Press <kbd>C-u c</kbd> in place of <kbd>c</kbd> to lock a zip or 7z archive with a password.
+The question for the name says <code>with a password</code>, and if you give a directory
+the name ends <code>.zip</code>. After the name, Tuatara asks for the password twice,
+showing only stars. If the two differ, nothing is made.</p>
+<ul>
+<li>A zip archive is locked with AES-256, never with the old zip encryption,
+  which is easy to break. Anyone can still read the names of the files in
+  it, and with bsdtar where its links lead; only their contents are locked.</li>
+<li>A 7z archive is locked with AES-256 and its names are locked too. Without
+  the password nobody can even list it. Only 7-Zip makes one.</li>
+<li>A tar archive takes no password.</li>
+</ul>
+<p>A password may hold letters, digits, spaces and the signs of plain ASCII. A
+letter such as <code>ā</code> is refused, because 7-Zip and bsdtar would each read it
+differently and the archive might never open again. Keep the password
+somewhere safe: nothing can open the archive without it.</p>
+<p>The password goes to 7-Zip or bsdtar on its standard input, never on its
+command line, where other programs on the machine could read it. It is not
+written to the debug log, and Tuatara wipes it from memory once the archive
+is made.</p>
+<h3 id="which-program-does-what"><span class="num">10.10.6</span> Which program does what</h3>
+<p>Tuatara uses programs installed on your system for archives:</p>
+<div class="tablewrap"><table>
+<thead>
+<tr><th>Program</th><th>Reads</th><th>Makes</th></tr>
+</thead>
+<tbody>
+<tr><td>GNU tar</td><td>tar, plain or squeezed</td><td>tar, plain or squeezed</td></tr>
+<tr><td>7-Zip</td><td>zip, 7z and rar, locked or not</td><td>zip and 7z, locked or not</td></tr>
+<tr><td>bsdtar</td><td>zip, 7z, rar, ISO 9660 and cpio;</td><td>zip, locked or not; 7z, not</td></tr>
+<tr><td></td><td>locked only zip</td><td>locked</td></tr>
+</tbody></table></div>
+<p>For zip and 7z archives Tuatara takes 7-Zip when it is installed, and bsdtar
+when it is not. bsdtar opens no locked 7z archive and makes none; 7-Zip
+opens and makes both. The programs that squeeze tar archives (gzip, bzip2, xz
+and zstd) must be installed for their endings. 7-Zip may be called <code>7zz</code>,
+<code>7z</code> or <code>7za</code>; an old p7zip of the same name is not taken.</p>
+<p>What to install for what:</p>
+<ul>
+<li>tar archives: GNU tar, with gzip, bzip2, xz or zstd for the ending.</li>
+<li>zip and plain 7z archives: 7-Zip, or bsdtar (<code>libarchive-tools</code> on Debian
+  and Ubuntu, <code>bsdtar</code> on Fedora, <code>libarchive</code> on Arch).</li>
+<li>locked 7z archives, and rar ones: 7-Zip (<code>7zip</code> on Fedora, Debian, Ubuntu
+  and Arch).</li>
+</ul>
+<p><kbd>M-x check-health</kbd> says which of them it found.</p>
+<h3 id="when-tuatara-refuses"><span class="num">10.10.7</span> When Tuatara refuses</h3>
+<p>Each refusal says why, and nothing is written. When making an archive:</p>
+<ul>
+<li><code>Name the archive .tar, .tar.gz, ... or .7z: nothing archived</code>: the name
+  has none of the endings in the table above.</li>
+<li><code>a tar archive takes no password: name it .zip or .7z</code>: <kbd>C-u c</kbd> was given
+  a tar name.</li>
+<li><code>The two passphrases differ: nothing done</code>: the password was typed
+  differently the second time.</li>
+<li><code>no password was given</code>: the password was left empty.</li>
+<li><code>a password takes only letters, digits, spaces and signs of plain ASCII</code>:
+  the password holds another letter or sign.</li>
+<li><code>bsdtar locks no 7z archive with a password, 7-Zip does: install 7-Zip</code>:
+  a locked 7z archive was asked for and only bsdtar is installed. The
+  message names the package for your system.</li>
+<li><code>neither 7-Zip nor bsdtar is installed to make zip archives</code>: there is no
+  program for zip or 7z archives. The message names what to install.</li>
+<li><code>gzip is not installed: install it for archives compressed so</code>: the
+  program for the ending is missing. The same goes for bzip2, xz and zstd.</li>
+<li><code>... names are too many to give 7-Zip at once</code>: so many entries are marked
+  that 7-Zip cannot be given all their names. Mark the directories that hold
+  them instead.</li>
+<li><code>... would be inside what it holds</code>: the archive would be put inside a
+  directory it packs.</li>
+<li><code>Nothing archived: ... is there already</code>: you said no to replacing a file.</li>
+</ul>
+<p>When extracting or looking inside:</p>
+<ul>
+<li><code>it is no archive</code>: the file is none of the kinds above, whatever its
+  name.</li>
+<li><code>it is locked with a password</code>: Tuatara then asks for the password.</li>
+<li><code>the password is not right</code>: nothing is unpacked.</li>
+<li><code>the password is not right, or the archive is damaged</code>: the old zip
+  encryption let a wrong password past its check.</li>
+<li><code>bsdtar opens no 7z archive so locked; 7-Zip does</code>: install 7-Zip.</li>
+<li><code>bsdtar is not installed</code>: there is no program for zip, 7z, rar, ISO 9660
+  or cpio archives.</li>
+<li><code>it was read as ..., not as the ... archive its first octets say it is</code>:
+  the file pretends to be one kind and is another.</li>
+<li><code>unpacking stopped</code>: the drive came near <code>*archive-free-reserve*</code>.</li>
+</ul>
+<div class="try">
+<h3>Try it, with a zip of recipes</h3>
+<ol>
+<li>Put a zip file called <code>recipes.zip</code> in a directory, or pack one: mark a few
+   text files and press <kbd>c</kbd>, type <code>recipes.zip</code> after the directory offered
+   and press <kbd>C-j</kbd>.</li>
+<li>Press <kbd>U</kbd> to clear the marks, as <kbd>Z</kbd> would work on the marked files. Put
+   the cursor on the archive and press <kbd>C-c e</kbd>. A list of what it holds opens.</li>
+<li>Press <kbd>q</kbd> to close it.</li>
+<li>Press <kbd>Z</kbd>. The question offers a directory named <code>recipes</code>. Press <kbd>C-j</kbd> to
+   take it.</li>
+<li>Tuatara says <code>Extracted 1 archive</code>. Press <kbd>l</kbd> on <code>recipes</code> and see the
+   files.</li>
+</ol>
+</div>
+<div class="try">
+<h3>Try it, with a locked 7z archive</h3>
+<ol>
+<li>Mark a few files and press <kbd>C-u c</kbd>. Type <code>private.7z</code> after the directory
+   offered and press <kbd>C-j</kbd>.</li>
+<li>Type a password, press <kbd>RET</kbd>, type it again and press <kbd>RET</kbd>. Tuatara says
+   <code>Archived</code> when it is done.</li>
+<li>Put the cursor on <code>private.7z</code> and press <kbd>C-c e</kbd>. Tuatara says it is
+   locked: not even the names can be read.</li>
+<li>Press <kbd>Z</kbd> and <kbd>C-j</kbd>. Tuatara asks for the password. Type a wrong one:
+   Tuatara says it is not right and unpacks nothing.</li>
+<li>Press <kbd>Z</kbd> again and give the right one. The files are back in <code>private</code>.</li>
+</ol>
+</div>
+<h3 id="commands-for-archives"><span class="num">10.10.8</span> Commands for archives</h3>
+<div class="tablewrap"><table>
+<thead>
+<tr><th>Modal</th><th>Non-modal</th><th>Command</th><th>What it does</th></tr>
+</thead>
+<tbody>
+<tr><td>none</td><td><kbd>c</kbd>, <kbd>C-c c</kbd></td><td><code>rimu-archive-create</code></td><td>Pack the marked entries, from every directory they are marked in, or the one on the line, into one archive asked for, navigating to it as C-x C-f does: the directory of the other list beside this one offered first.</td></tr>
+<tr><td>none</td><td><kbd>Z</kbd>, <kbd>C-c Z</kbd></td><td><code>rimu-archive-extract</code></td><td>Extract the archives marked, from every directory they are marked in, or the one on the line, into a directory asked for, navigating to it as C-x C-f does, made when it is not there: for one archive, a directory of its name beside it offered first.</td></tr>
+<tr><td>none</td><td><kbd>C-c e</kbd></td><td><code>rimu-archive-list</code></td><td>Show what the archive shown holds, in a buffer of its own, which q closes: the entry on the line in a list of a directory (C-c e there); with C-u, or where there is none, asked for.</td></tr>
+</tbody></table></div>
+<h3 id="settings-for-archives"><span class="num">10.10.9</span> Settings for archives</h3>
+<div class="tablewrap"><table>
+<thead>
+<tr><th>Setting</th><th>Default</th><th>Values</th><th>What it changes</th></tr>
+</thead>
+<tbody>
+<tr><td><code>*archive-free-reserve*</code></td><td><code>1073741824</code></td><td>a whole number, 0 or more</td><td>The octets left free on the drive an archive is unpacked onto.</td></tr>
+<tr><td><code>*archive-listing-limit*</code></td><td><code>67108864</code></td><td>a whole number, 0 or more</td><td>The most octets of an archive's list of contents shown.</td></tr>
+<tr><td><code>*archive-seconds*</code></td><td><code>86400</code></td><td>a number, 0 or more</td><td>The seconds tar, 7-Zip or bsdtar may take to make, list or unpack one archive before it is ended.</td></tr>
+</tbody></table></div>
+<p><code>*archive-listing-limit*</code> is the most of an archive's list of contents that
+<kbd>C-c e</kbd> shows, counted in octets of that list. It is 64 megabytes as standard.
+A longer list is not shown, and the echo area says so. Raise it to see what a
+very large archive holds, which costs the memory of the whole list. Lower it
+to refuse a huge list sooner:</p>
+<pre class="ex">(setf *archive-listing-limit* (* 256 1024 1024))
+</pre>
+<p><code>*archive-seconds*</code> is how long the program that lists, packs or unpacks one
+archive may run before Tuatara ends it. It is a day as standard, for the
+largest archives. Lower it to end a program that hangs sooner; <kbd>C-x J</kbd>
+(<code>stop-job</code>) ends one at once. The number is in seconds:</p>
+<pre class="ex">(setf *archive-seconds* (* 60 60))
+</pre>
+<h2 id="drives-and-the-directory-tree"><span class="num">10.11</span> Drives and the directory tree</h2>
+<p>A drive is a disk, a USB stick or a network share that has been attached to
+the computer, which is called mounting it. Rimu does not mount drives. Your
+desktop does that when you plug one in, and then you list the drive's directory
+like any other.</p>
+<p>Rimu knows about drives in a few places. A size worked out with <kbd>S</kbd> counts
+what is inside a directory on the same drive only, so a drive attached inside it
+is not added in. A hard link works only on one drive. The trash of a drive is
+kept on that drive, as the last section explained.</p>
+<p>A directory tree is a directory with its directories and theirs, as deep as they
+go. <kbd>S</kbd> adds up a whole tree. Copying, moving or deleting a directory goes
+through the entire tree. In a network or a mounted drive that is slow, but the
+editor stays usable, because the work is done in the background.</p>
+<h2 id="finding-checking-and-encrypting"><span class="num">10.12</span> Finding, checking and encrypting</h2>
+<p>A list can also be made from a search. The commands below make a list of
+results, and you work on that list as on any other: mark, copy, move, delete.</p>
+<p><kbd>M-x rimu-find</kbd> lists the files whose names match a pattern, where <code>*</code> stands
+for any characters and <code>?</code> for one. <code>*.pdf</code> finds every PDF below the directory
+you give. <kbd>M-x rimu-find-text</kbd> lists the files whose text holds the words you
+type. <kbd>M-x rimu-duplicates</kbd> lists files that are the same as another, in
+groups, so you can mark one of each pair for deletion.</p>
+<p>The keys that start with <kbd>:</kbd> encrypt, decrypt and sign. <kbd>: e</kbd> and <kbd>: d</kbd>
+encrypt a marked file into <code>FILE.gpg</code> and decrypt it back. <kbd>: s</kbd> signs a
+file and <kbd>: v</kbd> checks a signature.</p>
+<h3 id="commands-for-finding-checking-and-encrypting"><span class="num">10.12.1</span> Commands for finding, checking and encrypting</h3>
+<div class="tablewrap"><table>
+<thead>
+<tr><th>Modal</th><th>Non-modal</th><th>Command</th><th>What it does</th></tr>
+</thead>
+<tbody>
+<tr><td>none</td><td><kbd>M-x rimu-find</kbd></td><td><code>rimu-find</code></td><td>List in a rimu list the files and directories under a directory asked for whose names match a pattern: * stands for any characters, ? for one (<strong>.pdf, report-202?.</strong>); upper and lower case alike unless the pattern has an upper-case letter.</td></tr>
+<tr><td>none</td><td><kbd>M-x rimu-find-text</kbd></td><td><code>rimu-find-text</code></td><td>List in a rimu list the files under a directory asked for whose text matches what you type, as M-s g matches a line: each word a regular expression or its own characters, all on one line.</td></tr>
+<tr><td>none</td><td><kbd>M-x rimu-duplicates</kbd></td><td><code>rimu-duplicates</code></td><td>List in a rimu list the files that are the same as another, in groups: in the directories marked in this rimu list, or else under a directory asked for.</td></tr>
+<tr><td>none</td><td><kbd>: e</kbd></td><td><code>rimu-encrypt-files</code></td><td>Encrypt the files marked (or the one on the line), each into FILE.gpg, to the keys or with a passphrase chosen in the minibuffer, asked once; and, when you say so, asked once too, wipe each file once it is encrypted (M-x wipe-file): with a passphrase, only after it, asked again, opens what was made.</td></tr>
+<tr><td>none</td><td><kbd>: d</kbd></td><td><code>rimu-decrypt-files</code></td><td>Decrypt the files marked (or the one on the line), each into its name without .gpg, for you alone, after asking once: their text is then on disk.</td></tr>
+<tr><td>none</td><td><kbd>: s</kbd></td><td><code>rimu-sign-files</code></td><td>Sign the files marked (or the one on the line) with your key, the kind of signature asked once.</td></tr>
+<tr><td>none</td><td><kbd>: v</kbd></td><td><code>rimu-verify-files</code></td><td>Check the signatures of the files marked (or the one on the line), each said in turn and kept in <strong>Messages</strong>.</td></tr>
+</tbody></table></div>
+<h2 id="colours-of-a-list"><span class="num">10.13</span> Colours of a list</h2>
+<p>A list uses faces to tell its parts apart: marked entries, entries marked for
+deletion, directories, sizes, dates and the rest. Links that lead nowhere have a
+face of their own, so a broken one stands out. Chapter 20 shows how to change
+a face.</p>
+<div class="tablewrap"><table>
+<thead>
+<tr><th>Face</th><th>What it paints</th></tr>
+</thead>
+<tbody>
+<tr><td><code>:list-marked</code></td><td>An entry marked (&gt;) in any list whose entries are marked, rimu's too, for the commands that act on those marked: the mark and the name, in the colour of warnings.</td></tr>
+<tr><td><code>:list-marked-other</code></td><td>An entry given a mark of another kind in a rimu list (a master's M, RIMU-MARK-MASTER): the mark and the name.</td></tr>
+<tr><td><code>:list-deletion</code></td><td>An entry marked for deletion (D) in any list whose entries are marked, rimu's too: the mark and the name, in the colour of errors.</td></tr>
+<tr><td><code>:list-directory</code></td><td>The names of directories in a list: in rimu (C-x d) and where a link to a directory leads, in the trash (M-x rimu-trash) and among bookmarks (C-x m l).</td></tr>
+<tr><td><code>:list-size</code></td><td>Sizes in a list or beside completion candidates: of files and buffers, and a rimu list's sizes column (S).</td></tr>
+<tr><td><code>:list-date</code></td><td>Dates and times in a list or beside completion candidates: when a file last changed, the date in a formatted name, a rimu list's last commits (G), when a message was sent.</td></tr>
+<tr><td><code>:list-note</code></td><td>What is said of an entry beside it in a list: the first line of a rimu list's last commit messages, the first sentence of a face's description in M-x list-faces, the details under a finding in a report.</td></tr>
+<tr><td><code>:list-filters</code></td><td>The line above a list narrowed by search filters (C-x / s), saying by what and how many entries are left.</td></tr>
+<tr><td><code>:list-dim</code></td><td>What is of less interest in a list, set back: help buffers and the headings of clients that ended in the buffer list (C-x C-b), packages not loaded, bookmarks whose file is gone, files ignored in rimu and in a git status, a value missing in the health report (M-x check-health), a line saying more are not shown.</td></tr>
+<tr><td><code>:rimu-symlink</code></td><td>The names of symbolic links in a rimu list.</td></tr>
+<tr><td><code>:rimu-broken-symlink</code></td><td>Symbolic links in a rimu list that lead nowhere, and what they hold.</td></tr>
+<tr><td><code>:rimu-special</code></td><td>The names of named pipes, sockets and devices in a rimu list.</td></tr>
+<tr><td><code>:rimu-perm-write</code></td><td>The permission to write (w) of the group and of others, among the details of an entry in a rimu list.</td></tr>
+<tr><td><code>:rimu-set-id</code></td><td>The set-user, set-group and sticky letters (s, S, t, T) among the permissions of an entry in a rimu list.</td></tr>
+</tbody></table></div>
+<div class="node end"><span>Previous: <a href="09-files.html">Files</a></span><span>Next: <a href="11-large-files-and-background-work.html">Large files and work in the background</a></span><span>Up: <a href="index.html">Contents</a></span></div>
+</article>
+</main>
+</div>
+</body>
+</html>
