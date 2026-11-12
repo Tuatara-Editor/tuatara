@@ -13,7 +13,7 @@
 <div class="site">
 <nav class="toc" id="contents" aria-label="Contents">
 <strong>Tuatara Manual</strong>
-<small>for version 0.90.26</small>
+<small>for version 0.90.27</small>
 <p class="tools"><a href="all.html">All on one page</a>
 <button type="button" class="theme" hidden>Dark</button></p>
 <input type="search" placeholder="Search the manual" aria-label="Search the manual">
@@ -1938,11 +1938,16 @@ other way. It opens the LaTeX file in the other window at the line that made
 the part of the page you see, the place last marked or the middle of the
 window. In the window of the desktop version, a double click on a page goes to
 the line of that point.</p>
+<p>When there is no PDF yet, or the file has changed since it was made, <kbd>C-c C-v</kbd>
+saves the file and makes the PDF again first, in the background, and shows
+the line once the new PDF is there. So after an edit, <kbd>C-c C-v</kbd> shows the text
+as it is now.</p>
 <p>From an Org file, <kbd>M-x show-line-in-pdf</kbd> does the same for a PDF exported in
-this session, and <kbd>C-c C-v</kbd> in the PDF then opens the Org file, not the LaTeX
-written from it. There is no key for it in Org files.</p>
-<p>When the file has changed since the PDF was made, or the PDF was made some
-other way, Tuatara says so and names the command that makes the PDF again.
+this session, exporting it again the same way when the note has changed, and
+<kbd>C-c C-v</kbd> in the PDF then opens the Org file, not the LaTeX written from it.
+There is no key for it in Org files.</p>
+<p>When the PDF was made some other way, without the note of where the lines
+went, Tuatara says so and names the command that makes the PDF again.
 In a terminal, where pages are shown as their text, the text is turned to the
 page and the place is not marked.</p>
 <p>Going back from the PDF opens only files in the directory of the LaTeX file,

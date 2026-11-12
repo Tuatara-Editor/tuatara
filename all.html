@@ -13,7 +13,7 @@
 <div class="site">
 <nav class="toc" id="contents" aria-label="Contents">
 <strong>Tuatara Manual</strong>
-<small>for version 0.90.26</small>
+<small>for version 0.90.27</small>
 <p class="tools"><a href="index.html">By chapter</a>
 <button type="button" class="theme" hidden>Dark</button></p>
 <input type="search" placeholder="Search the manual" aria-label="Search the manual">
@@ -22,7 +22,7 @@
 <main>
 <article>
 <h1>Tuatara Manual</h1>
-<p class="lead">for version 0.90.26, every chapter on one page</p>
+<p class="lead">for version 0.90.27, every chapter on one page</p>
 <p>This manual is written with modal editing on, first and foremost. Where a command also has a key that works with modal editing off, it is given as well, as the non-modal key.</p>
 <section class="chapter" id="01-the-screen">
 <h1 id="01-the-screen--the-screen">The screen</h1>
@@ -10307,11 +10307,16 @@ other way. It opens the LaTeX file in the other window at the line that made
 the part of the page you see, the place last marked or the middle of the
 window. In the window of the desktop version, a double click on a page goes to
 the line of that point.</p>
+<p>When there is no PDF yet, or the file has changed since it was made, <kbd>C-c C-v</kbd>
+saves the file and makes the PDF again first, in the background, and shows
+the line once the new PDF is there. So after an edit, <kbd>C-c C-v</kbd> shows the text
+as it is now.</p>
 <p>From an Org file, <kbd>M-x show-line-in-pdf</kbd> does the same for a PDF exported in
-this session, and <kbd>C-c C-v</kbd> in the PDF then opens the Org file, not the LaTeX
-written from it. There is no key for it in Org files.</p>
-<p>When the file has changed since the PDF was made, or the PDF was made some
-other way, Tuatara says so and names the command that makes the PDF again.
+this session, exporting it again the same way when the note has changed, and
+<kbd>C-c C-v</kbd> in the PDF then opens the Org file, not the LaTeX written from it.
+There is no key for it in Org files.</p>
+<p>When the PDF was made some other way, without the note of where the lines
+went, Tuatara says so and names the command that makes the PDF again.
 In a terminal, where pages are shown as their text, the text is turned to the
 page and the place is not marked.</p>
 <p>Going back from the PDF opens only files in the directory of the LaTeX file,
@@ -13534,9 +13539,10 @@ package it knows is an error that names the one it thinks you meant.</p>
 <h3 id="19-packages--the-first-load"><span class="num">19.2.2</span> The first load</h3>
 <p>The first time Tuatara meets a package it fetches it, in the background, and
 asks before it compiles and loads it:</p>
-<pre class="ex">Compile and load the package themes from https://github.com/...? (y, n, or v to view its source)
+<pre class="ex">Compile and load the package themes? (y, n or v)
 </pre>
-<p>You answer with one key, with no <code>RET</code>. <kbd>y</kbd> goes on. <kbd>n</kbd> leaves the package
+<p>Below the question it shows where the package comes from, who signed it and
+with which key, when it is signed, and what each answer does. You answer with one key, with no <code>RET</code>. <kbd>y</kbd> goes on. <kbd>n</kbd> leaves the package
 unloaded, and Tuatara asks again at the next start. <kbd>v</kbd> lists the package's
 directory so that you can read its source first, opened safely so that nothing
 in it runs. <kbd>C-g</kbd> means &quot;not now&quot; and also asks again next time. Any other key
@@ -13637,8 +13643,9 @@ repository for the version the <code>load-package</code> line wants (the newest 
 newest commit, or the tag, branch or commit you named), fetches what is new in
 the background and, when it is a different commit from the one you have, asks
 the question of the first load again. Packages that are already up to date
-are said to be so. Directories of your own disk are left alone, since you change
-those yourself.</p>
+are said to be so. When several were fetched, the echo row says once they are
+all done, and names any that are not loaded. Directories of your own disk are
+left alone, since you change those yourself.</p>
 <p><kbd>M-x package-update-marked</kbd>, or <kbd>f</kbd> in the package manager, does the same for
 only the packages you marked, or for the one on the line.</p>
 <p>A package can say, in a comment at the top of its first file, the oldest
