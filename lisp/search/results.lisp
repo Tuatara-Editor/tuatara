@@ -243,7 +243,7 @@ reasons the others were not, and LEFT what else is to say of a file, each a sent
 
 (defun look-only-reason-of (job root)
   "Why the project at ROOT is only looked at (PROJECT-LOOK-ONLY-REASON), asked once for JOB, waiting while
-the folders under it are looked through for evidence folders; NIL when it is not."
+the directories under it are looked through for evidence directories; NIL when it is not."
   (multiple-value-bind (kept found) (gethash root (write-back-job-roots job))
     (if found
         (and (stringp kept) kept)

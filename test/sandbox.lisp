@@ -173,7 +173,7 @@ as text, how it went, and what it said on its error output."
 
 (define-test (sandbox programs-found-from-the-root)
   ;; a program is looked for only in directories of the PATH named from the root: an empty
-  ;; entry, . or a relative one would find a program in whatever folder the editor is in
+  ;; entry, . or a relative one would find a program in whatever directory the editor is in
   (with-test-directory (dir)
     (let* ((name (format nil "tuatara-test-program-~36r" (random (expt 36 6))))
            (program (namestring (merge-pathnames name dir)))
@@ -602,8 +602,8 @@ except OSError as e: print(e.errno)'")))
         ;; the same MVG read without the policy is drawn: the policy is what refuses it
         (is eq :done (nth-value 1 (tuatara.io:sandbox-run-on-file (namestring mvg) "magick" (list "MVG:-[0]" "PAM:-"))))))))
 
-(define-test (sandbox folders-shown)
-  ;; a folder shown read only where it is, one to write in, one whose writes go elsewhere, and where it starts
+(define-test (sandbox directories-shown)
+  ;; a directory shown read only where it is, one to write in, one whose writes go elsewhere, and where it starts
   (with-test-directory (dir)
     (let* ((root (string-right-trim "/" (namestring dir)))
            (shown (format nil "~a/shown" root)) (written (format nil "~a/written" root))
@@ -622,19 +622,19 @@ cat ~a/l.txt; echo; echo new > ~a/n.txt && cat ~a/n.txt; cat ~a/h.txt 2>/dev/nul
         (is eq :done outcome "~a" said)
         (is equal (list written "shown" "refused" "lower" "new" "unseen")
             (remove "" (uiop:split-string text :separator '(#\Newline)) :test #'string=)))
-      ;; written where it may, the folder seemingly written in as it was, its writes kept apart
+      ;; written where it may, the directory seemingly written in as it was, its writes kept apart
       (is string= (format nil "made~%") (alexandria:read-file-into-string (format nil "~a/made.txt" written)))
       (false (probe-file (format nil "~a/b.txt" shown)))
       (false (probe-file (format nil "~a/n.txt" lower)))
       (when (tuatara.io::bwrap-version-at-least-p 0 11)
         (is string= (format nil "new~%") (alexandria:read-file-into-string (format nil "~a/n.txt" upper))))
-      ;; the system's own folder in WORK, left unreadable, made removable
+      ;; the system's own directory in WORK, left unreadable, made removable
       (when (probe-file (format nil "~a/work/" work)) (sb-posix:chmod (format nil "~a/work" work) #o700))))
-  ;; a folder reached through a link at the root (/home to /var/home) is found either way
+  ;; a directory reached through a link at the root (/home to /var/home) is found either way
   (let ((arguments (tuatara.io::mount-arguments (list (namestring (user-homedir-pathname))) '() '())))
     (when (ignore-errors (sb-posix:readlink "/home"))
       (true (search (list "--symlink" (sb-posix:readlink "/home") "/home") arguments :test #'equal))))
-  ;; a folder reached through a link into /tmp (~/Volatile to /tmp/Volatile): found by the path through the link
+  ;; a directory reached through a link into /tmp (~/scratch to /tmp/scratch): found by the path through the link
   (with-test-directory (dir)
     (let* ((real (namestring (ensure-directories-exist (format nil
                                                                "/tmp/tuatara-test-~d-~36r/"
@@ -648,7 +648,7 @@ cat ~a/l.txt; echo; echo new > ~a/n.txt && cat ~a/n.txt; cat ~a/h.txt 2>/dev/nul
              (is string= "found"
                  (sandbox-shell (format nil "cat ~a/n.txt" link) :directories (list link) :directory link)))
         (uiop:delete-directory-tree (pathname real) :validate (lambda (p) (search "/tmp/tuatara-test-" (namestring p)))))))
-  ;; a folder in another is shown after it, so that it is seen
+  ;; a directory in another is shown after it, so that it is seen
   (let ((arguments (tuatara.io::mount-arguments '(("/x/a/b" . "/x/a/b")) '(("/x/a" . "/x/a")) '())))
     (true (< (position "/x/a" arguments :test #'string=) (position "/x/a/b" arguments :test #'string=))))
   ;; what it prints let go when no limit is given; no limit on the files it writes
@@ -657,8 +657,8 @@ cat ~a/l.txt; echo; echo new > ~a/n.txt && cat ~a/n.txt; cat ~a/h.txt 2>/dev/nul
     (is eq :done outcome))
   (is string= (format nil "unlimited~%") (sandbox-shell "ulimit -f" :file-limit nil)))
 
-(define-test (sandbox links-out-of-folders-not-yet-made)
-  ;; a path is within a folder only where it really leads, however much of it is not there yet
+(define-test (sandbox links-out-of-directories-not-yet-made)
+  ;; a path is within a directory only where it really leads, however much of it is not there yet
   (with-test-directory (dir)
     (let* ((top (tuatara.io:real-path (namestring dir)))
            (safe (concatenate 'string top "/safe"))

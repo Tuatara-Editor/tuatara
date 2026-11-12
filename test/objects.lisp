@@ -17,7 +17,7 @@
 (defparameter *paragraphs* (format nil "A1~%A2~%~%B1~%B2~%~%C1~%")
   "Three paragraphs.")
 
-(define-test (objects words-and-symbols)
+(define-modal-test (objects words-and-symbols)
   (let ((text "This buffer is for text that is not saved"))
     ;; on "that": two words forward, one back
     (is string= "text that is" (selection-after "w w w w w l m w m w m b" text))
@@ -41,7 +41,7 @@
         (declare (ignore editor))
         (tuatara.frontend.fake:fake-screen-line f 7))))
 
-(define-test (objects words-by-octets)
+(define-modal-test (objects words-by-octets)
   ;; letters past ASCII make words, a dash past ASCII and a stray octet do not
   (flet ((point-after (keys text) (session-point (nth-value 1 (run-keys keys :text text :width 80 :height 10)))))
     (is = 6 (point-after "M-f" "héllo wörld"))
@@ -82,7 +82,7 @@
                        :height 10)
              "No symbol at or before point")))))
 
-(define-test (objects sentences-and-paragraphs)
+(define-modal-test (objects sentences-and-paragraphs)
   (let ((text "One thing. Two three. Four five."))
     (is string= "Two three." (selection-after "w w w w m s" text))
     (is string= "Two three. Four five." (selection-after "w w w w m s m s" text))
@@ -97,7 +97,7 @@
   (is string= (format nil "A1~%A2~%~%") (selection-after "j j m P" *paragraphs*))
   (is string= (format nil "~%B1~%B2~%~%C1~%") (selection-after "j j j m p m p" *paragraphs*)))
 
-(define-test (objects pairs)
+(define-modal-test (objects pairs)
   (let ((text "(a (b) c)"))
     (is string= "b" (selection-after "l l l l m i (" text))
     ;; either half of the pair; pressed again, the pair around it
@@ -119,7 +119,7 @@
     (declare (ignore editor))
     (true (search "No '(' found near cursor" (tuatara.frontend.fake:fake-screen-line f 7)))))
 
-(define-test (objects filling)
+(define-modal-test (objects filling)
   (flet ((filled (keys text) (session-text (nth-value 1 (run-keys keys :text text)))))
     (is string= (format nil "The quick brown fox~%jumps over the lazy~%dog and keeps~%running far away.~%~%Second paragraph stays.~%")
         (filled "C-u 2 0 C-x f g Q RET" (format nil "The quick brown fox jumps over the lazy dog and keeps running far away.~%~%Second paragraph stays.~%")))
@@ -235,7 +235,7 @@
               (tuatara.buffer:buffer-string b))
           (tuatara.buffer:kill-buffer b))))))
 
-(define-test (objects mark-run)
+(define-modal-test (objects mark-run)
   (let ((text "This buffer is for text that is not saved"))
     (flet ((after (keys) (selection-after (format nil "w w w w w l ~a" keys) text :width 100)))
       ;; M is a word selected, and each letter one more m-prefixed press
@@ -267,7 +267,7 @@
     (declare (ignore editor))
     (true (tuatara.frontend.fake:fake-frame-showing f "Mark run: w/b words"))))
 
-(define-test (objects wrapping)
+(define-modal-test (objects wrapping)
   ;; a delimiter on a selection puts its pair around it, either half
   (is string= "say \"word\" now" (session-text (nth-value 1 (run-keys "w m w \"" :text "say word now"))))
   (is string= "(foo) bar" (session-text (nth-value 1 (run-keys "m w )" :text "foo bar"))))
@@ -285,7 +285,7 @@
   ;; a key that does something keeps doing it: > indents rather than wraps
   (is string= "foo" (session-text (nth-value 1 (run-keys "m w >" :text "foo")))))
 
-(define-test (objects rectangles)
+(define-modal-test (objects rectangles)
   (flet ((text-of (keys text) (session-text (nth-value 1 (run-keys keys :text text))))
          (store () tuatara.defaults::*killed-rectangle*))
     ;; m v holds the character at point; j sizes the block; y copies it to its own store
@@ -403,7 +403,7 @@ abc")
       (true (search "Linear selection:" (tuatara.frontend.fake:fake-screen-line f 7))))
     (true (search "Lines:" (tuatara.frontend.fake:fake-screen-line (run-keys "V" :text "abc") 7)))))
 
-(define-test (objects banking)
+(define-modal-test (objects banking)
   (flet ((kill (editor) (first (tuatara.command:editor-kill-ring editor)))
          (echo (f) (tuatara.frontend.fake:fake-screen-line f 7)))
     (let ((five (format nil "a~%b~%c~%d~%e")))
@@ -460,7 +460,7 @@ abc")
       (is = 3 (session-point editor))
       (true (search "Replaced 2 lines" (echo f))))))
 
-(define-test (objects banks-keep-their-lines)
+(define-modal-test (objects banks-keep-their-lines)
   (let ((four (format nil "aaa~%bbb~%ccc~%ddd~%")))
     (flet ((kill (keys &optional (text four))
              (first (tuatara.command:editor-kill-ring (nth-value 1 (run-keys keys :text text))))))
@@ -482,7 +482,7 @@ abc")
       (is string= (format nil "aaa~%NEW~%ccc~%ddd~%") (session-text editor))
       (is string= (format nil "bbb~%") (first (tuatara.command:editor-kill-ring editor))))))
 
-(define-test (objects digraphs)
+(define-modal-test (objects digraphs)
   (flet ((text-of (keys text) (session-text (nth-value 1 (run-keys keys :text text))))
          (echo (f) (tuatara.frontend.fake:fake-screen-line f 7)))
     ;; SPC i & types one character from its digraph, in NORMAL state
@@ -525,7 +525,7 @@ abc")
                :key #'tuatara.command::candidate-string
                :test #'string=)))
 
-(define-test (objects input-methods-at-many-places)
+(define-modal-test (objects input-methods-at-many-places)
   ;; a letter made of several keys (postfix, prefix, digraph) reaches every split place and every cursor
   (flet ((typed (method keys text)
            (substitute #\| #\Newline
@@ -540,7 +540,7 @@ abc")
     (is string= "åfoo|åfoo|" (typed "swedish-postfix" "t i a a C-g" (format nil "foo~%foo~%")))
     (is string= "ąfoo|ąfoo|" (typed "polish-slash" "t i / a C-g" (format nil "foo~%foo~%")))))
 
-(define-test (objects input-methods)
+(define-modal-test (objects input-methods)
   (let ((tuatara-user:*modal-editing* nil)
         (tuatara-user:*default-input-method* nil))
     (flet ((typed (keys &optional (method "swedish-postfix"))
@@ -644,7 +644,7 @@ abc")
         (is string= "*scratch*" (tuatara.buffer:buffer-name b))
         (is = 0 (tuatara.buffer:buffer-point b))))))
 
-(define-test (objects goal-column-with-J)
+(define-modal-test (objects goal-column-with-J)
   ;; J and j keep to one column across a short line, as the mark run's j does
   (is = 10 (session-point (nth-value 1 (run-keys "l l l J J" :text "abcd
 x
@@ -653,7 +653,7 @@ abcd"))))
 x
 abcd")))))
 
-(define-test (objects pairing-as-typed)
+(define-modal-test (objects pairing-as-typed)
   (let ((tuatara-user:*electric-pair-mode* t))
     (flet ((typed (keys text) (session-text (nth-value 1 (run-keys keys :text text)))))
       (is string= "(a)" (typed "i ( a C-g" ""))
@@ -671,7 +671,7 @@ abcd")))))
   ;; off, as it is unless asked for
   (is string= "(" (session-text (nth-value 1 (run-keys "i ( C-g" :text "")))))
 
-(define-test (objects pairs-from-a-slip)
+(define-modal-test (objects pairs-from-a-slip)
   ;; pairs written as one dotted pair, or a list with a dotted tail, still pair
   (let ((tuatara-user:*electric-pair-mode* t))
     (flet ((typed (keys) (session-text (nth-value 1 (run-keys keys :text "")))))
@@ -689,7 +689,7 @@ abcd")))))
       (let ((tuatara-user:*electric-pair-typing* #\())
         (is string= "(a)" (typed "i ( a C-g"))))))
 
-(define-test (objects pairs-far-and-limited)
+(define-modal-test (objects pairs-far-and-limited)
   ;; the pair found however far, fast; with none, said at once, even in a large text
   (let ((far (concatenate 'string "(" (make-string 300000 :initial-element #\x) ")")))
     (is = 300000 (length (selection-after "l l m i (" far))))
@@ -706,7 +706,7 @@ abcd")))))
       (declare (ignore editor))
       (true (search "No matching ')' found after cursor" (tuatara.frontend.fake:fake-screen-line f 7))))))
 
-(define-test (objects fill-column-asked)
+(define-modal-test (objects fill-column-asked)
   ;; M-q, g Q and g q ask for the column, the buffer's offered: RET takes it
   (let ((line (format nil "~{~a~^ ~}~%" (loop repeat 20 collect "word"))))
     (multiple-value-bind (f editor) (run-keys "M-q" :text line)
@@ -759,7 +759,7 @@ abcd")))))
       (is = 66 (tuatara.defaults::buffer-fill-column (session-buffer editor))))
     (is = 80 (tuatara.defaults::buffer-fill-column (session-buffer (nth-value 1 (run-keys "C-x f C-g" :text line)))))))
 
-(define-test (objects paragraphs-and-sentences-far)
+(define-modal-test (objects paragraphs-and-sentences-far)
   ;; two megabytes of lines without a blank one: the paragraph is all of it, found at once
   (let* ((line (format nil "2026-09-28,12.5,note~%"))
          (text (with-output-to-string (o) (dotimes (i 100000) (write-string line o)))))
@@ -955,7 +955,7 @@ keeps what follows the block where it was, a tab across its edge as spaces,
 and cuts a line that ends inside it at its left column (Emacs moves the text
 after a tab, and leaves a row after a wide character as it was).")
 
-(define-test (objects rectangles-in-screen-columns)
+(define-modal-test (objects rectangles-in-screen-columns)
   (let ((tuatara-user:*modal-editing* nil)
         (tuatara-user:*tab-width* 4))
     (flet ((tabs (text) (cl-ppcre:regex-replace-all "<TAB>" (format nil text) (string #\Tab))))
@@ -1002,7 +1002,7 @@ after a tab, and leaves a row after a wide character as it was).")
         (true (tuatara.frontend.fake:fake-frame-showing f "read-only"))
         (is equal '("Q") tuatara.defaults::*killed-rectangle* "~a" keys)))))
 
-(define-test (objects rectangle-job-shading)
+(define-modal-test (objects rectangle-job-shading)
   ;; a rectangle's job in the background shades its columns only, row by row
   (let ((tuatara.defaults::*rewrite-piece-hook* (lambda () (sleep 0.1))))
     (with-background ()
@@ -1019,7 +1019,7 @@ after a tab, and leaves a row after a wide character as it was).")
     (setf (tuatara.defaults::sort-job-changed job) t)
     (false (tuatara.defaults::sort-shading job 0 5))))
 
-(define-test (objects large-rectangles)
+(define-modal-test (objects large-rectangles)
   ;; a rectangle over more text than *rewrite-threshold* is kept by where it is
   ;; and changed in the background, with what the small one does as its result
   (flet ((both (keys text)
@@ -1117,7 +1117,7 @@ after a tab, and leaves a row after a wide character as it was).")
                                                 :buffer (tuatara.buffer:find-buffer "*scratch*"))))
       (values f editor))))
 
-(define-test (objects lines-shown-past-folds)
+(define-modal-test (objects lines-shown-past-folds)
   ;; any buffer's folds, not Org's alone: "a" hides the line "b" after it
   (let ((text (format nil "a~%b~%c~%d~%")) (folds '((1 . 3))))
     (flet ((after (keys) (session-text (nth-value 1 (run-keys-folded keys text folds)))))
@@ -1137,7 +1137,7 @@ after a tab, and leaves a row after a wide character as it was).")
         (true (tuatara.frontend.fake:fake-frame-showing f "That would delete hidden text")))
       (is string= (format nil "ab~%c~%d~%") (after "g l d d")))))
 
-(define-test (objects folds-kept-at-many-places)
+(define-modal-test (objects folds-kept-at-many-places)
   ;; "a" hides the line "b" after it: what acts at many places at once does not
   ;; delete hidden text unseen either
   (let ((text (format nil "a~%b~%c~%d~%")) (folds '((1 . 3))))

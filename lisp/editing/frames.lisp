@@ -56,7 +56,7 @@ the background, that client's frames."
 
 (define-command find-file-other-frame ()
   "Visit a file in another frame and work in it, asking for its name as
-\\[find-file] does; a folder is listed there. Opened as \\[find-file] opens
+\\[find-file] does; a directory is listed there. Opened as \\[find-file] opens
 it, safely where it opens safely."
   (find-file-reading nil :prompt "Find file in other frame: "
                          :show (lambda (buffer) (open-frame *editor* :buffer buffer))))

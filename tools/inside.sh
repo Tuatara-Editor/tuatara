@@ -43,8 +43,8 @@ image_stale() {
               \( -name '*.lisp' -o -name '*.asd' -o -name '*.scm' -o -name '*.c' -o -name '*.tsv' -o -name '*.patch' -o -name '*.tex' -o -name '*.txt' \) -print -quit)" ]
 }
 # names_this_machine FILE: true, and where (the octet each is found at, with
-# the text around it), when FILE names this machine's home folder ($HOME, or
-# the folder it leads to) or the account's name ($USER); false when it names neither
+# the text around it), when FILE names this machine's home directory ($HOME, or
+# the directory it leads to) or the account's name ($USER); false when it names neither
 names_this_machine() {
   local home real user found=1
   home="${HOME%/}"; real="$(realpath -m "$home")"; user="${USER:-$(id -un)}"

@@ -36,7 +36,7 @@ language, its formatter and servers as LANGUAGE-TOOLS-WORDS says them;
 DRAWING, for each way the window can be drawn, (RENDERER . FIGURES) as
 TUATARA.FRONTEND:FRONTEND-MEASURE-DRAWING gives them, and RENDERER the
 way the settings ask for (*GUI-RENDERER*); EVIDENCE, what is said of the
-evidence folders (EVIDENCE-HEALTH-LINES); NEEDS, the programs Tuatara and
+evidence directories (EVIDENCE-HEALTH-LINES); NEEDS, the programs Tuatara and
 each package loaded look for (HEALTH-NEEDS)."
   (languages '() :read-only t)
   (grammars '())

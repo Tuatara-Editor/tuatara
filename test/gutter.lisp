@@ -6,7 +6,7 @@
 (define-test gutter
   :description "Line numbers absolute and relative in the margin, cursor offset, and git marks for added, changed and deleted lines.")
 
-(define-test (gutter line-numbers)
+(define-modal-test (gutter line-numbers)
   (multiple-value-bind (f editor)
       (run-keys "M-x d i s p l a y - l i n e - n u m b e r s - m o d e RET j" :text (format nil "aa~%bb~%cc"))
     (declare (ignore editor))
@@ -79,7 +79,7 @@ background, are in; return the frontend and the editor."
     (let ((editor (tuatara.command:run-editor f :files (list file) :setup #'tuatara.defaults:install-defaults)))
       (values f editor))))
 
-(define-test (gutter vc-marks)
+(define-modal-test (gutter vc-marks)
   (let ((dir (uiop:ensure-directory-pathname (merge-pathnames (format nil "tuatara-vc-~a/" (random 1000000))
                                                               (uiop:temporary-directory)))))
     (ensure-directories-exist dir)

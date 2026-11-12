@@ -45,14 +45,15 @@ the current buffer, their programs ended with all they started."
   '((:name "poppler"
      :info ("pdfinfo" "fd://0")
      :text ("pdftotext" "-layout" "-enc" "UTF-8" "-l" :pages "fd://0" "-")
-     :page ("pdftoppm" "-f" :page "-l" :page "-scale-to-x" :width "-scale-to-y" :height "fd://0")))
+     :page ("pdftoppm" "-cropbox" "-f" :page "-l" :page "-scale-to-x" :width "-scale-to-y" :height "fd://0")))
   "The programs known to take the text out of a PDF, the first found used. Each
 is a list of :NAME, the package they come in, and three more entries. :TEXT is
 the program printing the text and its arguments (:PAGES standing for how many
 pages, the file read on standard input). :INFO is the one printing the number
 of pages, their size and the like, as lines of Name: value. :PAGE is the one
 drawing page :PAGE as a PPM or PAM image :WIDTH by :HEIGHT pixels (-1 for a
-height that keeps the page's proportions).")
+height that keeps the page's proportions), the part of it a PDF program
+shows (its crop box), as :INFO gives its size.")
 
 (defparameter *pdf-text-pages* 50
   "The pages of a PDF whose text is taken out for a preview, from the first.")
@@ -693,10 +694,11 @@ else, or fewer pixels than they say."
                      (and size (handler-case (mapcar #'parse-integer (uiop:split-string size)) (parse-error () nil)))
                    (and (equal maxval "255") (image width height 3))))))))))
 
-(defun decode-image (fd kind width height &key cancel density)
+(defun decode-image (fd kind width height &key cancel density enlarge)
   "The picture in the image open as file descriptor (FD), of KIND
 (TUATARA.IO:OCTETS-KIND's keyword), turned into pixels in the sandbox, no
-larger than WIDTH by HEIGHT pixels, as two values: the picture (a
+larger than WIDTH by HEIGHT pixels (with ENLARGE, as large as fits in them,
+its proportions kept, a smaller one made larger), as two values: the picture (a
 TUATARA.FRONTEND:IMAGE), NIL when it could not be made; and notes about it
 for a line over it, as DECODE-PDF gives them. Waits for the program: call
 it from a thread working in the background. CANCEL, a cons, stops it when
@@ -755,7 +757,7 @@ its car turns true; NIL, NIL then. DENSITY, dots an inch, draws a drawing
                       (decoder-arguments
                        arguments
                        (list :input (list (format nil "~a:-[0]" format))
-                             :size (list (format nil "~dx~d>" (max 1 width) (max 1 height)))
+                             :size (list (format nil "~dx~d~:[>~;~]" (max 1 width) (max 1 height) enlarge))
                              :density (and density (list "-density" (princ-to-string density)))
                              :jpeg-hint (and (eq kind :jpeg) (getf decoder :jpeg-hint)
                                              (destructuring-bind (option value) (getf decoder :jpeg-hint)
@@ -786,7 +788,8 @@ its car turns true; NIL, NIL then. DENSITY, dots an inch, draws a drawing
             (t
              ;; a TIFF-shaped file LibRaw does not develop, a scanner's say: drawn as a TIFF
              (when (and (eq kind :raw) head (tuatara.io:tiff-octets-p head))
-               (return-from decode-image (decode-image fd :tiff width height :cancel cancel :density density)))
+               (return-from decode-image (decode-image fd :tiff width height :cancel cancel :density density
+                                                                       :enlarge enlarge)))
              ;; a Fujifilm raw LibRaw does not develop (its compressed kind, on many cores): the camera's own JPEG of it
              (let ((preview (and (eq kind :raw) (raf-preview fd head))))
                (when preview

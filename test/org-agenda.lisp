@@ -7,7 +7,7 @@
   "TEXT with its timestamps written [T] and its clock durations D, to compare clock lines made at any time."
   (cl-ppcre:regex-replace-all "=> +\\d+:\\d\\d" (cl-ppcre:regex-replace-all "\\[\\d{4}-\\d\\d-\\d\\d [A-Za-z]+ \\d\\d:\\d\\d\\]" text "[T]") "=> D"))
 
-(define-test (org clock)
+(define-modal-test (org clock)
   (flet ((clocked (keys text)
            (prog1 (org-masked-times (org-text-after keys text))
              (setf tuatara.defaults::*org-clock* nil))))
@@ -55,7 +55,7 @@
     (true (tuatara.frontend.fake:fake-frame-showing f "clock out before quitting?")))
   (setf tuatara.defaults::*org-clock* nil))
 
-(define-test (org repeating-tasks)
+(define-modal-test (org repeating-tasks)
   ;; C-c C-t on a task done: as Org writes it, every case of test/org/repeats.sexp
   (let ((cases (with-open-file (in (asdf:system-relative-pathname :tuatara "test/org/repeats.sexp")
                                    :external-format :utf-8)
@@ -87,7 +87,7 @@
     (is string= (format nil "* TODO W~%SCHEDULED: <2026-10-05 Mon +1w>~%:PROPERTIES:~%:LAST_REPEAT: [2026-10-01 Thu 18:00]~%:END:~%- State \"DONE\"       from \"TODO\"       [2026-10-01 Thu 18:00]~%Body~%")
         (org-text-after "C-c C-t" (format nil "* TODO W~%SCHEDULED: <2026-09-28 Mon +1w>~%Body~%")))))
 
-(define-test (org scheduling)
+(define-modal-test (org scheduling)
   ;; dates read as Org's org-read-date reads them, on Thursday 2026-10-01 at 18:00 (Emacs's answers)
   (let ((now (encode-universal-time 0 0 18 1 10 2026)))
     (flet ((read-date (input) (let ((ts (tuatara.defaults::org-read-date-text input now)))
@@ -451,7 +451,7 @@ help left out."
   ;; a clock table of clocks before 1900 is in test/org/dblock/before-1900.org, made as Org makes it
   (true (probe-file (asdf:system-relative-pathname :tuatara "test/org/dblock/before-1900.expected"))))
 
-(define-test (org agenda-buffer)
+(define-modal-test (org agenda-buffer)
   ;; SPC a a and a key, the views, their keys, the entries opened from them, and the agenda kept current
   (with-test-directory (dir)
     (let* ((source (asdf:system-relative-pathname :tuatara "test/org/agenda/"))
@@ -588,7 +588,7 @@ help left out."
                 (tuatara.buffer:buffer-mark-saved buffer)
                 (tuatara.buffer:kill-buffer buffer)))))))))
 
-(define-test (org agenda-edits)
+(define-modal-test (org agenda-edits)
   ;; the entry on the agenda's line changed from the agenda, in its file's buffer: keyword, dates, tags, note, clock
   (with-test-directory (dir)
     (let* ((tuatara-user:*org-tags-column* -77)
@@ -718,7 +718,7 @@ help left out."
                                                           "org-deadline works on an entry of the agenda or an Org file"))
           (fresh))))))
 
-(define-test (org agenda-views-worked-out-in-the-background)
+(define-modal-test (org agenda-views-worked-out-in-the-background)
   ;; with large agenda files (here: any), every view and span is worked out in the background: opening the
   ;; agenda, l and h, g h, L, g l, r, C-u N r; never on the editor's thread, point put where each asks
   (let* ((directory (asdf:system-relative-pathname :tuatara "test/org/agenda/"))
@@ -853,7 +853,7 @@ help left out."
         (let ((buffer (tuatara.buffer:find-buffer name)))
           (when buffer (tuatara.buffer:buffer-mark-saved buffer) (tuatara.buffer:kill-buffer buffer)))))))
 
-(define-test (org clock-runs-on-when-its-buffer-is-killed)
+(define-modal-test (org clock-runs-on-when-its-buffer-is-killed)
   ;; the clock of a file goes on running when its buffer is killed: C-x a j opens the file again
   ;; on its task, C-x a o finishes its line there; one whose line is not in the file stops, said
   (with-test-directory (dir)
@@ -1036,7 +1036,7 @@ help left out."
         (false tuatara.defaults::*org-clock*)))
     (setf tuatara.defaults::*org-clock* nil)))
 
-(define-test (org tags-one-space-after)
+(define-modal-test (org tags-one-space-after)
   ;; by default tags stand one space after the headline's text; C-u C-c C-q and M-x org-align-all-tags put them all so
   (let ((lined-up (format nil "* Top~%** TODO Garden shed roof repair H2 2026~27@a~%Body~%** DONE Install Doom [0/6] [0%] :projects:~%*** Wide~70@a~%"
                           ":projects:" ":a:b:"))
@@ -1065,7 +1065,7 @@ help left out."
       (is = 7 (session-point editor)))
     (is string= lined-up (org-text-after "M-x o r g - a l i g n - a l l - t a g s RET u" lined-up))))
 
-(define-test (org tags-aligned-with-folds-and-clock)
+(define-modal-test (org tags-aligned-with-folds-and-clock)
   (let ((tuatara.defaults::*org-now* (encode-universal-time 0 40 15 2 10 2026))
         (tuatara-user:*org-startup-indented* nil) (tuatara-user:*org-bullets* nil)
         (lined-up (format nil
@@ -1092,7 +1092,7 @@ help left out."
           (true (search (format nil "* Head~71@a~%" ":tag:") text))
           (is = (position #\Newline text) (session-point editor)))))))
 
-(define-test (org agenda-and-tags-corners)
+(define-modal-test (org agenda-and-tags-corners)
   (let ((tuatara.defaults::*org-now* (encode-universal-time 0 0 18 1 10 2026))
         (tuatara.defaults::*org-log-into-drawer* nil)
         (tuatara-user:*org-tags-column* -77))
@@ -1178,7 +1178,7 @@ help left out."
         ;; processors shared with other programs
         (true (< (- (thread-cpu-time) start) (* 3 internal-time-units-per-second)))))))
 
-(define-test (org checkbox-tasks-in-agenda)
+(define-modal-test (org checkbox-tasks-in-agenda)
   ;; the agenda's TODO list holds checkbox items, their TODO in a colour of their own; T ticks one, logged; d is refused
   (with-test-directory (dir)
     (let* ((file (merge-pathnames "errands.org" dir))
@@ -1223,22 +1223,22 @@ help left out."
       (is eq 'tuatara.defaults::beginning-of-buffer (bound "g g")))))
 
 (define-test (org agenda-files-patterns)
-  ;; agenda files written as a folder or a pattern: the .org files they stand for, in order, each once
+  ;; agenda files written as a directory or a pattern: the .org files they stand for, in order, each once
   (with-test-directory (dir)
     (dolist (name '("b.org" "a.org" ".hidden.org" "notes.txt" "c.org"))
       (alexandria:write-string-into-file "* x" (merge-pathnames name dir)))
-    (let ((folder (string-right-trim "/" (namestring dir))))
+    (let ((directory (string-right-trim "/" (namestring dir))))
       (flet ((names (files) (mapcar #'file-namestring (tuatara.defaults::org-agenda-file-paths files))))
-        (is equal '("a.org" "b.org" "c.org") (names (list (format nil "~a/" folder))))
-        (is equal '("a.org" "b.org" "c.org") (names (list folder)))
-        (is equal '("a.org" "b.org" "c.org") (names (list (format nil "~a/*.org" folder))))
-        (is equal '("b.org") (names (list (format nil "~a/b*.org" folder))))
-        (is equal '("notes.txt") (names (list (format nil "~a/*.txt" folder))))
+        (is equal '("a.org" "b.org" "c.org") (names (list (format nil "~a/" directory))))
+        (is equal '("a.org" "b.org" "c.org") (names (list directory)))
+        (is equal '("a.org" "b.org" "c.org") (names (list (format nil "~a/*.org" directory))))
+        (is equal '("b.org") (names (list (format nil "~a/b*.org" directory))))
+        (is equal '("notes.txt") (names (list (format nil "~a/*.txt" directory))))
         ;; a file named twice comes once; one not there stays, as Org keeps it
         (is equal '("a.org" "b.org" "c.org" "none.org")
-            (names (list (format nil "~a/a.org" folder)
-                         (format nil "~a/*.org" folder)
-                         (format nil "~a/none.org" folder))))))))
+            (names (list (format nil "~a/a.org" directory)
+                         (format nil "~a/*.org" directory)
+                         (format nil "~a/none.org" directory))))))))
 
 (define-test (org agenda-files-added)
   ;; a package's own files join the agenda's (*org-agenda-file-functions*), the setting left as written;
@@ -1261,7 +1261,7 @@ help left out."
       (let ((tuatara:*org-agenda-file-functions* '()))
         (is equal '("agenda.org") (mapcar #'file-namestring (tuatara.defaults::org-agenda-file-paths)))))))
 
-(define-test (org agenda-search-filters)
+(define-modal-test (org agenda-search-filters)
   ;; C-x / s narrows the agenda as every list: its dates over the entries left, stacked, taken away; the agenda's
   ;; keys act on the entry on the line; drawn again it stays narrowed, another view or span is shown whole
   (with-test-directory (dir)
@@ -1690,7 +1690,7 @@ help left out."
             (range-faces "Conference")
             "yesterday's line, and today's, not its last")))))
 
-(define-test (org agenda-cancel-one-time)
+(define-modal-test (org agenda-cancel-one-time)
   ;; C-c C-x C t on a line of the agenda cancels the time of that line, a day to come too
   (uiop:with-temporary-file (:pathname path :type "org")
     (with-open-file (o path :direction :output :if-exists :supersede :external-format :utf-8)
@@ -1843,7 +1843,7 @@ help left out."
     (is string= event (org-text-after "C-c C-x C t" event))
     (true (search "No time of it is left to cancel" (messages-text)))))
 
-(define-test (org agenda-move-one-time)
+(define-modal-test (org agenda-move-one-time)
   ;; C-c C-s t on a line of the agenda moves the time of that line, a day to come too
   (uiop:with-temporary-file (:pathname path :type "org")
     (with-open-file (o path :direction :output :if-exists :supersede :external-format :utf-8)
@@ -2282,8 +2282,8 @@ help left out."
       (format o "* Nothing due :notify:~%<2030-01-01 Tue 10:00>~%"))
     (let* ((editor-thread sb-thread:*current-thread*)
            (here 0) (there 0)
-           (folder (namestring (uiop:pathname-directory-pathname path)))
-           (tuatara.defaults::*org-agenda-files* (list (format nil "~a*.org" folder)))
+           (directory (namestring (uiop:pathname-directory-pathname path)))
+           (tuatara.defaults::*org-agenda-files* (list (format nil "~a*.org" directory)))
            (tuatara.defaults::*org-notify-tag* "notify")
            (kept (copy-list tuatara.defaults::**org-notify-state**)))
       (flet ((counted (f &rest arguments)
@@ -2361,7 +2361,7 @@ help left out."
           ;; another day lists no such line
           (false (find-if (lambda (line) (search "Done:" (car line))) (day 27 nil))))))))
 
-(define-test (org repeating-task-done-keeps-its-counts)
+(define-modal-test (org repeating-task-done-keeps-its-counts)
   ;; done, its checkboxes cleared for next time: how many were ticked noted under DONE, and the
   ;; day it was done on lists it with the counts it had then
   (let* ((tuatara.defaults::*org-now* (encode-universal-time 0 5 9 26 10 2026))
@@ -2466,7 +2466,7 @@ help left out."
           '("TODO" "WAIT" "DONE" "CANCELLED" "NEXT" "GONE")
           (tuatara.defaults::org-agenda-todo-keywords (list one two))))))
 
-(define-test (org agenda-cancel-and-rotation)
+(define-modal-test (org agenda-cancel-and-rotation)
   ;; in the agenda T goes TODO to WAIT and C-c C-x C cancels; the TODO list holds WAIT, leaves CANCELLED out as DONE
   (with-test-directory (dir)
     (let* ((file (namestring (merge-pathnames "jobs.org" dir)))
@@ -2494,7 +2494,7 @@ help left out."
           (false (tuatara.frontend.fake:fake-frame-showing f "Gate")))
         (fresh "")))))
 
-(define-test (org agenda-change-undone-from-the-agenda)
+(define-modal-test (org agenda-change-undone-from-the-agenda)
   ;; a change made from the agenda is undone from it, in its file, by u and by the keys of undo
   (with-test-directory (dir)
     (let* ((file (namestring (merge-pathnames "calls.org" dir)))
@@ -2531,44 +2531,45 @@ buffer of FILE killed first."
   (let ((b (tuatara.buffer:find-buffer "*Org Agenda*")))
     (and b (tuatara.buffer:buffer-string b))))
 
-(define-test (org agenda-follows-files-changed-on-disk)
-  ;; an agenda file written by another program while the agenda is shown: its folder is watched, the
+(define-modal-test (org agenda-follows-files-changed-on-disk)
+  ;; an agenda file written by another program while the agenda is shown: its directory is watched, the
   ;; watcher tells of the change, and the agenda is drawn again with nothing pressed
   (with-test-directory (dir)
     (let* ((file (namestring (merge-pathnames "jobs.org" dir)))
-           (folder (tuatara.io:native (namestring dir)))
+           (directory (tuatara.io:native (namestring dir)))
            (tuatara.defaults::*org-agenda-files* (list file))
            (tuatara.defaults::*org-now* (encode-universal-time 0 0 18 1 10 2026))
-           (changed (fdefinition 'tuatara.defaults::org-agenda-folders-changed))
+           (changed (fdefinition 'tuatara.defaults::org-agenda-directories-changed))
            (told '()) (watched :unset) (shown-after :unset))
       (fresh-agenda-file file (format nil "* TODO Call Ngaio~%SCHEDULED: <2026-10-01 Thu>~%"))
       (unwind-protect
            (progn
-             (setf (fdefinition 'tuatara.defaults::org-agenda-folders-changed)
-                   (lambda (folders) (setf told (union told folders :test #'string=)) (funcall changed folders)))
+             (setf (fdefinition 'tuatara.defaults::org-agenda-directories-changed)
+                   (lambda (directories) (setf told (union told directories :test #'string=))
+                           (funcall changed directories)))
              (auto-save-session
               (list "SPC a a a" (list :until (lambda () (search "Call Ngaio" (agenda-text))))
-                    (lambda () (setf watched (tuatara.defaults::org-agenda-watched-folders)))
-                    ;; the watcher takes up the folder before the file is written
+                    (lambda () (setf watched (tuatara.defaults::org-agenda-watched-directories)))
+                    ;; the watcher takes up the directory before the file is written
                     (list :wait 0.5)
                     (lambda () (alexandria:write-string-into-file
                                 (format nil "* TODO Call Ngaio~%SCHEDULED: <2026-10-01 Thu>~%* TODO Fence the paddock~%SCHEDULED: <2026-10-01 Thu>~%")
                                 file :if-exists :supersede))
-                    (list :until (lambda () (and (member folder told :test #'string=) (search "Fence the paddock" (agenda-text)))))
-                    (lambda () (setf shown-after (tuatara.defaults::org-agenda-watched-folders)))
+                    (list :until (lambda () (and (member directory told :test #'string=) (search "Fence the paddock" (agenda-text)))))
+                    (lambda () (setf shown-after (tuatara.defaults::org-agenda-watched-directories)))
                     "q"
-                    (lambda () (setf watched (list watched (tuatara.defaults::org-agenda-watched-folders)))))
+                    (lambda () (setf watched (list watched (tuatara.defaults::org-agenda-watched-directories)))))
               :width 100 :height 40))
-        (setf (fdefinition 'tuatara.defaults::org-agenda-folders-changed) changed))
-      (is equal (list folder) (first watched))
-      (is equal (list folder) shown-after)
-      (true (member folder told :test #'string=) "the watcher told of ~a" folder)
+        (setf (fdefinition 'tuatara.defaults::org-agenda-directories-changed) changed))
+      (is equal (list directory) (first watched))
+      (is equal (list directory) shown-after)
+      (true (member directory told :test #'string=) "the watcher told of ~a" directory)
       (true (search "Fence the paddock" (agenda-text)))
-      ;; no agenda shown: no folder watched for it
+      ;; no agenda shown: no directory watched for it
       (false (second watched))
       (fresh-agenda-file file ""))))
 
-(define-test (org agenda-r-reads-files-changed-on-disk)
+(define-modal-test (org agenda-r-reads-files-changed-on-disk)
   ;; r draws the agenda again from an agenda file as another program wrote it, the agenda not kept
   ;; current otherwise
   (with-test-directory (dir)
@@ -2594,7 +2595,7 @@ buffer of FILE killed first."
       (false (search "Call Ngaio" (agenda-text)))
       (fresh-agenda-file file ""))))
 
-(define-test (org agenda-drawn-again-on-its-minutes)
+(define-modal-test (org agenda-drawn-again-on-its-minutes)
   ;; an agenda shown asks to be woken when *org-agenda-refresh-minutes* have passed, and is then drawn
   ;; again, its time now moved on; with none shown it asks for nothing
   (with-test-directory (dir)
@@ -2628,7 +2629,7 @@ buffer of FILE killed first."
         (is = (encode-universal-time 0 0 0 2 10 2026) (tuatara.defaults::org-agenda-next-redraw start)))
       (fresh-agenda-file file ""))))
 
-(define-test (org agenda-drawn-again-after-midnight)
+(define-modal-test (org agenda-drawn-again-after-midnight)
   ;; an agenda shown late in the day is drawn again just after midnight: the days left to a deadline
   ;; are counted from the new day
   (with-test-directory (dir)
@@ -2654,7 +2655,7 @@ buffer of FILE killed first."
         (is = 600 after-wait))
       (fresh-agenda-file file ""))))
 
-(define-test (org agenda-checkbox-tags-inherited-plain)
+(define-modal-test (org agenda-checkbox-tags-inherited-plain)
   ;; a checkbox item's line shows its headline's tags plain, as it has none of its own; a headline shows
   ;; those it inherits, then ::, then its own
   (with-test-directory (dir)
@@ -2699,7 +2700,7 @@ buffer of FILE killed first."
           (let ((tuatara.defaults::*org-agenda-category-width* 20))
             (true (search "20261027T075300--a…:" (find-if (lambda (l) (search "Call Ngaio" l)) (lines))))))))))
 
-(define-test (org agenda-says-why-it-failed)
+(define-modal-test (org agenda-says-why-it-failed)
   ;; an agenda that cannot be worked out says why, naming the file, in place of
   ;; being worked out for good; and is not worked out again until its files change
   (with-test-directory (dir)

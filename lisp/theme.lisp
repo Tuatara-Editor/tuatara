@@ -95,8 +95,8 @@ buffers and the headings of clients that ended in the buffer list (\\[buffers]),
 packages not loaded, bookmarks whose file is gone, files ignored in rimu and in
 a git status, a value missing in the health report (\\[check-health]), a line
 saying more are not shown." :fg :bright-black)
-(define-face :list-directory "The names of folders in a list: in rimu (\\[rimu])
-and where a link to a folder leads, in the trash (\\[rimu-trash]) and among
+(define-face :list-directory "The names of directories in a list: in rimu (\\[rimu])
+and where a link to a directory leads, in the trash (\\[rimu-trash]) and among
 bookmarks (\\[bookmark-manager])." :fg :blue)
 (define-face :list-date "Dates and times in a list or beside completion
 candidates: when a file last changed, the date in a formatted name, a rimu
@@ -161,6 +161,12 @@ has been through looks as it does meanwhile."
 (define-face :job-waiting "Text a job waiting its turn behind another in the background will change." :extend t)
 (define-face :search-current "The current match of an incremental search." :reverse t :bold t)
 (define-face :search-other "The other matches of the current search in view." :bold t :underline t)
+(define-face :pdf-view-mark
+  "The place on a PDF's page a line of its LaTeX or Org file is shown at
+\(show-line-in-pdf), marked for a moment: its background colour laid over the
+page, which shows through; where it has none, the place is turned about
+\(reverse video)."
+  :inherit :search-current)
 (define-face :search-outside-scope
   "Text outside the scope of a search or replacement limited to a line or the
 region, faded so that the scope stands out."
@@ -310,7 +316,7 @@ set." :inherit :diff.plus :extend t)
 stored, in a stretch of a line too long, or too far past an embedding or
 override, for the order they are read in to be worked out." :inherit :warning)
 (define-face :mode-line-rewind "Rewind and the commit shown, in the mode line of
-a file or folder shown as a commit left it (\\[git-rewind]): lit up in the
+a file or directory shown as a commit left it (\\[git-rewind]): lit up in the
 theme's warning colour, so that it is seen at once that this is not the file as
 it is now." :inherit :warning :reverse t)
 (define-face :mode-line-narrowed "Narrow, in the mode line of a buffer narrowed to a part of it
@@ -319,7 +325,7 @@ colour, so that it is seen at once that the rest of the buffer is out of
 sight and out of reach until \\[widen]."
   :inherit :warning :reverse t)
 (define-face :mode-line-evidence "Evidence, in the mode line of a file in an
-evidence folder (*EVIDENCE-FOLDERS*): lit up in the theme's error colour, so
+evidence directory (*EVIDENCE-DIRECTORIES*): lit up in the theme's error colour, so
 that it is seen at once that the file opened safely and nothing is written
 where it is."
   :inherit :error :reverse t)

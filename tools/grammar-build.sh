@@ -174,7 +174,7 @@ grammar_checked() {
 }
 
 # grammar_inputs_of ROOT NAME SUBPATH: the SHA-256 of what compiling the row
-# NAME (its manifest row's subfolder SUBPATH) of ROOT's syntax/grammars.tsv
+# NAME (its manifest row's subdirectory SUBPATH) of ROOT's syntax/grammars.tsv
 # reads, from its checkout in ROOT/build/grammar-sources/ as it is
 grammar_inputs_of() {
   local root="$1" name="$2" subpath="$3" dir="$1/build/grammar-sources/$2" extra=()

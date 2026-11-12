@@ -2,8 +2,8 @@
 ;;;; Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
 ;;;;
 ;;;; M-x server-bring-language-server copies a language server installed here
-;;;; to a trusted server, into a folder of the editor's own there
-;;;; (*BROUGHT-LANGUAGE-SERVERS-FOLDER*), nothing fetched from anywhere and
+;;;; to a trusted server, into a directory of the editor's own there
+;;;; (*BROUGHT-LANGUAGE-SERVERS-DIRECTORY*), nothing fetched from anywhere and
 ;;;; nothing done as root. Only a program that can run there is sent: read here
 ;;;; in Lisp, never run, it must be a machine program of the server's kind
 ;;;; needing no library a server may lack. The file is written beside its name
@@ -32,12 +32,12 @@ LOADER the program a glibc system starts such a program with.")
 libgcc's, which are on every system with a glibc.")
 
 (defun manifest-path ()
-  "The list of what was brought, from the home folder of the server."
-  (concatenate 'string tuatara.lsp:*brought-language-servers-folder* ".manifest"))
+  "The list of what was brought, from the home directory of the server."
+  (concatenate 'string tuatara.lsp:*brought-language-servers-directory* ".manifest"))
 
 (defun server-program-path (name)
-  "Where the language server NAME, already checked, is kept on the server, from its home folder."
-  (concatenate 'string tuatara.lsp:*brought-language-servers-folder* name))
+  "Where the language server NAME, already checked, is kept on the server, from its home directory."
+  (concatenate 'string tuatara.lsp:*brought-language-servers-directory* name))
 
 ;;; What a program needs
 
@@ -232,37 +232,37 @@ answer in time, sha256sum failing, or an answer that is not a sum."
       (if why (values nil why) (values (subseq output 0 64) nil)))))
 
 (defun server-entry-usable-p (attributes uid)
-  "True when ATTRIBUTES, of a file or folder there, are as the daemon's
+  "True when ATTRIBUTES, of a file or directory there, are as the daemon's
 lookup of a brought language server (BROUGHT-LANGUAGE-SERVER) wants them: the
 account numbered UID's, and written by no one else."
   (and (eql (getf attributes :uid) uid) (not (logtest (or (getf attributes :permissions) 0) #o022))))
 
-(defun make-server-folder (host uid)
-  "Make the folder language servers are kept in on HOST, and those on the way
+(defun make-server-directory (host uid)
+  "Make the directory language servers are kept in on HOST, and those on the way
 that are not there, it alone private; refused when something else has its
 name, or it is not the account UID's or others may write in it, as the daemon
 there would not use what is in it."
-  (let ((so-far "") (folder (string-right-trim "/" tuatara.lsp:*brought-language-servers-folder*)))
-    (dolist (part (uiop:split-string folder :separator "/"))
+  (let ((so-far "") (directory (string-right-trim "/" tuatara.lsp:*brought-language-servers-directory*)))
+    (dolist (part (uiop:split-string directory :separator "/"))
       (setf so-far (concatenate 'string so-far part))
-      (let ((last (string= so-far folder)))
+      (let ((last (string= so-far directory)))
         (unless (remote-attributes host so-far)
           (remote-change host :mkdir so-far (and last #o700)))
         (when last
           (let ((attributes (remote-attributes host so-far :follow nil)))
             (unless (eq :directory (remote-kind attributes))
-              (refuse "~a is not a folder there" (remote-name host so-far)))
+              (refuse "~a is not a directory there" (remote-name host so-far)))
             (unless (server-entry-usable-p attributes uid)
               (refuse "~a is another's, or others may write in it: the daemon there would not use what is in it"
                       (remote-name host so-far))))))
       (setf so-far (concatenate 'string so-far "/")))))
 
 (defun refuse-on-evidence (host)
-  "Refuse when the folder language servers are kept in on HOST is evidence
+  "Refuse when the directory language servers are kept in on HOST is evidence
 (REMOTE-EVIDENCE-WORDS), named from the root there, as it may not exist yet."
   (when (evidence-rules)
     (let ((why (remote-evidence-words host (concatenate 'string (string-right-trim "/" (remote-real-path host "")) "/"
-                                                        tuatara.lsp:*brought-language-servers-folder*))))
+                                                        tuatara.lsp:*brought-language-servers-directory*))))
       (when why (refuse "~a" why)))))
 
 ;;; The job
@@ -315,7 +315,7 @@ not brought is not ours."
 (defun bring-language-server (job)
   "The work of JOB: send its program, when it fits the server and nothing of
 the same name but what was brought is there. It is written in the server's
-folder, listed, and renamed into place by the SFTP client. Before that, its
+directory, listed, and renamed into place by the SFTP client. Before that, its
 sum is taken there and compared. What does not match, or whose sum cannot be
 taken, never takes the name. The list of what was brought is put back."
   (let* ((host (server-program-job-host job))
@@ -337,7 +337,7 @@ taken, never takes the name. The list of what was brought is put back."
                (refuse-unless-it-fits needs name host machine glibc)
                (setf (server-program-job-uid job) uid))
              (refuse-on-evidence host)
-             (make-server-folder host (server-program-job-uid job))
+             (make-server-directory host (server-program-job-uid job))
              (let* ((entries (server-manifest host))
                     (found (remote-attributes host remote :follow nil))
                     (there (check-server-file host remote name entries))
@@ -378,13 +378,13 @@ taken, never takes the name. The list of what was brought is put back."
                            (write-server-manifest host entries))))
                      (write-server-manifest host (append others (list (list name ours))))
                      (setf (server-program-job-words job)
-                           (format nil "~a brought to ~a, in ~a" name host tuatara.lsp:*brought-language-servers-folder*)))))))
+                           (format nil "~a brought to ~a, in ~a" name host tuatara.lsp:*brought-language-servers-directory*)))))))
       (sb-posix:close fd))))
 
 (defun remove-language-server (job)
   "The work of JOB: take away from its server the program it asks for among
 those listed there, only when it is the file that was brought, and the
-folder too once nothing is left in it."
+directory too once nothing is left in it."
   (let* ((host (server-program-job-host job))
          (entries (progn (refuse-on-evidence host) (server-manifest host)))
          (names (remove-duplicates (mapcar #'first entries) :test #'string=)))
@@ -403,7 +403,7 @@ folder too once nothing is left in it."
                  (let ((left (remove name entries :key #'first :test #'string=)))
                    (write-server-manifest host left)
                    (unless left
-                     (handler-case (remote-change host :rmdir (string-right-trim "/" tuatara.lsp:*brought-language-servers-folder*))
+                     (handler-case (remote-change host :rmdir (string-right-trim "/" tuatara.lsp:*brought-language-servers-directory*))
                        (sftp-refusal () nil)))))
                (setf (server-program-job-words job) (format nil "~a taken away from ~a" name host))))))))
 
@@ -422,7 +422,7 @@ folder too once nothing is left in it."
   "Copy a language server installed on this machine to the server on the
 line of the list of trusted servers, or those marked, chosen in the
 minibuffer among those the editor knows that are here: nothing is fetched
-from anywhere. It goes in a folder of the editor's own there,
+from anywhere. It goes in a directory of the editor's own there,
 ~/.local/share/tuatara/language-servers/, where the daemon there looks after
 the PATH, so nothing of yours is hidden and no shell setting is needed. Only
 a program for that kind of machine needing no library a server may lack is

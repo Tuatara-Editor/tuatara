@@ -1,10 +1,10 @@
-;;;; lisp/files/walk.lisp --- Walking the files under a folder as git leaves them out, and finding the folder a
+;;;; lisp/files/walk.lisp --- Walking the files under a directory as git leaves them out, and finding the directory a
 ;;;; project is in.
 ;;;; Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
 ;;;;
-;;;; FILES-UNDER walks a folder on the thread calling it, leaving out what
+;;;; FILES-UNDER walks a directory on the thread calling it, leaving out what
 ;;;; the .gitignore files on the way, the repository's own excludes and
-;;;; yours leave out; MARKED-DIRECTORY finds the folder a project is in by
+;;;; yours leave out; MARKED-DIRECTORY finds the directory a project is in by
 ;;;; the files that mark its top (.git, Cargo.toml, *.sln); GLOB-MATCH
 ;;;; matches a name against a glob, as shells and .gitignore files write
 ;;;; them. Searches, the questions that offer files and the language servers
@@ -128,7 +128,7 @@ of them."
 
 (defun glob-match (pattern name &key (test #'char=) braces (start 0))
   "True when NAME, from START, is all a name or path that PATTERN stands for:
-* any characters but /, ** any characters, / too (**/ any number of folders,
+* any characters but /, ** any characters, / too (**/ any number of directories,
 none too), ? any one character but /, [abc] one of those ([a-z] a range of
 them, [!abc] or [^abc] one not among them, GLOB-CLASS), \\ the next character
 only itself, the rest as written, compared by TEST (CHAR-EQUAL for any case).
@@ -302,23 +302,23 @@ from the repository's top down to ROOT's parent, the outer ones first."
                       append (gitignore-rules (concatenate 'string dir ".gitignore") dir)))))))
 
 (defun walk-directory (root function &key list breadth-first max-depth same-device follow-links cancel limit)
-  "Go through the folder ROOT (a native name ending in /) and the folders under
-it, ROOT first, calling FUNCTION with three arguments. On entering a folder,
-they are the folder (a native name ending in /), its path from ROOT (\"\" for
+  "Go through the directory ROOT (a native name ending in /) and the directories under
+it, ROOT first, calling FUNCTION with three arguments. On entering a directory,
+they are the directory (a native name ending in /), its path from ROOT (\"\" for
 ROOT, else ending in /) and NIL. Then, for each entry of it by name, they are
-the folder, its path from ROOT and the entry, a list as
+the directory, its path from ROOT and the entry, a list as
 TUATARA.IO:DIRECTORY-ENTRIES gives it with stamps, as (NAME KIND SIZE OWN
-STAMP). A folder among the entries is entered when FUNCTION returns true for
-it: depth first, just after its entry, or with BREADTH-FIRST once every folder
-nearer ROOT has been gone through. A link to a folder is entered only with
-FOLLOW-LINKS. With MAX-DEPTH, no folder more than MAX-DEPTH below ROOT is
-entered. With SAME-DEVICE, no folder of another file system than ROOT's is
+STAMP). A directory among the entries is entered when FUNCTION returns true for
+it: depth first, just after its entry, or with BREADTH-FIRST once every directory
+nearer ROOT has been gone through. A link to a directory is entered only with
+FOLLOW-LINKS. With MAX-DEPTH, no directory more than MAX-DEPTH below ROOT is
+entered. With SAME-DEVICE, no directory of another file system than ROOT's is
 entered (a drive mounted below it, /proc), nor one that could not be examined.
-LIST, a function of a folder, gives its entries in place of
-TUATARA.IO:DIRECTORY-ENTRIES (NIL for a folder that cannot be read); an entry
+LIST, a function of a directory, gives its entries in place of
+TUATARA.IO:DIRECTORY-ENTRIES (NIL for a directory that cannot be read); an entry
 of only (NAME KIND) counts as no link. CANCEL, a cons, ends the walk when its
-car turns true, looked at as each folder is entered; LIMIT ends it once that
-many folders were entered. True when every folder wanted was gone through, NIL
+car turns true, looked at as each directory is entered; LIMIT ends it once that
+many directories were entered. True when every directory wanted was gone through, NIL
 when CANCEL or LIMIT ended it."
   (let ((device (and same-device (let ((stamp (tuatara.io:path-stamp root :failure nil)))
                                    (and stamp (tuatara.io:stamp-dev stamp)))))
@@ -342,17 +342,17 @@ when CANCEL or LIMIT ended it."
                               (or follow-links (eq own kind))
                               (or (null max-depth) (< depth max-depth))
                               (or (not same-device) (and stamp (eql device (tuatara.io:stamp-dev stamp)))))
-                     (let ((folder (list (concatenate 'string directory name "/")
+                     (let ((dir (list (concatenate 'string directory name "/")
                                          (concatenate 'string relative name "/")
                                          (1+ depth))))
-                       (cond ((not breadth-first) (apply #'enter folder))
-                             (last (setf (cdr last) (list folder) last (cdr last)))
-                             (t (setf waiting (list folder) last waiting)))))))))
+                       (cond ((not breadth-first) (apply #'enter dir))
+                             (last (setf (cdr last) (list dir) last (cdr last)))
+                             (t (setf waiting (list dir) last waiting)))))))))
       (enter (directory-name root) "" 0)
       (loop while waiting
-            do (let ((folder (pop waiting)))
+            do (let ((dir (pop waiting)))
                  (unless waiting (setf last nil))
-                 (apply #'enter folder))))
+                 (apply #'enter dir))))
     t))
 
 (defun files-under (root &key (limit 100000) gitignore each cancel directories hidden)

@@ -78,13 +78,13 @@ at the newest commit of the branch each follows instead."
     (git-run "Syncing the submodules" top (list "submodule" "sync" "--recursive") "Synced the submodules' addresses")))
 
 (define-command git-submodule-remove ()
-  "Remove a submodule, asked for, after asking: its folder and its entry in
+  "Remove a submodule, asked for, after asking: its directory and its entry in
 .gitmodules go, the removal staged."
   (with-git-repository (top)
     (git-ask-submodule "Remove submodule: " top
                        (lambda (path)
                          (when (yes-or-no-p* (format nil
-                                                     "Remove the submodule ~a and its folder? Changes in it are lost"
+                                                     "Remove the submodule ~a and its directory? Changes in it are lost"
                                                      (escape-controls path)))
                            (start-git-job "Removing a submodule"
                                           (lambda (job)
@@ -127,20 +127,20 @@ addresses again, remove one or show its status. \\`C-h' there lists every action
       (write-string escaped out)
       (loop repeat (- (length path) end) do (write-string "\\ " out)))))
 
-(defun git-ignore-pattern (top &optional folder)
+(defun git-ignore-pattern (top &optional directory)
   "The pattern offered for ignoring the file on point's line of a status, or
-the current file: its path from TOP, or from FOLDER (the folder it is in,
+the current file: its path from TOP, or from DIRECTORY (the directory it is in,
 ending in /), anchored with a /, its
 characters git would read as a pattern's taken as themselves (GIT-IGNORE-ESCAPED)."
   (let ((path (git-file-here top)))
     (if path
-        (let ((from (if folder (subseq (concatenate 'string top path) (length folder)) path)))
+        (let ((from (if directory (subseq (concatenate 'string top path) (length directory)) path)))
           (concatenate 'string "/" (git-ignore-escaped from)))
         "")))
 
 (defun git-add-ignore-pattern (file pattern top)
   "Add PATTERN as a line of FILE, a file of patterns git ignores, made with
-the folders it is in when it is not there, unless it is a line of it already;
+the directories it is in when it is not there, unless it is a line of it already;
 refused, said so, when FILE is a link or not a file. The file is written whole
 again in one step, a link put in its place meanwhile replaced, never followed.
 The status of the repository at TOP is read again."
@@ -168,30 +168,30 @@ The status of the repository at TOP is read again."
 
 (defun git-ignore-in (where)
   "Ask for a pattern for git to ignore and add it WHERE: :SHARED the
-repository's own .gitignore at its top, :FOLDER the .gitignore of the
-current file's folder, :PRIVATE git's own exclude file, which is never
+repository's own .gitignore at its top, :DIRECTORY the .gitignore of the
+current file's directory, :PRIVATE git's own exclude file, which is never
 committed."
   (with-git-repository (top)
-    (let* ((folder (and (eq where :folder)
+    (let* ((directory (and (eq where :directory)
                         (let ((path (git-file-here top)))
                           (if path (tuatara.io:parent-path (concatenate 'string top path)) top))))
-           (pattern (string-left-trim '(#\Space) (read-string "Ignore: " :initial (git-ignore-pattern top folder)))))
+           (pattern (string-left-trim '(#\Space) (read-string "Ignore: " :initial (git-ignore-pattern top directory)))))
       (cond ((zerop (length (string-trim '(#\Space) pattern))) (message "No pattern given: nothing ignored"))
             ((find #\Newline pattern) (message "A pattern is one line"))
             ((eq where :private)
              (git-ask "Reading where git keeps its exclusions" top
                       (lambda (job top) (git-output-line job top (list "rev-parse" "--path-format=absolute" "--git-path" "info/exclude")))
                       (lambda (file) (git-add-ignore-pattern file pattern top))))
-            (t (git-add-ignore-pattern (concatenate 'string (or folder top) ".gitignore") pattern top))))))
+            (t (git-add-ignore-pattern (concatenate 'string (or directory top) ".gitignore") pattern top))))))
 
 (define-command git-ignore-shared ()
   "Have git ignore a pattern asked for (the file on point's line, or the
 current one, offered), in the repository's .gitignore, committed with it."
   (git-ignore-in :shared))
 
-(define-command git-ignore-folder ()
-  "Have git ignore a pattern asked for in the .gitignore of the current file's folder."
-  (git-ignore-in :folder))
+(define-command git-ignore-directory ()
+  "Have git ignore a pattern asked for in the .gitignore of the current file's directory."
+  (git-ignore-in :directory))
 
 (define-command git-ignore-private ()
   "Have git ignore a pattern asked for here alone, in git's own exclude
@@ -200,11 +200,11 @@ file, which is never committed."
 
 (define-menu git-ignore-menu (:title "Ignore" :show git-menu-shows-p :note git-menu-note)
   "Open the ignore menu: have git ignore a file or a pattern, for everyone
-\(.gitignore at the top or in the file's folder) or here alone. \\`C-h' there
+\(.gitignore at the top or in the file's directory) or here alone. \\`C-h' there
 lists every action."
   ("Ignore"
    ("t" "For everyone, at the top" git-ignore-shared)
-   ("s" "For everyone, in this folder" git-ignore-folder)
+   ("s" "For everyone, in this directory" git-ignore-directory)
    ("p" "Here alone" git-ignore-private)))
 
 ;;; Notes
@@ -251,21 +251,21 @@ those on commits gone. \\`C-h' there lists every action."
 ;;; Subtrees
 
 (defun git-read-prefix (prompt)
-  "Ask with PROMPT for a folder within the repository for a subtree
+  "Ask with PROMPT for a directory within the repository for a subtree
 \(GIT-INSIDE-PATH-P, a / at either end left out); NIL, said so, for one
 that is not."
   (let ((prefix (string-trim '(#\Space #\/) (read-string prompt))))
     (if (git-inside-path-p prefix)
         prefix
-        (progn (message "Not a folder within the repository: ~a" (escape-controls prefix)) nil))))
+        (progn (message "Not a directory within the repository: ~a" (escape-controls prefix)) nil))))
 
 (defun git-subtree (verb doing done)
-  "Run git subtree VERB (add, pull, push) over the network for a folder, a
+  "Run git subtree VERB (add, pull, push) over the network for a directory, a
 repository (a remote's name or an address) and a branch or revision asked
 for, with the subtree menu's switches, DOING said meanwhile and DONE, a
-format given the folder, once done."
+format given the directory, once done."
   (with-git-repository (top switches)
-    (let ((prefix (git-read-prefix (format nil "Subtree folder to ~a: " verb))))
+    (let ((prefix (git-read-prefix (format nil "Subtree directory to ~a: " verb))))
       (when prefix
         (let ((repository (git-read-address (format nil "Repository (a remote or an address) to ~a ~a: " verb prefix))))
           (when repository
@@ -275,24 +275,24 @@ format given the folder, once done."
                                   (format nil done prefix))))))))))
 
 (define-command git-subtree-add ()
-  "Bring another repository's branch into a new folder of this one as a
+  "Bring another repository's branch into a new directory of this one as a
 subtree, its history joined in (one commit with -s in the subtree menu)."
   (git-subtree "add" "Adding a subtree" "Added the subtree ~a"))
 
 (define-command git-subtree-pull ()
-  "Bring the newer commits of another repository's branch into the subtree folder."
+  "Bring the newer commits of another repository's branch into the subtree directory."
   (git-subtree "pull" "Pulling into a subtree" "Pulled into the subtree ~a"))
 
 (define-command git-subtree-push ()
-  "Send the commits that changed the subtree folder to another repository's branch."
+  "Send the commits that changed the subtree directory to another repository's branch."
   (git-subtree "push" "Pushing a subtree" "Pushed the subtree ~a"))
 
 (define-command git-subtree-split ()
-  "Make a history of the commits that changed a folder asked for, as if it
+  "Make a history of the commits that changed a directory asked for, as if it
 were a repository of its own, and say the commit it ends at (a branch of it
 with =b in the subtree menu)."
   (with-git-repository (top switches)
-    (let ((prefix (git-read-prefix "Subtree folder to split: ")))
+    (let ((prefix (git-read-prefix "Subtree directory to split: ")))
       (when prefix
         (git-run "Splitting a subtree" top (append (list "subtree" "split" (format nil "--prefix=~a" prefix)) switches)
                  (lambda (text) (format nil "~a split off, ending at ~a" (escape-controls prefix)
@@ -300,8 +300,8 @@ with =b in the subtree menu)."
                                                      (car (last (tuatara.text:split-words text '(#\Newline))))))))))))
 
 (define-menu git-subtree-menu (:title "Subtree" :show git-menu-shows-p :note git-menu-note)
-  "Open the subtree menu: bring another repository into a folder, pull its
-newer commits, push the folder's, or split the folder's history off.
+  "Open the subtree menu: bring another repository into a directory, pull its
+newer commits, push the directory's, or split the directory's history off.
 \\`C-h' there lists every action."
   ("Bring in"
    ("a" "Add" git-subtree-add)
@@ -315,31 +315,31 @@ newer commits, push the folder's, or split the folder's history off.
 
 ;;; Sparse checkouts
 
-(defun git-read-folders (prompt)
-  "Ask with PROMPT for folders of the repository, apart by spaces; NIL, said
+(defun git-read-directories (prompt)
+  "Ask with PROMPT for directories of the repository, apart by spaces; NIL, said
 so, when one is not within it (GIT-INSIDE-PATH-P) or none is given."
-  (let ((folders (tuatara.text:split-words (read-string prompt) '(#\Space))))
-    (cond ((null folders) (message "No folder given") nil)
-          ((find-if-not #'git-inside-path-p folders)
-           (message "Not a folder within the repository: ~a" (escape-controls (find-if-not #'git-inside-path-p folders))) nil)
-          (t folders))))
+  (let ((directories (tuatara.text:split-words (read-string prompt) '(#\Space))))
+    (cond ((null directories) (message "No directory given") nil)
+          ((find-if-not #'git-inside-path-p directories)
+           (message "Not a directory within the repository: ~a" (escape-controls (find-if-not #'git-inside-path-p directories))) nil)
+          (t directories))))
 
 (define-command git-sparse-set ()
-  "Check out only folders asked for (and the files at the top), the rest of
+  "Check out only directories asked for (and the files at the top), the rest of
 the repository kept out of the files."
   (with-git-repository (top)
-    (let ((folders (git-read-folders "Check out only the folders: ")))
-      (when folders
-        (git-run "Narrowing the checkout" top (list* "sparse-checkout" "set" "--cone" "--" folders)
-                 (format nil "Checked out only ~{~a~^, ~}" folders))))))
+    (let ((directories (git-read-directories "Check out only the directories: ")))
+      (when directories
+        (git-run "Narrowing the checkout" top (list* "sparse-checkout" "set" "--cone" "--" directories)
+                 (format nil "Checked out only ~{~a~^, ~}" directories))))))
 
 (define-command git-sparse-add ()
-  "Check out folders asked for too, in a sparse checkout."
+  "Check out directories asked for too, in a sparse checkout."
   (with-git-repository (top)
-    (let ((folders (git-read-folders "Check out the folders too: ")))
-      (when folders
-        (git-run "Widening the checkout" top (list* "sparse-checkout" "add" "--" folders)
-                 (format nil "Checked out ~{~a~^, ~} too" folders))))))
+    (let ((directories (git-read-directories "Check out the directories too: ")))
+      (when directories
+        (git-run "Widening the checkout" top (list* "sparse-checkout" "add" "--" directories)
+                 (format nil "Checked out ~{~a~^, ~} too" directories))))))
 
 (define-command git-sparse-disable ()
   "Check the whole repository out again."
@@ -352,9 +352,9 @@ the repository kept out of the files."
     (git-run "Narrowing the checkout again" top (list "sparse-checkout" "reapply") "Checked out as the sparse checkout says")))
 
 (define-menu git-sparse-menu (:title "Sparse checkout" :show git-menu-shows-p :note git-menu-note)
-  "Open the sparse checkout menu: check out only some folders, more of them,
+  "Open the sparse checkout menu: check out only some directories, more of them,
 everything again, or narrow it again. \\`C-h' there lists every action."
-  ("Folders"
+  ("Directories"
    ("s" "Only these" git-sparse-set)
    ("a" "These too" git-sparse-add)
    ("r" "Narrow again" git-sparse-reapply)

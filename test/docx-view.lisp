@@ -446,7 +446,7 @@ macros besides."
   (with-test-directory (dir)
     (let* ((source (write-docx-report (merge-pathnames "report.docx" dir)))
            (note-path (namestring (merge-pathnames "note.org" dir))))
-      (tuatara.defaults::docx-import source "pair" :folder (namestring (merge-pathnames "pair/" dir))
+      (tuatara.defaults::docx-import source "pair" :directory (namestring (merge-pathnames "pair/" dir))
                                                    :tex (namestring (merge-pathnames "pair.tex" dir)) :note note-path)
       ;; the note filled in and added to, as you would
       (let* ((note (alexandria:read-file-into-string note-path))
@@ -644,9 +644,10 @@ macros besides."
                  (let ((plain (cl-ppcre:regex-replace-all "\\\\dollar\\{\\}" (remove (code-char #x200B) note) "$")))
                    (dolist (line lines) (true (search line plain) "~s in~%~a" line plain))))))
         (check (tuatara.defaults::docx-read-note path))
-        (let ((note (tuatara.defaults::docx-import path "marked" :folder (namestring (merge-pathnames "t/marked/" dir))
-                                                                 :tex (namestring (merge-pathnames "t/marked.tex" dir))
-                                                                 :note (namestring (merge-pathnames "marked.org" dir)))))
+        (let ((note (tuatara.defaults::docx-import path "marked"
+                                                   :directory (namestring (merge-pathnames "t/marked/" dir))
+                                                   :tex (namestring (merge-pathnames "t/marked.tex" dir))
+                                                   :note (namestring (merge-pathnames "marked.org" dir)))))
           (check (alexandria:read-file-into-string note))
           ;; exported, none of it is LaTeX of its own
           (let ((latex (tuatara.defaults::org-latex-document (alexandria:read-file-into-string note) :file note)))
@@ -680,8 +681,8 @@ macros besides."
 
 (define-test (docx-view template-asks-for-a-picture)
   ;; a picture the Word template asks the note for ({{{logo:path}}} in its
-  ;; header) comes from the logos folder (a name alone found there) or the
-  ;; note's own folder; one the note names from elsewhere is left out, said so;
+  ;; header) comes from the logos directory (a name alone found there) or the
+  ;; note's own directory; one the note names from elsewhere is left out, said so;
   ;; the PDF's template does the same, its condition on the logo empty then
   (with-test-directory (dir)
     (with-test-directory (logos)
@@ -689,12 +690,12 @@ macros besides."
         (let* ((tuatara-user:*logos-directory* (namestring logos))
                (source (write-docx-report (merge-pathnames "report.docx" dir)))
                (note-path (namestring (merge-pathnames "note.org" dir))))
-          (dolist (folder (list logos elsewhere))
-            (with-open-file (out (merge-pathnames "logo.png" folder)
+          (dolist (directory (list logos elsewhere))
+            (with-open-file (out (merge-pathnames "logo.png" directory)
                                  :direction :output
                                  :element-type '(unsigned-byte 8))
               (write-sequence (png-octets 40 20) out)))
-          (tuatara.defaults::docx-import source "pair" :folder (namestring (merge-pathnames "pair/" dir))
+          (tuatara.defaults::docx-import source "pair" :directory (namestring (merge-pathnames "pair/" dir))
                                                        :tex (namestring (merge-pathnames "pair.tex" dir))
                                                        :note note-path)
           (alexandria:write-string-into-file
@@ -709,7 +710,7 @@ macros besides."
                      (and entry
                           (sb-ext:octets-to-string (tuatara.defaults::zip-entry-octets octets entry)
                                                    :external-format :utf-8)))))
-            ;; a name alone: the logos folder's picture, in the header
+            ;; a name alone: the logos directory's picture, in the header
             (let ((octets (tuatara.defaults::org-docx-document (note "logo.png") :file note-path)))
               (true (search "<w:drawing>" (part octets "word/header1.xml")))
               (true (search "relationships/image" (part octets "word/_rels/header1.xml.rels"))))
@@ -724,7 +725,8 @@ macros besides."
                 (false (search "{{{logo" (part octets "word/header1.xml")))
                 (true (find-if (lambda (w) (search "a picture a template asks for comes from" w)) words))
                 (is = 0 (count-matches "<w:drawing>" (part octets "word/document.xml")))))
-            ;; the PDF's template: the logo's condition empty for one from elsewhere, the logos folder's path for a name
+            ;; the PDF's template: the logo's condition empty for one from elsewhere, the logos directory's path for
+            ;; a name
             (let ((template "{{{#logo}}}\\includegraphics{{{{logo:path}}}}{{{/logo}}} {{{body}}}"))
               (alexandria:write-string-into-file template (merge-pathnames "plain.tex" dir))
               (let ((from-logos (tuatara.defaults::org-latex-document (format nil "#+template: ./plain.tex~%#+logo: logo.png~%~%Text~%") :file note-path :enhanced t))
@@ -793,9 +795,10 @@ macros besides."
                                              *docx-report-w*))))
                         out))
       (let ((note (alexandria:read-file-into-string
-                   (tuatara.defaults::docx-import path "caption" :folder (namestring (merge-pathnames "t/caption/" dir))
-                                                                 :tex (namestring (merge-pathnames "t/caption.tex" dir))
-                                                                 :note (namestring (merge-pathnames "caption.org" dir))))))
+                   (tuatara.defaults::docx-import path "caption"
+                                                  :directory (namestring (merge-pathnames "t/caption/" dir))
+                                                  :tex (namestring (merge-pathnames "t/caption.tex" dir))
+                                                  :note (namestring (merge-pathnames "caption.org" dir))))))
         (true (search "#+caption: Counts " note) "~a" note)
         (false (cl-ppcre:scan "(?mi)^[ \\t]*#\\+include" note) "~a" note)))))
 

@@ -14,7 +14,7 @@ then; every file buffer killed after, as leaving does."
     (forget-file-buffers)
     point))
 
-(define-test (places put-back)
+(define-modal-test (places put-back)
   (with-test-directory (dir)
     (let ((tuatara-user:*save-place-mode* t)
           (path (merge-pathnames "notes.txt" dir)))
@@ -80,7 +80,7 @@ then; every file buffer killed after, as leaving does."
       (let ((kept (mapcar (lambda (entry) (file-namestring (car entry))) (tuatara.defaults::read-saved-places))))
         (is equal '("c.txt" "b.txt") kept)))))
 
-(define-test (places typing-and-deleting-undo-together)
+(define-modal-test (places typing-and-deleting-undo-together)
   ;; characters typed and deleted one after another are one undo step: the file as it was, unmodified
   (with-test-directory (dir)
     (let ((path (merge-pathnames "note.txt" dir)))

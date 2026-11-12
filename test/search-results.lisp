@@ -127,11 +127,11 @@ shown, by an ordinary change of the buffer."
         (true (search "alpha fig" (results-lines-in editor)))))))
 
 (define-test (search-results evidence-is-refused)
-  (with-case-folder (root evidence work)
+  (with-case-directory (root evidence work)
     (let ((kept (concatenate 'string evidence "a.txt"))
           (loose (put-file (concatenate 'string work "w.txt") (format nil "kiwi~%"))))
       (put-file kept (format nil "kiwi kept~%"))
-      (with-evidence-folders ((list (concatenate 'string root "cases/*/evidence/")))
+      (with-evidence-directories ((list (concatenate 'string root "cases/*/evidence/")))
         (multiple-value-bind (f editor)
             (run-keys (append (list (list-found (found-candidate kept 1 "kiwi kept") (found-candidate loose 1 "kiwi"))
                                     "C-x C-q"
@@ -353,12 +353,12 @@ shown, by an ordinary change of the buffer."
         (false (said-so "overlap"))))))
 
 (define-test (search-results link-to-evidence-is-refused)
-  (with-case-folder (root evidence work)
+  (with-case-directory (root evidence work)
     (let ((kept (concatenate 'string evidence "a.txt"))
           (link (concatenate 'string work "link.txt")))
       (put-file kept (format nil "kiwi kept~%"))
       (sb-posix:symlink kept link)
-      (with-evidence-folders ((list (concatenate 'string root "cases/*/evidence/")))
+      (with-evidence-directories ((list (concatenate 'string root "cases/*/evidence/")))
         (multiple-value-bind (f editor)
             (run-keys (append (list (list-found (found-candidate link 1 "kiwi kept"))
                                     "C-x C-q" (change-found-line 0 "fig kept") "C-c C-c")

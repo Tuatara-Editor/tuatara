@@ -4,7 +4,7 @@
 (in-package #:tuatara.tests)
 
 (define-test command-line
-  :description "The command line's +LINE[:COLUMN] before a file and --diff OLD NEW, read by the program's own option reader and carried out in a session. The tests cover the line a file opens at, a line past the end, a file named +5 after --, a missing file to compare, and a file in an evidence folder opened at a line staying a safe visit.")
+  :description "The command line's +LINE[:COLUMN] before a file and --diff OLD NEW, read by the program's own option reader and carried out in a session. The tests cover the line a file opens at, a line past the end, a file named +5 after --, a missing file to compare, and a file in an evidence directory opened at a line staying a safe visit.")
 
 (defun session-from-arguments (arguments &key (directory (uiop:getcwd)) (until (constantly t)) (seconds 20) keys input)
   "Run an editor session started with the command-line ARGUMENTS, as the program
@@ -154,9 +154,9 @@ frontend, the editor, and the options read."
                         (get-output-stream-string said))))))))
 
 (define-test (command-line evidence-file-at-a-line-stays-a-safe-visit)
-  (with-case-folder (root evidence work)
+  (with-case-directory (root evidence work)
     (with-fresh-recent-files
-      (with-evidence-folders (`(,(concatenate 'string root "cases/*/evidence/")))
+      (with-evidence-directories (`(,(concatenate 'string root "cases/*/evidence/")))
         (let ((path (concatenate 'string evidence "lines.txt")))
           (put-file path (lines-saying-their-number 20))
           (multiple-value-bind (f editor) (session-from-arguments (list "+9:3" path) :directory root)
@@ -254,7 +254,7 @@ frontend, the editor, and the options read."
         (true (search "--tutor takes no files" (getf options :error)))))))
 
 (define-test (command-line started-bare)
-  ;; -Q: no init file, a state folder of its own that goes with the session, the real one untouched
+  ;; -Q: no init file, a state directory of its own that goes with the session, the real one untouched
   (with-test-directory (dir)
     (let* ((real (ensure-directories-exist (merge-pathnames "state/" dir)))
            (a (namestring (put-file (merge-pathnames "a.txt" dir) "x")))
@@ -272,16 +272,16 @@ frontend, the editor, and the options read."
                                          :until (lambda ()
                                                   (setf inside tuatara-user:*state-directory*)
                                                   t))
-                 (false (probe-file inside) "its own state folder is gone with the session: ~s"
+                 (false (probe-file inside) "its own state directory is gone with the session: ~s"
                         (and (probe-file inside) (directory (merge-pathnames "**/*.*" inside)))))
                (is equal before (mapcar #'namestring (directory (merge-pathnames "*.*" real)))
-                   "the real state folder is as it was")
+                   "the real state directory is as it was")
                (is string= "kept" (file-text (merge-pathnames "keep.txt" real))))
              (is string= "no-init-file.lisp" (file-namestring tuatara.defaults::*config-file*))
              (is eq :none tuatara.defaults::*init-file-outcome*)
              (true inside)
              (false (equal (namestring inside) (namestring real)))
-             (false (probe-file inside) "its own state folder is gone with the session: ~s"
+             (false (probe-file inside) "its own state directory is gone with the session: ~s"
                    (and (probe-file inside) (directory (merge-pathnames "**/*.*" inside)))))
         (setf tuatara.defaults::*config-file* was-config
               tuatara-user:*state-directory* was-state)))))
@@ -397,11 +397,11 @@ frontend, the editor, and the options read."
                                                 :test #'equal)))))))
 
 (define-test (command-line hard-link-never-hands-evidence-over-as-editable)
-  ;; a file with two names, one in an evidence folder: whichever is opened first, the evidence is never
+  ;; a file with two names, one in an evidence directory: whichever is opened first, the evidence is never
   ;; given as an editable buffer, and the other name is shown the safe buffer
-  (with-case-folder (root evidence work)
+  (with-case-directory (root evidence work)
     (with-fresh-recent-files
-      (with-evidence-folders (`(,(concatenate 'string root "cases/*/evidence/")))
+      (with-evidence-directories (`(,(concatenate 'string root "cases/*/evidence/")))
         (let ((ev (concatenate 'string evidence "y.org")) (wk (concatenate 'string work "x.org")))
           (put-file ev (format nil "* kept as found~%"))
           (sb-posix:link ev wk)
@@ -543,12 +543,12 @@ frontend, the editor, and the options read."
         (let ((text (get-output-stream-string said)))
           (true (search "x^Jy is not there" text)))))))
 
-(define-test (command-line old-bare-folders-swept)
-  ;; judged by the lock a session holds on its folder and the machine named in it, as the git shadows are
+(define-test (command-line old-bare-directories-swept)
+  ;; judged by the lock a session holds on its directory and the machine named in it, as the git shadows are
   (with-test-directory (dir)
-    (multiple-value-bind (dead dead-lock) (tuatara.defaults::make-owned-folder "bare-state/")
-      (multiple-value-bind (live live-lock) (tuatara.defaults::make-owned-folder "bare-state/")
-        (multiple-value-bind (elsewhere elsewhere-lock) (tuatara.defaults::make-owned-folder "bare-state/")
+    (multiple-value-bind (dead dead-lock) (tuatara.defaults::make-owned-directory "bare-state/")
+      (multiple-value-bind (live live-lock) (tuatara.defaults::make-owned-directory "bare-state/")
+        (multiple-value-bind (elsewhere elsewhere-lock) (tuatara.defaults::make-owned-directory "bare-state/")
           (let ((was-config tuatara.defaults::*config-file*) (was-state tuatara-user:*state-directory*))
             (unwind-protect
                  (progn
@@ -559,32 +559,32 @@ frontend, the editor, and the options read."
                    (unwind-protect (session-from-arguments (list "-Q") :directory dir)
                      (setf tuatara.defaults::*config-file* was-config
                            tuatara-user:*state-directory* was-state))
-                   (false (probe-file dead) "a folder of a session that ended is swept")
+                   (false (probe-file dead) "a directory of a session that ended is swept")
                    (true (probe-file live) "one a session holds locked stays, whatever process numbers it sees")
                    (true (probe-file elsewhere) "another machine's stays"))
               (sb-posix:close live-lock)
-              (dolist (folder (list dead live elsewhere))
-                (ignore-errors (tuatara.io:delete-tree folder))))))))))
+              (dolist (directory (list dead live elsewhere))
+                (ignore-errors (tuatara.io:delete-tree directory))))))))))
 
-(define-test (command-line held-folder-outlives-a-day)
-  ;; an owned folder older than a day stays while its session holds its lock, as a client's does, which keeps
-  ;; no folder fresh; let go, it is swept as any old copy is
-  (multiple-value-bind (folder lock) (tuatara.defaults::make-owned-folder "bare-state/")
+(define-test (command-line held-directory-outlives-a-day)
+  ;; an owned directory older than a day stays while its session holds its lock, as a client's does, which keeps
+  ;; no directory fresh; let go, it is swept as any old copy is
+  (multiple-value-bind (directory lock) (tuatara.defaults::make-owned-directory "bare-state/")
     (unwind-protect
-         (let ((owner (concatenate 'string folder "owner.lock"))
+         (let ((owner (concatenate 'string directory "owner.lock"))
                (two-days-ago (- (sb-posix:time) (* 2 86400))))
-           ;; as another session's folder: this one's own list of folders it holds leaves it out
-           (remhash folder tuatara.defaults::*private-folders-held*)
-           (sb-posix:utimes folder two-days-ago two-days-ago)
+           ;; as another session's directory: this one's own list of directories it holds leaves it out
+           (remhash directory tuatara.defaults::*private-directories-held*)
+           (sb-posix:utimes directory two-days-ago two-days-ago)
            (tuatara.defaults::forget-old-copies (tuatara.defaults::private-cache-directory "bare-state/"))
-           (true (probe-file folder) "a held folder stays")
+           (true (probe-file directory) "a held directory stays")
            (true (tuatara.io:lock-file-held-p owner))
            (sb-posix:close (shiftf lock nil))
            (false (tuatara.io:lock-file-held-p owner))
            (tuatara.defaults::forget-old-copies (tuatara.defaults::private-cache-directory "bare-state/"))
-           (false (probe-file folder) "let go, it is swept"))
+           (false (probe-file directory) "let go, it is swept"))
       (when lock (sb-posix:close lock))
-      (ignore-errors (tuatara.io:delete-tree folder))))
+      (ignore-errors (tuatara.io:delete-tree directory))))
   (false (tuatara.io:lock-file-held-p "/nonexistent/owner.lock"))
   ;; a named pipe in a lock file's place is never waited on
   (with-test-directory (dir)
@@ -607,22 +607,22 @@ frontend, the editor, and the options read."
       (true (find (list :flag flag) (stable-surface) :key #'row-name :test #'equal) "~a is kept" flag))
     (true (member "--diff" tuatara.terminal:*options* :test #'string=))))
 
-(define-test (command-line owned-folder-locked-before-named)
+(define-test (command-line owned-directory-locked-before-named)
   ;; owner.lock is locked while still empty: no sweep finds it naming this machine and free
   (let ((sizes '()))
     (sb-int:encapsulate 'tuatara.runtime:lock-fd 'noting-sizes
                         (lambda (function fd &rest keys)
                           (push (sb-posix:stat-size (sb-posix:fstat fd)) sizes)
                           (apply function fd keys)))
-    (multiple-value-bind (folder lock)
-        (unwind-protect (tuatara.defaults::make-owned-folder "bare-state/")
+    (multiple-value-bind (directory lock)
+        (unwind-protect (tuatara.defaults::make-owned-directory "bare-state/")
           (sb-int:unencapsulate 'tuatara.runtime:lock-fd 'noting-sizes))
       (unwind-protect
-           (let ((owner (concatenate 'string folder "owner.lock")))
+           (let ((owner (concatenate 'string directory "owner.lock")))
              (is equal '(0) sizes)
              (is string= (machine-instance) (file-text owner))
              (let ((other (sb-posix:open owner sb-posix:o-rdwr)))
                (unwind-protect (false (tuatara.runtime:lock-fd other) "held by the session that made it")
                  (sb-posix:close other))))
         (sb-posix:close lock)
-        (ignore-errors (tuatara.io:delete-tree folder))))))
+        (ignore-errors (tuatara.io:delete-tree directory))))))

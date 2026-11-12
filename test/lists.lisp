@@ -540,3 +540,70 @@ struct S {
     (is equal '(nil :far) (multiple-value-list (tuatara.defaults::line-opener-before rope 104 :reach 50)))
     (is equal '(nil :far) (multiple-value-list (tuatara.defaults::line-opener-after rope 1 :reach 50)))
     (is eql 104 (tuatara.defaults::line-opener-after rope 1 :reach 200))))
+
+;;; LaTeX: sections and environments
+
+(defparameter *latex-definitions* (format nil "\\section{One}~%Some \\textbf{bold} text.~%~
+\\begin{itemize}~%  \\item a~%\\end{itemize}~%\\subsection{Two}~%Words.~%")
+  "LaTeX with a section, a command inside it, an environment and a subsection.")
+
+(define-test (lists latex-definitions-by-rules)
+  (flet ((goes (from keys)
+           (multiple-value-bind (f editor) (session-in :latex-mode *latex-definitions* keys
+                                                       :point (search from *latex-definitions*))
+             (declare (ignore f))
+             (line-and-column *latex-definitions* (session-point editor)))))
+    ;; the commands inside a section are no definitions: back from its words goes to the section
+    (is equal '(1 0) (goes "bold" "C-M-a"))
+    ;; the environment, then the section around it
+    (is equal '(3 0) (goes "\\item" "C-M-a"))
+    (is equal '(1 0) (goes "\\item" "C-M-a C-M-a"))
+    ;; forward, the start of the environment inside the section
+    (is equal '(3 0) (goes "bold" "C-u - C-M-a"))
+    ;; forward: the end of the environment, which is a definition inside the section
+    (is equal '(6 0) (goes "\\item" "C-M-e"))))
+
+(defun latex-after (text keys &key (point 0) mark)
+  "The text, the point and the echo area of a LaTeX buffer holding TEXT after KEYS."
+  (multiple-value-bind (f editor) (session-in :latex-mode text keys :point point :mark mark)
+    (list (session-text editor) (session-point editor) (echo-text f))))
+
+(define-modal-test (lists latex-insert-environment)
+  ;; in the normal and the insert state alike, the name asked for with completion
+  (dolist (keys '("C-c C-e i t e m i z e RET" "i C-c C-e i t e m i z e RET"))
+    (destructuring-bind (text point echo) (latex-after (format nil "\\begin{document}~%~%\\end{document}~%") keys
+                                                       :point 17)
+      (declare (ignore echo))
+      (is string= (format nil "\\begin{document}~%    \\begin{itemize}~%        ~%    \\end{itemize}~%\\end{document}~%")
+          text)
+      (is = (+ 17 20 8) point))))
+
+(define-test (lists latex-insert-environment-splits-a-line)
+  (is string= (format nil "ab~%\\begin{quote}~%    ~%\\end{quote}~%cd~%")
+      (first (latex-after (format nil "abcd~%") "C-c C-e q u o t e RET" :point 2))))
+
+(define-test (lists latex-insert-environment-wraps-the-region)
+  (is string= (format nil "\\begin{center}~%    one~%    two~%\\end{center}~%three~%")
+      (first (latex-after (format nil "one~%two~%three~%") "C-c C-e c e n t e r RET" :point 5 :mark 1)))
+  ;; the last line without its newline
+  (is string= (format nil "\\begin{center}~%    one~%\\end{center}")
+      (first (latex-after "one" "C-c C-e c e n t e r RET" :point 3 :mark 0))))
+
+(define-test (lists latex-close-environment)
+  (flet ((closed (text &optional (point (length text)))
+           (latex-after text "C-c ]" :point point)))
+    ;; on a line of its own, indented as its begin; the nearer open one first
+    (is string= (format nil "\\begin{a}~%  \\begin{b}~%  x~%  \\end{b}")
+        (first (closed (format nil "\\begin{a}~%  \\begin{b}~%  x~%"))))
+    (is string= (format nil "\\begin{a}~%  \\begin{b}~%  x~%  \\end{b}~%\\end{a}")
+        (first (closed (format nil "\\begin{a}~%  \\begin{b}~%  x~%  \\end{b}~%"))))
+    ;; text on the line goes aside; a blank line is used
+    (is string= (format nil "\\begin{a}~%te~%\\end{a}~%xt") (first (closed (format nil "\\begin{a}~%text") 12)))
+    (is string= (format nil "\\begin{a}~%\\end{a}") (first (closed (format nil "\\begin{a}~%    "))))
+    ;; a commented begin or end counts for nothing, an escaped percent sign is no comment
+    (is string= (format nil "\\begin{a}~%% \\end{a}~%\\end{a}") (first (closed (format nil "\\begin{a}~%% \\end{a}~%"))))
+    (is string= (format nil "% \\begin{b}~%\\begin{a}~%\\end{a}") (first (closed (format nil "% \\begin{b}~%\\begin{a}~%"))))
+    (is string= (format nil "\\%\\begin{a}~%\\end{a}") (first (closed (format nil "\\%\\begin{a}~%"))))
+    ;; nothing open
+    (is string= "Every environment before point is closed" (third (closed (format nil "\\begin{a}~%\\end{a}~%"))))
+    (is string= "Every environment before point is closed" (third (closed "")))))

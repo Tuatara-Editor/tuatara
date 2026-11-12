@@ -29,7 +29,7 @@
   "On JOB's thread: the message git has made ready for a merge, or a
 cherry-pick or revert, stopped half way at TOP, its comments left out; NIL
 when there is none, or it is no plain file of a message's size."
-  (let ((file (concatenate 'string (git-folder job top) "MERGE_MSG")))
+  (let ((file (concatenate 'string (git-directory job top) "MERGE_MSG")))
     ;; a file of its own, never a link, a pipe or a device, and of a message's size
     (when (eq (tuatara.io:path-kind file :follow nil) :regular)
       (let ((text (tuatara.io:file-text file :limit (* 1024 1024) :too-large (constantly nil) :missing nil)))

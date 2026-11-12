@@ -339,7 +339,7 @@ all of it.")
     beginning-of-buffer end-of-buffer beginning-of-line end-of-line goto-line recenter
     join-selected-lines delete-selection-or-char kill-line copy-selection-or-char yank-over-selection
     yank-rectangle undo redo start-selection select-whole-buffer rectangle-mark-mode
-    fill-paragraph delete-other-windows describe-bindings
+    fill-paragraph delete-other-windows describe-bindings repeat
     tuatara-open-below tuatara-open-above
     tuatara-insert tuatara-insert-after tuatara-insert-line-start tuatara-insert-line-end tuatara-change
     tuatara-normal-return tuatara-normal-inert tuatara-normal-tab)
@@ -496,12 +496,11 @@ binds it to, when it binds one."
 (defparameter *non-modal-repeat-keys*
   '((("t" add-cursor-below) ("T" add-cursor-above))
     (("J" select-next-line) ("K" select-previous-line))
-    (("n" spellcheck-next) ("p" spellcheck-previous))
-    (("." repeat)))
+    (("n" spellcheck-next) ("p" spellcheck-previous)))
   "The keys that, right after one of their commands run from \\`C-z', run it
 again by themselves, each group on its own: \\`t'
 and \\`T' add a cursor below or above, \\`J' and \\`K' select a line, \\`n' and
-\\`p' go to the next or previous misspelt word, \\`.' repeats.")
+\\`p' go to the next or previous misspelt word.")
 
 (defun install-non-modal-keys ()
   "Bind under \\`C-z', in every state, the keys of NORMAL state (*TUATARA-NORMAL-BINDINGS*

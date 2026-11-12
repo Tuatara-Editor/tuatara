@@ -243,7 +243,7 @@ names a file and line."
 (defstruct (compile-run (:constructor make-compile-run (buffer command directory base)) (:copier nil))
   "A command run by \\[compile] and what its output names, a list of places
 \(STEP-PLACE): BUFFER shows its output after BASE octets of heading; COMMAND
-ran in DIRECTORY. STARTS, CODES and FOLDERS hold, in the order of the output,
+ran in DIRECTORY. STARTS, CODES and DIRECTORY-NUMBERS hold, in the order of the output,
 each line of note (one naming a place, or saying an error, a warning or a
 note). They give where it starts in BUFFER, its PLACE-CODE, and the directory
 its file names are taken from, as an index into DIRECTORIES (the first
@@ -254,7 +254,7 @@ before any."
   (lock (sb-thread:make-mutex :name "compile places"))
   (starts (make-array 16 :element-type 'fixnum :adjustable t :fill-pointer 0))
   (codes (make-array 16 :element-type 'fixnum :adjustable t :fill-pointer 0))
-  (folders (make-array 16 :element-type 'fixnum :adjustable t :fill-pointer 0))
+  (directory-numbers (make-array 16 :element-type 'fixnum :adjustable t :fill-pointer 0))
   (directories (make-array 1 :adjustable t :fill-pointer 1 :initial-element directory))
   (index -1 :type fixnum))
 
@@ -267,7 +267,7 @@ before any."
       (documentation 'compile-run-starts 'function)
       "Where each line of note of a compile's output starts in its buffer."
       (documentation 'compile-run-codes 'function) "The PLACE-CODE of each line of note of a compile's output."
-      (documentation 'compile-run-folders 'function)
+      (documentation 'compile-run-directory-numbers 'function)
       "The directory each line of note of a compile's output takes its file names from, an index into its DIRECTORIES."
       (documentation 'compile-run-directories 'function)
       "The directory a compile's command ran in, then those make said it went into."
@@ -277,16 +277,16 @@ before any."
   "The buffer of the compile's output: killed, its places are in force no more."
   (compile-run-buffer places))
 
-(defun note-output-line (run start length kind place &optional (folder 0))
+(defun note-output-line (run start length kind place &optional (directory-number 0))
   "Keep a line of note of RUN's output, starting at octet START of its buffer,
 LENGTH octets long, of KIND, naming a place when PLACE is true, its file names
-taken from RUN's directory numbered FOLDER."
+taken from RUN's directory numbered DIRECTORY-NUMBER."
   (sb-thread:with-mutex ((compile-run-lock run))
     (vector-push-extend start (compile-run-starts run))
     (vector-push-extend (place-code length kind place) (compile-run-codes run))
-    (vector-push-extend folder (compile-run-folders run))))
+    (vector-push-extend directory-number (compile-run-directory-numbers run))))
 
-(defun run-folder (run directory)
+(defun run-directory-number (run directory)
   "The index among RUN's directories of DIRECTORY, a directory make said it
 went into (taken from RUN's own when it does not start with /), added when new."
   (let ((native (tuatara.io:slash-ended (tuatara.io:clean-path (if (uiop:string-prefix-p "/" directory)
@@ -327,20 +327,21 @@ line holding POSITION, as its index; NIL when that line names none."
                  (code-place-p (aref (compile-run-codes run) i))
                  i)))))))
 
-(defun compile-place-path (run file &optional (folder 0))
+(defun compile-place-path (run file &optional (directory-number 0))
   "The native name of FILE, as a compile's output names it, taken from RUN's
-directory numbered FOLDER (where its command ran, or one make went into)
+directory numbered DIRECTORY-NUMBER (where its command ran, or one make went into)
 unless it starts with / or ~."
   (tuatara.io:clean-path
    (tuatara.io:native (if (or (uiop:string-prefix-p "/" file) (uiop:string-prefix-p "~" file))
                           (tuatara.io:expand-path file)
                           (tuatara.io:path-join (sb-thread:with-mutex ((compile-run-lock run))
-                                                  (aref (compile-run-directories run) folder))
+                                                  (aref (compile-run-directories run) directory-number))
                                                 file)))))
 
-(defun compile-file-there-p (run file folder)
-  "True when FILE, as a compile's output names it, is a file there, taken from RUN's directory numbered FOLDER."
-  (eq :regular (tuatara.io:path-kind (compile-place-path run file folder))))
+(defun compile-file-there-p (run file directory-number)
+  "True when FILE, as a compile's output names it, is a file there, taken from RUN's directory numbered
+DIRECTORY-NUMBER."
+  (eq :regular (tuatara.io:path-kind (compile-place-path run file directory-number))))
 
 (defun goto-compile-place (run index &key other)
   "Open the file the line of note INDEX of RUN names, at its line and column,
@@ -349,7 +350,8 @@ compile's output put on that line, and the line said."
   (let* ((buffer (compile-run-buffer run))
          (start (sb-thread:with-mutex ((compile-run-lock run)) (aref (compile-run-starts run) index)))
          (code (sb-thread:with-mutex ((compile-run-lock run)) (aref (compile-run-codes run) index)))
-         (folder (sb-thread:with-mutex ((compile-run-lock run)) (aref (compile-run-folders run) index)))
+         (directory-number (sb-thread:with-mutex ((compile-run-lock run)) (aref (compile-run-directory-numbers run)
+                                                                                index)))
          (size (tuatara.buffer:buffer-size buffer))
          (text (string-right-trim '(#\Return)
                                   (tuatara.buffer:buffer-string buffer :start start
@@ -358,10 +360,10 @@ compile's output put on that line, and the line said."
     (dolist (window (buffer-windows buffer))
       (setf (tuatara.display:window-point window) start))
     (multiple-value-bind (kind file line column)
-        (output-line-place text :exists (lambda (file) (compile-file-there-p run file folder)))
+        (output-line-place text :exists (lambda (file) (compile-file-there-p run file directory-number)))
       (declare (ignore kind))
       (cond ((null file) (message "No place on this line"))
-            ((show-file-line (compile-place-path run file folder) line :column column :other other)
+            ((show-file-line (compile-place-path run file directory-number) line :column column :other other)
              (message "~a" (tuatara.display:shorten-string text 200 :one-line t)))))))
 
 (defmethod step-place ((places compile-run) direction)
@@ -510,12 +512,12 @@ read goes to. LINE-START is where the line being read began. LINE is the
 octets of it read so far when it began in a piece read before, at most
 *COMPILE-LINE-LOOKED-AT*. LENGTH is how long it is so far. KIND-BEFORE is the
 kind of the last line saying what is wrong without a place. TEXT is the string
-a line is matched in (LINE-TEXT). FOLDERS are the directories make went into,
+a line is matched in (LINE-TEXT). DIRECTORY-NUMBERS are the directories make went into,
 the innermost first, as indexes into RUN's (0, where the command ran, when
 none). THERE is whether each file name looked for is a file, by directory and
 name."
   run offset (line-start 0) (line (make-array 256 :element-type '(unsigned-byte 8) :adjustable t :fill-pointer 0))
-  (length 0) kind-before (text (make-string *compile-line-read*)) (folders '())
+  (length 0) kind-before (text (make-string *compile-line-read*)) (directory-numbers '())
   (there (make-hash-table :test 'equal)))
 
 (setf (documentation 'output-scan-p 'function) "True when OBJECT is an OUTPUT-SCAN.")
@@ -538,12 +540,12 @@ a string of their own (TUATARA.TEXT:OCTETS-STRING)."
 (defun scan-file-there-p (scan file)
   "True when FILE, named in a compile's output, is a file in the directory
 SCAN is in; looked up once for each name, as many as 4,096 kept."
-  (let* ((folder (or (first (output-scan-folders scan)) 0))
-         (key (cons folder file))
+  (let* ((directory-number (or (first (output-scan-directory-numbers scan)) 0))
+         (key (cons directory-number file))
          (there (output-scan-there scan))
          (known (gethash key there :unknown)))
     (if (eq known :unknown)
-        (let ((found (compile-file-there-p (output-scan-run scan) file folder)))
+        (let ((found (compile-file-there-p (output-scan-run scan) file directory-number)))
           (when (< (hash-table-count there) 4096) (setf (gethash key there) found))
           found)
         known)))
@@ -559,15 +561,16 @@ are taken from."
       (multiple-value-bind (text count) (line-text scan octets start (min end (+ start *compile-line-read*)))
         (multiple-value-bind (motion directory) (make-directory-line text count)
           (case motion
-            (:entering (push (run-folder (output-scan-run scan) directory) (output-scan-folders scan)))
-            (:leaving (pop (output-scan-folders scan)))
+            (:entering (push (run-directory-number (output-scan-run scan) directory)
+                             (output-scan-directory-numbers scan)))
+            (:leaving (pop (output-scan-directory-numbers scan)))
             (t (multiple-value-bind (kind file)
                    (output-line-place text :kind-before (output-scan-kind-before scan) :end count
                                            :exists (lambda (file) (scan-file-there-p scan file)))
                  (when (and kind (null file)) (setf (output-scan-kind-before scan) kind))
                  (when (or kind file)
                    (note-output-line (output-scan-run scan) (output-scan-line-start scan) length kind file
-                                     (or (first (output-scan-folders scan)) 0)))))))))))
+                                     (or (first (output-scan-directory-numbers scan)) 0)))))))))))
 
 (defun scan-output (scan octets)
   "Find the lines of note in OCTETS, the next piece of a compile's output, as SCAN has got."

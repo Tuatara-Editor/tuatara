@@ -3,8 +3,8 @@
 ;;;;
 ;;;; A connection to a server's files runs ssh with nobody at its terminal, so
 ;;;; what it would ask there comes here: ssh runs a small script (SSH_ASKPASS)
-;;;; in the connection's private folder, which passes the question through one
-;;;; named pipe of that folder and prints the answer it gets through the other.
+;;;; in the connection's private directory, which passes the question through one
+;;;; named pipe of that directory and prints the answer it gets through the other.
 ;;;; A script needs no program of its own, in a package or an AppImage, and
 ;;;; starts at once. The words of a question may be a server's, so they are
 ;;;; cleaned before they are shown; a password or passphrase is read hidden,
@@ -33,7 +33,7 @@
                [ \"$given\" = y ] || exit 1~@
                exec head -n 1 <&3~%")
   "What ssh runs for each question (SSH_ASKPASS), in the connection's
-folder: it does nothing for a mere notice of ssh's, else passes the question
+directory: it does nothing for a mere notice of ssh's, else passes the question
 on and reads a first line, y when an answer follows; the answer goes from the
 pipe to ssh by a program reading one line of it, through no argument and no
 variable of the shell. Any other first line ends it with a failure.")
@@ -41,16 +41,16 @@ variable of the shell. Any other first line ends it with a failure.")
 (defparameter *ssh-connecting-seconds* 1
   "How long a connection to a server has taken before the echo area says so.")
 
-(defstruct (ssh-asking (:constructor make-ssh-asking (host jump folder question answer)) (:copier nil))
+(defstruct (ssh-asking (:constructor make-ssh-asking (host jump directory question answer)) (:copier nil))
   "How ssh's questions for one connection reach you. HOST is the machine asked
-for. JUMP is the machines ssh goes through to it (ProxyJump), or NIL. FOLDER
-is the connection's private folder. QUESTION and ANSWER are this end of the
+for. JUMP is the machines ssh goes through to it (ProxyJump), or NIL. DIRECTORY
+is the connection's private directory. QUESTION and ANSWER are this end of the
 named pipes the script uses, as file descriptors. ASKED is how many questions
 it has asked. SAID is how many octets of what ssh wrote on its error output
 have been shown."
   (host "" :type string :read-only t)
   (jump nil :read-only t)
-  (folder "" :type string :read-only t)
+  (directory "" :type string :read-only t)
   (question 0 :type fixnum :read-only t)
   (answer 0 :type fixnum :read-only t)
   (asked 0 :type fixnum)
@@ -60,7 +60,7 @@ have been shown."
       (documentation 'ssh-asking-p 'function) "True when OBJECT is an SSH-ASKING."
       (documentation 'ssh-asking-host 'function) "The machine ASKING's connection is to, as ssh takes it."
       (documentation 'ssh-asking-jump 'function) "The machines ASKING's ssh goes through, or NIL."
-      (documentation 'ssh-asking-folder 'function) "The private folder of ASKING's connection."
+      (documentation 'ssh-asking-directory 'function) "The private directory of ASKING's connection."
       (documentation 'ssh-asking-said 'function) "How many octets of what ASKING's ssh wrote have been shown."
       (documentation 'ssh-asking-question 'function) "This end of ASKING's pipe of questions."
       (documentation 'ssh-asking-answer 'function) "This end of ASKING's pipe of answers."
@@ -92,27 +92,27 @@ the words of a question of ssh's."
   (let ((jump (cdr (assoc "proxyjump" (ssh-settings program host) :test #'string=))))
     (and jump (string/= jump "none") (tuatara.frontend:shown-words jump))))
 
-(defun open-ssh-asking (program folder host)
+(defun open-ssh-asking (program directory host)
   "An SSH-ASKING for a connection to HOST through ssh, PROGRAM, its pipes and
-script made in FOLDER, private to you; each pipe held open both ways here, so
+script made in DIRECTORY, private to you; each pipe held open both ways here, so
 that the script never waits to open one and sees it end should the editor. A
 TUATARA.IO:FILE-SYSTEM-ERROR when they cannot be made, nothing left open."
-  (flet ((pipe (name) (tuatara.io:open-named-pipe (tuatara.io:path-join folder name))))
-    (tuatara.io:write-new-file (ssh-asking-script-path folder) *ssh-asking-script* :mode #o700)
+  (flet ((pipe (name) (tuatara.io:open-named-pipe (tuatara.io:path-join directory name))))
+    (tuatara.io:write-new-file (ssh-asking-script-path directory) *ssh-asking-script* :mode #o700)
     (let ((question (pipe "question")) (made nil))
       (unwind-protect
-           (prog1 (make-ssh-asking host (ssh-jump program host) folder question (pipe "answer"))
+           (prog1 (make-ssh-asking host (ssh-jump program host) directory question (pipe "answer"))
              (setf made t))
         (unless made (sb-posix:close question))))))
 
-(defun ssh-asking-script-path (folder)
-  "Where the script ssh runs for a question is in FOLDER, the connection's."
-  (tuatara.io:path-join folder "ask"))
+(defun ssh-asking-script-path (directory)
+  "Where the script ssh runs for a question is in DIRECTORY, the connection's."
+  (tuatara.io:path-join directory "ask"))
 
 (defun close-ssh-asking (asking)
   "Take away ASKING's pipes and close them: a question asked later finds none
 and ends with no answer, one waiting for its answer ends with none too."
-  (flet ((path (name) (tuatara.io:path-join (ssh-asking-folder asking) name)))
+  (flet ((path (name) (tuatara.io:path-join (ssh-asking-directory asking) name)))
     (tuatara.io:close-named-pipe (ssh-asking-question asking) (path "question"))
     (tuatara.io:close-named-pipe (ssh-asking-answer asking) (path "answer"))))
 
@@ -129,7 +129,7 @@ keys added to an agent); with none, nothing is asked at all."
 (defun ssh-asking-environment (asking)
   "The settings of ssh's environment for a connection with ASKING; none without ASKING."
   (and asking
-       (list (format nil "SSH_ASKPASS=~a" (ssh-asking-script-path (ssh-asking-folder asking)))
+       (list (format nil "SSH_ASKPASS=~a" (ssh-asking-script-path (ssh-asking-directory asking)))
              "SSH_ASKPASS_REQUIRE=force")))
 
 (defstruct (awaited-answer (:constructor make-awaited-answer ()) (:copier nil))
@@ -278,7 +278,7 @@ the rest (a server's banner and instructions), cleaned, on one line."
   "What ASKING's ssh has written on its error output since this was last
 asked, as two values: its warnings to you and the rest (SSH-SAID-PARTS)."
   (let ((octets (or (ignoring-errors-reported ("reading what ssh said")
-                      (tuatara.io:file-octets (tuatara.io:path-join (ssh-asking-folder asking) "e")
+                      (tuatara.io:file-octets (tuatara.io:path-join (ssh-asking-directory asking) "e")
                                               :limit tuatara.io:*program-said-limit*))
                     (tuatara.text:make-octets 0))))
     (multiple-value-prog1 (ssh-said-parts (tuatara.text:lenient-string (subseq octets (min (ssh-asking-said asking)

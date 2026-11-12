@@ -7,12 +7,12 @@
   (:import-from #:tuatara.text #:drop-cached)
   (:import-from #:tuatara-user #:*default-directory* #:*cache-directory* #:*state-directory* #:*sandbox*
                 #:*sandbox-seconds* #:*sandbox-memory* #:*sandbox-input-limit* #:*sandbox-total-memory*
-                #:*sandbox-seccomp* #:*program-output-limit* #:*folder-tree-depth-limit*
+                #:*sandbox-seccomp* #:*program-output-limit* #:*directory-tree-depth-limit*
                 #:*save-in-place*)
   (:documentation "Files: visiting them so that no other program can change the text shown,
 saving them so that no crash or power cut loses a file, noticing when they change on
 disk, and reverting. It works on every Linux file system, with faster paths where a
-file system offers them. It also copies, moves, deletes and wipes files and folders,
+file system offers them. It also copies, moves, deletes and wipes files and directories,
 keeps the trash, and runs programs, shut in a sandbox when they read files from
 elsewhere.")
   (:export #:buffer-file-stamp #:buffer-plaintext-p)
@@ -27,7 +27,7 @@ elsewhere.")
    #:file-holes-p
    #:same-stamped-file-p #:symlink-target
    #:fd-file-system #:file-system-class #:free-octets #:free-inodes #:set-path-mode #:umask-bits #:now-nanoseconds
-   #:read-only-mount-p #:can-give-owner-p #:writable-p #:writing-refused #:host-writing-refusal #:writing-refusal
+   #:read-only-mount-p #:can-give-owner-p #:writable-p #:nearest-directory #:writing-refused #:host-writing-refusal #:writing-refusal
    #:writing-refused-anywhere-p #:check-writing #:check-tree-writing #:fd-real-path #:host-say-writing #:tell-writing
    #:take-read-lease #:lease-breaking-p #:release-lease
    ;; copies and scratch files
@@ -53,7 +53,8 @@ elsewhere.")
    #:octets-ascii #:base64-octets #:base64-string #:openpgp-packet-header #:openpgp-packet-p #:octets-picture-size
    #:tiff-octets-p #:tiff-entries #:box-contents-start #:octets-reader #:j2k-header #:jp2-header #:jxl-header
    #:jxl-file-header #:jpeg-segments #:box-children #:box-find #:octet-at #:*compound-file-signature*
-   #:kind-name-disagrees-p #:sandbox-status #:sandbox-status-now #:sandbox-run #:sandbox-start #:end-sandbox
+   #:kind-name-disagrees-p #:name-kinds
+   #:sandbox-status #:sandbox-status-now #:sandbox-run #:sandbox-start #:end-sandbox
    #:end-sandboxes #:sandbox-memory-scope-p #:real-place #:sealed-copy #:sandbox-input-refusal #:memory-file
    #:sealed-file-size #:sandbox-run-on-file #:sandbox-find-program #:system-program #:sandbox-filtered-p
    #:*sandbox-path* #:*sandbox-file-limit* #:find-program #:program-search-path #:*default-program-path*
@@ -71,7 +72,7 @@ elsewhere.")
    #:open-lock-file #:lock-file-held-p #:call-with-state-lock
    #:sync-directory #:run-program-again #:*saved-program* #:slash-ended #:directory-name #:setsid-command
    #:drive-trash-sound-p
-   #:ensure-private-directory #:path-kind #:clean-path #:path-folder-and-name #:owner-name #:owner-group-name
+   #:ensure-private-directory #:path-kind #:clean-path #:path-directory-and-name #:owner-name #:owner-group-name
    #:user-font-directories
    ;; new names, and what a program shut in came to
    #:random-name #:numbered-name #:create-free-file #:copy-to-free-name

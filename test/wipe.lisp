@@ -4,7 +4,7 @@
 (in-package #:tuatara.tests)
 
 (define-test wipe
-  :description "A file wiped is overwritten, emptied and deleted, a link, a folder and a file with
+  :description "A file wiped is overwritten, emptied and deleted, a link, a directory and a file with
 other names refused, a stop leaving it there. M-x wipe-file asks first, saying what it cannot promise.
 Encrypting a file offers to wipe it, at once with keys, with a passphrase only once it, asked again,
 opens what was made; gpg-lock makes gpg-agent forget its passphrases.")

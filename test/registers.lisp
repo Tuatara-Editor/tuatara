@@ -150,7 +150,7 @@ text, a rectangle or a number in, C-x r j goes back to a place, C-x r + adds, C-
         (clrhash tuatara.defaults::*registers*)
         (true (tuatara.frontend.fake:fake-frame-showing (run-keys "C-x r l" :width 100 :height 12) "No registers"))))))
 
-(define-test (registers in-the-modal-layer)
+(define-modal-test (registers in-the-modal-layer)
   ;; the keys under C-x work in NORMAL state as they do elsewhere
   (clrhash tuatara.defaults::*registers*)
   (unwind-protect
@@ -187,8 +187,8 @@ text, a rectangle or a number in, C-x r j goes back to a place, C-x r + adds, C-
       (false (register-value-of #\a)))))
 
 (define-test (registers safe-places-reopen-safely)
-  ;; a place set in a file opened safely, and one in an evidence folder, reopen as safe buffers
-  (with-case-folder (root evidence work)
+  ;; a place set in a file opened safely, and one in an evidence directory, reopen as safe buffers
+  (with-case-directory (root evidence work)
     (with-fresh-recent-files
       (with-clean-registers
         (let ((plain (concatenate 'string work "plain.txt")) (a (concatenate 'string evidence "a.txt")))
@@ -199,14 +199,14 @@ text, a rectangle or a number in, C-x r j goes back to a place, C-x r + adds, C-
             (true (tuatara.io:safe-visit-p (session-buffer editor)))
             (is = 4 (session-point editor)))
           (forget-file-buffers)
-          (with-evidence-folders (`(,(concatenate 'string root "cases/*/evidence/")))
+          (with-evidence-directories (`(,(concatenate 'string root "cases/*/evidence/")))
             (run-keys (format nil "C-x C-f C-a C-k ~a RET C-x r p b" (key-string a)) :width 200)
             (forget-file-buffers)
             (let ((editor (nth-value 1 (run-keys "C-x r j b" :width 200))))
               (true (tuatara.io:safe-visit-p (session-buffer editor))))))))))
 
 (define-test (registers insert-refused-in-read-only-buffers)
-  (with-case-folder (root evidence work)
+  (with-case-directory (root evidence work)
     (with-fresh-recent-files
       (with-clean-registers
         (let ((plain (concatenate 'string work "plain.txt")))

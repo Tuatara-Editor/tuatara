@@ -65,8 +65,8 @@ writer of UTF-8 for the system is wrapped, as its TRACE wraps a function."
   (let ((name (string-right-trim "/" (native path))))
     (subseq name (1+ (or (position #\/ name :from-end t) -1)))))
 
-(defun path-folder-and-name (path)
-  "PATH's name parted at its last /, as two values: the folder, ending in /
+(defun path-directory-and-name (path)
+  "PATH's name parted at its last /, as two values: the directory, ending in /
 \(./ when there is no /), and the name after it, empty for a name ending in
 /. For /data/case/notes [old].org they are \"/data/case/\" and \"notes [old].org\"."
   (let* ((name (native path)) (slash (position #\/ name :from-end t)))
@@ -93,7 +93,7 @@ a slash."
 
 (defun own-variable (name)
   "The value of the environment variable NAME as the editor itself has it,
-or NIL when it has none: what the editor's own folders, time zone, terminal
+or NIL when it has none: what the editor's own directories, time zone, terminal
 and switches are read from. A program started for someone else is given their
 variables where they came with a request (PROGRAM-VARIABLE); this one never
 follows them."
@@ -137,7 +137,7 @@ it. A buffer with a file has its file's directory.
   name.
 - a directory's name: that directory.
 - nil: the directory Tuatara was started in."
-  :values (or (member nil) folder))
+  :values (or (member nil) directory))
 
 (defun without-dot-components (pathname)
   "PATHNAME without the . in its directory: /a/./b is /a/b, whatever links
@@ -182,7 +182,7 @@ every frame asks the file system nothing."
              (< (- now (second found)) internal-time-units-per-second))
         (cddr found)
         (let ((named (and *default-directory*
-                          (tuatara.runtime:ignoring-errors-reported ("finding the folder ~a" *default-directory*)
+                          (tuatara.runtime:ignoring-errors-reported ("finding the directory ~a" *default-directory*)
                             (directory-pathname (expand-path *default-directory* :directory (uiop:getcwd)))))))
           (if (and named (eq :directory (path-kind named)))
               (progn (setf *default-directory-found* (list* *default-directory* now named))
@@ -1594,13 +1594,13 @@ TAG, the process and a counter."
   (format nil "~a/.tuatara-~a-~d-~d" (string-right-trim "/" (native directory)) tag
           (sb-posix:getpid) (sb-ext:atomic-incf (car **scratch-counter**))))
 
-(defun call-with-folder (directory function operation)
-  "Call FUNCTION with a descriptor of the folder DIRECTORY, open for making
+(defun call-with-directory (directory function operation)
+  "Call FUNCTION with a descriptor of the directory DIRECTORY, open for making
 entries in it and closed after; refused (WRITING-REFUSED, OPERATION said)
-when nothing may be written there, told by where the folder opened really
+when nothing may be written there, told by where the directory opened really
 is, so that nothing swapped for it meanwhile is written in."
   (let ((fd (handler-case (sb-posix:open (string-right-trim "/" (native directory))
-                                         ;; O_PATH: a folder you may write in but not list (-wx) too
+                                         ;; O_PATH: a directory you may write in but not list (-wx) too
                                          (logior +o-path+ +o-directory+ +o-cloexec+))
               (sb-posix:syscall-error (e) (fail "open" directory (sb-posix:syscall-errno e))))))
     (unwind-protect (progn (check-writing (string-right-trim "/" (native directory)) operation :fd fd)
@@ -1608,7 +1608,7 @@ is, so that nothing swapped for it meanwhile is written in."
       (sb-posix:close fd))))
 
 (defun unlink-entry-at (dirfd name)
-  "Take away the entry NAME (a string) of the folder open as DIRFD; true when it went."
+  "Take away the entry NAME (a string) of the directory open as DIRFD; true when it went."
   (with-octets-sap (sap (terminated-octets (tuatara.text:string-octets name)))
     (zerop (sb-alien:alien-funcall
             (sb-alien:extern-alien "unlinkat"
@@ -1617,8 +1617,8 @@ is, so that nothing swapped for it meanwhile is written in."
 
 (defun open-unnamed-at (dirfd mode)
   "A descriptor, open for reading and writing, for a new file with no name in
-the folder open as DIRFD, with permissions MODE (less the umask), gone when it
-is closed; NIL where the file system has no unnamed files or the folder may
+the directory open as DIRFD, with permissions MODE (less the umask), gone when it
+is closed; NIL where the file system has no unnamed files or the directory may
 not be written."
   (values (openat-octets dirfd (tuatara.text:string-octets ".") (logior +o-tmpfile+ sb-posix:o-rdwr +o-cloexec+) mode)))
 
@@ -1626,10 +1626,10 @@ not be written."
   "A descriptor for a new file with no name in DIRECTORY, open for reading and
 writing. Where the file system has no unnamed files (NFS, FUSE, SMB and others),
 a named one removed at once, which comes to the same. Refused
-\(WRITING-REFUSED) where nothing may be written, told by the folder opened."
+\(WRITING-REFUSED) where nothing may be written, told by the directory opened."
   (unless directory
     (refuse "This text is not written to a scratch file on disk (the text of an encrypted file): too large to work on in memory"))
-  (call-with-folder
+  (call-with-directory
    directory
    (lambda (dirfd)
      (or (open-unnamed-at dirfd #o600)
@@ -1657,10 +1657,10 @@ again and an unnamed file named: looked at the first time it is asked."
 with permissions MODE (less the umask), which NAME-UNNAMED-FILE can name once
 it is complete; NIL where the file system or the system cannot, for the caller
 to use a named file. A crash before it is named leaves nothing behind.
-Refused (WRITING-REFUSED) where nothing may be written, told by the folder
+Refused (WRITING-REFUSED) where nothing may be written, told by the directory
 opened."
   (when (proc-fd-available-p)
-    (call-with-folder directory
+    (call-with-directory directory
                       (lambda (dirfd) (open-unnamed-at dirfd mode))
                       "create a file in")))
 
@@ -1668,9 +1668,9 @@ opened."
   "Give file descriptor (FD), from OPEN-UNNAMED-FILE, a hidden name with TAG
 in DIRECTORY (the same directory it was made in) and return the name; NIL
 when the system will not. Refused (WRITING-REFUSED) where nothing may be
-written, told by the folder opened."
+written, told by the directory opened."
   (let ((name (scratch-name directory tag)))
-    (call-with-folder directory
+    (call-with-directory directory
                       (lambda (dirfd)
                         (and (zerop (sb-alien:alien-funcall
                                      (sb-alien:extern-alien "linkat"
@@ -1750,10 +1750,10 @@ would write, make, change or delete something (WRITING-REFUSAL)."))
 (defgeneric host-writing-refusal (host path &key dirfd fd)
   (:documentation "Where the editor writes nothing: why nothing may be written at PATH (a native
 name) where something is about to be written, made, renamed, changed or
-deleted, in words, or NIL when it may; DIRFD, a descriptor of the folder it is
+deleted, in words, or NIL when it may; DIRFD, a descriptor of the directory it is
 in, and file descriptor (FD), one of the thing itself, tell where that really
 is. With NIL for PATH, true when any place at all is refused. The evidence
-folders (*EVIDENCE-FOLDERS*) are refused so.")
+directories (*EVIDENCE-DIRECTORIES*) are refused so.")
   (:method ((host tuatara.runtime:host) path &key dirfd fd)
     (declare (ignore path dirfd fd))
     nil))
@@ -1762,7 +1762,7 @@ folders (*EVIDENCE-FOLDERS*) are refused so.")
   "Why nothing may be written at PATH (a native name, or a pathname), in
 words, or NIL when it may: as HOST-WRITING-REFUSAL says, by where PATH
 really leads, every link followed; with DIRFD, an open descriptor of the
-folder PATH is in, or file descriptor (FD), one of PATH itself, by where that
+directory PATH is in, or file descriptor (FD), one of PATH itself, by where that
 really is now, whatever names lead there."
   (and path (host-writing-refusal tuatara.runtime:*host* (native path) :dirfd dirfd :fd fd)))
 
@@ -1798,7 +1798,7 @@ and nothing it leads to; NIL when PATH is no link or it cannot be read."
     (and octets (tuatara.text:octets-string octets))))
 
 (defun fd-real-path (fd)
-  "Where the file or folder open as file descriptor (FD) really is, as a
+  "Where the file or directory open as file descriptor (FD) really is, as a
 native name with every link followed (as the system names it in
 /proc/self/fd); NIL when it does not say, or the file has no name any more."
   (let ((octets (link-octets +at-fdcwd+ (tuatara.text:string-octets (format nil "/proc/self/fd/~d" fd)))))
@@ -1816,49 +1816,49 @@ nothing in (WRITING-REFUSAL)."
        (not (writing-refusal path))))
 
 (define-setting *cache-directory* nil
-  "The folder Tuatara keeps its cache in.
+  "The directory Tuatara keeps its cache in.
 The cache holds files made again when they are gone: compiled packages,
 previews and pages drawn, copies of files opened outside, the debug log and
-stderr.log. A folder on an encrypted drive keeps what files you open leave
+stderr.log. A directory on an encrypted drive keeps what files you open leave
 there on it: make it yourself, for you alone (mkdir -m 700); while it is not
 there, its drive not mounted, nothing is kept in its place and the work that
 needs it says so.
 - nil: ~/.cache/tuatara/ ($XDG_CACHE_HOME/tuatara/), the standard place.
-- a folder's name: that folder."
-  :values (or (member nil) folder))
+- a directory's name: that directory."
+  :values (or (member nil) directory))
 
 (define-setting *state-directory* nil
-  "The folder Tuatara keeps what it remembers between sessions in.
+  "The directory Tuatara keeps what it remembers between sessions in.
 That is the files visited lately, places in them, the session, auto-saved
 text, the packages fetched. As *CACHE-DIRECTORY*, make it yourself; while it
 is not there nothing is kept in its place.
 - nil: ~/.local/state/tuatara/ ($XDG_STATE_HOME/tuatara/), the standard
   place.
-- a folder's name: that folder."
-  :values (or (member nil) folder))
+- a directory's name: that directory."
+  :values (or (member nil) directory))
 
 (defvar *directories-in-memory* '()
-  "The settings naming a folder that was not there when it was wanted
-\(CHOSEN-DIRECTORY), each as (SETTING NAME IN-MEMORY VALUE): the folder's
-NAME, the folder in memory used in its place, and the setting's VALUE then.
+  "The settings naming a directory that was not there when it was wanted
+\(CHOSEN-DIRECTORY), each as (SETTING NAME IN-MEMORY VALUE): the directory's
+NAME, the directory in memory used in its place, and the setting's VALUE then.
 One whose setting has been changed since counts no more.")
 
 (defun directory-in-memory-p (setting)
-  "True while the folder the setting SETTING (a symbol) names is kept in memory
+  "True while the directory the setting SETTING (a symbol) names is kept in memory
 for want of its drive (CHOSEN-DIRECTORY): the setting has not been changed
 since."
   (let ((entry (assoc setting *directories-in-memory*)))
     (and entry (eq (fourth entry) (symbol-value setting)))))
 
 (defun chosen-directory (setting standard)
-  "The folder the setting SETTING (a symbol) names, as a pathname, when it
-names one, else STANDARD, made if needed, for you alone. A folder named must
+  "The directory the setting SETTING (a symbol) names, as a pathname, when it
+names one, else STANDARD, made if needed, for you alone. A directory named must
 be there already: while it is not, its drive not mounted, one of the same
 name in memory ($XDG_RUNTIME_DIR/tuatara/, gone when the computer stops) is
 used in its place and noted in *DIRECTORIES-IN-MEMORY*, so that nothing kept
-for it lands on another drive; the note goes once the folder is there or the
+for it lands on another drive; the note goes once the directory is there or the
 setting is changed. A FILE-SYSTEM-ERROR when there is no such memory either,
-or when the folder is one nothing may be written in (WRITING-REFUSED)."
+or when the directory is one nothing may be written in (WRITING-REFUSED)."
   (let ((chosen (symbol-value setting)))
     (flet ((forget-in-memory ()
              (when (assoc setting *directories-in-memory*)
@@ -1885,7 +1885,7 @@ or when the folder is one nothing may be written in (WRITING-REFUSED)."
                     (directory-pathname in-memory)))))))))
 
 (defun directories-in-memory-words ()
-  "What is said once the init file is read of the folders it named that are
+  "What is said once the init file is read of the directories it named that are
 not there (*DIRECTORIES-IN-MEMORY*), a sentence each; NIL when all are."
   (loop for (setting name in-memory) in (reverse *directories-in-memory*)
         when (directory-in-memory-p setting)
@@ -1924,7 +1924,7 @@ says WHAT the session is (the window, the terminal), its process and when it
 began. NIL when the log cannot be made. A daemon's log is named for it
 \(daemon-NAME.log)."
   (setf *session-log-words* what)
-  (let ((directory (tuatara.runtime:ignoring-errors-reported ("finding the cache folder") (cache-directory))))
+  (let ((directory (tuatara.runtime:ignoring-errors-reported ("finding the cache directory") (cache-directory))))
     (when directory
       (let ((fd (tuatara.runtime:ignoring-errors-reported ("opening the session log in ~a" directory)
                   (tuatara.runtime:open-rotated-log (native (merge-pathnames name directory)) :rotate t))))
@@ -1939,10 +1939,10 @@ began. NIL when the log cannot be made. A daemon's log is named for it
           fd)))))
 
 (defun move-session-log ()
-  "When standard error goes to stderr.log in the standard cache folder and
+  "When standard error goes to stderr.log in the standard cache directory and
 *CACHE-DIRECTORY* names another, send it to a new stderr.log there instead.
-Take the standard folder's logs away when no other session writes them, and
-the folder when it is left empty. What the session wrote before its init file
+Take the standard directory's logs away when no other session writes them, and
+the directory when it is left empty. What the session wrote before its init file
 was read was only the line saying what it is. Called once the init file is
 read."
   (let ((standard (native (uiop:xdg-cache-home "tuatara/stderr.log"))))
@@ -1955,7 +1955,7 @@ read."
           (unless (tuatara.runtime:log-in-use-p standard)
             (dolist (n '("" ".1" ".2" ".3"))
               (handler-case (sb-posix:unlink (concatenate 'string standard n)) (sb-posix:syscall-error () nil)))
-            ;; the folder too, when nothing else is in it
+            ;; the directory too, when nothing else is in it
             (handler-case (sb-posix:rmdir (native (uiop:xdg-cache-home "tuatara/")))
               (sb-posix:syscall-error () nil))))))))
 
@@ -1976,7 +1976,7 @@ less the umask when it is new. It is written into a new file beside it,
 renamed over it once written and put on disk, so that the file is always
 whole, the old contents or the new, after a power cut too. The new file is
 taken away when it cannot be written whole (a full disk). Refused
-\(WRITING-REFUSED) where nothing may be written, told by the folder opened, in
+\(WRITING-REFUSED) where nothing may be written, told by the directory opened, in
 which the new file is made and renamed."
   (let ((name (native path))
         (octets (if (stringp contents) (tuatara.text:string-octets contents) contents)))
@@ -2040,7 +2040,7 @@ by you alone and written by nothing again (0400) as standard. An error, and
 nothing written, when something is at PATH already, a link too; the new file
 taken away when it cannot be written whole (a full disk). With SYNC, it is
 on the disk before this returns (fsync). Returns PATH. Refused
-\(WRITING-REFUSED) where nothing may be written, told by the folder opened,
+\(WRITING-REFUSED) where nothing may be written, told by the directory opened,
 in which the file is made."
   (let ((name (native path))
         (octets (if (stringp contents) (tuatara.text:string-octets contents) (coerce contents 'tuatara.text:octets))))
@@ -2118,7 +2118,7 @@ none loses what another wrote meanwhile. Returns what FUNCTION returns. It
 returns NIL, FUNCTION not called, when another holds the lock for more than
 WAIT seconds or the lock file cannot be made, so that the editor is never held
 up. It does so too in a place nothing may be written in (WRITING-REFUSAL),
-told by the folder opened."
+told by the directory opened."
   (let ((fd (tuatara.runtime:ignoring-errors-reported ("making the lock file of ~a" path)
               (call-with-parent (concatenate 'string (native path) ".lock")
                                 (lambda (dirfd own)

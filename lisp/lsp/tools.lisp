@@ -137,31 +137,31 @@ NIL for none."
   "The names of the files that mark the top of a project in LANGUAGE (Cargo.toml for Rust)."
   (getf (language-tools language) :roots))
 
-(defparameter *brought-language-servers-folder* ".local/share/tuatara/language-servers/"
-  "Where, from the home folder, the language servers brought to this machine
-by \\[server-bring-language-server] are kept: a folder of the editor's own,
+(defparameter *brought-language-servers-directory* ".local/share/tuatara/language-servers/"
+  "Where, from the home directory, the language servers brought to this machine
+by \\[server-bring-language-server] are kept: a directory of the editor's own,
 looked in after the PATH (BROUGHT-LANGUAGE-SERVER), so that nothing of yours
 is hidden and the commands ssh runs need no PATH of their own.")
 
 (defun language-server-program-name-p (name)
-  "True when NAME can name a language server's program in that folder: one
+  "True when NAME can name a language server's program in that directory: one
 to 64 ASCII letters, digits, ., _ and -, not starting with . or -."
   (and (stringp name) (<= 1 (length name) 64)
        (not (find (char name 0) ".-"))
        (every (lambda (c) (and (< (char-code c) 128) (or (alphanumericp c) (find c "._-")))) name)))
 
 (defun brought-language-server (name)
-  "The full name of the program NAME in *BROUGHT-LANGUAGE-SERVERS-FOLDER*, or
-NIL when it is not there, or that folder or the file is a link, another's, or
+  "The full name of the program NAME in *BROUGHT-LANGUAGE-SERVERS-DIRECTORY*, or
+NIL when it is not there, or that directory or the file is a link, another's, or
 writable by anyone else."
   (when (language-server-program-name-p name)
-    (let* ((folder (tuatara.io:path-join (tuatara.io:home-directory) *brought-language-servers-folder*))
-           (path (tuatara.io:path-join folder name)))
+    (let* ((directory (tuatara.io:path-join (tuatara.io:home-directory) *brought-language-servers-directory*))
+           (path (tuatara.io:path-join directory name)))
       (flet ((yours (path kind)
                (let ((stamp (tuatara.io:path-stamp path :follow nil :failure nil)))
                  (and stamp (eq kind (tuatara.io:stamp-kind stamp)) (= (tuatara.io:stamp-uid stamp) (sb-posix:getuid))
                       (not (logtest (tuatara.io:stamp-mode stamp) #o022))))))
-        (and (yours folder :directory) (yours path :regular) (tuatara.io:find-program path))))))
+        (and (yours directory :directory) (yours path :regular) (tuatara.io:find-program path))))))
 
 (defun installed-program (command)
   "The program of COMMAND (a list of a program and its arguments) as found on
@@ -190,7 +190,7 @@ servers likewise, joined by commas, brought after one brought here by
   (flet ((word (name command)
            (let ((found (installed-program command)))
              (format nil "~a~:[~; ✓~]~:[~; brought~]" name found
-                     (and found (search *brought-language-servers-folder* found))))))
+                     (and found (search *brought-language-servers-directory* found))))))
     (let ((formatter (language-formatter-command language)))
       (values (and formatter (word (tuatara.io:native-file-name (first formatter)) formatter))
               (let ((servers (language-server-commands language)))

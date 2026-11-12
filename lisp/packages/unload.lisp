@@ -18,11 +18,11 @@ next start, or now by \\[package-load]. True when it had Lisp packages of its
 own to take out; what a package defines in another's stays until Tuatara
 ends."
   (let ((own (remove-if-not #'package-name (cdr (assoc name *package-code* :test #'string=))))
-        (folder (second (assoc name *loaded-package-folders* :test #'string=))))
-    (forget-package-code own folder)
+        (directory (second (assoc name *loaded-package-directories* :test #'string=))))
+    (forget-package-code own directory)
     (setf *package-code* (remove name *package-code* :key #'car :test #'string=)
           *loaded-packages* (remove name *loaded-packages* :test #'string=)
-          *loaded-package-folders* (remove name *loaded-package-folders* :key #'first :test #'string=))
+          *loaded-package-directories* (remove name *loaded-package-directories* :key #'first :test #'string=))
     (setf *package-needs* (remove name *package-needs* :key #'car :test #'string=))
     (pushnew name *unloaded-packages* :test #'string=)
     (tuatara.runtime:debug-report :package "~a unloaded, ~d Lisp package~:p of its own deleted" name (length own))
@@ -130,14 +130,14 @@ the one on the line."
 
 (defun package-deletion-entry (name)
   "What deleting the package NAME deletes, as package-remove-unused's work
-takes it, (FOLDER WORDS OCTETS NAME), OCTETS 0 until measured: the folder its
-versions fetched are kept in, or for a folder of your disk the folder its
-files are compiled into, the folder of yours left as it is."
+takes it, (DIRECTORY WORDS OCTETS NAME), OCTETS 0 until measured: the directory its
+versions fetched are kept in, or for a directory of your disk the directory its
+files are compiled into, the directory of yours left as it is."
   (let ((where (package-where (second (declared-package name)))))
     (if (local-source-p where)
-        (list (package-compiled-folder (package-folder-of name where nil))
+        (list (package-compiled-directory (package-directory-of name where nil))
               (format nil "~a, its compiled files (~a stays)" name (abbreviated-path where)) 0 name)
-        (list (package-kept-folder where name) (format nil "~a from ~a" name where) 0 name))))
+        (list (package-kept-directory where name) (format nil "~a from ~a" name where) 0 name))))
 
 (defun start-packages-delete (names)
   "Measure in the background what deleting the packages NAMES deletes
@@ -146,17 +146,17 @@ files are compiled into, the folder of yours left as it is."
     (when names
       (start-sweep-job (make-package-sweep :look (mapcar #'package-deletion-entry names) names)
                        (lambda (job)
-                         (setf (package-sweep-folders job)
-                               (loop for (folder words nil name) in (package-sweep-folders job)
-                                     collect (list folder words (sweep-entry-octets folder) name))))))))
+                         (setf (package-sweep-directories job)
+                               (loop for (directory words nil name) in (package-sweep-directories job)
+                                     collect (list directory words (sweep-entry-octets directory) name))))))))
 
-(defun packages-delete-ask (names folders)
-  "Ask once whether to unload, remove and delete the packages NAMES, FOLDERS
-\(each (FOLDER WORDS OCTETS NAME)) what is deleted of them, with their total;
-on yes, remove each (REMOVE-PACKAGE), forget that one of a folder of yours
-was let load, and delete the folders one by one in the background, each
+(defun packages-delete-ask (names directories)
+  "Ask once whether to unload, remove and delete the packages NAMES, DIRECTORIES
+\(each (DIRECTORY WORDS OCTETS NAME)) what is deleted of them, with their total;
+on yes, remove each (REMOVE-PACKAGE), forget that one of a directory of yours
+was let load, and delete the directories one by one in the background, each
 looked at again first (SWEEP-NEXT)."
-  (let ((total (reduce #'+ folders :key #'third)))
+  (let ((total (reduce #'+ directories :key #'third)))
     (if (yes-or-no-p* (format nil "~a, ~a?" (list-question "Unload, remove and delete" "package" names)
                               (tuatara.io:octets-words total)))
         (let ((names (packages-not-busy names)))
@@ -165,16 +165,17 @@ looked at again first (SWEEP-NEXT)."
             (destructuring-bind (name source version &rest more) (declared-package name)
               (declare (ignore more))
               (state-list-drop *fetched-packages* (list (package-key name (package-where source) version)))))
-          (sweep-next (remove-if-not (lambda (entry) (member (fourth entry) names :test #'string=)) folders) 0 0 names))
+          (sweep-next (remove-if-not (lambda (entry) (member (fourth entry) names :test #'string=)) directories) 0 0
+                      names))
         (message "Nothing deleted"))))
 
 (define-command package-delete ()
   "Unload a package (\\[package-unload]), remove it from the packages loaded
 \(\\[package-remove]), and delete what Tuatara keeps of it: the versions of it
-fetched and their compiled files, or for a folder of your disk its compiled
-files alone, the folder of yours left as it is. What would go is measured in
+fetched and their compiled files, or for a directory of your disk its compiled
+files alone, the directory of yours left as it is. What would go is measured in
 the background and asked once, with its size; nothing is deleted without
-yes, and each folder is looked at again just before it is deleted. Who
+yes, and each directory is looked at again just before it is deleted. Who
 signed its source's versions is still remembered. \\[package-load] fetches it
 again. In the package manager (\\[package-manager]) it deletes the packages
 marked (>), or the one on the line, as \\<packages-mode>\\[list-delete-marked] does."

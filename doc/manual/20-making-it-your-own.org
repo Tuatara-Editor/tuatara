@@ -23,7 +23,7 @@ you copy, with a word or two changed.
 
 ** The init file
 
-The init file is a plain text file called =init.lisp= in a folder of its own,
+The init file is a plain text file called =init.lisp= in a directory of its own,
 =~/.config/tuatara/=. The first time Tuatara runs and finds no file there, it
 writes one for you. The message =Wrote a starter init file= says so. After
 that Tuatara never writes it again. It is yours.
@@ -78,16 +78,16 @@ press ~RET~.
 
 Tuatara keeps what it makes in three places, each with a different job. The
 division follows the standard that most programs on Linux follow, so a tool
-that backs up or cleans your home folder already knows about them.
+that backs up or cleans your home directory already knows about them.
 
-- The configuration folder, =~/.config/tuatara/=, holds what you wrote or
+- The configuration directory, =~/.config/tuatara/=, holds what you wrote or
   chose. This is the init file, your snippets, your note and export
   templates, and your logos. If you lose it you lose your choices.
-- The state folder, =~/.local/state/tuatara/=, holds what Tuatara
+- The state directory, =~/.local/state/tuatara/=, holds what Tuatara
   remembers about how you work: the files you opened lately, where you were
   in each, your bookmarks, the session, and the copies of unsaved changes.
   If you lose it nothing you wrote is gone, but Tuatara forgets its habits.
-- The cache folder, =~/.cache/tuatara/=, holds things Tuatara can make
+- The cache directory, =~/.cache/tuatara/=, holds things Tuatara can make
   again: previews, pages drawn from documents, copies of files opened
   safely, compiled packages and the log of what happened. You can delete it
   at any time.
@@ -95,14 +95,14 @@ that backs up or cleans your home folder already knows about them.
 Fetched packages are kept in a fourth place, =~/.local/share/tuatara/=,
 described in chapter 19.
 
-Figure 20.1 shows the folders and what each holds.
+Figure 20.1 shows the directories and what each holds.
 
-#+caption: Figure 20.1. The folders Tuatara uses, and what is in each.
+#+caption: Figure 20.1. The directories Tuatara uses, and what is in each.
 #+name: fig-where-files-live
 #+begin_example
  ~/.config/tuatara/            what you wrote
    init.lisp                     your settings and keys
-   snippets/                     your snippets, a folder for each mode
+   snippets/                     your snippets, a directory for each mode
    note-templates/ ...           templates and logos for notes and exports
    logos/
 
@@ -119,20 +119,20 @@ Figure 20.1 shows the folders and what each holds.
 #+end_example
 
 If your computer sets =XDG_CONFIG_HOME=, =XDG_STATE_HOME=, =XDG_CACHE_HOME= or
-=XDG_DATA_HOME=, Tuatara uses a folder called =tuatara= inside each of them
-instead of the ones in the figure. You can also set the folders yourself,
+=XDG_DATA_HOME=, Tuatara uses a directory called =tuatara= inside each of them
+instead of the ones in the figure. You can also set the directories yourself,
 which is useful when you keep them on an encrypted drive. The three settings
-below do it. Make the folder first, with =mkdir -m 700=, so that only you can
-read it. While the folder is not there, because the drive is not mounted,
+below do it. Make the directory first, with =mkdir -m 700=, so that only you can
+read it. While the directory is not there, because the drive is not mounted,
 Tuatara keeps those things in memory and says so.
 
 #+begin_src lisp
 (setf *state-directory* "/run/media/aroha/Data/tuatara/state/")
 #+end_src
 
-=*cache-directory*= is the same for the cache folder. It is =nil=, which
+=*cache-directory*= is the same for the cache directory. It is =nil=, which
 means =~/.cache/tuatara/= (or =tuatara= inside =XDG_CACHE_HOME=), or the name
-of a folder. Files you open from outside leave copies in the cache, so a
+of a directory. Files you open from outside leave copies in the cache, so a
 cache on an encrypted drive keeps those copies off the plain disk:
 
 #+begin_src lisp
@@ -141,28 +141,28 @@ cache on an encrypted drive keeps those copies off the plain disk:
 
 *** What to copy to another computer
 
-To have your Tuatara on another computer, copy the configuration folder,
+To have your Tuatara on another computer, copy the configuration directory,
 =~/.config/tuatara/=, and nothing else. It holds the init file and everything
 you wrote. Packages are fetched again on the new computer when the init file
 asks for them.
 
-Copy the state folder as well if you want the new computer to know your
+Copy the state directory as well if you want the new computer to know your
 recent files and bookmarks. Do not copy the cache. It is rebuilt as you
 work, and parts of it are only right for the computer that made them.
 
-Paths in the init file, such as a folder for your journal, must exist on
+Paths in the init file, such as a directory for your journal, must exist on
 the new computer too.
 
-*** Settings for the folders
+*** Settings for the directories
 
 #+table: settings *state-directory* *cache-directory* *packages-directory*
 
-#+begin_try Try it, with the folders
+#+begin_try Try it, with the directories
 1. In a terminal, type =ls ~/.config/tuatara/ ~/.local/state/tuatara/=. The
    first list holds =init.lisp=. The second holds files such as =bookmarks=
-   and =recent-files=, and the folder =auto-save=.
+   and =recent-files=, and the directory =auto-save=.
 2. In Tuatara, press ~C-h v~, type =*state-directory*= and press ~RET~. The
-   value is =NIL=, which means the standard folder of the figure.
+   value is =NIL=, which means the standard directory of the figure.
 #+end_try
 
 ** Changing a setting
@@ -531,7 +531,7 @@ and press ~TAB~, and the text goes in with the cursor on the first place.
 Chapter 13 tells all about the places. This section is about making a snippet
 that no one else has, for something you write often.
 
-A snippet is a file. It lives in =~/.config/tuatara/snippets/=, in a folder
+A snippet is a file. It lives in =~/.config/tuatara/snippets/=, in a directory
 named for the mode that it is for. =fundamental-mode= is for every buffer.
 =org-mode= is for Org notes. The file starts with three lines: the name, the
 key you type, and a line with two dashes. Everything after the dashes is the
@@ -541,8 +541,8 @@ with text you can type over. =$AUTHOR= is your name, and =$CURRENT_DATE=,
 =$CURRENT_MONTH= and =$CURRENT_YEAR= are today's date.
 
 ~C-c y~ (=insert-snippet=) chooses one from a list by name. ~M-x copy-snippet~
-copies one of Tuatara's own into your folder, so that you can change it. Yours
-then takes its place.
+copies one of Tuatara's own into your directory, so that you can change it.
+Yours then takes its place.
 
 #+begin_try Try it, with a snippet for a letter's greeting
 1. In a terminal, type these two commands.
@@ -565,8 +565,9 @@ Tuatara can show the same text in several ways without changing a character
 of it: the line the cursor is on painted across the window, long lines
 wrapped onto several rows, a line down the window at the fill column, the
 column the cursor is in painted down the window, the text in a column in the
-middle of the window, and the characters that draw nothing shown as their
-codes. Each is a mode you switch on or off. They all work the same way.
+middle of the window, the characters that draw nothing shown as their
+codes, and the pictures an Org note links to drawn among its lines. Each is
+a mode you switch on or off. They all work the same way.
 
 A command with =-mode= at the end switches the thing for the buffer you are
 in. That buffer keeps its choice. Most have a key under ~C-x T~, for "toggle".
@@ -584,7 +585,7 @@ switches it off.
 The commands and what they show, with the keys they have, are in the table
 below. Some of them are shown in other chapters. Here they are together.
 
-#+table: commands hl-line-mode cursor-column-mode soft-wrap-mode visual-line-mode centred-text-mode invisible-characters-mode text-direction-mode global-hl-line-mode global-soft-wrap-mode global-visual-line-mode global-centred-text-mode global-cursor-column-mode global-invisible-characters-mode global-text-direction-mode
+#+table: commands hl-line-mode cursor-column-mode soft-wrap-mode visual-line-mode centred-text-mode invisible-characters-mode text-direction-mode inline-pictures-mode global-hl-line-mode global-soft-wrap-mode global-visual-line-mode global-centred-text-mode global-cursor-column-mode global-invisible-characters-mode global-text-direction-mode global-inline-pictures-mode
 
 Text that is written from right to left, such as Hebrew and Arabic, is
 shown in the order it is read. =text-direction-mode= is for the rare text
@@ -639,8 +640,12 @@ The pairs, each with what it shows:
   characters in the order stored. A file opened safely is shown in the order
   stored. =(setf *text-direction-modes* '((csv-mode . nil)))= keeps CSV
   files in the order stored.
+- =*global-inline-pictures-mode*= and =*inline-pictures-modes*= draw the
+  pictures an Org note links to among its lines, as chapter 14 describes.
+  Off unless set, and never in a file opened safely:
+  =(setf *inline-pictures-modes* '((org-mode . t)))=.
 
-#+table: settings *global-hl-line-mode* *hl-line-modes* *global-soft-wrap-mode* *soft-wrap-modes* *soft-wrap-at-fill-column* *global-visual-line-mode* *visual-line-modes* *global-centred-text-mode* *centred-text-modes* *centred-text-width* *global-cursor-column-mode* *cursor-column-modes* *global-invisible-characters-mode* *invisible-characters-modes* *global-text-direction-mode* *text-direction-modes*
+#+table: settings *global-hl-line-mode* *hl-line-modes* *global-soft-wrap-mode* *soft-wrap-modes* *soft-wrap-at-fill-column* *global-visual-line-mode* *visual-line-modes* *global-centred-text-mode* *centred-text-modes* *centred-text-width* *global-cursor-column-mode* *cursor-column-modes* *global-invisible-characters-mode* *invisible-characters-modes* *global-text-direction-mode* *text-direction-modes* *global-inline-pictures-mode* *inline-pictures-modes*
 
 The faces paint the line, the column and the characters. The first three
 are the same colour unless you set them apart.
@@ -703,8 +708,8 @@ which is quicker if you have a large agenda:
 
 A journal is a note for each day: what you did, what you thought, what to
 remember. ~C-x n j~ opens today's entry, or makes it when there is none. A new
-entry is a file with a formatted name (chapter 9), in a folder called
-=journal= inside the folder of your notes, with the day as its title, such as
+entry is a file with a formatted name (chapter 9), in a directory called
+=journal= inside the directory of your notes, with the day as its title, such as
 =Friday 20 March 2026=, and the word =journal= among its keywords. It is saved
 at once, so there is a file to find later. ~M-x journal-new-entry~ always
 makes a new one, even when there is one for today. With ~C-u~ before it, it
@@ -719,7 +724,7 @@ The journal is a set of ordinary notes, so you can search them, link to
 them and export them like any others. Everything about how they are named
 and written is a setting.
 
-The folder is =*journal-directory*=. The word that marks an entry, so that
+The directory is =*journal-directory*=. The word that marks an entry, so that
 entries can be told from your other notes, is =*journal-keyword*=. An entry
 lasts a day as standard. =*journal-interval*= makes it a week, a month or a
 year. The kind of file is =*journal-file-type*=, one of =:org=, =:markdown= or
@@ -797,7 +802,7 @@ below say how the list is drawn. In a buffer you can also have the entries
 of a directory listed as you type a path, after the slash.
 
 =*complete-paths*= is =t= by default: type =~/notes/= and the entries of that
-folder are listed beside the cursor. Typing narrows the list and ~RET~ puts
+directory are listed beside the cursor. Typing narrows the list and ~RET~ puts
 the chosen one in. With =nil= nothing is listed. =*complete-paths-modes*=
 says it for kinds of buffer, in the form of the pairs of the section "How
 lines are shown", and wins over the setting. To list paths in code but not in

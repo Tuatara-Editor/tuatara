@@ -69,7 +69,7 @@ run), no space or control character in it."
        (not (uiop:string-prefix-p "ext::" (string-downcase address)))))
 
 (defun git-read-address (prompt &optional (initial ""))
-  "Ask with PROMPT for a remote's address (INITIAL to begin with), a folder
+  "Ask with PROMPT for a remote's address (INITIAL to begin with), a directory
 on this computer written from ~/ made whole; NIL, said so, when it could not
 be given to git (GIT-ADDRESS-P)."
   (let* ((address (string-trim '(#\Space #\Tab) (read-string prompt :initial initial)))

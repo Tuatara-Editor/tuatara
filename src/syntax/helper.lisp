@@ -29,42 +29,42 @@ grammars; when empty, grammars/ beside the program, then the source tree's
 build/grammars/.")
 
 (defun user-grammar-directory ()
-  "The folder of the grammars you add yourself: tuatara/grammars/ in your data
-folder ($XDG_DATA_HOME, ~/.local/share/ unless set), each NAME.so with its
+  "The directory of the grammars you add yourself: tuatara/grammars/ in your data
+directory ($XDG_DATA_HOME, ~/.local/share/ unless set), each NAME.so with its
 rules in rules/, indents/, textobjects/, injections/, locals/ and tags/ beside
 it, as Tuatara's own syntax/ has them. Grammars are never loaded from it:
 turned on, one is copied into USER-GRAMMAR-STORE."
   (uiop:xdg-data-home "tuatara/grammars/"))
 
 (sb-ext:defglobal **store-refused** nil
-  "Why the folder of grammars you added and turned on cannot be used, in
+  "Why the directory of grammars you added and turned on cannot be used, in
 words, or NIL (USER-GRAMMAR-STORE).")
 
 (defun store-refused-why ()
-  "Why the folder of grammars you added and turned on cannot be used, in
+  "Why the directory of grammars you added and turned on cannot be used, in
 words, as USER-GRAMMAR-STORE last found; NIL when it can."
   **store-refused**)
 
 (defun user-grammar-store ()
-  "The folder the grammars you added and turned on are kept in, as they were
-turned on: grammar-store/ in Tuatara's state folder, made if needed, for you
+  "The directory the grammars you added and turned on are kept in, as they were
+turned on: grammar-store/ in Tuatara's state directory, made if needed, for you
 alone. The program running grammars loads them from here. NIL, with why in
-**STORE-REFUSED**, when what is there is a link, no folder, or someone
-else's; a folder of yours others may read or write is made yours alone."
-  (let* ((folder (merge-pathnames "grammar-store/" (tuatara.io:state-directory)))
-         (name (string-right-trim "/" (uiop:native-namestring folder)))
+**STORE-REFUSED**, when what is there is a link, no directory, or someone
+else's; a directory of yours others may read or write is made yours alone."
+  (let* ((directory (merge-pathnames "grammar-store/" (tuatara.io:state-directory)))
+         (name (string-right-trim "/" (uiop:native-namestring directory)))
          (stat (handler-case (sb-posix:lstat name) (sb-posix:syscall-error () nil))))
     (unless stat
       (handler-case (sb-posix:mkdir name #o700) (sb-posix:syscall-error () nil))
       (setf stat (handler-case (sb-posix:lstat name) (sb-posix:syscall-error () nil))))
     (let ((why (cond ((null stat) "it cannot be made")
-                     ((/= (logand (sb-posix:stat-mode stat) sb-posix:s-ifmt) sb-posix:s-ifdir) "it is a link or no folder")
+                     ((/= (logand (sb-posix:stat-mode stat) sb-posix:s-ifmt) sb-posix:s-ifdir) "it is a link or no directory")
                      ((/= (sb-posix:stat-uid stat) (sb-posix:getuid)) "it is someone else's"))))
       (setf **store-refused** (and why (format nil "~a: ~a" name why)))
       (unless why
         (when (/= (logand (sb-posix:stat-mode stat) #o777) #o700)
           (sb-posix:chmod name #o700))
-        folder))))
+        directory))))
 
 (defun own-grammar-directories ()
   "The directories of Tuatara's own grammars and the program that runs them:

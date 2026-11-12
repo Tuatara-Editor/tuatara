@@ -159,7 +159,7 @@
           (tuatara.syntax:delete-tree tree)
           (tuatara.syntax:delete-parser parser))))))
 
-(define-test (syntax colours-on-screen)
+(define-modal-test (syntax colours-on-screen)
   (let ((f (colour-session "" (format nil "fn main() {~%    let x = 1; // one~%}~%") "rs")))
     (is equal '((0 2 :keyword) (3 7 :function) (7 9 :punctuation.bracket) (10 11 :punctuation.bracket))
         (aref (tuatara.frontend.fake:fake-spans f) 0))
@@ -258,7 +258,7 @@
                  (multiple-value-list (tuatara.defaults::mode-colouring (make-instance 'tuatara.defaults::org-mode)))))
         (unset)))))
 
-(define-test (syntax c-language)
+(define-modal-test (syntax c-language)
   ;; .c and .h files are C
   (is eq 'tuatara.defaults::c-mode (tuatara.modes:mode-for-file #p"/src/main.c"))
   (is eq 'tuatara.defaults::c-mode (tuatara.modes:mode-for-file #p"/src/main.h"))

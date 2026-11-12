@@ -67,7 +67,7 @@ hooks, the minibuffer core, the modal state slot.")
            #:client-frames #:client-buffers #:client-sees-buffer-p #:buffer-clients #:join-client
            #:keep-for-every-client #:buffer-for-every-client-p #:client-own-buffer-p
            #:*buffers-for-every-client* #:*client-end-functions* #:editor-idle-frontend #:idle-frame-p
-           #:keep-idle-frame #:client-folder-words #:*client-variables* #:client-variable-p #:client-far-p
+           #:keep-idle-frame #:client-group-words #:*client-variables* #:client-variable-p #:client-far-p
            #:*buffers-asked-about* #:buffer-held-by-question-p
            #:select-frame #:call-in-frame #:*display-generation* #:editor-job-waker #:buffer-window #:buffer-windows
            #:editor-selections #:one-window-p #:fit-windows #:select-window #:split-window

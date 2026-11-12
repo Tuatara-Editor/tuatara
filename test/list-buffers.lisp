@@ -125,7 +125,7 @@ is filled again only when the jobs have changed.")
       (tuatara.defaults::list-question "Copy" "file" '("a" "b") :the nil :where "in 2 directories" :after "to:"))
   (is string= "a" (tuatara.defaults::list-question nil "file" '("a") :the nil)))
 
-(define-test (list-buffers buffers-refreshed-with-marks)
+(define-modal-test (list-buffers buffers-refreshed-with-marks)
   (dolist (b (copy-list tuatara.buffer:*buffers*))
     (unless (string= (tuatara.buffer:buffer-name b) "*scratch*") (tuatara.buffer:kill-buffer b)))
   (let ((one (tuatara.buffer:make-buffer "one" :text "1"))
@@ -152,7 +152,7 @@ is filled again only when the jobs have changed.")
       (dolist (b (list one two)) (when (tuatara.command:live-buffer-p b) (tuatara.buffer:kill-buffer b)))
       (let ((l (tuatara.buffer:find-buffer "*Buffers*"))) (when l (tuatara.buffer:kill-buffer l))))))
 
-(define-test (list-buffers buffers-follow-changes)
+(define-modal-test (list-buffers buffers-follow-changes)
   ;; *Buffers* shown in a window follows what another window does: a buffer changed shows *, its size
   (dolist (b (copy-list tuatara.buffer:*buffers*))
     (unless (string= (tuatara.buffer:buffer-name b) "*scratch*") (tuatara.buffer:kill-buffer b)))
@@ -170,7 +170,7 @@ is filled again only when the jobs have changed.")
       (when (tuatara.command:live-buffer-p notes) (tuatara.buffer:kill-buffer notes))
       (let ((l (tuatara.buffer:find-buffer "*Buffers*"))) (when l (tuatara.buffer:kill-buffer l))))))
 
-(define-test (list-buffers jobs-filled-when-changed)
+(define-modal-test (list-buffers jobs-filled-when-changed)
   ;; *Jobs* shown is not filled again while nothing changes
   (let ((versions '()))
     (flet ((note () (push (tuatara.buffer:buffer-version (tuatara.buffer:find-buffer "*Jobs*")) versions)))
@@ -223,7 +223,7 @@ is filled again only when the jobs have changed.")
 (defvar *list-test-value* 1
   "A value the help shown in a test describes, changed while it is shown.")
 
-(define-test (list-buffers help-made-again)
+(define-modal-test (list-buffers help-made-again)
   ;; help made from what it describes is made again by r, from what that is now; q leaves it
   (setf *list-test-value* 1)
   (multiple-value-bind (f editor)
@@ -247,7 +247,7 @@ is filled again only when the jobs have changed.")
         (is equal '((8 9 :help-key-binding) (11 14 :help-key-binding) (16 23 :help-key-binding))
             (aref spans row))))))
 
-(define-test (list-buffers agenda-made-again)
+(define-modal-test (list-buffers agenda-made-again)
   (with-test-directory (dir)
     (let* ((source (asdf:system-relative-pathname :tuatara "test/org/agenda/"))
            (tasks (merge-pathnames "tasks.org" dir)))

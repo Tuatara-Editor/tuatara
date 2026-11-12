@@ -149,7 +149,7 @@ time:
 - a change at every row of a tall rectangle or at a great many cursors
 - a save that takes more than a moment
 - a count of words (~M-=~) and a checksum of a file (~M-x sha256-sum~)
-- copying, moving and deleting files from a folder listing (chapter 10)
+- copying, moving and deleting files from a directory listing (chapter 10)
 - reading a file from another machine
 
 Other chapters describe these commands. What they share is told here: each

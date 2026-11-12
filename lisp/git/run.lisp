@@ -42,11 +42,11 @@ its working files (clean filters).")
 (defparameter *git-options-taking-values*
   '("-c" "-C" "--git-dir" "--work-tree" "--namespace" "--super-prefix" "--config-env" "--attr-source")
   "The options before git's command that take the next word as their value
-when it is not written after an = (-C FOLDER).")
+when it is not written after an = (-C DIRECTORY).")
 
 (defun git-command-words (arguments)
   "ARGUMENTS of git with the options before the command (-c NAME=VALUE, -C
-FOLDER, --git-dir DIR, --no-pager and the like) left out: the command, then
+DIRECTORY, --git-dir DIR, --no-pager and the like) left out: the command, then
 its own."
   (loop while (and arguments (uiop:string-prefix-p "-" (first arguments)))
         do (setf arguments (if (member (first arguments) *git-options-taking-values* :test #'string=)
@@ -65,9 +65,9 @@ the next word, each time it is given."
 (defun git-places (directory arguments environment)
   "Where git run with ARGUMENTS in DIRECTORY and ENVIRONMENT (NAME=VALUE
 strings, the first of a name the one in force, as a program reads them) works,
-as four values, native names. The first is the folder it runs in, each -C taken
-in turn. The second is the repository folder --git-dir or GIT_DIR names, or NIL.
-The third is the working folder --work-tree or GIT_WORK_TREE names, or NIL. The
+as four values, native names. The first is the directory it runs in, each -C taken
+in turn. The second is the repository directory --git-dir or GIT_DIR names, or NIL.
+The third is the working directory --work-tree or GIT_WORK_TREE names, or NIL. The
 fourth is a list of the other places its variables have it write in
 \(GIT_INDEX_FILE, GIT_OBJECT_DIRECTORY, GIT_COMMON_DIR)."
   (let ((here (tuatara.io:native directory)) (git-dir nil) (work-tree nil))
@@ -93,10 +93,10 @@ fourth is a list of the other places its variables have it write in
                       when (and value (plusp (length value))) collect (from-here value)))))))
 
 (defun git-output-paths (words)
-  "The files and folders git's command WORDS (GIT-COMMAND-WORDS) writes
+  "The files and directories git's command WORDS (GIT-COMMAND-WORDS) writes
 elsewhere than in the repository: --output and --output-directory, -o of
 format-patch and archive, config's --file or -f, the bundle bundle create
-makes, the folder worktree add, move and remove name, the folder clone,
+makes, the directory worktree add, move and remove name, the directory clone,
 init and submodule add make. As written: relative ones are from where git
 runs."
   (destructuring-bind (&optional command &rest more) words
@@ -151,16 +151,16 @@ bundle list-heads and verify, and archive with no file to write."
 is written (CHECK-GIT-WRITING)."))
 
 (defun check-git-writing (directory arguments &optional environment)
-  "Signal TUATARA.IO:WRITING-REFUSED, the folder named, when git run with
+  "Signal TUATARA.IO:WRITING-REFUSED, the directory named, when git run with
 ARGUMENTS in DIRECTORY and ENVIRONMENT would write in a place nothing is written
-in, an evidence folder. That is so when its repository or working folder, found
+in, an evidence directory. That is so when its repository or working directory, found
 from where it runs (-C, --git-dir, --work-tree, GIT_DIR, GIT_WORK_TREE:
 GIT-PLACES), is in one, where it writes its .git. It is also so when it writes
 the repository's working files (GIT-WRITES-WORK-TREE-P) and the repository holds
-one (TUATARA.IO:CHECK-TREE-WRITING). It is so too when a file or folder it is
+one (TUATARA.IO:CHECK-TREE-WRITING). It is so too when a file or directory it is
 told to write (GIT-OUTPUT-PATHS), or any word given it taken as a path
 \(CHECK-GIT-ARGUMENTS), is in one. Whether the repository holds one is told from
-the setting (FOLDER-HOLDS-EVIDENCE-P); returns those words then, for its hooks
+the setting (DIRECTORY-HOLDS-EVIDENCE-P); returns those words then, for its hooks
 to be left out (RUN-GIT-PROGRAM). Nothing is looked at while no place is
 refused."
   (when (tuatara.io:writing-refused-anywhere-p)
@@ -188,7 +188,7 @@ refused."
                                              (format nil "have git ~a write" (first words)))))
           (check-git-arguments here arguments (format nil "have git ~a write" (first words)))
           (when top
-            (let ((holding (folder-holds-evidence-p top)))
+            (let ((holding (directory-holds-evidence-p top)))
               (when (and holding (git-writes-work-tree-p arguments))
                 (error 'tuatara.io:writing-refused :operation doing :path top :reason holding))
               holding))))))
@@ -222,7 +222,7 @@ standalone --, the paths it reads (git log -- evidence/report.pdf)."
 (defun check-git-arguments (here arguments doing)
   "Signal TUATARA.IO:WRITING-REFUSED, DOING said, when a word of ARGUMENTS,
 taken as a path from HERE, where git runs (GIT-ARGUMENT-PLACES), lands in or
-under an evidence folder, or names a link into one: no option of git's can
+under an evidence directory, or names a link into one: no option of git's can
 then write there, whatever it is called or however it is abbreviated. The
 paths a reading command is given after -- are let be (GIT-WORDS-CHECKED)."
   (dolist (word (git-words-checked arguments))
@@ -243,7 +243,7 @@ author) is never taken for one."
 
 (defparameter *git-look-seconds* 30
   "How long git may take to tell the change gutter and rimu's lists what it
-has of a file or folder before it is ended.")
+has of a file or directory before it is ended.")
 
 (defun repository-top (directory)
   "The nearest directory from DIRECTORY up holding .git (MARKED-DIRECTORY, as
@@ -279,7 +279,7 @@ DIRECTORY is in no repository (REPOSITORY-TOP), or when git is not found
 \(FIND-PROGRAM). In a repository you trust (PROJECT-TRUSTED-P) git looks
 for no repository above its top and takes no bare one it finds on the way.
 In any other (never asked, answered look only, one that is, is in or holds
-an evidence folder, or one whose .git leads into such a one,
+an evidence directory, or one whose .git leads into such a one,
 see GIT-READS-ONLY-P) git only reads, on a shadow of the repository, and runs
 none of its programs (CALL-GIT-READING). ENVIRONMENT is not given it, it is
 ended after *GIT-READING-SECONDS* when SECONDS gives no time, and a command
@@ -315,13 +315,13 @@ until \\[git] asks for it."
                (when (car timed-out) (note-git-timed-out top))))))))
 
 (defun git-object-name (revision path)
-  "How git names the file or folder PATH of REVISION (a commit's hash, HEAD):
-REVISION:PATH, PATH from the top of the repository, or from the folder git
+  "How git names the file or directory PATH of REVISION (a commit's hash, HEAD):
+REVISION:PATH, PATH from the top of the repository, or from the directory git
 runs in when it begins with ./."
   (format nil "~a:~a" revision path))
 
 (defun git-blob-octets (top hash path &key job limit cancel seconds)
-  "What the file PATH (from TOP, or from the folder TOP when it begins with ./)
+  "What the file PATH (from TOP, or from the directory TOP when it begins with ./)
 held as the commit HASH (or HEAD) of the repository at TOP left it, as octets,
 read by git cat-file. With PATH NIL, it is the text whose own id HASH is. With
 JOB, it is read on its thread, as GIT-JOB-OCTETS reads it, JOB ending there when
@@ -341,7 +341,7 @@ failed (RUN-GIT with ERRORS); the rest is read and let go.")
     (git directory arguments &key cancel line environment errors input seconds limit reading options timed-out)
   "Run the program GIT as RUN-GIT runs git, once it has found it. A command
 that would write in the working files of a repository holding an evidence
-folder is refused, never run (CHECK-GIT-WRITING); in a repository holding
+directory is refused, never run (CHECK-GIT-WRITING); in a repository holding
 one, git runs no hook of the repository's (core.hooksPath=/dev/null). With
 READING, ARGUMENTS only read, made so by CALL-GIT-READING: nothing is looked
 at, and git is given none of your GIT_ variables. TIMED-OUT, a cons, has its

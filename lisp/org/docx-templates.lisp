@@ -3,7 +3,7 @@
 ;;;;
 ;;;; A Word template is the Word half of a template whose LaTeX half makes the
 ;;;; PDF: the note's #+template: NAME names both. It is a Word document
-;;;; unpacked, its parts as files in a folder, ~/.config/tuatara/docx-templates/NAME/
+;;;; unpacked, its parts as files in a directory, ~/.config/tuatara/docx-templates/NAME/
 ;;;; (word/document.xml, word/styles.xml, its header, footer and pictures), so
 ;;;; that it can be kept as text and written from an Org note's blocks. Its
 ;;;; text has places as a LaTeX template has: {{{KEY}}} for the value of the
@@ -21,24 +21,24 @@
 
 (defun docx-templates-directory ()
   "Where your Word templates are: docx-templates/ in the configuration
-directory (~/.config/tuatara/docx-templates/), each a folder NAME/."
+directory (~/.config/tuatara/docx-templates/), each a directory NAME/."
   (config-path "docx-templates/"))
 
-(defun docx-template-folder (value directory)
-  "The folder of the Word template VALUE names, what a note's #+template:
+(defun docx-template-directory (value directory)
+  "The directory of the Word template VALUE names, what a note's #+template:
 says, as a native name ending in /, or NIL when there is none: a name's
-folder among yours (DOCX-TEMPLATES-DIRECTORY), never . or .., or for a path
-\(./report.tex, ~/Templates/report) the folder of that name beside it,
+directory among yours (DOCX-TEMPLATES-DIRECTORY), never . or .., or for a path
+\(./report.tex, ~/Templates/report) the directory of that name beside it,
 without .tex, DIRECTORY the note's own, where TEMPLATE-PATH-ALLOWED-P lets it
 be."
-  (let ((folder (if (latex-template-path-p value)
+  (let ((dir (if (latex-template-path-p value)
                     (let ((path (org-export-path value directory)))
                       (concatenate 'string (if (uiop:string-suffix-p (string-downcase path) ".tex") (subseq path 0 (- (length path) 4)) path) "/"))
                     (concatenate 'string (docx-templates-directory) value "/"))))
     (and (not (member value '("." "..") :test #'string=))
-         (eq :regular (tuatara.io:path-kind (concatenate 'string folder "word/document.xml")))
-         (or (not (latex-template-path-p value)) (template-path-allowed-p folder directory))
-         folder)))
+         (eq :regular (tuatara.io:path-kind (concatenate 'string dir "word/document.xml")))
+         (or (not (latex-template-path-p value)) (template-path-allowed-p dir directory))
+         dir)))
 
 (defun docx-part-text (parts name)
   "The part NAME of PARTS as text (UTF-8, an octet that is not UTF-8 kept as
@@ -459,7 +459,7 @@ and the width its text has."
             (setf (docx-text-width *docx*) (- width left right))))))))
 
 (defparameter *docx-template-design-file* "tuatara.txt"
-  "The file of a Word template's folder saying how the note's text follows its
+  "The file of a Word template's directory saying how the note's text follows its
 design, as lines of NAME: VALUE: table style, the style of the note's tables
 \(a table style's id in the template's styles); bullets and numbers, the
 abstract numbering (an abstractNumId in its numbering) the note's bulleted

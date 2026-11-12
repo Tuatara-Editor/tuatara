@@ -129,13 +129,13 @@ in and in :help-key-binding."
   "Where FILE, a source file of Tuatara as the compiler recorded it, is found
 on this machine, and its path within the source tree, as two values. The copy
 looked for is in source/ beside the program, as a release has it, or in the
-source tree. The folders above the tree are whatever the build had, so each
+source tree. The directories above the tree are whatever the build had, so each
 path FILE may have within it is tried, the longest first. With no copy here,
 NIL and the longest path; for a file outside any tree, NIL and NIL."
   (let* ((path (pathname file))
-         (tails (loop for folders on (rest (pathname-directory path))
-                      when (member (first folders) '("src" "lisp" "frontends" "test" "tools") :test #'string=)
-                        collect (format nil "~{~a/~}~a" folders (file-namestring path))))
+         (tails (loop for directories on (rest (pathname-directory path))
+                      when (member (first directories) '("src" "lisp" "frontends" "test" "tools") :test #'string=)
+                        collect (format nil "~{~a/~}~a" directories (file-namestring path))))
          (roots (tuatara.runtime:resource-directories "source/" "" :existing t)))
     (dolist (tail tails (values nil (first tails)))
       (dolist (root roots)
@@ -153,7 +153,7 @@ machine: FILE when it is there, else its copy (SOURCE-FILE-IN-TREE), else FILE."
 
 (defun source-file-words (file)
   "FILE, a source file of Tuatara, as help names it: its path within the
-source tree (lisp/search/files.lisp), never the folders above it."
+source tree (lisp/search/files.lisp), never the directories above it."
   (or (nth-value 1 (source-file-in-tree file))
       (file-namestring (pathname file))))
 

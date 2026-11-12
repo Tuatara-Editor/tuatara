@@ -26,9 +26,9 @@
 
 (define-setting *gpg-program* "gpg"
   "The GnuPG program that decrypts and encrypts .gpg files.
-A name is looked for only in the system's own folders of programs
-(/usr/local/bin, /usr/bin, /bin), never in a folder of yours your PATH may
-name, nor in the folder the editor is in.
+A name is looked for only in the system's own directories of programs
+(/usr/local/bin, /usr/bin, /bin), never in a directory of yours your PATH may
+name, nor in the directory the editor is in.
 - a full path from the root: /opt/gnupg/bin/gpg for example.
 - a name: gpg as standard."
   :values file)
@@ -130,7 +130,7 @@ meanwhile; else just call it."
   "The environment variables gpg is given, of those programs started from the
 editor have, besides TUATARA.IO:*RESTRICTED-VARIABLES*: where your keyring
 is, and where gpg-agent and its pinentry find your terminal or desktop. Its
-PATH is the system's own folders of programs, and nothing else reaches it.")
+PATH is the system's own directories of programs, and nothing else reaches it.")
 
 (defparameter *gpg-staying-home-options*
   '("--disable-dirmngr" "--no-auto-key-retrieve" "--no-auto-key-locate" "--no-auto-key-import"
@@ -183,32 +183,32 @@ says it does not know them (GPG-OPTIONS), kept when it gives no answer."
                    *gpg-staying-home-options*))))
 
 (defun gpg-home-refusal ()
-  "Why the folder gpg takes its keys and options from is not safe, in words, or
-NIL when it is. GNUPGHOME, or with none ~/.gnupg (your home folder while that is
-not made yet), must be a folder of yours that only you may write in. It must be
-no link, named from the root, every folder on the way to it root's or yours and
-writable by others only with the sticky bit (FOLDER-REFUSAL). gpg reads its
+  "Why the directory gpg takes its keys and options from is not safe, in words, or
+NIL when it is. GNUPGHOME, or with none ~/.gnupg (your home directory while that is
+not made yet), must be a directory of yours that only you may write in. It must be
+no link, named from the root, every directory on the way to it root's or yours and
+writable by others only with the sticky bit (DIRECTORY-REFUSAL). gpg reads its
 options there, and options can have it run programs."
   (let ((uid (sb-posix:geteuid))
         (home (tuatara.io:program-variable "GNUPGHOME")))
     (if (and home (plusp (length home)))
-        (folder-refusal home (format nil "GNUPGHOME (~a)" home) uid :private nil)
+        (directory-refusal home (format nil "GNUPGHOME (~a)" home) uid :private nil)
         (let* ((yours (or (tuatara.io:program-variable "HOME") (sb-posix:passwd-dir (sb-posix:getpwuid uid))))
                (default (tuatara.io:path-join yours ".gnupg")))
           (if (tuatara.io:path-stamp default :follow nil :failure nil)
-              (folder-refusal default default uid :private nil)
-              (folder-refusal yours (format nil "your home folder (~a)" yours) uid :private nil))))))
+              (directory-refusal default default uid :private nil)
+              (directory-refusal yours (format nil "your home directory (~a)" yours) uid :private nil))))))
 
 (defun gpg-environment (asker)
   "The environment gpg runs with, as NAME=VALUE strings: the variables of
 *GPG-VARIABLES* programs started from the editor have, PATH the system's own
-folders of programs (TUATARA.IO:*SANDBOX-PATH*), and with ASKER :TERMINAL,
+directories of programs (TUATARA.IO:*SANDBOX-PATH*), and with ASKER :TERMINAL,
 GPG_TTY the terminal lent to gpg-agent's pinentry. Refused, saying why, when
-the folder gpg takes its keys and options from is not safe (GPG-HOME-REFUSAL)."
+the directory gpg takes its keys and options from is not safe (GPG-HOME-REFUSAL)."
   (let ((device (and (eq asker :terminal) (gpg-terminal)))
         (why (gpg-home-refusal)))
     (when why
-      (refuse "gpg is not run: the folder gpg takes its keys and options from is not safe: ~a" why))
+      (refuse "gpg is not run: the directory gpg takes its keys and options from is not safe: ~a" why))
     (apply #'tuatara.io:restricted-environment *gpg-variables* (format nil "PATH=~a" tuatara.io:*sandbox-path*)
            (and device (list (format nil "GPG_TTY=~a" device))))))
 
@@ -363,9 +363,26 @@ to the debug log (*SECRET-AT-HAND*). It runs with an environment of its own
   "True when STATUSES, gpg's status lines, have one called NAME."
   (find-if (lambda (s) (or (string= s name) (uiop:string-prefix-p (concatenate 'string name " ") s))) statuses))
 
+(defun gpg-recipient-words (status)
+  "Why gpg would not encrypt to a key, as words, from STATUS, its INV_RECP
+line (a reason code and the key): with the gpg command that puts it right
+where there is one."
+  (destructuring-bind (&optional reason key &rest more)
+      (rest (uiop:split-string status :separator '(#\Space)))
+    (declare (ignore more))
+    (let ((code (and reason (parse-integer reason :junk-allowed t))))
+      (case code
+        (1 (format nil "there is no key ~a among your keys" key))
+        (4 (format nil "key ~a is revoked" key))
+        (5 (format nil "key ~a has expired" key))
+        (10 (format nil "gpg does not count key ~a as valid yet; gpg --check-trustdb counts its trust again, ~
+and gpg --edit-key ~a trust sets it" key key))
+        (t (format nil "gpg would not encrypt to key ~a (reason ~a)" key reason))))))
+
 (defun gpg-failure-words (statuses said)
   "Why gpg failed, as words, from its STATUSES and what it SAID."
   (cond ((some (lambda (s) (search "BAD_PASSPHRASE" s)) statuses) "the passphrase was not right")
+        ((gpg-status-p statuses "INV_RECP") (gpg-recipient-words (gpg-status-p statuses "INV_RECP")))
         ((or (gpg-status-p statuses "MISSING_PASSPHRASE") (gpg-status-p statuses "NO_PASSPHRASE")) "no passphrase was given")
         ((gpg-status-p statuses "NO_SECKEY") "none of the keys it is encrypted to is yours")
         ((gpg-status-p statuses "NODATA") "it holds no encrypted data")

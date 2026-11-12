@@ -158,13 +158,13 @@ return the fake frontend."
   "Files read with a grammar the tests add as yours."
   :lighter "TestJSON" :extensions ("testjson"))
 
-(defun add-test-grammar (folder)
-  "Compile JSON's grammar as testjson.so into FOLDER, the folder of grammars
+(defun add-test-grammar (directory)
+  "Compile JSON's grammar as testjson.so into DIRECTORY, the directory of grammars
 you add, with JSON's colouring rules beside it; true when it could."
   (let ((src (asdf:system-relative-pathname :tuatara "build/grammar-sources/json/src/")))
-    (ensure-directories-exist (merge-pathnames "rules/" folder))
+    (ensure-directories-exist (merge-pathnames "rules/" directory))
     (uiop:copy-file (asdf:system-relative-pathname :tuatara "syntax/rules/json.scm")
-                    (merge-pathnames "rules/testjson.scm" folder))
+                    (merge-pathnames "rules/testjson.scm" directory))
     (zerop (nth-value 2
                       (uiop:run-program (list "cc"
                                               "-O1"
@@ -174,14 +174,14 @@ you add, with JSON's colouring rules beside it; true when it could."
                                               "-Dtree_sitter_json=tree_sitter_testjson"
                                               (format nil "-I~a" (uiop:native-namestring src))
                                               (uiop:native-namestring (merge-pathnames "parser.c" src))
-                                              "-o" (uiop:native-namestring (merge-pathnames "testjson.so" folder)))
+                                              "-o" (uiop:native-namestring (merge-pathnames "testjson.so" directory)))
                                         :ignore-error-status t :error-output nil)))))
 
-(defmacro with-test-grammar-added ((folder) &body body)
-  "Run BODY with FOLDER the folder of grammars you add, holding testjson.so
+(defmacro with-test-grammar-added ((directory) &body body)
+  "Run BODY with DIRECTORY the directory of grammars you add, holding testjson.so
 (ADD-TEST-GRAMMAR), the language USER-GRAMMAR-TEST defined for it, and nothing
 kept of it nor of any answer about it; all taken away afterwards."
-  `(let ((,folder (tuatara.syntax:user-grammar-directory)))
+  `(let ((,directory (tuatara.syntax:user-grammar-directory)))
      (flet ((forget-it ()
               (tuatara.defaults::state-list-drop tuatara.defaults::*user-grammar-sums* (list "testjson"))
               (setf tuatara.defaults::*user-grammar-records* nil)
@@ -190,7 +190,7 @@ kept of it nor of any answer about it; all taken away afterwards."
               (tuatara.syntax:forget-grammars)))
        (unwind-protect
             (progn
-              (true (add-test-grammar ,folder) "compiled")
+              (true (add-test-grammar ,directory) "compiled")
               (forget-it)
               (tuatara.syntax:stop-helpers)
               (tuatara.defaults::define-language user-grammar-test
@@ -201,7 +201,7 @@ kept of it nor of any answer about it; all taken away afterwards."
                   ,@body)))
          (setf tuatara.defaults::*languages* (remove 'user-grammar-test tuatara.defaults::*languages*
                                                      :key #'tuatara.defaults::language-name))
-         (uiop:delete-directory-tree ,folder :validate t :if-does-not-exist :ignore)
+         (uiop:delete-directory-tree ,directory :validate t :if-does-not-exist :ignore)
          (forget-it)
          (tuatara.syntax:stop-helpers)))))
 
@@ -220,7 +220,7 @@ a new session would."
   ;; a grammar you add: off until you turn it on, never one of the common
   ;; ones; turned on, a copy of it is kept and loaded, and it colours; its file
   ;; changed, it is refused in the next session until turned on again
-  (with-test-grammar-added (folder)
+  (with-test-grammar-added (directory)
     (let ((tuatara.defaults::*common-grammar-languages* '(user-grammar-test json)))
       (false (test-language-on-p) "not one of the common ones")
       (false (tuatara.syntax:find-grammar "testjson") "not loaded while off")
@@ -230,7 +230,7 @@ a new session would."
       (true (probe-file (merge-pathnames "testjson.so" (tuatara.syntax:user-grammar-store))) "a copy kept")
       (true (test-language-on-p))
       ;; changed, the same size, its times put back: still found changed
-      (let ((path (uiop:native-namestring (merge-pathnames "testjson.so" folder))))
+      (let ((path (uiop:native-namestring (merge-pathnames "testjson.so" directory))))
         (let ((octets (alexandria:read-file-into-byte-vector path))
               (stat (sb-posix:stat path)))
           (setf (aref octets (1- (length octets))) (logxor 1 (aref octets (1- (length octets)))))
@@ -247,7 +247,7 @@ a new session would."
 (define-test (grammars-on old-yes-is-no-trust)
   ;; a yes given while a name was one of Tuatara's own grammars trusts nothing
   ;; added later under that name: it is asked about again
-  (with-test-grammar-added (folder)
+  (with-test-grammar-added (directory)
     (tuatara.defaults::state-list-put tuatara.defaults::*grammar-answers* (list (cons "user-grammar-test" t)))
     (setf tuatara.defaults::*grammar-answers-read* nil)
     (new-session-for-grammars)
@@ -259,22 +259,22 @@ a new session would."
 (define-test (grammars-on named-grammar-kept-when-loaded)
   ;; a grammar you added that *grammars-on* names is kept as it is the first
   ;; time it is loaded, and loaded from that copy
-  (with-test-grammar-added (folder)
+  (with-test-grammar-added (directory)
     (let ((tuatara-user:*grammars-on* '(:common user-grammar-test)))
       (true (test-language-on-p))
       (true (tuatara.syntax:find-grammar "testjson"))
       (true (gethash "testjson" (tuatara.defaults::user-grammar-records)) "kept"))))
 
 (define-test (grammars-on linked-grammar-never-loaded)
-  ;; a link in the folder of grammars you add, to a file elsewhere, is no
+  ;; a link in the directory of grammars you add, to a file elsewhere, is no
   ;; grammar of yours to load, nor one of Tuatara's: never loaded, never kept
-  (with-test-grammar-added (folder)
+  (with-test-grammar-added (directory)
     (let ((elsewhere (merge-pathnames "elsewhere.so" (tuatara.io:cache-directory))))
       (unwind-protect
            (progn
-             (rename-file (merge-pathnames "testjson.so" folder) elsewhere)
+             (rename-file (merge-pathnames "testjson.so" directory) elsewhere)
              (sb-posix:symlink (uiop:native-namestring elsewhere)
-                               (uiop:native-namestring (merge-pathnames "testjson.so" folder)))
+                               (uiop:native-namestring (merge-pathnames "testjson.so" directory)))
              (new-session-for-grammars)
              (true (tuatara.syntax:user-grammar-p "testjson") "taken as yours")
              (false (tuatara.syntax:user-grammar-file "testjson") "no plain file")
@@ -285,7 +285,7 @@ a new session would."
 
 (define-test (grammars-on own-grammar-never-passed-over)
   ;; when one of Tuatara's grammars cannot be loaded, the program running
-  ;; grammars takes no file of the same name from a folder after it
+  ;; grammars takes no file of the same name from a directory after it
   (with-test-directory (directory)
     (let* ((own (merge-pathnames "own/" directory))
            (later (merge-pathnames "later/" directory)))
@@ -342,15 +342,15 @@ a new session would."
     (is = 3 runs)))
 
 (define-test (grammars-on grammar-store-yours-alone)
-  ;; the folder copies of grammars you added are kept in: one that others may
+  ;; the directory copies of grammars you added are kept in: one that others may
   ;; read is made yours alone; a link in its place is not used, and a copy is
   ;; then not kept, said
-  (let* ((folder (merge-pathnames "grammar-store/" (tuatara.io:state-directory)))
-         (name (string-right-trim "/" (uiop:native-namestring folder)))
+  (let* ((directory (merge-pathnames "grammar-store/" (tuatara.io:state-directory)))
+         (name (string-right-trim "/" (uiop:native-namestring directory)))
          (elsewhere (merge-pathnames "elsewhere-store/" (tuatara.io:cache-directory))))
     (unwind-protect
          (progn
-           (uiop:delete-directory-tree folder :validate t :if-does-not-exist :ignore)
+           (uiop:delete-directory-tree directory :validate t :if-does-not-exist :ignore)
            (sb-posix:mkdir name #o755)
            (sb-posix:chmod name #o755)
            (true (tuatara.syntax:user-grammar-store))

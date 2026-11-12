@@ -26,7 +26,7 @@
 ;;;; as it is, and its places are the note template's fields.
 ;;;;
 ;;;; The document is only read: nothing in it is run, \input files are not
-;;;; read, and a picture is taken only from its folder or the folders in it.
+;;;; read, and a picture is taken only from its directory or the directories in it.
 ;;;; Nothing is written beside it.
 
 (in-package #:tuatara.defaults)
@@ -68,10 +68,10 @@ ones are kept as the document writes them.")
   "The pictures met, each (SOURCE . FILE): SOURCE the picture's full name, FILE as the note links it.")
 
 (defvar *latex-org-directory* nil
-  "The folder of the LaTeX document being read, its pictures' only source.")
+  "The directory of the LaTeX document being read, its pictures' only source.")
 
 (defvar *latex-org-media* nil
-  "The folder pictures are saved to, as links write it, or NIL for none saved.")
+  "The directory pictures are saved to, as links write it, or NIL for none saved.")
 
 ;;; Reading LaTeX
 
@@ -234,7 +234,7 @@ quotes and dashes the characters they make."
 
 (defun latex-org-picture (name)
   "The Org link to the picture NAME a LaTeX document shows, saved with the
-note template when it is in the document's folder or a folder in it (an
+note template when it is in the document's directory or a directory in it (an
 ending tried when it has none); else words saying what it was."
   (let* ((name (string-trim " " name))
          (safe (and *latex-org-directory* *latex-org-media*
@@ -707,14 +707,14 @@ then placeholder text ([Enter name], «Name», <Version>)."
 
 (defparameter *latex-file-commands*
   "\\\\(?:includegraphics|includepdf|includesvg|input|include|InputIfFileExists|IfFileExists|lstinputlisting|verbatiminput|import|subimport|openin)(?![A-Za-z@])\\*?[ \\t]*(?:\\[[^\\]\\n]*\\][ \\t]*)*(?:(?:\\\\[A-Za-z@]+|[0-9]+)[ \\t]*=?[ \\t]*)?(?:(?<=import)\\{[^}\\n]*\\}[ \\t]*)?(?:\\{[ \\t\"]*(?:[~/]|[^}\\n]*?\\.\\.[/\\\\])[^}\\n]*\\}|\"?(?:[~/]|[^\\s{}%\"]*?\\.\\.[/\\\\])[^\\s%]*)"
-  "A LaTeX command taking in a file named from the root, from a home folder
-or from a folder above the document's, in braces or not:
+  "A LaTeX command taking in a file named from the root, from a home directory
+or from a directory above the document's, in braces or not:
 \\includegraphics{~/photo.png}, \\input{/etc/name}, \\input /etc/name,
 \\input{../../name}, \\openin\\stream=/etc/name, \\IfFileExists{/etc/name}.")
 
 (defun latex-import-without-outside-files (template)
   "TEMPLATE, a LaTeX document being made a template, with each command taking
-in a file named from the root, a home folder or a folder above it
+in a file named from the root, a home directory or a directory above it
 \(*LATEX-FILE-COMMANDS*) made a comment of its own line,
 and that noted: a document given to you could otherwise put files of yours
 into every report written from it."
@@ -742,7 +742,7 @@ REPLACEMENT in place of the text from START below END."
 (defun latex-import (path name &key (tex (concatenate 'string (latex-templates-directory) name ".tex"))
                                     (note (concatenate 'string (note-templates-directory) name ".org")))
   "Make of the LaTeX document at PATH the template NAME, TEX, and its note
-template NOTE, as this file's header says, its pictures in the folder
+template NOTE, as this file's header says, its pictures in the directory
 NAME-media beside NOTE. Returns the note template's path, and as a second
 value what to say of it, a list of sentences. Signals an error when it
 cannot be read; writes over nothing that exists."

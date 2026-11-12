@@ -219,7 +219,7 @@ are rewritten at once."
                                                          (tuatara.defaults::make-search-filter "foo$" :crlf t)))
       (tuatara.buffer:kill-buffer buffer))))
 
-(define-test (sorting sort-stands-where-begun)
+(define-modal-test (sorting sort-stands-where-begun)
   ;; a sort in the background stands in the undo history where it began: an edit made
   ;; elsewhere while it ran is undone first, then the sort
   (let* ((lines (loop for i from 1999 downto 0 collect (format nil "line ~4,'0d" i)))
@@ -244,7 +244,7 @@ are rewritten at once."
     (tuatara.buffer:buffer-undo b)
     (is string= text (tuatara.buffer:buffer-string b))))
 
-(define-test (sorting sort-stands-where-given-queued)
+(define-modal-test (sorting sort-stands-where-given-queued)
   ;; a sort waiting its turn behind a replacement, then an edit typed on another line: undo
   ;; takes back the edit first, then the sort, then the replacement, the order they were given in
   (let ((tuatara.defaults::*rewrite-threshold* 0)
@@ -267,7 +267,7 @@ are rewritten at once."
                 (lines-text "zz" "b" "a"))
           (nreverse steps)))))
 
-(define-test (sorting filter-keeps-edits)
+(define-modal-test (sorting filter-keeps-edits)
   ;; a filter in the background keeps the edits made to its lines meanwhile: text
   ;; typed elsewhere stays, and a line typed in is kept as typed, not deleted
   (let ((text (lines-text "keep" "drop" "keep too" "end"))
@@ -414,7 +414,7 @@ are rewritten at once."
         (true (tuatara.frontend.fake:fake-frame-showing f "Safe"))
         (tuatara.buffer:kill-buffer (session-buffer editor)))
       (fail (tuatara.io:visit-file (merge-pathnames "absent" dir) :safe t) tuatara.io:file-system-error)
-      ;; a file visited the ordinary way keeps them by the rule for its folder: beside it
+      ;; a file visited the ordinary way keeps them by the rule for its directory: beside it
       ;; where its file system shares blocks
       (with-visited (b path)
         (is equal (tuatara.io:scratch-directory path :room (tuatara.buffer:buffer-size b))

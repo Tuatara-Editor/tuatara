@@ -7,7 +7,7 @@
 # Each NAME=VALUE is set for the build itself, where it runs (in the toolbox
 # when there is one): XDG_CACHE_HOME=/tmp/x/cache keeps its compiled files
 # there, TUATARA_BUILD="COMMIT CHANGED DAY" says what it is built from when this
-# folder is no checkout of its own.
+# directory is no checkout of its own.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 . tools/inside.sh

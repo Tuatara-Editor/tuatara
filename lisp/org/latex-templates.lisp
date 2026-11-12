@@ -30,7 +30,7 @@ directory (~/.config/tuatara/latex-templates/), each NAME.tex."
   "The templates there are, each (NAME . TEMPLATE): yours, the files NAME.tex
 in LATEX-TEMPLATES-DIRECTORY, then the built-in ones none of yours takes the
 place of (IN-PLACE-OF-OWN)."
-  (in-place-of-own (loop for (file . text) in (folder-files (list (latex-templates-directory)))
+  (in-place-of-own (loop for (file . text) in (directory-files (list (latex-templates-directory)))
                          when (and text (string-equal (name-extension file) ".tex"))
                            collect (cons (subseq file 0 (- (length file) 4)) text))
                    *built-in-latex-templates*
@@ -52,13 +52,11 @@ than a name: it holds a /, starts with ~ or ends with .tex."
 
 (defun template-path-allowed-p (path directory)
   "True when a note in DIRECTORY may name the template at PATH by its path:
-PATH stands in DIRECTORY or a folder in it, in your own templates' folder, or
-in one of *EXPORT-TRUSTED-FOLDERS*, links followed, so that a note given to
-you cannot make its export take in a file of yours from elsewhere."
-  (path-in-folders-p path
-                     (list* (or directory (tuatara.io:home-directory))
-                            (latex-templates-directory)
-                            *export-trusted-folders*)))
+PATH stands in DIRECTORY or a directory in it, in your own templates'
+directory, or in one of *EXPORT-TRUSTED-DIRECTORIES*, links followed
+\(EXPORT-DIRECTORY-P), so that a note given to you cannot make its export take
+in a file of yours from elsewhere."
+  (export-directory-p path (or directory (tuatara.io:home-directory)) (list (latex-templates-directory))))
 
 (defun latex-template-for (value directory)
   "The template VALUE names, what a note's #+template: says: a file's
@@ -70,14 +68,14 @@ file), and only where TEMPLATE-PATH-ALLOWED-P lets it be; else a name
 Signals, saying what there is, when there is no such template."
   (if (latex-template-path-p value)
       (let* ((path (org-export-path value directory))
-             ;; a pair named without .tex (./report): its LaTeX half report.tex, its Word half the folder report/
+             ;; a pair named without .tex (./report): its LaTeX half report.tex, its Word half the directory report/
              (path (if (uiop:string-suffix-p (string-downcase path) ".tex") path (concatenate 'string path ".tex"))))
         (cond ((not (eq :regular (tuatara.io:path-kind path)))
                (refuse "There is no LaTeX template at ~:[~a~;the path #+template: gives~*~] (#+template:)"
                        *secret-at-hand* (abbreviated-path path)))
               ((not (template-path-allowed-p path directory))
-               (refuse "The template ~:[~a~;#+template: names~*~] is outside the note's folder (#+template:); ~
-                        *export-trusted-folders* names the folders it may also come from"
+               (refuse "The template ~:[~a~;#+template: names~*~] is outside the note's directory (#+template:); ~
+                        *export-trusted-directories* names the directories it may also come from"
                        *secret-at-hand* (abbreviated-path path)))
               (t (values (tuatara.io:file-text path :limit *org-file-read-limit*) path))))
       (or (find-latex-template value)

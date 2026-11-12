@@ -480,7 +480,7 @@ own (test/gtk/window-drawn.lisp, with its state in DIR), and what it found:
 the textures drawn and the octets the window drawn by the graphics card and
 painted whole differ in; NIL when it wrote nothing. PICTURES is \"picture\"
 to wait for the file's picture, \"pictures-beside\" for it shown in two
-windows side by side."
+windows side by side, \"floated\" for an Org note's two pictures."
   (apply #'run-on-broadway dir "window-drawn.lisp" (namestring file) :out (and pictures (list pictures))))
 
 (define-test (gtk window-drawn-as-painted)
@@ -535,6 +535,37 @@ windows side by side."
               (true (< (getf drawn :differing-much) (/ (getf drawn :octets) 200))
                     "~:d of ~:d octets far from painted whole"
                     (getf drawn :differing-much) (getf drawn :octets))))))))
+
+(define-test (gtk floated-picture-drawn)
+  ;; a real window, on a display of its own, showing an Org note with a red picture floated left and a blue one on
+  ;; rows of its own below: each at its own size, the text beside the red one from its top row, the blue one
+  ;; beginning right below the red one, at the same left edge
+  (if (null (tuatara.io:find-program "gtk4-broadwayd"))
+      (skip "gtk4-broadwayd is not installed here" (true nil))
+      (with-test-directory (dir)
+        (uiop:run-program (list "magick" "-size" "200x100" "xc:#ff0000" (namestring (merge-pathnames "red.png" dir))))
+        (uiop:run-program (list "magick" "-size" "300x100" "xc:#0000ff" (namestring (merge-pathnames "blue.png" dir))))
+        (let* ((note (put-file (merge-pathnames "note.org" dir)
+                               (format nil "#+STARTUP: inlineimages~%#+ATTR_ORG: :float left~%[[file:red.png]]~%~
+                                            one two three~%~%[[file:blue.png]]~%~%after~%")))
+               (drawn (window-drawn dir note "floated")))
+          (true drawn "the window wrote nothing")
+          (false (getf drawn :error) "~a" (getf drawn :error))
+          (false (getf drawn :timed-out) "the window gave up waiting")
+          (destructuring-bind (&optional red-left red-top red-right red-bottom) (getf drawn :red)
+            (destructuring-bind (&optional blue-left blue-top blue-right blue-bottom) (getf drawn :blue)
+              (true red-left "no red shown")
+              (true blue-left "no blue shown")
+              (when (and red-left blue-left)
+                (is equal '(200 100) (list (- red-right red-left -1) (- red-bottom red-top -1)))
+                (is equal '(300 100) (list (- blue-right blue-left -1) (- blue-bottom blue-top -1)))
+                (is = red-left blue-left)
+                (true (<= 1 (- blue-top red-bottom) 2) "blue from ~d, red to ~d" blue-top red-bottom)
+                (true (> (getf drawn :beside-top 0) 1) "the row beside the red picture's top shows nothing"))))
+          (when (getf drawn :octets)
+            (true (< (getf drawn :differing-much) (/ (getf drawn :octets) 200))
+                  "~:d of ~:d octets far from painted whole"
+                  (getf drawn :differing-much) (getf drawn :octets)))))))
 
 (define-test (gtk two-windows)
   ;; two frames in two real windows on a display of their own: each shows its file, typing in one
@@ -769,7 +800,7 @@ windows side by side."
               frame :columns 6 :rows 2 :font "Adwaita Mono 11")))
       (tuatara.display:apply-theme theme))))
 
-(define-test (gtk font-size)
+(define-modal-test (gtk font-size)
   ;; C-x C-+ and C-x C-= a step larger, C-x C-- smaller, C-x C-0 back; + = - 0 go on alone
   (flet ((steps (keys &optional (font-steps 0) leader-key)
            (let ((f (tuatara.frontend.fake:make-fake-frontend :font-steps font-steps)))
@@ -997,7 +1028,7 @@ windows side by side."
       (ignore-errors (delete-file path))
       (ignore-errors (delete-file other)))))
 
-(define-test (gtk list-of-fonts)
+(define-modal-test (gtk list-of-fonts)
   (let ((faces '(("Adwaita Mono" t (("Bold" "Adwaita Mono Bold 11") ("Regular" "Adwaita Mono 11")))
                  ("Cascadia Code NF" t (("Light" "Cascadia Code NF Light 11")))
                  ("Cantarell" nil (("Regular" "Cantarell 11"))))))
@@ -1205,18 +1236,18 @@ windows side by side."
               :columns 10 :rows 3 :font "Adwaita Mono 11"))
         (tuatara.display:apply-theme theme)))))
 
-(define-test (gtk measuring-folder-private-and-new)
-  ;; the folder a measuring copy keeps its init file and state in is made new, for you
+(define-test (gtk measuring-directory-private-and-new)
+  ;; the directory a measuring copy keeps its init file and state in is made new, for you
   ;; alone; one already there under its name, made by someone else, is never taken
   (let* ((name (format nil "test-~a" (tuatara.io:random-name)))
-         (folder (tuatara.frontend.gtk::measuring-folder name)))
+         (directory (tuatara.frontend.gtk::measuring-directory name)))
     (unwind-protect
          (progn
-           (is = #o700 (logand #o777 (sb-posix:stat-mode (sb-posix:stat (uiop:native-namestring folder)))))
-           (fail (tuatara.frontend.gtk::measuring-folder name) 'tuatara.io:file-system-error))
-      (tuatara.io:delete-tree (uiop:native-namestring folder))))
-  (let ((one (tuatara.frontend.gtk::measuring-folder))
-        (two (tuatara.frontend.gtk::measuring-folder)))
+           (is = #o700 (logand #o777 (sb-posix:stat-mode (sb-posix:stat (uiop:native-namestring directory)))))
+           (fail (tuatara.frontend.gtk::measuring-directory name) 'tuatara.io:file-system-error))
+      (tuatara.io:delete-tree (uiop:native-namestring directory))))
+  (let ((one (tuatara.frontend.gtk::measuring-directory))
+        (two (tuatara.frontend.gtk::measuring-directory)))
     (unwind-protect (isnt equal one two)
       (tuatara.io:delete-tree (uiop:native-namestring one))
       (tuatara.io:delete-tree (uiop:native-namestring two)))))
@@ -1359,19 +1390,19 @@ windows side by side."
 (define-test (gtk picture-written-to-a-name-not-utf-8)
   ;; a file name the window gives GTK or Cairo reaches the system as it was read, raw bytes and all
   (tuatara.gtk:load-gtk-libraries)
-  (let* ((folder (tuatara.io:path-join (uiop:native-namestring (uiop:temporary-directory))
+  (let* ((directory (tuatara.io:path-join (uiop:native-namestring (uiop:temporary-directory))
                                        (tuatara.io:slash-ended (format nil
                                                                        "tuatara-test-~a"
                                                                        (tuatara.io:random-name)))))
-         (path (format nil "~apicture-~c.png" folder (code-char #xDCFF))))
-    (tuatara.io:make-directory folder #o700)
+         (path (format nil "~apicture-~c.png" directory (code-char #xDCFF))))
+    (tuatara.io:make-directory directory #o700)
     (unwind-protect
          (sb-int:with-float-traps-masked (:overflow :invalid :divide-by-zero :inexact :underflow)
            (let ((surface (tuatara.gtk:cairo-image-surface-create 0 4 4)))
              (unwind-protect (is = 0 (tuatara.gtk:cairo-surface-write-to-png surface path))
                (tuatara.gtk:cairo-surface-destroy surface)))
            (is eq :regular (tuatara.io:path-kind path)))
-      (tuatara.io:delete-tree folder))))
+      (tuatara.io:delete-tree directory))))
 
 (define-test (gtk callback-pointers-kept)
   ;; a callback's C function pointer is found once and kept: nothing made each time it is given to GTK

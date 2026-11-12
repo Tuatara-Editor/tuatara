@@ -432,7 +432,7 @@ scratch file, given to the clipboard unasked, nor exported unasked. No core dump
           (false ok)
           (true (< (length output) (* 2 1024 1024)))))))
 
-(define-test (encrypted safe-folders-never-decrypt)
+(define-test (encrypted safe-directories-never-decrypt)
   ;; a .gpg file in one of *safe-directories*, opened however, shows its encrypted octets: nothing is decrypted
   (if (null (tuatara.defaults::gpg-path))
       (skip "gpg is not installed here" (true nil))
@@ -719,8 +719,8 @@ nothing more."
                                  knows (namestring dir) (namestring dir)))
     program))
 
-(define-test (encrypted gpg-found-only-in-system-folders)
-  ;; a gpg in a folder of the PATH that is no system folder of programs is not the one run
+(define-test (encrypted gpg-found-only-in-system-directories)
+  ;; a gpg in a directory of the PATH that is no system directory of programs is not the one run
   (with-test-directory (dir)
     (fake-gpg dir)
     (with-environment-variable ("PATH" (format nil "~a:~a" (string-right-trim "/" (namestring dir))
@@ -744,7 +744,7 @@ nothing more."
         (false (find-if (lambda (line) (search "TUATARA_TEST_CANARY" line)) environment))))))
 
 (define-test (encrypted gpg-home-of-yours-alone)
-  ;; GnuPG's folder, where gpg reads options that can run programs, is used only when no one else may write in it
+  ;; GnuPG's directory, where gpg reads options that can run programs, is used only when no one else may write in it
   (with-test-directory (dir)
     (let ((tuatara.defaults::*gpg-program* (fake-gpg dir))
           (open (merge-pathnames "open/" dir)))
@@ -762,28 +762,28 @@ nothing more."
   (handler-case (progn (tuatara.defaults::gpg-run (list "--list-keys") :asker :agent) nil)
     (tuatara.runtime:refusal (condition) (princ-to-string condition))))
 
-(define-test (encrypted gpg-home-folders-on-the-way)
-  ;; GnuPG's folder is no link, and no folder on the way to it may be written in by others, but for a sticky one
+(define-test (encrypted gpg-home-directories-on-the-way)
+  ;; GnuPG's directory is no link, and no directory on the way to it may be written in by others, but for a sticky one
   (with-test-directory (dir)
     (let ((tuatara.defaults::*gpg-program* (fake-gpg dir)))
-      (flet ((folder (name &optional (mode #o700))
+      (flet ((make-dir (name &optional (mode #o700))
                (let ((path (namestring (merge-pathnames name dir))))
                  (ensure-directories-exist path)
                  (sb-posix:chmod path mode)
                  path))
              (link (name target)
                (sb-posix:symlink (string-right-trim "/" target) (namestring (merge-pathnames name dir)))))
-        (let ((home (folder "home/")))
-          (folder "open/" #o777) (folder "open/home/")
-          (folder "group/" #o770) (folder "group/home/")
-          (folder "sticky/" #o1777) (folder "sticky/home/")
+        (let ((home (make-dir "home/")))
+          (make-dir "open/" #o777) (make-dir "open/home/")
+          (make-dir "group/" #o770) (make-dir "group/home/")
+          (make-dir "sticky/" #o1777) (make-dir "sticky/home/")
           (link "home-link" home)
           (link "way" (namestring dir))
           (link "open-way" (namestring (merge-pathnames "open/" dir)))
           (dolist (case `((,home nil) (,(namestring (merge-pathnames "home-link" dir)) "a link")
-                          (,(folder "open/home/") "may be used by others")
-                          (,(folder "group/home/") "may be used by others")
-                          (,(folder "sticky/home/") nil) (,(format nil "~away/home" dir) nil)
+                          (,(make-dir "open/home/") "may be used by others")
+                          (,(make-dir "group/home/") "may be used by others")
+                          (,(make-dir "sticky/home/") nil) (,(format nil "~away/home" dir) nil)
                           (,(format nil "~aopen-way/home" dir) "may be used by others")))
             (destructuring-bind (gnupg-home words) case
               (with-environment-variable ("GNUPGHOME" gnupg-home)
@@ -792,8 +792,8 @@ nothing more."
                       (true (search words (or said "")) "~a: ~a" gnupg-home said)
                       (false said "~a" gnupg-home))))))
           ;; with no GNUPGHOME, ~/.gnupg is held to the same, and your home while it is not made yet
-          (folder "open/me/.gnupg/") (folder "linked/") (link "linked/.gnupg" home) (folder "bare/")
-          (folder "mine/.gnupg/")
+          (make-dir "open/me/.gnupg/") (make-dir "linked/") (link "linked/.gnupg" home) (make-dir "bare/")
+          (make-dir "mine/.gnupg/")
           (with-environment-variable ("GNUPGHOME" nil)
             (dolist (case '(("open/me/" "may be used by others") ("linked/" "a link") ("bare/" nil) ("mine/" nil)))
               (destructuring-bind (name words) case
@@ -819,9 +819,9 @@ nothing more."
     (let ((signer (namestring (merge-pathnames "signer/" dir)))
           (home (namestring (merge-pathnames "home/" dir)))
           (signed nil))
-      (dolist (folder (list signer home))
-        (ensure-directories-exist folder)
-        (sb-posix:chmod folder #o700))
+      (dolist (directory (list signer home))
+        (ensure-directories-exist directory)
+        (sb-posix:chmod directory #o700))
       (put-file (merge-pathnames "gpg.conf" home) (format nil "auto-key-import~%"))
       (unwind-protect
            (progn
@@ -838,12 +838,12 @@ nothing more."
                                                                                                     :asker :agent))))
                  (false (find-if (lambda (status) (uiop:string-prefix-p "GOODSIG" status)) statuses) "~a" statuses))
                (false (tuatara.defaults::gpg-keys :all t))))
-        (dolist (folder (list signer home))
-          (with-environment-variable ("GNUPGHOME" folder)
+        (dolist (directory (list signer home))
+          (with-environment-variable ("GNUPGHOME" directory)
             (uiop:run-program (list (tuatara.defaults::gpgconf-path) "--kill" "all") :ignore-error-status t)))))))
 
 (define-test (encrypted gpg-path-from-the-root)
-  ;; a gpg named by a path not from the root is not looked for in the folder the editor is in
+  ;; a gpg named by a path not from the root is not looked for in the directory the editor is in
   (with-test-directory (dir)
     (fake-gpg dir)
     (let ((before (sb-posix:getcwd)))
@@ -854,8 +854,18 @@ nothing more."
                (false (tuatara.defaults::gpg-path) "~a" name)))
         (sb-posix:chdir before)))))
 
+(define-test (encrypted keys-gpg-will-not-encrypt-to)
+  (let ((said "gpg: C008B5A496AD5646: There is no assurance this key belongs to the named user"))
+    (true (search "gpg --check-trustdb"
+                  (tuatara.defaults::gpg-failure-words '("INV_RECP 10 C008B5A496AD5646" "FAILURE encrypt 53") said)))
+    (true (search "C008B5A496AD5646 has expired"
+                  (tuatara.defaults::gpg-failure-words '("INV_RECP 5 C008B5A496AD5646") said)))
+    (true (search "no key ABCD"
+                  (tuatara.defaults::gpg-failure-words '("INV_RECP 1 ABCD") "")))
+    (is string= said (tuatara.defaults::gpg-failure-words '("FAILURE encrypt 53") said))))
+
 (define-test (encrypted gpg-lock-kept-to-itself)
-  ;; gpgconf is found beside gpg or in the system's folders only, and runs with gpg's environment
+  ;; gpgconf is found beside gpg or in the system's directories only, and runs with gpg's environment
   (with-test-directory (dir)
     (let ((gpgconf (fake-gpg dir :name "gpgconf")))
       (with-environment-variable ("PATH" (format nil "~a:~a" (string-right-trim "/" (namestring dir))

@@ -52,17 +52,23 @@ be drawn large; looked up once for each change of the faces (*FACE-GENERATION*).
             (cons generation (loop for level from 1 to 8 thereis (tuatara.display:face-attribute (org-level-face level) :height)))))
     (cdr *org-level-heights*)))
 
-(defun org-line-scale (buffer line-start)
-  "How many rows tall the line of BUFFER beginning at LINE-START is drawn
-where the window can draw rows large: a headline as tall as its level's face's
-:height, (set-face :org-level-1 :height 1.25); one past the eighth level as
-the eighth, whose colours go round to the first's again; any other
-line one. Nothing is looked up while no level's face has a :height."
-  (unless (org-level-heights-p) (return-from org-line-scale 1))
-  (multiple-value-bind (begin level) (org-headline-at-or-before buffer line-start)
-    (or (and begin (= begin line-start)
-             (tuatara.display:face-attribute (org-level-face (min 8 level)) :height))
-        1)))
+(defun org-line-scale (buffer line-start window)
+  "How many rows tall WINDOW draws the line of BUFFER beginning at LINE-START.
+A picture shown on it takes the rows the picture needs, below one the text
+goes round, and one the text goes round none (INLINE-PICTURE-ROWS). Where
+the window can draw rows large, a headline is as tall as its level's face's
+:height, (set-face :org-level-1 :height 1.25); one
+past the eighth level as the eighth, whose colours go round to the first's
+again. Any other line is one row. No headline is looked up while no level's
+face has a :height."
+  (multiple-value-bind (rows below) (inline-picture-rows buffer line-start window)
+    (if rows
+        (values rows below)
+        (or (and tuatara.display:*row-scaling* (org-level-heights-p)
+                 (multiple-value-bind (begin level) (org-headline-at-or-before buffer line-start)
+                   (and begin (= begin line-start)
+                        (tuatara.display:face-attribute (org-level-face (min 8 level)) :height))))
+            1))))
 
 (defun org-headline-signs (buffer start end)
   "The signs headlines from octet START below END show in place of their last
@@ -127,14 +133,24 @@ headline's last star as its level's sign, in its level's face. List items'
 bullets and checkboxes as signs (*ORG-LIST-BULLETS*, *ORG-CHECKBOX-SIGNS*).
 While links are shown as their labels (\\[org-toggle-link-display]), what is
 around each label hidden, each entity shown as its character, and the braces
-around what redact and protect hide, but in the call point is in."
-  (let ((found (merge 'list
-                      (and *org-bullets* (org-headline-signs buffer start end))
-                      (and (or *org-list-bullets* *org-checkbox-signs*) (org-item-signs buffer start end))
-                      #'< :key #'first)))
-    ;; the links' ranges are kept between frames: merged as a copy, never spliced into
-    (if (org-links-descriptive-p buffer)
-        (merge 'list found (copy-list (org-hidden-ranges-shown buffer start end)) #'< :key #'first)
+around what redact and protect hide, but in the call point is in. The lines
+shown as pictures (INLINE-PICTURE-REPLACEMENTS) in place of all of that on
+them."
+  (let* ((found (merge 'list
+                       (and *org-bullets* (org-headline-signs buffer start end))
+                       (and (or *org-list-bullets* *org-checkbox-signs*) (org-item-signs buffer start end))
+                       #'< :key #'first))
+         ;; the links' ranges are kept between frames: merged as a copy, never spliced into
+         (found (if (org-links-descriptive-p buffer)
+                    (merge 'list found (copy-list (org-hidden-ranges-shown buffer start end)) #'< :key #'first)
+                    found))
+         (pictures (inline-picture-replacements buffer start end)))
+    (if pictures
+        (merge 'list
+               (remove-if (lambda (r)
+                            (find-if (lambda (p) (and (< (first r) (second p)) (< (first p) (second r)))) pictures))
+                          found)
+               pictures #'< :key #'first)
         found)))
 
 (define-command org-indent-mode ()

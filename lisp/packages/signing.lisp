@@ -178,8 +178,8 @@ line, before the blank line that ends the header), whatever its message says."
   "The most seconds checking who signed a package's version may take, git
 with gpg or ssh-keygen, before it is ended and the version not taken.")
 
-(defun package-signature (folder commit tag where)
-  "Who signed COMMIT of the repository at WHERE, kept in FOLDER: the tag TAG it
+(defun package-signature (directory commit tag where)
+  "Who signed COMMIT of the repository at WHERE, kept in DIRECTORY: the tag TAG it
 was fetched by now when that is signed (its object, FETCH_HEAD, naming TAG and
 COMMIT), else the commit. Git does the check, with gpg and your keyring for a
 GNU Privacy Guard (GPG) signature, and with ssh-keygen and the allowed signers
@@ -192,7 +192,7 @@ a GPG key your keyring lacks, its fingerprint :KEY-ID), :NONE (unsigned) or
 one, the key seen to have made the signature."
   (labels ((git (allowed &rest arguments)
              (multiple-value-bind (octets ok too-large said)
-                 (run-git-program (git-for-packages) folder arguments
+                 (run-git-program (git-for-packages) directory arguments
                                   :environment (git-network-environment (list "gpg.ssh.allowedSignersFile" allowed))
                                   :errors t :seconds *package-check-seconds*)
                (declare (ignore ok too-large))

@@ -2,9 +2,9 @@
 ;;;; Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
 ;;;;
 ;;;; Beside the stable surface, which is names, the files Tuatara reads in its
-;;;; folders are kept too. test/api/kept-files.sexp pins, at each version
+;;;; directories are kept too. test/api/kept-files.sexp pins, at each version
 ;;;; bump, each list kept between sessions (its file's name, its class and the
-;;;; version of its format) and the other files of the folders with their
+;;;; version of its format) and the other files of the directories with their
 ;;;; class: kept (made by you: never lost to a later release), remembered
 ;;;; (what you did, read by every later release) or rebuilt (may be deleted at
 ;;;; any time). test/kept-files/VERSION/ holds a file of each list as that
@@ -15,15 +15,15 @@
 (in-package #:tuatara.tests)
 
 (define-test kept-files
-  :description "The lists kept between sessions and the other files of Tuatara's folders keep being read, by every later release of a major version: lines of a later release kept as they are, the files of each release read to the same entries.")
+  :description "The lists kept between sessions and the other files of Tuatara's directories keep being read, by every later release of a major version: lines of a later release kept as they are, the files of each release read to the same entries.")
 
 (defparameter *kept-files-file* (asdf:system-relative-pathname :tuatara "test/api/kept-files.sexp")
   "The pinned files Tuatara keeps: the version it was written at, then a row for each file.")
 
 (defparameter *kept-file-samples* (asdf:system-relative-pathname :tuatara "test/kept-files/")
-  "The folder of the files each release wrote, a folder for each, named for the version.")
+  "The directory of the files each release wrote, a directory for each, named for the version.")
 
-(defparameter *kept-folders*
+(defparameter *kept-directories*
   '((:file "config" "init.lisp" :kept nil)
     (:file "config" "snippets/" :kept nil)
     (:file "config" "capture-templates/" :kept nil)
@@ -38,9 +38,9 @@
     (:file "state" "grammar-store/" :rebuilt nil)
     (:file "data" "packages/" :rebuilt nil)
     (:file "cache" "" :rebuilt nil))
-  "The files and folders of Tuatara's folders other than the lists kept
-between sessions, each (:FILE FOLDER PATH CLASS VERSION): FOLDER config,
-state, data or cache; PATH within it, a folder's ending in /; CLASS :KEPT,
+  "The files and directories of Tuatara's directories other than the lists kept
+between sessions, each (:FILE DIRECTORY PATH CLASS VERSION): DIRECTORY config,
+state, data or cache; PATH within it, a directory's ending in /; CLASS :KEPT,
 :REMEMBERED or :REBUILT; VERSION that of its format where the file says one.")
 
 (defparameter *kept-file-entries*
@@ -99,11 +99,11 @@ lines have, which an older release must know to leave a later line unread."
 
 (defun kept-files ()
   "The files Tuatara keeps as they are now, a row for each: the lists kept
-between sessions, then the other files of its folders (*KEPT-FOLDERS*)."
-  (append (kept-file-state-rows) *kept-folders*))
+between sessions, then the other files of its directories (*KEPT-DIRECTORIES*)."
+  (append (kept-file-state-rows) *kept-directories*))
 
 (defun kept-file-row-name (row)
-  "What names the file ROW of the pin is about: the list's name, or the folder and path."
+  "What names the file ROW of the pin is about: the list's name, or the directory and path."
   (subseq row 0 (if (eq (first row) :state) 2 3)))
 
 (defun kept-class-rank (class)
@@ -142,16 +142,16 @@ or a list of trust no longer one or its lines' fields changed."
   "The entries the sample files of LIST, a list kept between sessions, hold (*KEPT-FILE-ENTRIES*)."
   (rest (find list *kept-file-entries* :key (lambda (row) (symbol-value (first row))))))
 
-(defun write-kept-file-samples (folder)
-  "Write into FOLDER the file of each list kept between sessions as this
+(defun write-kept-file-samples (directory)
+  "Write into DIRECTORY the file of each list kept between sessions as this
 release writes it, holding the entries of *KEPT-FILE-ENTRIES*: those not
 there yet, none over a file there. The names of those written."
-  (ensure-directories-exist folder)
+  (ensure-directories-exist directory)
   (let ((written '()))
     (with-fresh-state
       (loop for (variable . entries) in *kept-file-entries*
             for list = (symbol-value variable)
-            for to = (merge-pathnames (tuatara.defaults::state-list-name list) folder)
+            for to = (merge-pathnames (tuatara.defaults::state-list-name list) directory)
             unless (probe-file to)
               do (tuatara.defaults::state-list-put list entries)
                  (tuatara.defaults::finish-state-writes)
@@ -167,16 +167,16 @@ pinned at, and write the sample files of that version (WRITE-KEPT-FILE-SAMPLES).
     (with-open-file (out file :direction :output :if-exists :supersede)
       (let ((*print-case* :downcase) (*print-right-margin* 100000))
         (format out ";; The files Tuatara keeps, pinned by tools/pin-kept-files.sh at each version bump: (:state NAME CLASS VERSION),~%~
-                     ;; a list kept between sessions, with :trust t :fields N after them for a list of trust; (:file FOLDER PATH~%~
-                     ;; CLASS VERSION), the other files of its folders. CLASS :kept, :remembered or :rebuilt; VERSION that of~%~
+                     ;; a list kept between sessions, with :trust t :fields N after them for a list of trust; (:file DIRECTORY PATH~%~
+                     ;; CLASS VERSION), the other files of its directories. CLASS :kept, :remembered or :rebuilt; VERSION that of~%~
                      ;; the format, NIL where the file says none.~%")
         (prin1 (list :version version) out)
         (terpri out)
         (dolist (row (kept-files)) (prin1 row out) (terpri out))))
     (write-kept-file-samples (merge-pathnames (format nil "~a/" version) *kept-file-samples*))))
 
-(defun kept-sample-folders ()
-  "The folders of sample files, one for each release that wrote them."
+(defun kept-sample-directories ()
+  "The directories of sample files, one for each release that wrote them."
   (directory (merge-pathnames "*/" *kept-file-samples*)))
 
 (defun file-lines-but-comments (text)
@@ -185,18 +185,18 @@ pinned at, and write the sample files of that version (WRITE-KEPT-FILE-SAMPLES).
              (uiop:split-string text :separator '(#\Newline))))
 
 (defun put-state-file (list text)
-  "Make TEXT the file of LIST, a list kept between sessions, in the state folder now in force."
+  "Make TEXT the file of LIST, a list kept between sessions, in the state directory now in force."
   (ensure-directories-exist (tuatara.io:state-directory))
   (tuatara.io:write-private-file (tuatara.defaults::state-list-path list) text))
 
 (define-test (kept-files samples-read)
   ;; each release's files read by this one to the same entries, and written back with their
   ;; lines as they were, under the line saying the version
-  (let ((folders (kept-sample-folders)))
-    (true folders "there are sample files")
-    (dolist (folder folders)
+  (let ((directories (kept-sample-directories)))
+    (true directories "there are sample files")
+    (dolist (directory directories)
       (dolist (list tuatara.defaults::*state-lists*)
-        (let ((sample (merge-pathnames (tuatara.defaults::state-list-name list) folder)))
+        (let ((sample (merge-pathnames (tuatara.defaults::state-list-name list) directory)))
           (when (probe-file sample)
             (with-fresh-state
               (let ((text (file-text sample))
@@ -204,7 +204,7 @@ pinned at, and write the sample files of that version (WRITE-KEPT-FILE-SAMPLES).
                     (where (format nil
                                    "~a of ~a"
                                    (tuatara.defaults::state-list-name list)
-                                   (car (last (pathname-directory folder))))))
+                                   (car (last (pathname-directory directory))))))
                 (put-state-file list text)
                 (is equal (kept-file-entries list) (tuatara.defaults::read-state-file list path) "~a read" where)
                 (is equal (kept-file-entries list) (tuatara.defaults::state-list-entries list) "~a listed" where)
@@ -219,8 +219,8 @@ pinned at, and write the sample files of that version (WRITE-KEPT-FILE-SAMPLES).
                   (is equal (file-lines-but-comments text) (file-lines-but-comments written) "~a written back" where))
                 (is equal (kept-file-entries list) (tuatara.defaults::read-state-file list path) "~a read again" where)))))))
     ;; the session
-    (dolist (folder folders)
-      (let ((sample (merge-pathnames "session" folder)))
+    (dolist (directory directories)
+      (let ((sample (merge-pathnames "session" directory)))
         (when (probe-file sample)
           (with-fresh-state
             (ensure-directories-exist (tuatara.io:state-directory))
@@ -251,7 +251,7 @@ pinned at, and write the sample files of that version (WRITE-KEPT-FILE-SAMPLES).
           (when (tuatara.defaults::state-list-trust list)
             (is eql (tuatara.defaults::state-list-fields list) (getf more :fields) "~a's fields pinned" name)))
         (true (kept-file-entries list) "~a has sample entries" name)
-        (true (some (lambda (folder) (probe-file (merge-pathnames name folder))) (kept-sample-folders))
+        (true (some (lambda (directory) (probe-file (merge-pathnames name directory))) (kept-sample-directories))
               "~a has a sample file" name)))
     ;; bookmarks are made by hand: kept
     (is eq :kept (tuatara.defaults::state-list-class tuatara.defaults::*bookmarks*))
@@ -403,7 +403,7 @@ those left out written empty, then a field of its own."
             (tuatara.defaults::read-state-file list path))))))
 
 (define-test (kept-files bookmark-to-a-path-not-there-kept)
-  ;; a bookmark to a server's folder not mapped just now: gone to, said so, and kept
+  ;; a bookmark to a server's directory not mapped just now: gone to, said so, and kept
   (with-fresh-state
     (let ((tuatara.defaults::*modal-editing* nil)
           (list tuatara.defaults::*bookmarks*))

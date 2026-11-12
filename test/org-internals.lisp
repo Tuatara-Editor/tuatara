@@ -83,7 +83,7 @@ out), a CLOCK: line, where a logged line goes, and clocking in from any key.")
     ("CLOCK:[2026-10-01 Thu 15:00]--[2026-10-01 Thu 15:30] =>  0:30" nil nil nil nil 0))
   "CLOCK: lines written well and oddly, and what Org reads of each.")
 
-(define-test (org-internals clock-lines-read-alike)
+(define-modal-test (org-internals clock-lines-read-alike)
   (dolist (case *org-internals-clock-lines*)
     (destructuring-bind (line clock-p status duration value minutes) case
       (let* ((text (format nil "* Task~%~a~%" line))
@@ -172,7 +172,7 @@ out), a CLOCK: line, where a logged line goes, and clocking in from any key.")
                         (tuatara.defaults::clocktable-entry-tags row)))
                 rows))))
 
-(define-test (org-internals logbook-lines-placed-alike)
+(define-modal-test (org-internals logbook-lines-placed-alike)
   ;; clocking in, a note, a change of state and a reschedule logged in one place, as Org 9.7.11 logs them
   ;; (batch Emacs): at the top of the entry's :LOGBOOK: drawer wherever it stands in the entry's text
   (let ((tuatara.defaults::*org-now* (encode-universal-time 0 0 18 1 10 2026))
@@ -210,7 +210,7 @@ out), a CLOCK: line, where a logged line goes, and clocking in from any key.")
           (after "j C-c C-x C-i C-c C-x C-o C-c C-z h i RET C-c C-t"
                  (format nil "* Errands~%- [ ] call Anna~%- [ ] buy milk~%"))))))
 
-(define-test (org-internals clock-in-alike-from-every-key)
+(define-modal-test (org-internals clock-in-alike-from-every-key)
   ;; C-c C-x C-i in the file, I on the agenda's line: the same line in the same place, a task's or a checkbox item's
   (with-test-directory (dir)
     (let* ((file (merge-pathnames "work.org" dir))
@@ -370,9 +370,10 @@ out), a CLOCK: line, where a logged line goes, and clocking in from any key.")
     (alexandria:write-string-into-file (format nil "#+MACRO: R [$1]~%")
                                        (merge-pathnames "setup.org" dir)
                                        :if-exists :supersede)
-    (let ((folder (tuatara.io:parent-path (namestring (merge-pathnames "note.org" dir)))))
-      (is eq nil (tuatara.export::only-enhanced-macro (format nil "#+SETUPFILE: setup.org~%See {{{R(x)}}}.~%") folder))
-      (is string= "R" (tuatara.export::only-enhanced-macro (format nil "See {{{R(x)}}}.~%") folder)))))
+    (let ((directory (tuatara.io:parent-path (namestring (merge-pathnames "note.org" dir)))))
+      (is eq nil (tuatara.export::only-enhanced-macro (format nil "#+SETUPFILE: setup.org~%See {{{R(x)}}}.~%")
+                                                      directory))
+      (is string= "R" (tuatara.export::only-enhanced-macro (format nil "See {{{R(x)}}}.~%") directory)))))
 
 (define-test (org-internals property-additions)
   ;; NAME replaces, NAME+ adds, from the file's #+PROPERTY: lines down through the headlines

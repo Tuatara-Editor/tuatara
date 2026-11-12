@@ -783,7 +783,7 @@ cleanly or as malformed, else the error, in words."
       (tuatara.frontend:malformed-message () nil)
       (error (condition) (princ-to-string condition)))))
 
-(define-test (remote typed-at-the-client)
+(define-modal-test (remote typed-at-the-client)
   ;; a session whose only screen is a client's: keys typed there edit the buffer, which shows there
   (let ((local (make-instance 'queued-fake-frontend :width 40 :height 8)))
     (multiple-value-bind (remote client runner) (connect-remote local)

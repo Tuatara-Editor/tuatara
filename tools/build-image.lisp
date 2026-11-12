@@ -2,7 +2,7 @@
 ;;;; Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
 ;;;; Run by tools/build-image.sh, inside the toolbox, with the heap size to keep.
 (load (merge-pathnames "quicklisp.lisp" *load-truename*))
-;; the Tuatara of this folder, whatever other copies ASDF knows of
+;; the Tuatara of this directory, whatever other copies ASDF knows of
 (let ((tree (uiop:pathname-parent-directory-pathname (uiop:pathname-directory-pathname *load-truename*))))
   (push tree asdf:*central-registry*)
   (ql:quickload :tuatara/terminal :silent t)
@@ -19,7 +19,7 @@
 (tuatara.terminal:write-man-pages "build/man/")
 ;; the bash completion of the options, made the same way: build/completion/tuatara
 (tuatara.terminal:write-bash-completion "build/completion/")
-;; every Lisp system the program carries and the folder of its sources (none
+;; every Lisp system the program carries and the directory of its sources (none
 ;; for those SBCL carries compiled), for tools/release.sh to give their licences
 (with-open-file (out "build/lisp-systems.tsv" :direction :output :if-exists :supersede)
   (dolist (name (sort (remove-duplicates (mapcar #'asdf:primary-system-name (asdf:already-loaded-systems))

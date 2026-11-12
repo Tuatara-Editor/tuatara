@@ -12,23 +12,23 @@
 
 (defun rimu-sizes-p (buffer)
   "True when the rimu list BUFFER shows the sizes column (\\<rimu-mode>\\[rimu-toggle-sizes]):
-never in a list opened safely, as summing them reads every folder below, nor
-in one of a folder as a commit left it, whose folders are not on the disk."
+never in a list opened safely, as summing them reads every directory below, nor
+in one of a directory as a commit left it, whose directories are not on the disk."
   (rimu-column-allowed-p buffer 'rimu-sizes))
 
 (defun rimu-tree-size (directory &key (seen (make-hash-table :test 'equal)) wanted)
   "The octets the files in DIRECTORY (a native name ending in /) and under it
 take, hidden ones too: each file once however many names it has (SEEN, a
-table of those counted), links not followed, and folders of another file
+table of those counted), links not followed, and directories of another file
 system (a drive mounted below it, /proc) left out. WANTED, a function of no
-arguments, is asked every 64 folders whether the sum is still wanted: NIL is
+arguments, is asked every 64 directories whether the sum is still wanted: NIL is
 given when it says no."
-  (let ((total 0) (folders 0))
+  (let ((total 0) (dirs 0))
     (walk-directory directory
-                    (lambda (folder relative entry)
-                      (declare (ignore folder relative))
+                    (lambda (dir relative entry)
+                      (declare (ignore dir relative))
                       (if (null entry)
-                          (when (and wanted (zerop (mod (incf folders) 64)) (not (funcall wanted)))
+                          (when (and wanted (zerop (mod (incf dirs) 64)) (not (funcall wanted)))
                             (return-from rimu-tree-size nil))
                           (destructuring-bind (name kind size own &optional stamp) entry
                             (declare (ignore name))
@@ -68,7 +68,7 @@ RIMU-COLUMN-READY; the walk ends once no list of DIRECTORY shows the column."
 (define-command rimu-toggle-sizes ()
   "Show or hide, before each name in this list, how much it takes: a file
 its size, a directory the size of everything in it and under it, hidden
-files too, folders of another drive mounted in it left out, worked out in
+files too, directories of another drive mounted in it left out, worked out in
 the background while the list shows it. *RIMU-DIRECTORY-SIZES* says
 whether new lists show it."
   (rimu-toggle 'rimu-sizes "Sizes shown" "Sizes hidden"))

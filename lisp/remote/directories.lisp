@@ -1,17 +1,17 @@
-;;;; lisp/remote/folders.lisp --- Folders on another machine listed with rimu, their files copied, renamed and deleted.
+;;;; lisp/remote/directories.lisp --- Directories on another machine: listed with rimu, files copied, renamed, deleted.
 ;;;; Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
 ;;;;
-;;;; A folder on another machine, /ssh:HOST:/folder/, is listed with rimu as a
-;;;; folder of the disk is, read through SFTP (sftp.lisp) on rimu's own thread:
+;;;; A directory on another machine, /ssh:HOST:/directory/, is listed with rimu as a
+;;;; directory of the disk is, read through SFTP (sftp.lisp) on rimu's own thread:
 ;;;; its names, kinds, sizes and times, where its links lead. Nothing else is
-;;;; worked out for it: no git column, no sizes of folders, no preview, and it
+;;;; worked out for it: no git column, no sizes of directories, no preview, and it
 ;;;; is not watched for changes. Its files are copied (C), renamed (R) and
 ;;;; deleted (D, x) through the client, as rimu does those on the disk, a job
 ;;;; whose every request has *REMOTE-SECONDS*; copies go from here to there,
-;;;; from there to here, and between two folders there. A server keeps no
+;;;; from there to here, and between two directories there. A server keeps no
 ;;;; trash: what is deleted there is deleted for good, after a plain yes. A
-;;;; folder of evidence there (*EVIDENCE-FOLDERS*, as REMOTE-EVIDENCE tells
-;;;; it) is listed opened safely and nothing is written in it, nor is a folder
+;;;; directory of evidence there (*EVIDENCE-DIRECTORIES*, as REMOTE-EVIDENCE tells
+;;;; it) is listed opened safely and nothing is written in it, nor is a directory
 ;;;; holding one deleted or moved.
 
 (in-package #:tuatara.defaults)
@@ -19,42 +19,42 @@
 ;;; Names
 
 (defun remote-directory-name (name)
-  "NAME, of a folder on another machine (/ssh:HOST:PATH), as rimu keeps it,
+  "NAME, of a directory on another machine (/ssh:HOST:PATH), as rimu keeps it,
 its path worked out by its words (REMOTE-PATH-NORMAL) and ending in /, or
-nothing after /ssh:HOST: for the home folder there."
+nothing after /ssh:HOST: for the home directory there."
   (multiple-value-bind (host path) (remote-name-parts name)
     (remote-name host (if (string= path "") "" (tuatara.io:slash-ended path)))))
 
 (defun remote-entry-name-p (name)
-  "True when NAME, given by a server as an entry of a folder, can be one: not
+  "True when NAME, given by a server as an entry of a directory, can be one: not
 empty, not . nor .., with no / nor NUL in it, so that a name joined to its
-folder never leads out of it, nor ends early."
+directory never leads out of it, nor ends early."
   (and (plusp (length name)) (not (member name '("." "..") :test #'string=)) (not (find #\/ name))
        (not (find (code-char 0) name))))
 
-(defun remote-join (folder name)
-  "The name of the entry NAME of FOLDER, here or on another machine, one /
-between them; NAME alone after a /ssh:HOST: naming the home folder there."
-  (if (or (uiop:string-suffix-p folder "/") (eql (remote-prefix-length folder) (length folder)))
-      (concatenate 'string folder name)
-      (concatenate 'string folder "/" name)))
+(defun remote-join (directory name)
+  "The name of the entry NAME of DIRECTORY, here or on another machine, one /
+between them; NAME alone after a /ssh:HOST: naming the home directory there."
+  (if (or (uiop:string-suffix-p directory "/") (eql (remote-prefix-length directory) (length directory)))
+      (concatenate 'string directory name)
+      (concatenate 'string directory "/" name)))
 
 ;;; Listed with rimu
 
 (defstruct (remote-rimu-source (:constructor make-remote-rimu-source (host)) (:copier nil))
-  "Where a rimu list of a folder on another machine reads it: HOST, as ssh
-takes it; EVIDENCE, true once a folder it listed was found to be evidence
+  "Where a rimu list of a directory on another machine reads it: HOST, as ssh
+takes it; EVIDENCE, true once a directory it listed was found to be evidence
 \(REMOTE-EVIDENCE-WORDS)."
   (host "" :type string :read-only t)
   (evidence nil))
 
 (setf (documentation 'remote-rimu-source-p 'function) "True when OBJECT is a REMOTE-RIMU-SOURCE."
-      (documentation 'remote-rimu-source-host 'function) "The machine SOURCE lists folders of, as ssh takes it."
+      (documentation 'remote-rimu-source-host 'function) "The machine SOURCE lists directories of, as ssh takes it."
       (documentation 'remote-rimu-source-evidence 'function)
-      "True once a folder SOURCE listed was found to be evidence.")
+      "True once a directory SOURCE listed was found to be evidence.")
 
 (defun remote-listed (name attributes &optional target target-attributes)
-  "An entry of a folder on another machine, NAME with ATTRIBUTES
+  "An entry of a directory on another machine, NAME with ATTRIBUTES
 \(SFTP-TAKE-ATTRIBUTES), as rimu lists one (TUATARA.IO:LISTED); for a link,
 TARGET, what it holds, and TARGET-ATTRIBUTES, those of where it leads (NIL:
 nowhere)."
@@ -62,15 +62,15 @@ nowhere)."
                           (or (getf attributes :size) 0) nil target
                           (and target-attributes (remote-stamp target-attributes))))
 
-(defun remote-link-details (host folder names)
-  "For each of NAMES, links in FOLDER on HOST, a path ending in /, what it
+(defun remote-link-details (host directory names)
+  "For each of NAMES, links in DIRECTORY on HOST, a path ending in /, what it
 holds and the attributes of where it leads (NIL: nowhere), as a list of
 \(TARGET . ATTRIBUTES)."
   (call-with-sftp
-   host folder "examine"
+   host directory "examine"
    (lambda (link)
      (mapcar (lambda (name)
-               (let ((path (concatenate 'string folder name)))
+               (let ((path (concatenate 'string directory name)))
                  (tuatara.runtime:job-check-stop)
                  (cons (let ((target (handler-case
                                          (multiple-value-bind (answer names)
@@ -83,18 +83,18 @@ holds and the attributes of where it leads (NIL: nowhere), as a list of
              names))))
 
 (defun remote-rimu-listing (source directory)
-  "DIRECTORY, a folder on another machine as REMOTE-DIRECTORY-NAME writes
+  "DIRECTORY, a directory on another machine as REMOTE-DIRECTORY-NAME writes
 it, read into a RIMU-LISTING, its name from the root as the server says it:
 . and .. first, then its entries, those past *SFTP-MOST-LISTED* left out and
 that said; a name no entry can have (REMOTE-ENTRY-NAME-P) left out. Why
 not, in the listing, when it cannot be read. SOURCE, the list's
-REMOTE-RIMU-SOURCE, is told when the folder is evidence."
+REMOTE-RIMU-SOURCE, is told when the directory is evidence."
   (multiple-value-bind (host path) (remote-name-parts directory)
     (handler-case
         (let* ((path (if (uiop:string-prefix-p "/" path)
                          path
                          (tuatara.io:slash-ended (remote-real-path host path))))
-               (folder (remote-name host path)))
+               (dir (remote-name host path)))
           (when (remote-evidence-words host path)
             (setf (remote-rimu-source-evidence source) t))
           (multiple-value-bind (entries cut) (remote-listing host path)
@@ -103,7 +103,7 @@ REMOTE-RIMU-SOURCE, is told when the folder is evidence."
                    (details (remote-link-details host path (mapcar #'car links)))
                    (here (list :permissions #o40755)))
               (make-rimu-listing
-               folder
+               dir
                (coerce (list* (remote-listed "." here) (remote-listed ".." here)
                               (mapcar (lambda (entry)
                                         (let ((link (position entry links)))
@@ -127,7 +127,7 @@ so. Raise it on a fast link to preview larger files; lower it on a slow one.
   :values (integer 0 *))
 
 (defmethod rimu-source-listing ((source remote-rimu-source) directory)
-  "The folder as the server lists it (REMOTE-RIMU-LISTING)."
+  "The directory as the server lists it (REMOTE-RIMU-LISTING)."
   (remote-rimu-listing source directory))
 
 (defmethod rimu-source-call-with-entry ((source remote-rimu-source) directory octets function &key cancel)
@@ -140,10 +140,10 @@ and one larger than *REMOTE-PREVIEW-SIZE-LIMIT*."
       (let ((evidence (or (remote-rimu-source-evidence source) (remote-evidence-words host path))))
         (when evidence
           (refuse "not previewed, as it is evidence~@[: ~a~]" (and (stringp evidence) evidence))))
-      (let ((folder (new-private-folder (private-cache-directory "remote/"))))
+      (let ((dir (new-private-directory (private-cache-directory "remote/"))))
         (unwind-protect
              (multiple-value-bind (fd copy)
-                 (tuatara.io:create-free-file folder (lambda (n) (declare (ignore n)) "preview"))
+                 (tuatara.io:create-free-file dir (lambda (n) (declare (ignore n)) "preview"))
                (unwind-protect
                     (handler-case (remote-download host path fd :most *remote-preview-size-limit*)
                       (remote-too-large (condition)
@@ -153,10 +153,10 @@ and one larger than *REMOTE-PREVIEW-SIZE-LIMIT*."
                                 (octets-words *remote-preview-size-limit*))))
                  (sb-posix:close fd))
                (tuatara.io:call-with-file copy function))
-          (delete-private-folder folder))))))
+          (delete-private-directory dir))))))
 
 (defmethod rimu-source-open ((source remote-rimu-source) buffer entry)
-  "A folder listed in its place; a file read from the server and visited as
+  "A directory listed in its place; a file read from the server and visited as
 \\[find-file] visits one, safely when the list was opened safely."
   (let ((path (rimu-path (rimu-list-directory buffer) entry)))
     (if (rimu-directory-p entry)
@@ -164,7 +164,7 @@ and one larger than *REMOTE-PREVIEW-SIZE-LIMIT*."
         (visit-path path :safe (tuatara.io:safe-visit-p buffer)))))
 
 (defmethod rimu-source-shown ((source remote-rimu-source) buffer)
-  "The list opened safely from then on once a folder it listed was found to be evidence."
+  "The list opened safely from then on once a directory it listed was found to be evidence."
   (when (remote-rimu-source-evidence source)
     (setf (tuatara.io:safe-visit-p buffer) t)))
 
@@ -173,7 +173,7 @@ and one larger than *REMOTE-PREVIEW-SIZE-LIMIT*."
   (remote-name (remote-rimu-source-host source) "/"))
 
 (defmethod rimu-source-buffer-name ((source remote-rimu-source) directory)
-  "HOST: and the folder's name."
+  "HOST: and the directory's name."
   (multiple-value-bind (host path) (remote-name-parts directory)
     (format nil "~a:~a" host (if (string= path "") "" (rimu-buffer-name path)))))
 
@@ -190,9 +190,9 @@ and one larger than *REMOTE-PREVIEW-SIZE-LIMIT*."
   (format nil "~(~a~) works on files here, not on ~a" command (remote-rimu-source-host source)))
 
 (defun remote-rimu-list (directory)
-  "The rimu list of DIRECTORY, a folder on another machine as
+  "The rimu list of DIRECTORY, a directory on another machine as
 REMOTE-DIRECTORY-NAME writes it, there is, else a new one, opened safely
-when the folder is evidence by its name (EVIDENCE-PATH-P), and once read
+when the directory is evidence by its name (EVIDENCE-PATH-P), and once read
 when it is found to be by the server's word (REMOTE-RIMU-LISTING)."
   (or (find-if (lambda (buffer)
                  (and (rimu-list-p buffer)
@@ -224,21 +224,21 @@ when it is found to be by the server's word (REMOTE-RIMU-LISTING)."
         (:symlink :link)
         (t :other))))
 
-(defun remote-or-local-names (folder)
-  "The names of the entries of FOLDER, here or on another machine, . and ..
+(defun remote-or-local-names (directory)
+  "The names of the entries of DIRECTORY, here or on another machine, . and ..
 left out; refused when the server lists more than *SFTP-MOST-LISTED*, or a
 name no entry can have (REMOTE-ENTRY-NAME-P)."
-  (if (remote-name-p folder)
-      (multiple-value-bind (host path) (remote-name-parts folder)
+  (if (remote-name-p directory)
+      (multiple-value-bind (host path) (remote-name-parts directory)
         (multiple-value-bind (entries cut)
             (remote-listing host (if (string= path "") "." (tuatara.io:slash-ended path)))
-          (when cut (refuse "~a holds more than ~:d entries" folder *sftp-most-listed*))
+          (when cut (refuse "~a holds more than ~:d entries" directory *sftp-most-listed*))
           (dolist (entry entries)
             (unless (remote-entry-name-p (car entry))
-              (refuse "~a lists a name no entry can have: ~a" folder (escape-controls (car entry)))))
+              (refuse "~a lists a name no entry can have: ~a" directory (escape-controls (car entry)))))
           (mapcar #'car entries)))
       (remove-if (lambda (name) (member name '("." "..") :test #'string=))
-                 (mapcar #'first (tuatara.io:directory-entries folder)))))
+                 (mapcar #'first (tuatara.io:directory-entries directory)))))
 
 (defun remote-copy-down (from to)
   "Copy the file FROM, on another machine, to TO, a new name here, readable
@@ -273,16 +273,16 @@ FROM's permissions, never over a file there (REMOTE-UPLOAD)."
 between two on other machines through a private copy here, deleted after."
   (cond ((not (and (remote-name-p from) (remote-name-p to)))
          (if (remote-name-p from) (remote-copy-down from to) (remote-copy-up from to)))
-        (t (let ((folder (new-private-folder (private-cache-directory "remote/"))))
+        (t (let ((directory (new-private-directory (private-cache-directory "remote/"))))
              (unwind-protect
-                  (let ((copy (tuatara.io:path-join folder "copy")))
+                  (let ((copy (tuatara.io:path-join directory "copy")))
                     (remote-copy-down from copy)
                     (remote-copy-up copy to))
-               (delete-private-folder folder))))))
+               (delete-private-directory directory))))))
 
 (defun remote-copy-tree (from to skip)
-  "Copy FROM, a file or a folder with all in it, to the new name TO, either
-or both on another machine; a link, and what is neither file nor folder,
+  "Copy FROM, a file or a directory with all in it, to the new name TO, either
+or both on another machine; a link, and what is neither file nor directory,
 left out, SKIP called with its name and words saying why."
   (tuatara.runtime:job-check-stop)
   (let ((kind (remote-or-local-kind from)))
@@ -295,10 +295,10 @@ left out, SKIP called with its name and words saying why."
        (dolist (name (remote-or-local-names from))
          (remote-copy-tree (remote-join from name) (remote-join to name) skip)))
       (:file (remote-copy-file from to))
-      (t (funcall skip from (if (eq kind :link) "a link" "neither a file nor a folder"))))))
+      (t (funcall skip from (if (eq kind :link) "a link" "neither a file nor a directory"))))))
 
 (defparameter *remote-tree-depth* 256
-  "The most levels of folders within a folder on another machine looked
+  "The most levels of directories within a directory on another machine looked
 through before it is deleted or moved (REMOTE-CHECK-WRITING); one deeper is
 refused.")
 
@@ -306,21 +306,21 @@ refused.")
   "Signal TUATARA.IO:WRITING-REFUSED for OPERATION on NAME, on another
 machine, when it is evidence (REMOTE-EVIDENCE), told by its name and where it
 really is there (REMOTE-PLACE-NAMES, refused when that is needed and cannot
-be found). With TREE, NAME being a folder, it is also signalled when any
-folder within it is evidence, links in it not followed, as
-TUATARA.IO:CHECK-TREE-WRITING does here. A folder holding evidence is not
-deleted, moved or renamed as a whole, nor one whose folders cannot all be
+be found). With TREE, NAME being a directory, it is also signalled when any
+directory within it is evidence, links in it not followed, as
+TUATARA.IO:CHECK-TREE-WRITING does here. A directory holding evidence is not
+deleted, moved or renamed as a whole, nor one whose directories cannot all be
 looked through (a listing cut short, more than *REMOTE-TREE-DEPTH* levels).
-Looks within only while *EVIDENCE-FOLDERS* names some folder."
+Looks within only while *EVIDENCE-DIRECTORIES* names some directory."
   (when (evidence-rules)
     (multiple-value-bind (host path) (remote-name-parts name)
       (labels ((check (names)
-                 (multiple-value-bind (folder entry) (remote-evidence host names)
-                   (when folder
+                 (multiple-value-bind (directory entry) (remote-evidence host names)
+                   (when directory
                      (error 'tuatara.io:writing-refused :operation operation :path name
-                                                        :reason (evidence-words folder entry)))))
-               (folders (path)
-                 ;; the names of the folders within, the rest of the listing let go of
+                                                        :reason (evidence-words directory entry)))))
+               (directories (path)
+                 ;; the names of the directories within, the rest of the listing let go of
                  (multiple-value-bind (entries cut) (remote-listing host path)
                    (when cut
                      (refuse "~a holds too many entries to be looked through for evidence" (remote-name host path)))
@@ -330,11 +330,11 @@ Looks within only while *EVIDENCE-FOLDERS* names some folder."
                (walk (path real depth)
                  (tuatara.runtime:job-check-stop)
                  (when (> depth *remote-tree-depth*)
-                   (refuse "~a is more than ~d folders deep to be looked through for evidence" name
+                   (refuse "~a is more than ~d directories deep to be looked through for evidence" name
                            *remote-tree-depth*))
                  (check (list path real))
-                 (dolist (folder (folders path))
-                   (walk (concatenate 'string path folder "/") (and real (concatenate 'string real folder "/"))
+                 (dolist (directory (directories path))
+                   (walk (concatenate 'string path directory "/") (and real (concatenate 'string real directory "/"))
                          (1+ depth)))))
         (let* ((names (remote-place-names host path))
                (real (second names)))
@@ -357,7 +357,7 @@ really are there."
                  (into-p (remote-place-real-path from-host from-path) (remote-place-real-path to-host to-path))))))))
 
 (defun remote-delete-tree (name)
-  "Delete NAME, on another machine, for good: a file or a link, or a folder
+  "Delete NAME, on another machine, for good: a file or a link, or a directory
 with all in it."
   (tuatara.runtime:job-check-stop)
   (multiple-value-bind (host path) (remote-name-parts name)
@@ -376,7 +376,7 @@ within one machine, a rename there, never over a name there; :TRASH and
 :DELETE, deleting for good, as a server keeps no trash; the others refused.
 Stopped between requests when the job is asked to stop, the file under way
 taken away. Nothing is begun that would write in evidence there, delete or
-move a folder holding it (REMOTE-CHECK-WRITING), or copy or move a folder
+move a directory holding it (REMOTE-CHECK-WRITING), or copy or move a directory
 into itself, under any name of its machine."
   (handler-case
       (case verb

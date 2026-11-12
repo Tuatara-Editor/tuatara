@@ -20,7 +20,7 @@ ends that connection and fails the work in hand, and nothing a server says is ru
            '("/usr/libexec/openssh/sftp-server" "/usr/lib/openssh/sftp-server" "/run/host/usr/libexec/openssh/sftp-server")))
 
 (defmacro with-stand-in-sftp ((dir log &key answers machine before) &body body)
-  "Run BODY with DIR bound to a new test folder, the files \"there\", and
+  "Run BODY with DIR bound to a new test directory, the files \"there\", and
 *SSH-PROGRAM* set, for every thread, to a stand-in for ssh that writes its
 arguments in LOG, a file in DIR, and runs sftp-server with a umask of 077,
 or with ANSWERS, octets, writes them and waits; every connection closed
@@ -76,7 +76,7 @@ writes fields, an integer first being the request's number."
     (tuatara.io:file-system-error (condition) (princ-to-string condition))))
 
 (define-test (remote-files sftp-reads-writes-and-lists)
-  ;; against OpenSSH's own server: attributes, a folder listed, a file of many pieces read whole, written
+  ;; against OpenSSH's own server: attributes, a directory listed, a file of many pieces read whole, written
   ;; beside and renamed over, refused when it changed, a file taken away; ssh given the system's options
   (let ((server (sftp-server-program)))
     (if (null server)
@@ -283,7 +283,7 @@ with a failure and nothing after it, the other writes sent on unanswered.")
   (is string= "/ssh:box:hosts" (tuatara.defaults::resolve-file-input "/ssh:box:ho" "hosts")))
 
 (define-test (remote-files visited-saved-and-read-again)
-  ;; C-x C-f reads the file into a private copy, the buffer named after it and standing in its folder there;
+  ;; C-x C-f reads the file into a private copy, the buffer named after it and standing in its directory there;
   ;; a save writes it there; revert reads it from there; the copy goes with the buffer
   (if (null (sftp-server-program))
       (skip "no sftp-server here" (true nil))
@@ -356,14 +356,14 @@ with a failure and nothing after it, the other writes sent on unanswered.")
             (kill-remote-buffers))))))
 
 (define-test (remote-files evidence-server-read-only)
-  ;; a folder there named in *evidence-folders* opens safely and is never written
+  ;; a directory there named in *evidence-directories* opens safely and is never written
   (if (null (sftp-server-program))
       (skip "no sftp-server here" (true nil))
       (with-stand-in-sftp (dir log)
         (let* ((file (concatenate 'string (namestring dir) "seized.log"))
                (name (concatenate 'string "/ssh:box:" file)))
           (alexandria:write-string-into-file "kept" file)
-          (with-evidence-folders ((list (format nil "/ssh:box:~a" (namestring dir))))
+          (with-evidence-directories ((list (format nil "/ssh:box:~a" (namestring dir))))
             (unwind-protect
                  (progn
                    (remote-session (visit-keys name) (list :until (lambda () (remote-buffer-of name))))
@@ -379,7 +379,7 @@ with a failure and nothing after it, the other writes sent on unanswered.")
               (kill-remote-buffers)))))))
 
 (define-test (remote-files names-completed-from-the-server)
-  ;; the folder there is listed as C-x C-f's candidates; a name that would not show as it is is left out
+  ;; the directory there is listed as C-x C-f's candidates; a name that would not show as it is is left out
   (if (null (sftp-server-program))
       (skip "no sftp-server here" (true nil))
       (with-stand-in-sftp (dir log)
@@ -416,26 +416,26 @@ with a failure and nothing after it, the other writes sent on unanswered.")
            (false (tuatara.defaults::session-entry buffer)))
       (tuatara.buffer:kill-buffer buffer))))
 
-;;; Folders listed with rimu
+;;; Directories listed with rimu
 
 (defun remote-rimu-buffer ()
-  "The rimu list of a folder on another machine shown last, or NIL."
+  "The rimu list of a directory on another machine shown last, or NIL."
   (find-if (lambda (buffer)
              (and (tuatara.defaults::rimu-list-p buffer)
                   (tuatara.defaults::remote-rimu-source-p (tuatara.defaults::rimu-source buffer))))
            tuatara.buffer:*buffers*))
 
 (defun remote-list-read ()
-  "True once a rimu list of a folder on another machine shows what was read."
+  "True once a rimu list of a directory on another machine shows what was read."
   (let ((list (remote-rimu-buffer)))
     (and list (tuatara.buffer:buffer-local list 'tuatara.defaults::rimu-listing) t)))
 
 (defun kill-remote-lists ()
-  "Kill every rimu list of a folder on another machine."
+  "Kill every rimu list of a directory on another machine."
   (loop for buffer = (remote-rimu-buffer) while buffer do (tuatara.buffer:kill-buffer buffer)))
 
-(define-test (remote-files folder-listed-with-rimu)
-  ;; C-x C-f on a folder there lists it with rimu: its entries, a link with where it leads, a name that would not
+(define-test (remote-files directory-listed-with-rimu)
+  ;; C-x C-f on a directory there lists it with rimu: its entries, a link with where it leads, a name that would not
   ;; show as it is shown escaped; no preview, and the commands working on files here refused
   (if (null (sftp-server-program))
       (skip "no sftp-server here" (true nil))
@@ -525,7 +525,7 @@ with a failure and nothing after it, the other writes sent on unanswered.")
                                             tuatara.buffer:*buffers*)))
                        (true octets)
                        (tuatara.buffer:kill-buffer buffer)
-                       (true (tuatara.defaults::buffer-private-folder octets) "the folder is the octets' now")
+                       (true (tuatara.defaults::buffer-private-directory octets) "the directory is the octets' now")
                        (true (probe-file copy))
                        (setf buffer octets))
                      (tuatara.buffer:kill-buffer buffer)
@@ -587,7 +587,7 @@ with a failure and nothing after it, the other writes sent on unanswered.")
                      (false (tuatara.frontend.fake:fake-frame-showing f "the-words-within")))
                    (setf tuatara-user:*remote-preview-size-limit* most)
                    (kill-remote-lists)
-                   (with-evidence-folders ((list (format nil "/ssh:box:~a" there)))
+                   (with-evidence-directories ((list (format nil "/ssh:box:~a" there)))
                      (let ((f (remote-session keys (list :until #'remote-list-read) "P" '(:wait 1))))
                        (false (previewing) "a list opened safely has no preview")
                        (true (tuatara.frontend.fake:fake-frame-showing f "No preview here"))
@@ -597,9 +597,9 @@ with a failure and nothing after it, the other writes sent on unanswered.")
               (tuatara.defaults::rimu-close-preview)
               (kill-remote-lists)))))))
 
-(define-test (remote-files folder-copied-both-ways)
-  ;; files and folders copied from there to here, here to there and within the machine, never over a name there;
-  ;; a link left out and said; renamed there, a move to another machine refused; a folder there deleted whole
+(define-test (remote-files directory-copied-both-ways)
+  ;; files and directories copied from there to here, here to there and within the machine, never over a name there;
+  ;; a link left out and said; renamed there, a move to another machine refused; a directory there deleted whole
   (if (null (sftp-server-program))
       (skip "no sftp-server here" (true nil))
       (with-stand-in-sftp (dir log)
@@ -614,7 +614,7 @@ with a failure and nothing after it, the other writes sent on unanswered.")
               (ensure-directories-exist (merge-pathnames "tree/deep/" dir))
               (put-file (merge-pathnames "tree/a.txt" dir) "first")
               (put-file (merge-pathnames "tree/deep/b.txt" dir) "second")
-              ;; there to here, a folder whole
+              ;; there to here, a directory whole
               (work :copy (concatenate 'string remote "tree") (concatenate 'string local "tree"))
               (is string= "first" (file-text (merge-pathnames "tree/a.txt" here)))
               (is string= "second" (file-text (merge-pathnames "tree/deep/b.txt" here)))
@@ -649,7 +649,7 @@ with a failure and nothing after it, the other writes sent on unanswered.")
               (false (uiop:directory-exists-p (merge-pathnames "tree/" dir)))))))))
 
 (define-test (remote-files deleted-there-for-good-when-asked)
-  ;; D in a list of a folder there asks once, plainly, that it is deleted for good, then deletes it
+  ;; D in a list of a directory there asks once, plainly, that it is deleted for good, then deletes it
   (if (null (sftp-server-program))
       (skip "no sftp-server here" (true nil))
       (with-stand-in-sftp (dir log)
@@ -669,15 +669,15 @@ with a failure and nothing after it, the other writes sent on unanswered.")
                  (false (probe-file (merge-pathnames "gone.txt" dir))))
             (kill-remote-lists))))))
 
-(define-test (remote-files evidence-folder-there-kept)
-  ;; a folder there named in *evidence-folders* is listed opened safely, and nothing in it is deleted or written
+(define-test (remote-files evidence-directory-there-kept)
+  ;; a directory there named in *evidence-directories* is listed opened safely, and nothing in it is deleted or written
   (if (null (sftp-server-program))
       (skip "no sftp-server here" (true nil))
       (with-stand-in-sftp (dir log)
         (let* ((there (namestring dir))
                (remote (concatenate 'string "/ssh:box:" there)))
           (put-file (merge-pathnames "seized.txt" dir) "kept")
-          (with-evidence-folders ((list remote))
+          (with-evidence-directories ((list remote))
             (let ((list (tuatara.defaults::remote-rimu-list remote)))
               (unwind-protect
                    (progn
@@ -692,14 +692,14 @@ with a failure and nothing after it, the other writes sent on unanswered.")
                      (false (probe-file (merge-pathnames "new.txt" dir))))
                 (tuatara.buffer:kill-buffer list))))))))
 
-(define-test (remote-files names-from-the-server-kept-in-their-folder)
-  ;; a name a server lists that would lead out of its folder (../x) is refused, nothing copied outside
+(define-test (remote-files names-from-the-server-kept-in-their-directory)
+  ;; a name a server lists that would lead out of its directory (../x) is refused, nothing copied outside
   (let ((tuatara-user:*remote-seconds* 1))
     (with-stand-in-sftp (dir log :answers (server-octets '(:version 3) '(:attrs 1 4 #o40755) '(:handle 2 "h")
                                                          '(:name 3 1 "../evil" "x" 0) '(:status 4 1 "" "")
                                                          '(:status 5 0 "" "")))
       (with-test-directory (here)
-        (let ((said (handler-case (progn (tuatara.defaults::rimu-work :copy (cons "/ssh:box:/folder"
+        (let ((said (handler-case (progn (tuatara.defaults::rimu-work :copy (cons "/ssh:box:/directory"
                                                                                   (namestring (merge-pathnames "copy" here)))
                                                                      (list nil))
                                          :none)
@@ -714,22 +714,22 @@ with a failure and nothing after it, the other writes sent on unanswered.")
   (handler-case (progn (tuatara.defaults::rimu-work verb (cons from to) (list nil)) :none)
     (error (condition) (princ-to-string condition))))
 
-(define-test (remote-files evidence-held-in-a-folder-kept)
-  ;; a folder there holding an evidence folder is neither deleted nor moved whole
+(define-test (remote-files evidence-held-in-a-directory-kept)
+  ;; a directory there holding an evidence directory is neither deleted nor moved whole
   (if (null (sftp-server-program))
       (skip "no sftp-server here" (true nil))
       (with-stand-in-sftp (dir log)
         (let ((remote (concatenate 'string "/ssh:box:" (namestring dir))))
           (ensure-directories-exist (merge-pathnames "case/seized/" dir))
           (put-file (merge-pathnames "case/seized/disk.img" dir) "kept")
-          (with-evidence-folders ((list (concatenate 'string remote "case/seized/")))
-            (true (search "evidence folder" (rimu-failure :delete (concatenate 'string remote "case"))))
-            (true (search "evidence folder" (rimu-failure :move (concatenate 'string remote "case")
+          (with-evidence-directories ((list (concatenate 'string remote "case/seized/")))
+            (true (search "evidence directory" (rimu-failure :delete (concatenate 'string remote "case"))))
+            (true (search "evidence directory" (rimu-failure :move (concatenate 'string remote "case")
                                                           (concatenate 'string remote "moved"))))
             (is string= "kept" (file-text (merge-pathnames "case/seized/disk.img" dir))))))))
 
 (define-test (remote-files evidence-told-by-machine-and-real-path)
-  ;; an evidence folder there is told under any name of its machine, as written and where it really is, by a
+  ;; an evidence directory there is told under any name of its machine, as written and where it really is, by a
   ;; visit and by a list of it alike
   (if (null (sftp-server-program))
       (skip "no sftp-server here" (true nil))
@@ -738,7 +738,7 @@ with a failure and nothing after it, the other writes sent on unanswered.")
           (ensure-directories-exist (merge-pathnames "seized/" dir))
           (put-file (merge-pathnames "seized/a.txt" dir) "kept")
           (sb-posix:symlink (concatenate 'string there "seized") (concatenate 'string there "door"))
-          (with-evidence-folders ((list (format nil "/ssh:ev-alias:~aseized/" there)))
+          (with-evidence-directories ((list (format nil "/ssh:ev-alias:~aseized/" there)))
             (true (tuatara.defaults::remote-evidence-words "ev-host" (concatenate 'string there "seized/a.txt"))
                   "named under another name of the machine")
             (true (tuatara.defaults::remote-evidence-words "ev-host" (concatenate 'string there "door/a.txt"))
@@ -749,12 +749,12 @@ with a failure and nothing after it, the other writes sent on unanswered.")
                                         (list :until #'remote-list-read))
                         (true (tuatara.io:safe-visit-p (remote-rimu-buffer)) "its list opened safely"))
               (kill-remote-lists)))
-          (with-evidence-folders ((list (format nil "/ssh:ev-host:~adoor/" there)))
+          (with-evidence-directories ((list (format nil "/ssh:ev-host:~adoor/" there)))
             (true (tuatara.defaults::remote-evidence-words "ev-host" (concatenate 'string there "seized/a.txt"))
                   "named by a link that leads to it"))))))
 
-(define-test (remote-files folder-not-copied-into-itself)
-  ;; a folder there is not copied into itself, under another name of its machine either
+(define-test (remote-files directory-not-copied-into-itself)
+  ;; a directory there is not copied into itself, under another name of its machine either
   (if (null (sftp-server-program))
       (skip "no sftp-server here" (true nil))
       (with-stand-in-sftp (dir log :machine "copies.lan")
@@ -765,7 +765,7 @@ with a failure and nothing after it, the other writes sent on unanswered.")
                                                     (format nil "/ssh:copy-b:~atree/inner" there))))
           (false (uiop:directory-exists-p (merge-pathnames "tree/inner/" dir)))))))
 
-;;; Bounds on what a server says, and its folders read for a question
+;;; Bounds on what a server says, and its directories read for a question
 
 (defun calls-of (name function)
   "How many times the function NAME is called, on any thread, while FUNCTION runs."
@@ -811,7 +811,7 @@ with a failure and nothing after it, the other writes sent on unanswered.")
             (true (< (length entries) 3)))))))
 
 (define-test (remote-files handles-let-go-after-a-refusal)
-  ;; a folder or file opened, then a request about it refused, is closed there before the connection goes on
+  ;; a directory or file opened, then a request about it refused, is closed there before the connection goes on
   (let ((tuatara-user:*remote-seconds* 1)
         (answers (server-octets '(:version 3) '(:handle 1 "h") '(:status 2 3 "" "") '(:status 3 0 "" "")
                                 '(:attrs 4 4 #o100644))))
@@ -826,21 +826,21 @@ with a failure and nothing after it, the other writes sent on unanswered.")
           (sb-posix:close fd)))
       (is = #o100644 (getf (tuatara.defaults::remote-attributes "box" "/y") :permissions)))))
 
-(define-test (remote-files folder-there-read-once-while-asked)
-  ;; the entries of a folder there are read once for a question for a file, not at each key; a path to one
+(define-test (remote-files directory-there-read-once-while-asked)
+  ;; the entries of a directory there are read once for a question for a file, not at each key; a path to one
   ;; typed in a buffer reads nothing there
   (if (null (sftp-server-program))
       (skip "no sftp-server here" (true nil))
       (with-stand-in-sftp (dir log)
-        (let ((folder (concatenate 'string "/ssh:box:" (namestring dir))))
+        (let ((directory (concatenate 'string "/ssh:box:" (namestring dir))))
           (is = 1 (calls-of 'tuatara.defaults::remote-listing
                             (lambda ()
-                              (tuatara.defaults::directory-candidates folder nil)
-                              (tuatara.defaults::directory-candidates folder nil))))
+                              (tuatara.defaults::directory-candidates directory nil)
+                              (tuatara.defaults::directory-candidates directory nil))))
           (let ((tuatara.defaults::*remote-candidates-seconds* 0))
             (is = 0 (calls-of 'tuatara.defaults::remote-listing
                               (lambda ()
-                                (run-keys (list "i" (key-string folder) #'wait-for-path-listing)
+                                (run-keys (list "i" (key-string directory) #'wait-for-path-listing)
                                           :file (namestring (put-file (merge-pathnames "typed.txt" dir) ""))
                                           :width 160 :height 12)))))))))
 
@@ -927,7 +927,7 @@ with a failure and nothing after it, the other writes sent on unanswered.")
 ;;; Second look: other names, accounts, paths not found, deep trees, saves
 
 (define-test (remote-files linked-file-with-evidence-name-not-written)
-  ;; a file with another name is not written in place while an evidence folder is named on its machine, as
+  ;; a file with another name is not written in place while an evidence directory is named on its machine, as
   ;; that name may be in it
   (if (null (sftp-server-program))
       (skip "no sftp-server here" (true nil))
@@ -939,7 +939,7 @@ with a failure and nothing after it, the other writes sent on unanswered.")
           (ensure-directories-exist (merge-pathnames "seized/" dir))
           (alexandria:write-string-into-file "two" linked)
           (sb-posix:link linked kept)
-          (with-evidence-folders ((list (format nil "/ssh:box:~aseized/" there)))
+          (with-evidence-directories ((list (format nil "/ssh:box:~aseized/" there)))
             (unwind-protect
                  (progn
                    (remote-session (visit-keys name) (list :until (lambda () (remote-buffer-of name)))
@@ -949,24 +949,24 @@ with a failure and nothing after it, the other writes sent on unanswered.")
                                                           (tuatara.buffer:buffer-string
                                                            (tuatara.command::messages-buffer))))))
                    (is string= "two" (file-text kept))
-                   (true (search "may be in an evidence folder"
+                   (true (search "may be in an evidence directory"
                                  (tuatara.buffer:buffer-string (tuatara.command::messages-buffer)))))
               (kill-remote-buffers)))))))
 
 (define-test (remote-files evidence-holds-for-every-account)
-  ;; an evidence folder named with one account on a machine holds for every account there
+  ;; an evidence directory named with one account on a machine holds for every account there
   (if (null (sftp-server-program))
       (skip "no sftp-server here" (true nil))
       (with-stand-in-sftp (dir log :machine "accounts.lan")
         (let ((there (namestring dir)))
           (ensure-directories-exist (merge-pathnames "seized/" dir))
-          (with-evidence-folders ((list (format nil "/ssh:root@acct-host:~aseized/" there)))
+          (with-evidence-directories ((list (format nil "/ssh:root@acct-host:~aseized/" there)))
             (true (tuatara.defaults::remote-evidence-words "alice@acct-host"
                                                            (concatenate 'string there "seized/a.txt"))))))))
 
 (define-test (remote-files real-path-unknown-refused)
   ;; where a path leads is asked again until it is had, never kept as not there; a write where it cannot be
-  ;; had, on a machine an evidence folder is named on, is refused
+  ;; had, on a machine an evidence directory is named on, is refused
   (if (null (sftp-server-program))
       (skip "no sftp-server here" (true nil))
       (with-stand-in-sftp (dir log)
@@ -980,13 +980,13 @@ with a failure and nothing after it, the other writes sent on unanswered.")
           (put-file (merge-pathnames "local.txt" dir) "x")
           (sb-posix:chmod (concatenate 'string there "locked") 0)
           (unwind-protect
-               (with-evidence-folders ((list (format nil "/ssh:box:~aseized/" there)))
+               (with-evidence-directories ((list (format nil "/ssh:box:~aseized/" there)))
                  (true (search "evidence" (rimu-failure :copy (concatenate 'string there "local.txt")
                                                         (format nil "/ssh:box:~alocked/sub/new.txt" there)))))
             (sb-posix:chmod (concatenate 'string there "locked") #o700))))))
 
-(define-test (remote-files deep-or-crowded-folder-not-moved-unlooked)
-  ;; a folder whose folders cannot all be looked through for evidence, too deep or listed cut short, is not
+(define-test (remote-files deep-or-crowded-directory-not-moved-unlooked)
+  ;; a directory whose directories cannot all be looked through for evidence, too deep or listed cut short, is not
   ;; moved whole
   (if (null (sftp-server-program))
       (skip "no sftp-server here" (true nil))
@@ -995,9 +995,9 @@ with a failure and nothing after it, the other writes sent on unanswered.")
           (ensure-directories-exist (merge-pathnames "deep/a/b/c/" dir))
           (dolist (name '("x/" "y/" "z/"))
             (ensure-directories-exist (merge-pathnames (concatenate 'string "wide/" name) dir)))
-          (with-evidence-folders ((list "/ssh:box:/no-such-evidence/"))
+          (with-evidence-directories ((list "/ssh:box:/no-such-evidence/"))
             (let ((tuatara.defaults::*remote-tree-depth* 2))
-              (true (search "folders deep" (rimu-failure :move (concatenate 'string remote "deep")
+              (true (search "directories deep" (rimu-failure :move (concatenate 'string remote "deep")
                                                          (concatenate 'string remote "deep2")))))
             (let ((tuatara.defaults::*sftp-most-listed* 2))
               (true (search "too many entries" (rimu-failure :move (concatenate 'string remote "wide")
@@ -1006,7 +1006,7 @@ with a failure and nothing after it, the other writes sent on unanswered.")
           (true (uiop:directory-exists-p (merge-pathnames "wide/x/" dir)))))))
 
 (define-test (remote-files evidence-told-again-at-save)
-  ;; a folder named evidence after the file was opened keeps the save from writing there
+  ;; a directory named evidence after the file was opened keeps the save from writing there
   (if (null (sftp-server-program))
       (skip "no sftp-server here" (true nil))
       (with-stand-in-sftp (dir log)
@@ -1018,7 +1018,7 @@ with a failure and nothing after it, the other writes sent on unanswered.")
           (unwind-protect
                (progn
                  (remote-session (visit-keys name) (list :until (lambda () (remote-buffer-of name))))
-                 (with-evidence-folders ((list (format nil "/ssh:box:~alater/" there)))
+                 (with-evidence-directories ((list (format nil "/ssh:box:~alater/" there)))
                    (remote-session (format nil "C-x b ~a RET M->" (typed-keys "notes.txt")) (typed-keys "!") "C-x C-s"
                                    (list :until (lambda ()
                                                   (search "is not written there"
@@ -1096,7 +1096,7 @@ with a failure and nothing after it, the other writes sent on unanswered.")
               (kill-remote-buffers)))))))
 
 (define-test (remote-files kept-candidates-let-go)
-  ;; the candidates of folders there are kept only while they may be given again
+  ;; the candidates of directories there are kept only while they may be given again
   (if (null (sftp-server-program))
       (skip "no sftp-server here" (true nil))
       (with-stand-in-sftp (dir log)
@@ -1384,17 +1384,17 @@ Are you sure you want to continue connecting (yes/no/[fingerprint])? "))
 (define-test (remote-files ssh-pipes-taken-away)
   ;; closing takes the pipes away, and a pipe that cannot be made leaves nothing open
   (with-test-directory (dir)
-    (let* ((folder (namestring (ensure-directories-exist (merge-pathnames "c/" dir))))
-           (asking (tuatara.defaults::open-ssh-asking "/bin/false" folder "box")))
-      (true (probe-file (concatenate 'string folder "question")))
+    (let* ((directory (namestring (ensure-directories-exist (merge-pathnames "c/" dir))))
+           (asking (tuatara.defaults::open-ssh-asking "/bin/false" directory "box")))
+      (true (probe-file (concatenate 'string directory "question")))
       (tuatara.defaults::close-ssh-asking asking)
-      (false (probe-file (concatenate 'string folder "question")))
-      (false (probe-file (concatenate 'string folder "answer"))))
-    (let* ((folder (namestring (ensure-directories-exist (merge-pathnames "d/" dir))))
+      (false (probe-file (concatenate 'string directory "question")))
+      (false (probe-file (concatenate 'string directory "answer"))))
+    (let* ((directory (namestring (ensure-directories-exist (merge-pathnames "d/" dir))))
            (before (length (uiop:directory-files "/proc/self/fd/"))))
-      (sb-posix:mkfifo (concatenate 'string folder "answer") #o600)
+      (sb-posix:mkfifo (concatenate 'string directory "answer") #o600)
       (true (search "make a pipe"
-                    (handler-case (progn (tuatara.defaults::open-ssh-asking "/bin/false" folder "box") "")
+                    (handler-case (progn (tuatara.defaults::open-ssh-asking "/bin/false" directory "box") "")
                       (tuatara.io:file-system-error (condition) (princ-to-string condition)))))
       (is = before (length (uiop:directory-files "/proc/self/fd/")) "no descriptor left open"))))
 
@@ -1569,7 +1569,7 @@ killed after."
         (true (tuatara.buffer:buffer-read-only-p buffer))))))
 
 (define-test (remote-files killing-stops-the-arrival)
-  ;; the buffer killed: its job ends and the copy's folder is taken away
+  ;; the buffer killed: its job ends and the copy's directory is taken away
   (with-arrival-held (dir name release)
     (let (copy)
       (remote-session (visit-keys name)

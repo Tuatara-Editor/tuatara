@@ -300,7 +300,8 @@
 
 (define-test (display rows-drawn-large)
   ;; a line drawn twice as large holds half the columns; the height is the rows' heights added up
-  (let* ((rope (tuatara.text:string->rope (format nil "big line~%small~%")))
+  (let* ((tuatara.display:*row-scaling* t)
+         (rope (tuatara.text:string->rope (format nil "big line~%small~%")))
          (scale (lambda (line-start) (if (zerop line-start) 2 1)))
          (rows (tuatara.display:layout rope 0 10 10 :scale scale :wrap t)))
     (is equal '("big l" "ine" "small" "") (row-strings rows))
@@ -320,9 +321,14 @@
     ;; a column of a large row in the window's columns, and back
     (is equal '(0 2 3 4 5) (mapcar (lambda (c) (tuatara.display:large-column c 5/4)) '(0 1 2 3 4)))
     (true (loop for scale in '(5/4 3/2 2 3 6/5)
-                always (loop for c below 50 always (= c (floor (tuatara.display:large-column c scale) scale)))))))
+                always (loop for c below 50 always (= c (floor (tuatara.display:large-column c scale) scale)))))
+    ;; where rows are drawn alike (a terminal), a tall row keeps its columns, its characters their size
+    (let ((tuatara.display:*row-scaling* nil))
+      (let ((rows (tuatara.display:layout rope 0 10 10 :scale scale :wrap t)))
+        (is equal '("big line" "small" "") (row-strings rows))
+        (is equal '(2 1 1) (map 'list #'tuatara.display:row-scale rows))))))
 
-(define-test (display hl-line)
+(define-modal-test (display hl-line)
   ;; the line point is on, in the selected window alone, out to its edge,
   ;; under the selection: on for every buffer unless the init file says not
   (flet ((spans (keys &key (global t))
@@ -620,7 +626,7 @@
   (dolist (code '(#x41 #x928 #x627 #xE2A #x1100))
     (true (plusp (tuatara.display:char-columns (code-char code))))))
 
-(define-test (display hl-line-on-wrapped-rows)
+(define-modal-test (display hl-line-on-wrapped-rows)
   ;; every row of the line point is on, where it wraps, is lit out to the window's edge
   (let ((tuatara-user:*global-hl-line-mode* t)
         (tuatara-user:*fill-column* 8))

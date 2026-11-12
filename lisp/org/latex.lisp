@@ -7,7 +7,9 @@
 ;;;; #+options, #+latex_class, #+latex_class_options, #+latex_header,
 ;;;; #+export_file_name, #+export_select_tags, #+export_exclude_tags,
 ;;;; #+setupfile, #+macro, #+toc, #+attr_latex), sectioning, lists, tables,
-;;;; blocks, markup, links, footnotes and entities, so that a document and its
+;;;; blocks, markup, links, footnotes and entities, and citations for biblatex,
+;;;; natbib and bibtex (#+cite_export, #+bibliography, #+print_bibliography,
+;;;; as Org's oc-biblatex, oc-natbib and oc-bibtex), so that a document and its
 ;;;; setup file give the PDF they give there. Nothing in the document is run:
 ;;;; code blocks are written as they are, a macro whose value would be
 ;;;; evaluated is left empty, and only local setup files are read.
@@ -39,7 +41,7 @@ what is said of the document after it is made (a picture not shown), the latest
 first. SETTINGS, what the :EXPORT: drawers set, by node
 \(ORG-LATEX-GATHER-SETTINGS), in the enhanced export. CONSUMED, the nodes
 written already as part of another (a paragraph beside a picture). TRUSTED, the
-texts of the setup files read from your own folders (EXPORT-TRUSTED-PATH-P).
+texts of the setup files read from your own directories (EXPORT-TRUSTED-PATH-P).
 PATHS, the files the template's {{{NAME:path}}} places were filled with.
 REFUSED, the names of the pictures the template asks for that the note names
 from where they may not come (TEMPLATE-REFUSED-PICTURES), left out. PICTURES,
@@ -94,76 +96,82 @@ a class not named here has the article's.")
 
 ;;; Keywords and options
 
-(define-setting *export-trusted-folders* '()
-  "More folders that exporting a note may take files from.
+(define-setting *export-trusted-directories* '()
+  "More directories that exporting a note may take files from.
 A note's export (to PDF or to a Word document) takes the setup files its
 #+SETUPFILE lines name and the pictures its [[file:...]] links show from the
-note's own folder and the folders in it, and your note templates' folder
+note's own directory and the directories in it, and your note templates' directory
 (NOTE-TEMPLATES-DIRECTORY). A file anywhere else is left out of the export,
 and the export says so when it is done, so that a note given to you cannot
 have its export carry your other files into the PDF or document it makes.
-- a list of folders, ~ standing for your home folder: those too. A folder of
-  setup files shared by notes kept in folders of their own goes here:
+- a list of directories, ~ standing for your home directory: those too. A directory of
+  setup files shared by notes kept in directories of their own goes here:
   '(\"~/notes/latex/\").
 - nil: no others."
-  :values (list-of folder))
+  :values (list-of directory))
 
 (defun org-export-path (name &optional (directory (and *org-latex* (org-latex-directory *org-latex*))))
   "NAME, a file a note names, as a native path: ~ standing for your home
-folder, a relative name taken from DIRECTORY, the folder of the note being
-exported when not given, your home folder for a note with no file."
+directory, a relative name taken from DIRECTORY, the directory of the note being
+exported when not given, your home directory for a note with no file."
   (tuatara.io:native (tuatara.io:expand-path name :directory (or directory (tuatara.io:home-directory)))))
 
-(defun org-export-folder-p (path)
+(defun export-directory-p (path directory &optional directories)
+  "True when the file at PATH (native) stands where an export may take files
+from: DIRECTORY, the document's directory, or a directory in it, one of
+DIRECTORIES, or one of *EXPORT-TRUSTED-DIRECTORIES*, links followed
+\(ORG-PATH-BESIDE-P)."
+  (or (and directory (org-path-beside-p path directory))
+      (path-in-directories-p path (append directories *export-trusted-directories*))))
+
+(defun org-export-directory-p (path)
   "True when PATH (native) stands where the export of the document *ORG-LATEX*
-is writing may take files from: the document's folder or a folder in it,
-your note templates' folder (NOTE-TEMPLATES-DIRECTORY, where the pictures of
-a template made from a Word document are), or one of *EXPORT-TRUSTED-FOLDERS*,
-links followed (ORG-PATH-BESIDE-P)."
-  (let ((directory (and *org-latex* (org-latex-directory *org-latex*))))
-    (or (and directory (org-path-beside-p path directory))
-        (path-in-folders-p path (cons (note-templates-directory) *export-trusted-folders*)))))
+is writing may take files from: the document's directory or a directory in it,
+your note templates' directory (NOTE-TEMPLATES-DIRECTORY, where the pictures of
+a template made from a Word document are), or one of *EXPORT-TRUSTED-DIRECTORIES*,
+links followed (EXPORT-DIRECTORY-P)."
+  (export-directory-p path (and *org-latex* (org-latex-directory *org-latex*)) (list (note-templates-directory))))
 
 (defun org-export-file-allowed-p (path)
   "True when exporting the document *ORG-LATEX* is writing may take in the
 file at PATH (native), it standing where exports take files from
-\(ORG-EXPORT-FOLDER-P). When it may not, the export says so (ORG-LATEX-NOTES)
+\(ORG-EXPORT-DIRECTORY-P). When it may not, the export says so (ORG-LATEX-NOTES)
 and NIL is returned; a file that does not exist may be named, there being
 nothing to take in."
   (or (null (tuatara.io:path-stamp path :failure nil)) ; nothing there to take in
-      (org-export-folder-p path)
-      (export-note "~a: outside the note's folder, so left out of the export (*export-trusted-folders* names the folders it may also come from)"
+      (org-export-directory-p path)
+      (export-note "~a: outside the note's directory, so left out of the export (*export-trusted-directories* names the directories it may also come from)"
                    (abbreviated-path path))))
 
 (define-setting *logos-directory* nil
-  "The folder of the pictures your templates ask a note for.
+  "The directory of the pictures your templates ask a note for.
 This is where the logo a note's #+logo: names is found (LOGOS-DIRECTORY).
-- a folder: that folder.
+- a directory: that directory.
 - nil, as standard: logos/ in the configuration directory."
-  :values (or (member nil) folder))
+  :values (or (member nil) directory))
 
 (defun logos-directory ()
   "Where the pictures your templates ask a note for are kept (the logo its
 #+logo: names): *LOGOS-DIRECTORY*, or logos/ in the configuration directory
 \(~/.config/tuatara/logos/), ending in /."
-  (let ((folder (if *logos-directory*
+  (let ((directory (if *logos-directory*
                     (tuatara.io:native (tuatara.io:expand-path *logos-directory*))
                     (config-path "logos/"))))
-    (tuatara.io:slash-ended folder)))
+    (tuatara.io:slash-ended directory)))
 
 (defun template-picture-path (value)
   "The file of the picture a template asks the note for with {{{NAME:path}}},
-VALUE what the note's keyword says: a name alone (logo.png) in your logos folder
+VALUE what the note's keyword says: a name alone (logo.png) in your logos directory
 \(LOGOS-DIRECTORY), else a path, read as the note's links are. NIL, said after
-the export, for one that is not there, or stands elsewhere than the logos folder
-and the folders an export takes files from \(ORG-EXPORT-FOLDER-P), so that a
+the export, for one that is not there, or stands elsewhere than the logos directory
+and the directories an export takes files from \(ORG-EXPORT-DIRECTORY-P), so that a
 note given to you cannot have your template take in a picture of yours."
   (let* ((name (string-trim " " value))
          (path (if (or (find #\/ name) (uiop:string-prefix-p "~" name))
                    (org-export-path name)
                    (concatenate 'string (logos-directory) name))))
-    (cond ((not (or (path-in-folders-p path (list (logos-directory))) (org-export-folder-p path)))
-           (export-note "~a: a picture a template asks for comes from ~a or the note's own folder, so left out"
+    (cond ((not (or (path-in-directories-p path (list (logos-directory))) (org-export-directory-p path)))
+           (export-note "~a: a picture a template asks for comes from ~a or the note's own directory, so left out"
                         (abbreviated-path path) (abbreviated-path (logos-directory))))
           ((not (tuatara.io:path-stamp path))
            (export-note "~a: no such picture, so left out" (abbreviated-path path)))
@@ -171,14 +179,14 @@ note given to you cannot have your template take in a picture of yours."
 
 (defun export-trusted-path-p (path)
   "True when the file at PATH (native) is your own to an export: in your
-LaTeX templates' folder or one of *EXPORT-TRUSTED-FOLDERS*, links followed;
+LaTeX templates' directory or one of *EXPORT-TRUSTED-DIRECTORIES*, links followed;
 not merely beside the note, which may have come with it."
-  (path-in-folders-p path (cons (latex-templates-directory) *export-trusted-folders*)))
+  (path-in-directories-p path (cons (latex-templates-directory) *export-trusted-directories*)))
 
 (defun org-latex-read-setup (value directory)
   "The text of the setup file VALUE names, relative to DIRECTORY, with its
 directory as a second value; NIL for one on the network, not readable, or
-outside the folders an export may take files from (ORG-EXPORT-FILE-ALLOWED-P)."
+outside the directories an export may take files from (ORG-EXPORT-FILE-ALLOWED-P)."
   (let ((name (string-trim "\" " value)))
     (unless (or (zerop (length name)) (search "://" name))
       (let ((path (ignoring-errors-reported ("finding the setup file ~a" name) (org-export-path name directory))))
@@ -365,19 +373,19 @@ what a block holds, the rest never parsed."
 (defmacro with-org-note-keywords ((text directory &optional file) &body body)
   "Run BODY with the keywords of the Org note TEXT read as its export reads
 them, those of its #+SETUPFILE: in their place (ORG-LATEX-KEYWORD), DIRECTORY
-the note's folder for setup files named relative to it and FILE its file.
+the note's directory for setup files named relative to it and FILE its file.
 Only its #+ lines are read, so that a long note is looked at in an instant."
-  (let ((note (gensym)) (folder (gensym)))
-    `(let* ((,note ,text) (,folder ,directory)
-            (*org-latex* (make-org-latex ,note ,folder ,file)))
+  (let ((note (gensym)) (dir (gensym)))
+    `(let* ((,note ,text) (,dir ,directory)
+            (*org-latex* (make-org-latex ,note ,dir ,file)))
        (setf (org-latex-keywords *org-latex*)
-             (org-latex-collect-keywords (org-parse (org-keyword-lines ,note)) ,folder))
+             (org-latex-collect-keywords (org-parse (org-keyword-lines ,note)) ,dir))
        ,@body)))
 
 (defun org-hidden-kinds (text directory)
   "Which of redact and protect the Org note TEXT hides, as its export decides
 (ORG-LATEX-REDACTING-P): its #+OPTIONS: read with those of its #+SETUPFILE:,
-DIRECTORY the note's folder for setup files named relative to it."
+DIRECTORY the note's directory for setup files named relative to it."
   (with-org-note-keywords (text directory)
     (org-latex-read-options *org-latex*)
     (remove-if-not #'org-latex-redacting-p '("redact" "protect"))))
@@ -1014,9 +1022,11 @@ its own writer), so that it is marked and the blank lines after it are kept."
                       babel-call diary-sexp footnote-definition))))
 
 (defun org-latex-keyword-element (node out)
-  "Write the keyword line NODE to OUT: #+LATEX: lines as they are, #+TOC: as a table of contents."
+  "Write the keyword line NODE to OUT: #+LATEX: lines as they are, #+TOC: as a table of contents,
+#+PRINT_BIBLIOGRAPHY: as the bibliography (ORG-LATEX-PRINT-BIBLIOGRAPHY)."
   (let ((key (org-property node :key)) (value (or (org-property node :value) "")))
     (cond ((string-equal key "LATEX") (format out "~a~%" value))
+          ((string-equal key "PRINT_BIBLIOGRAPHY") (write-string (org-latex-print-bibliography) out))
           ((string-equal key "TOC")
            (let ((words (tuatara.text:split-words value)))
              (when (string-equal (first words) "headlines")
@@ -1060,7 +1070,7 @@ PDF shows unless it is given."
 (defun org-latex-image (node attributes)
   "\\includegraphics for the picture NODE links to, as ATTRIBUTES (#+ATTR_LATEX) size it;
 its name in a box instead when it cannot be shown, is not there (which the
-export then says), or is outside the folders an export may take files from
+export then says), or is outside the directories an export may take files from
 \(ORG-EXPORT-FILE-ALLOWED-P)."
   (let* ((path (org-property node :path))
          (full (or (ignoring-errors-reported ("finding ~a" path) (org-export-path path))
@@ -1741,10 +1751,156 @@ description."
                  (with-org-latex-expanding (:macro (org-property node :key)) ((write-string (latex-escape written) out))
                    (write-string (org-latex-string value) out))
                  (write-string (latex-escape written) out))))
-    ;; what is left as written: a macro not known, a citation
+    (citation (org-latex-citation node out))
+    ;; what is left as written: a macro not known
     (t (write-string (latex-escape (subseq *org-latex-text*
                                            (org-node-begin node)
                                            (- (org-node-end node) (org-node-post-blank node)))) out))))
+
+;;; Citations
+
+(defparameter *org-cite-names*
+  '(("a" . "author") ("t" . "text") ("n" . "nocite") ("na" . "noauthor") ("l" . "locators")
+    ("b" . "bare") ("c" . "caps") ("f" . "full") ("bc" . "bare-caps"))
+  "The short names of the styles and variants of a citation ([cite/t/c:@key]
+is of style text, variant caps), each (SHORT . NAME).")
+
+(defun org-latex-cite-export ()
+  "The way of making a bibliography the document's #+CITE_EXPORT: names,
+biblatex, natbib or bibtex, in lower case, and the bibliography style and the
+citation style it names after it, as three values; NIL when it names none of
+those. A style written BIBSTYLE/CITESTYLE gives both."
+  (let ((words (tuatara.text:split-words (or (org-latex-keyword "CITE_EXPORT") ""))))
+    (when (and words (member (string-downcase (first words)) '("biblatex" "natbib" "bibtex") :test #'string=))
+      (let* ((style (second words))
+             (slash (and style (position #\/ style))))
+        (values (string-downcase (first words))
+                (if slash (subseq style 0 slash) style)
+                (or (third words) (and slash (subseq style (1+ slash)))))))))
+
+(defun org-latex-bibliographies ()
+  "The full names of the bibliography files the document's #+BIBLIOGRAPHY:
+lines name, a relative one taken from the note's directory (ORG-EXPORT-PATH), so
+that they are found wherever the LaTeX file is written."
+  (loop for value in (org-latex-keyword-all "BIBLIOGRAPHY")
+        for name = (string-trim " \"" value)
+        when (plusp (length name))
+          collect (or (ignoring-errors-reported ("expanding ~a" name) (org-export-path name)) name)))
+
+(defun org-latex-citation-packages ()
+  "The lines of the preamble the document's #+CITE_EXPORT: calls for: biblatex,
+in the styles it names, with each of its bibliographies; natbib; or nothing."
+  (multiple-value-bind (way bib-style cite-style) (org-latex-cite-export)
+    (cond ((equal way "biblatex")
+           (format nil "\\usepackage~@[[~a]~]{biblatex}~%~{\\addbibresource{~a}~%~}"
+                   (cond ((and bib-style cite-style) (format nil "bibstyle=~a,citestyle=~a" bib-style cite-style))
+                         ((or bib-style cite-style) (format nil "style=~a" (or bib-style cite-style))))
+                   (org-latex-bibliographies)))
+          ((equal way "natbib") (format nil "\\usepackage{natbib}~%"))
+          (t ""))))
+
+(defun org-latex-print-bibliography ()
+  "The bibliography where #+PRINT_BIBLIOGRAPHY: stands, as the document's
+#+CITE_EXPORT: makes it: \\printbibliography for biblatex; for bibtex and natbib
+its style (plain, plainnat as standard) and its files; nothing for none."
+  (multiple-value-bind (way style) (org-latex-cite-export)
+    (cond ((null way) "")
+          ((string= way "biblatex") (format nil "\\printbibliography~%"))
+          (t (format nil "\\bibliographystyle{~a}~%\\bibliography{~{~a~^,~}}~%"
+                     (or style (if (string= way "natbib") "plainnat" "plain"))
+                     (mapcar (lambda (file) (if (uiop:string-suffix-p file ".bib") (subseq file 0 (- (length file) 4)) file))
+                             (org-latex-bibliographies)))))))
+
+(defun org-cite-command (way style variant)
+  "The LaTeX command, without its backslash, a citation of STYLE and VARIANT
+\(full names, *ORG-CITE-NAMES*; NIL for none) is written as for WAY (biblatex,
+natbib or bibtex), as Org writes it."
+  (let* ((bare (member variant '("bare" "bare-caps") :test #'equal))
+         (caps (member variant '("caps" "bare-caps") :test #'equal))
+         (command (cond ((equal style "nocite") "nocite")
+                        ((string= way "bibtex") "cite")
+                        ((string= way "biblatex")
+                         (cond ((equal style "author") "citeauthor")
+                               ((equal style "text") "textcite")
+                               ((equal style "noauthor") "autocite*")
+                               ((equal style "locators") "notecite")
+                               (bare "cite")
+                               (t "autocite")))
+                        (t (cond ((equal style "author") "citeauthor")
+                                 ((equal style "text") (if bare "citealt" "citet"))
+                                 ((equal style "noauthor") "citeyearpar")
+                                 (bare "citealp")
+                                 (t "citep"))))))
+    (concatenate 'string
+                 (if (and caps (string/= command "nocite")) (string-capitalize command :end 1) command)
+                 (if (and (string= way "natbib") (equal variant "full") (not (find #\* command))) "*" ""))))
+
+(defun org-latex-citation (node out)
+  "Write the citation NODE ([cite/STYLE/VARIANT:global prefix;prefix @key
+suffix;...;global suffix]) to OUT as the LaTeX command of its style for the
+document's #+CITE_EXPORT: (ORG-CITE-COMMAND), as Org writes it. For biblatex
+one reference with no global notes is \\autocite[prefix][suffix]{key},
+several with no notes \\autocite{key,...}, and with notes the command's form
+for many, \\autocites(global
+prefix)(global suffix)[prefix][suffix]{key}...; for natbib and bibtex the keys
+are given together, with the notes of the one reference or the global ones
+\(bibtex has the one after alone). Without #+CITE_EXPORT: naming one of those,
+as written."
+  (let* ((way (org-latex-cite-export))
+         (parts (uiop:split-string (subseq *org-latex-text* (org-node-contents-begin node) (org-node-contents-end node))
+                                   :separator ";"))
+         (keyed (mapcar (lambda (part) (and (cl-ppcre:scan *org-citation-key-re* part) t)) parts)))
+    (if (or (null way) (notany #'identity keyed))
+        (write-string (latex-escape (subseq *org-latex-text*
+                                            (org-node-begin node)
+                                            (- (org-node-end node) (org-node-post-blank node))))
+                      out)
+        (flet ((note (text) (let ((text (string-trim " " text))) (and (plusp (length text)) (latex-escape text))))
+               (full (name) (or (cdr (assoc name *org-cite-names* :test #'string=)) name)))
+          (let* ((global-prefix (and (not (first keyed)) (first parts)))
+                 (global-suffix (and (not (car (last keyed))) (rest parts) (car (last parts))))
+                 (references (loop for part in parts for key-p in keyed
+                                   when key-p
+                                     collect (multiple-value-bind (start end) (cl-ppcre:scan *org-citation-key-re* part)
+                                               (list (note (subseq part 0 start))
+                                                     (subseq part (1+ start) end)
+                                                     (note (subseq part end))))))
+                 (style-words (let ((style (org-property node :style)))
+                                (and style (uiop:split-string style :separator "/"))))
+                 (command (org-cite-command way (and (first style-words) (full (first style-words)))
+                                            (and (second style-words) (full (second style-words)))))
+                 (gpre (and global-prefix (note global-prefix)))
+                 (gpost (and global-suffix (note global-suffix))))
+            (flet ((notes (before after)
+                     ;; [before][after], [after] alone, [before][] or nothing
+                     (format nil "~:[~*~;[~a]~]~:[~*~;[~a]~]" before before (or after before) (or after ""))))
+              (cond ((string= command "nocite")
+                     (format out "\\nocite{~{~a~^,~}}" (mapcar #'second references)))
+                    ((string= way "biblatex")
+                     (cond
+                       ((and (null (rest references)) (null gpre) (null gpost))
+                        (destructuring-bind (before key after) (first references)
+                          (format out "\\~a~a{~a}" command (notes before after) key)))
+                       ;; several references with no notes: one command for them all
+                       ((notany (lambda (reference) (or (first reference) (third reference) gpre gpost)) references)
+                        (format out "\\~a{~{~a~^,~}}" command (mapcar #'second references)))
+                       (t
+                        (if (member command '("autocite" "Autocite" "textcite" "Textcite" "cite" "Cite")
+                                    :test #'string=)
+                            (format out "\\~as~:[~2*~;(~a)(~a)~]~{~a~}" command
+                                    (or gpre gpost) (or gpre "") (or gpost "")
+                                    (loop for (before key after) in references
+                                          collect (format nil "~a{~a}" (notes before after) key)))
+                            (format out "\\~a{~{~a~^,~}}" command (mapcar #'second references))))))
+                    (t
+                     ;; the notes of the one reference, or the global ones
+                     (multiple-value-bind (before after)
+                         (if (rest references)
+                             (values gpre gpost)
+                             (values (or (first (first references)) gpre) (or (third (first references)) gpost)))
+                       (format out "\\~a~a{~{~a~^,~}}" command
+                               (if (string= way "bibtex") (if after (format nil "[~a]" after) "") (notes before after))
+                               (mapcar #'second references)))))))))))
 
 ;;; The document
 
@@ -1834,6 +1990,7 @@ are written."
           ((string= name "latex_class_options") (or (org-latex-keyword "LATEX_CLASS_OPTIONS") "[11pt]"))
           ((string= name "packages")
            (concatenate 'string (org-latex-packages engine) (org-latex-language-setup engine)
+                        (org-latex-citation-packages)
                         (if (org-latex-enhanced *org-latex*)
                             (format nil "\\usepackage{booktabs}~%\\usepackage{xltabular}~%\\usepackage{multicol}~%\\usepackage{float}~%~
                                          \\usepackage{xcolor}~%\\usepackage{fvextra}~%\\usepackage{pict2e}~%~a~
@@ -1940,7 +2097,7 @@ names; NIL when none."
 
 (defun org-latex-take-in (text tree directory)
   "Have *ORG-LATEX* know the note being written, TEXT (its macros expanded)
-parsed as TREE, DIRECTORY its folder: its keywords and options, its lowest
+parsed as TREE, DIRECTORY its directory: its keywords and options, its lowest
 level of headline, its footnotes' definitions by label, the parts it keeps
 out, and, in the enhanced export, its :EXPORT: drawers' settings; for the
 PDF and the Word export alike."
@@ -1973,10 +2130,10 @@ the Org text's. As a fourth the characters no font here has, each (CHARACTER .
 LINE) (enhanced only). And as a fifth what else to say of it, a list of
 sentences (a picture not shown). As a sixth the texts of its template and setup
 files that are your own \(EXPORT-TRUSTED-PATH-P), which alone may name pictures
-from other folders, with the files your own template asks the note for by its
+from other directories, with the files your own template asks the note for by its
 {{{NAME:path}}} places (a logo). And as a seventh the files its own pictures are
-drawn from (ORG-LATEX-IMAGE), the only ones of the note's folder a LaTeX program
-is shown when that folder may not be shown whole. As an eighth the code of the
+drawn from (ORG-LATEX-IMAGE), the only ones of the note's directory a LaTeX program
+is shown when that directory may not be shown whole. As an eighth the code of the
 language the note's #+LANGUAGE sets (sv), or NIL, for the hyphenation patterns
 it needs to be looked for (LATEX-LANGUAGE-PATTERNS-NOTE). LINES, for a part of a
 file exported alone, is the file's line of each line of TEXT, for the lines an

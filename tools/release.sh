@@ -18,9 +18,9 @@
 # commit of lisp/terminal/library.pin, and tree-sitter and every grammar at
 # the commit of syntax/grammars.tsv, each repository without its history.
 # The program is built from the last commit, copied with Quicklisp into a
-# new folder of its own, /tmp/tuatara-release-build.XXXXXX/, so that the places of its
-# sources it keeps are that folder's; it is refused when it still names this
-# machine's home folder or user, as is the release when any file of it does.
+# new directory of its own, /tmp/tuatara-release-build.XXXXXX/, so that the places of its
+# sources it keeps are that directory's; it is refused when it still names this
+# machine's home directory or user, as is the release when any file of it does.
 # The grammars and the terminal library are
 # built here first and copied there, never compiled again. build/tuatara, the
 # program of this checkout, is left as it is. tools/appimage.sh and
@@ -60,8 +60,8 @@ if [ -z "$(git status --porcelain --untracked-files=no)" ] &&
 fi
 rm -f "$stamp"
 quicklisp="$(dirname "$(find_quicklisp_setup)")"
-# a new folder of this account's alone, which the toolbox sees at the same path;
-# it and the folder the sources are packed in go however the script ends
+# a new directory of this account's alone, which the toolbox sees at the same path;
+# it and the directory the sources are packed in go however the script ends
 work="$(mktemp -d /tmp/tuatara-release-build.XXXXXX)"
 pack=""
 trap 'rm -rf "$work" ${pack:+"$pack"}' EXIT
@@ -76,7 +76,7 @@ tools/lisp-archives.sh prepare "$work/quicklisp"
   TUATARA_BUILD="$(git rev-parse --short=7 HEAD) nil $(date +%F)"
 program="$work/src/build/tuatara"
 if names_this_machine "$program"; then
-  echo "tools/release.sh: $program names this machine's home folder or user, where shown above: not released" >&2
+  echo "tools/release.sh: $program names this machine's home directory or user, where shown above: not released" >&2
   exit 1
 fi
 out="$root/build/release/tuatara"
@@ -136,7 +136,7 @@ cp -r build/grammars/licenses "$out/grammars/licenses"
 cp build/terminal/libghostty-vt.so build/terminal/libtuatara-terminal.so build/terminal/layout.sexp \
    build/terminal/LICENSE-ghostty "$out/terminal/"
 cp -r build/terminal/licenses "$out/terminal/licenses"
-# their debugging information names the folders they were built in
+# their debugging information names the directories they were built in
 strip --strip-debug "$out/terminal/libghostty-vt.so" "$out/terminal/libtuatara-terminal.so" \
       "$out/grammars/tuatara-syntax-helper"
 for kind in rules indents textobjects injections locals tags; do
@@ -156,7 +156,7 @@ while IFS= read -r -d '' file; do
   if names_this_machine "$file"; then named=1; fi
 done < <(find "$out" -type f ! -path "$out/tuatara" -print0)
 if [ "$named" = 1 ]; then
-  echo "tools/release.sh: files of $out name this machine's home folder or user, where shown above: not released" >&2
+  echo "tools/release.sh: files of $out name this machine's home directory or user, where shown above: not released" >&2
   exit 1
 fi
 rm -rf "$work"
@@ -180,7 +180,7 @@ done < <(grep -v '^#' syntax/grammars.tsv | grep -v '^[[:space:]]*$')
 cat > "$top/README" <<EOF
 The sources of Tuatara $(sed -n 's/^ *:version "\(.*\)"$/\1/p' tuatara.asd) ($(git rev-parse --short=7 HEAD)) and of what its
 release is built with: tuatara/ (GPL-3.0-or-later), lisp/ (the Lisp libraries
-compiled into the program, each under the licence in its folder), ghostty/
+compiled into the program, each under the licence in its directory), ghostty/
 (the terminal library, MIT, with simdutf in its pkg/; Highway, Wuffs and
 uucode, which it compiles in too, are fetched by its build.zig.zon and are
 not in it, their licences in the release's terminal/licenses/), and grammars/, tree-sitter and each grammar at the commit

@@ -8,7 +8,7 @@
 ;;; (the clock tables' captions keep the time they are made at, which the test
 ;;; leaves out of the comparison). Tuatara's test (test/org-blocks.lisp) makes the
 ;;; blocks of the same file and compares the two. Each file is read in its own
-;;; folder, as its buffer would be, and the agenda is the files of multi/ there,
+;;; directory, as its buffer would be, and the agenda is the files of multi/ there,
 ;;; in order of name.
 
 (require 'org)

@@ -1,19 +1,19 @@
-#+title: Folders
+#+title: Directories
 #+language: en
 
-* Folders
+* Directories
 
-Looking at a folder, and copying, moving, renaming and deleting what is in it.
+Looking at a directory, and copying, moving, renaming and deleting what is in
+it.
 
-A folder holds files, and sometimes other folders. When you want to find a
-photo, tidy a pile of letters or clear out last year's downloads, you need to
-see what is there and then do something to it. Tuatara's file manager is
-called rimu. It shows a folder as a list, a line for each thing in it, and it
-lets you pick some of those lines and act on them. The picking works as it
-does in the buffer list of chapter 7, so most of what you learned there
-applies here.
+A directory holds files, and sometimes other directories. When you want to find
+a photo, tidy a pile of letters or clear out last year's downloads, you need to
+see what is there and then do something to it. Tuatara's file manager is called
+rimu. It shows a directory as a list, a line for each thing in it, and it lets
+you pick some of those lines and act on them. The picking works as it does in
+the buffer list of chapter 7, so most of what you learned there applies here.
 
-This chapter starts with opening a folder and moving about in it. Then it
+This chapter starts with opening a directory and moving about in it. Then it
 shows how to change what the list shows, how to look at a file without
 opening it, and how to choose entries. The rest is what you can do with the
 choice: make, copy, move, rename, delete, pack into an archive and compare.
@@ -24,23 +24,23 @@ As in the other chapters, every key here is pressed in NORMAL state unless it
 starts with ~C-x~. ~i~ starts INSERT state, and ~C-g~ or ~ESC~ returns to
 NORMAL. In a list you rarely need INSERT, because the keys are commands.
 
-** Opening a folder
+** Opening a directory
 
-~C-x d~ asks which folder you want and lists it. The question already holds
-the folder of the buffer you are in, so you often only press ~RET~. To go
-elsewhere, type the rest of a path, or start again from your home folder with
+~C-x d~ asks which directory you want and lists it. The question already holds
+the directory of the buffer you are in, so you often only press ~RET~. To go
+elsewhere, type the rest of a path, or start again from your home directory with
 =~/=. ~TAB~ completes a name as you type it.
 
-If you are looking at a file and want to see what else is in its folder,
-~C-x C-j~ lists that folder with the cursor on the file. ~C-x 5 d~ does what
+If you are looking at a file and want to see what else is in its directory,
+~C-x C-j~ lists that directory with the cursor on the file. ~C-x 5 d~ does what
 ~C-x d~ does in a new window of its own.
 
-From a terminal you can start Tuatara on a folder, for example with
+From a terminal you can start Tuatara on a directory, for example with
 =tuatara ~/Photos/holiday/=, and the list is the first thing you see.
 
-Figure 10.1 shows a list for a folder of holiday photos.
+Figure 10.1 shows a list for a directory of holiday photos.
 
-#+caption: Figure 10.1. A list of a folder, with two entries marked.
+#+caption: Figure 10.1. A list of a directory, with two entries marked.
 #+name: fig-rimu-list
 #+begin_example
   ~/Photos/holiday:
@@ -53,13 +53,13 @@ Figure 10.1 shows a list for a folder of holiday photos.
   itinerary.txt
 #+end_example
 
-The first line is the folder's whole name. Below it come the entries, one to
-a line, with folders first and then files. Names are in the order that =ls=
+The first line is the directory's whole name. Below it come the entries, one to
+a line, with directories first and then files. Names are in the order that =ls=
 uses, so capital letters come before small ones. The two spaces before each
 name are where marks go. In the figure, two photos have a =>=.
 
 Names that start with a dot are hidden. Those are files that programs keep
-for themselves, such as =.bashrc=, and you seldom want to see them. Folder
+for themselves, such as =.bashrc=, and you seldom want to see them. Directory
 names have a colour of their own. Names of files that are only a by-product,
 such as compiled files, are set back in a fainter colour.
 
@@ -67,34 +67,34 @@ The mode line at the bottom says =Rimu= and how the list is sorted. ~q~
 leaves the list and returns to the buffer you were in before.
 
 Rimu keeps a list up to date. If another program adds, renames or removes a
-file in the folder, the line appears or goes within a moment. ~r~ reads the
-folder again at once, and your marks stay.
+file in the directory, the line appears or goes within a moment. ~r~ reads the
+directory again at once, and your marks stay.
 
-*** Commands for opening a folder
+*** Commands for opening a directory
 
 #+table: commands rimu rimu-other-frame rimu-jump
 
 ** Moving about
 
-Moving into a folder shows it in the same list. You do not collect a buffer
-for every folder you pass through. The keys are the ones you know from
+Moving into a directory shows it in the same list. You do not collect a buffer
+for every directory you pass through. The keys are the ones you know from
 chapter 2, with a few more for the places a list has.
 
-| Modal        | Non-modal    | What it does                                      |
-|--------------+--------------+---------------------------------------------------|
-| ~j~, ~k~     | ~C-n~, ~C-p~ | Down and up a line                                |
-| none         | ~l~, ~RET~   | Open the entry: a folder in this list, a file     |
-| none         | ~h~          | Up to the folder that holds this one              |
-| ~g g~, ~g e~ | ~M-<~, ~M->~ | To the top of the list, to the end                |
-| none         | ~>~, ~<~     | To the next folder in the list, to the previous   |
-| none         | ~g f~        | To an entry, by name, with completion             |
-| none         | ~g h~        | To your home folder                               |
-| none         | ~g l~        | Back to the folder listed before                  |
-| none         | ~q~          | Leave the list                                    |
+| Modal        | Non-modal    | What it does                                       |
+|--------------+--------------+----------------------------------------------------|
+| ~j~, ~k~     | ~C-n~, ~C-p~ | Down and up a line                                 |
+| none         | ~l~, ~RET~   | Open the entry: a directory in this list, a file   |
+| none         | ~h~          | Up to the directory that holds this one            |
+| ~g g~, ~g e~ | ~M-<~, ~M->~ | To the top of the list, to the end                 |
+| none         | ~>~, ~<~     | To the next directory in the list, to the previous |
+| none         | ~g f~        | To an entry, by name, with completion              |
+| none         | ~g h~        | To your home directory                             |
+| none         | ~g l~        | Back to the directory listed before                |
+| none         | ~q~          | Leave the list                                     |
 
-When you go up with ~h~, the cursor lands on the folder you came from. So you
-can walk down into a folder and back out again without losing your place.
-~g l~ swaps between the last two folders, so pressing it twice returns to
+When you go up with ~h~, the cursor lands on the directory you came from. So you
+can walk down into a directory and back out again without losing your place.
+~g l~ swaps between the last two directories, so pressing it twice returns to
 where you started. This helps when you are working in two places.
 
 ~g f~ is the quickest way to a name in a long list. Type a few letters of the
@@ -108,15 +108,15 @@ there is nothing to select inside it.
 like a program's data rather than text opens in a safe view. ~C-u RET~ opens
 any file that way. Chapter 12 explains what a safe view is.
 
-#+begin_try Try it, with a folder of photos
-1. Press ~C-x d~. The question holds the folder you are in. Type
+#+begin_try Try it, with a directory of photos
+1. Press ~C-x d~. The question holds the directory you are in. Type
    =~/Pictures/= after clearing it with ~C-a C-k~, and press ~RET~. Use any
-   folder you like if you have no =Pictures=.
-2. Press ~j~ (non-modal: ~C-n~) a few times, then ~l~ on a folder to go into it.
-3. Press ~h~. You are back, with the cursor on the folder you left.
+   directory you like if you have no =Pictures=.
+2. Press ~j~ (non-modal: ~C-n~) a few times, then ~l~ on a directory to go into it.
+3. Press ~h~. You are back, with the cursor on the directory you left.
 4. Press ~g l~ to go into it again, and ~g l~ once more to come back.
 5. Press ~g f~, type the first letters of a name and press ~RET~.
-6. Press ~g h~ to see your home folder, and ~q~ to leave the list.
+6. Press ~g h~ to see your home directory, and ~q~ to leave the list.
 #+end_try
 
 *** Commands for moving
@@ -132,10 +132,10 @@ them changes a file.
 ~I~ shows details before each name: the same ones that =ls -l= gives, which
 are permissions, the number of links, the owner, the group, the size and the
 time of the last change. The inode number, which says where the file sits on
-the disk, comes first. The line under the folder's name then gives how much
-free space the drive has. Here is a folder with details on.
+the disk, comes first. The line under the directory's name then gives how much
+free space the drive has. Here is a directory with details on.
 
-#+caption: Figure 10.2. The same folder with details shown.
+#+caption: Figure 10.2. The same directory with details shown.
 #+name: fig-rimu-details
 #+begin_example
   ~/Photos/holiday:
@@ -147,9 +147,9 @@ free space the drive has. Here is a folder with details on.
 #+end_example
 
 The permissions say who may read, write and run a file. The first letter is
-=d= for a folder and =-= for a file. The next nine are three groups of three,
+=d= for a directory and =-= for a file. The next nine are three groups of three,
 for the owner, for the owner's group and for everyone else. In each group,
-=r= means may read, =w= may write and =x= may run or, for a folder, may go
+=r= means may read, =w= may write and =x= may run or, for a directory, may go
 into it. So =-rw-r--r--= is a file its owner may read and change and everyone
 else may only read. Rimu shows these but does not change them. If you would
 rather read them as numbers, as the =chmod= command does, set
@@ -157,18 +157,18 @@ rather read them as numbers, as the =chmod= command does, set
 
 ~H~ shows the names that start with a dot. ~s~ swaps the order between by
 name and by time, with the most recently changed first. The mode line says
-which one is in force. ~S~ shows a size before each name. For a folder it is
+which one is in force. ~S~ shows a size before each name. For a directory it is
 the size of everything inside, and it is worked out in the background, so the
 column fills in after a moment while you carry on. ~G~ shows, after each
 name, when the file was last committed to git and the first line of what the
 commit said. Chapter 15 describes git.
 
-The standard for each of these is off, with folders first and the order by
+The standard for each of these is off, with directories first and the order by
 name. The settings below change the standard for every list.
 
-#+begin_try Try it, with a folder of letters
-1. Open a folder of letters with ~C-x d~. If you have none, make one in a
-   terminal first, or use any folder with several files.
+#+begin_try Try it, with a directory of letters
+1. Open a directory of letters with ~C-x d~. If you have none, make one in a
+   terminal first, or use any directory with several files.
 2. Press ~I~. Details appear. Press ~I~ again to hide them.
 3. Press ~s~. The list is now ordered by time, the newest first. Press ~s~
    again to go back to names.
@@ -210,19 +210,19 @@ to =t= to start with them shown, as ~H~ does.
 
 =*rimu-sort*= is =:name= or =:time=. =:name= puts capital letters before small
 ones, as =ls= does in its plain mode. =:time= puts the newest change first.
-For a folder you open to find what changed last:
+For a directory you open to find what changed last:
 
 #+begin_example
 (setf *rimu-sort* :time)
 #+end_example
 
-=*rimu-directories-first*= is =t=, so folders, and links that lead to folders,
-come before the files. With =nil= everything is in the one order, folders
-among the files.
+=*rimu-directories-first*= is =t=, so directories, and links that lead to
+directories, come before the files. With =nil= everything is in the one order,
+directories among the files.
 
 =*rimu-directory-sizes*= and =*rimu-git-info*= are =nil=, so the size column
 and the git column wait until you press ~S~ or ~G~. Set either to =t= and it
-is there when the list opens. The size of a folder is still worked out in the
+is there when the list opens. The size of a directory is still worked out in the
 background.
 
 =*rimu-ignored-extensions*= is a list of endings. A file whose name ends in
@@ -237,7 +237,7 @@ An ending is any text the name ends with, not only what follows a dot: =~=
 sets back =notes.org~=, and =-old= would set back =report-old=. Capital
 letters count, so =.log= sets back =build.log= but not =BUILD.LOG=; give both
 to have both. The name must be longer than the ending, so a file called just
-=.o= is not set back. Folders and links are never set back, whatever their
+=.o= is not set back. Directories and links are never set back, whatever their
 names end with.
 
 To add your own endings to the standard ones, add them to the list:
@@ -256,11 +256,11 @@ backups and Python's compiled files:
 
 With =nil= no name is set back, and every file is shown alike.
 
-=*rimu-follow-changes*= is =t=, so a list reads its folder again by itself
+=*rimu-follow-changes*= is =t=, so a list reads its directory again by itself
 when a file in it is made, deleted, renamed or finished being written by
 another program. You see the list change as you watch it. Many changes at
 once are read as one. Set it to =nil= and the list stays as it was until you
-press ~g r~ (non-modal: ~M-x revert-buffer~). On a folder that changes
+press ~g r~ (non-modal: ~M-x revert-buffer~). On a directory that changes
 without stopping, for example one a program writes to all day, that quiets
 the list:
 
@@ -268,17 +268,17 @@ the list:
 (setf *rimu-follow-changes* nil)
 #+end_example
 
-=*rimu-reuse-lists*= is =t=. When a bookmark takes you to a folder, or you go
-to a folder across the edge of a project, Tuatara lists it in the list that
+=*rimu-reuse-lists*= is =t=. When a bookmark takes you to a directory, or you go
+to a directory across the edge of a project, Tuatara lists it in the list that
 already belongs to that project, the one used last, and does not open another.
-If a list shows that folder already, you are taken to it either way. With
-=nil= such a folder gets a list of its own each time.
+If a list shows that directory already, you are taken to it either way. With
+=nil= such a directory gets a list of its own each time.
 
 ** The preview beside the list
 
 When you rest the cursor on an entry, Tuatara shows it in a window beside the
-list: the start of a file, or for a folder the list of what is inside. It
-follows the cursor as you move, so you can look through a folder of notes or
+list: the start of a file, or for a directory the list of what is inside. It
+follows the cursor as you move, so you can look through a directory of notes or
 photos without opening any of them. On a wide screen the preview stands to
 the right of the list, and on a narrow one below it. It closes when you leave
 the list.
@@ -307,8 +307,8 @@ buffer. When you are done, press ~q~ in NORMAL state, or ~C-c C-c~ in any
 state, and Tuatara asks whether to save what you changed. Then the preview
 shows the file again and you are back in the list.
 
-#+begin_try Try it, with a folder of letters
-1. In your folder of letters, move to a text file. A window opens beside the
+#+begin_try Try it, with a directory of letters
+1. In your directory of letters, move to a text file. A window opens beside the
    list and shows the start of it. If not, press ~P~.
 2. Press ~P~ to close the preview, and ~P~ again to open it.
 3. Press ~o~. The cursor is now in the file.
@@ -336,8 +336,8 @@ video that Tuatara cannot.
 =*rimu-preview-delay*= is how long the cursor rests on an entry before the
 preview reads it, 0.1 seconds as standard. Moving quickly down the list reads
 none of the files passed over. A longer wait reads fewer files as you move,
-which helps on a slow disk or a folder on another machine. A shorter one shows
-the preview at once and reads more.
+which helps on a slow disk or a directory on another machine. A shorter one
+shows the preview at once and reads more.
 
 #+begin_example
 (setf *rimu-preview-delay* 0.4)
@@ -364,12 +364,12 @@ does nothing until you press ~x~.
 With nothing marked, a command acts on the entry the cursor is on. With
 entries marked, it acts on them.
 
-A mark stays with its file when you go to another folder. You can mark two
-photos in one folder, go to another and mark a third, and then copy all
-three at once. This is useful and also something to watch. Under the folder's
-name the list says how many entries are marked in other folders, so you are
+A mark stays with its file when you go to another directory. You can mark two
+photos in one directory, go to another and mark a third, and then copy all
+three at once. This is useful and also something to watch. Under the directory's
+name the list says how many entries are marked in other directories, so you are
 never surprised, and the question that a command asks counts all of them.
-~U~ takes away every mark in every folder.
+~U~ takes away every mark in every directory.
 
 ~K~ takes the lines of the marked entries out of the list. The files stay as
 they are, and only the list shows fewer lines. It is a way to cross off what
@@ -390,13 +390,13 @@ as the owner or the size, and then keep or hide the entries whose value in
 that column matches. Chapter 6 describes the pattern language.
 
 #+begin_try Try it, with holiday photos
-1. Open your folder of holiday photos with ~C-x d~.
+1. Open your directory of holiday photos with ~C-x d~.
 2. Press ~m~ on three photos you like. Each gets a =>=.
 3. Press ~t~. Now every other entry is marked, and the three are not.
    Press ~t~ again to turn them back.
 4. Press ~U~ to clear every mark.
 5. Press ~C-x / s~, type =jpg= and press ~RET~. Only the pictures stay.
-6. Press ~C-x / r~ to see the whole folder again.
+6. Press ~C-x / r~ to see the whole directory again.
 #+end_try
 
 *** Commands for marks and filters
@@ -405,9 +405,9 @@ that column matches. Chapter 6 describes the pattern language.
 
 ** Making things
 
-~+~ makes a new folder in the folder the list shows. Type the name after the
-folder that is offered. If you type =Napier/Hawke/2026=, Tuatara makes every
-folder along the way that is not there yet.
+~+~ makes a new directory in the directory the list shows. Type the name after
+the directory that is offered. If you type =Napier/Hawke/2026=, Tuatara makes
+every directory along the way that is not there yet.
 
 ~a~ touches a name. The word comes from the =touch= command. A name that does
 not exist becomes a new empty file, with the cursor on it so that ~l~ opens
@@ -428,14 +428,14 @@ keywords, and writes the header of the file for you.
 ~C~ copies the marked entries, or the one under the cursor. ~M~ moves them.
 The question asks where to, as ~C-x C-f~ asks for a file: you type a path,
 and ~TAB~ completes it. If another rimu list is open in the next window, its
-folder is offered first. That makes it easy to copy from one folder to
+directory is offered first. That makes it easy to copy from one directory to
 another that you can see.
 
-A folder goes with everything in it, however many folders are inside. The
-setting =*folder-tree-depth-limit*= stops this at a very deep nesting, so that
-a loop made by mistake cannot run for ever.
+A directory goes with everything in it, however many directories are inside. The
+setting =*directory-tree-depth-limit*= stops this at a very deep nesting, so
+that a loop made by mistake cannot run for ever.
 
-~M~ moves only into a folder. To move a file and also give it a new name, use
+~M~ moves only into a directory. To move a file and also give it a new name, use
 ~R~ and a path, or copy it. When you copy a single entry you may type the
 whole new path, name included.
 
@@ -453,19 +453,20 @@ itself. Asking to copy a link onto the file it leads to is refused.
 file is. ~L~ makes a hard link, which is a second name for the very same
 file. A change made through one name shows under the other, and the file
 stays until both names are gone. A hard link can only be made on the same
-drive, and never to a folder.
+drive, and never to a directory.
 
 ~=~ compares two marked entries and shows what differs, line by line, as git
-does. With two folders marked, it compares the files that have the same name.
+does. With two directories marked, it compares the files that have the same
+name.
 
 #+begin_try Try it, with holiday photos
-1. In your folder of photos, press ~m~ on three photos.
-2. Press ~M~. At the question type the name of a folder, such as =Napier/=,
-   and press ~RET~. If the folder is not there, Tuatara says so and moves
+1. In your directory of photos, press ~m~ on three photos.
+2. Press ~M~. At the question type the name of a directory, such as =Napier/=,
+   and press ~RET~. If the directory is not there, Tuatara says so and moves
    nothing: make it with ~+~ and try again.
 3. The three photos leave the list, and Tuatara says =Moved 3 files=.
 4. Press ~g f~, go to =Napier=, and press ~l~. They are there.
-5. Put the cursor on one photo and press ~C~. Copy it to your home folder
+5. Put the cursor on one photo and press ~C~. Copy it to your home directory
    by typing =~/= after clearing the question with ~C-a C-k~.
 6. Press ~C-x j~ to see the job list. A small copy has finished already, so
    the list says there are no jobs.
@@ -477,7 +478,7 @@ does. With two folders marked, it compares the files that have the same name.
 
 *** Settings for copying and moving
 
-#+table: settings *folder-tree-depth-limit*
+#+table: settings *directory-tree-depth-limit*
 
 ** Renaming
 
@@ -485,9 +486,9 @@ does. With two folders marked, it compares the files that have the same name.
 old name, so you can edit it rather than type it all again. A name only: a
 slash is refused, because moving is ~M~'s job. A buffer that visits the file
 follows it to its new name, and so do the recent files and other lists of the
-same folder.
+same directory.
 
-To rename many names at once, press ~C-x C-q~. The names of the folder's
+To rename many names at once, press ~C-x C-q~. The names of the directory's
 entries appear as text in a buffer of their own, one to a line. You can now
 change them with every key that edits text. You can add a word to the start
 of each line with a many-cursor edit (chapter 5), or run a replacement over
@@ -499,8 +500,8 @@ nothing is renamed, and Tuatara tells you why. Before it renames anything it
 checks all the names together, so a name used twice, or one that another file
 already has, is reported and no file is renamed. You can swap two names.
 
-#+begin_try Try it, with a folder of photos
-1. Open a folder that holds a few photos, such as =IMG_0412.jpg=.
+#+begin_try Try it, with a directory of photos
+1. Open a directory that holds a few photos, such as =IMG_0412.jpg=.
 2. Press ~C-x C-q~. The names appear as text, with the cursor on the first.
 3. Press ~I~ to start INSERT at the beginning of the line. Type =Napier-=
    and press ~C-g~.
@@ -531,7 +532,7 @@ in last is at the top, and each line says when it was deleted and where it
 was. In the list, ~R~ puts the marked things back where they were, ~D~
 deletes them for good and ~x~ deletes those marked with =D=. ~X~ empties the
 whole trash and asks twice. ~RET~ opens a thing safely so that you can look
-at it before you decide. ~h~ or ~q~ returns to your folder.
+at it before you decide. ~h~ or ~q~ returns to your directory.
 
 A file that you trash on a USB stick goes to the stick's own trash and comes
 back to where it was. That is why the trash list has a section for each
@@ -543,7 +544,7 @@ files: it writes over them and then deletes them. This is slow, and it asks
 once.
 
 #+begin_try Try it, with some letters
-1. Make two new files in a folder with ~a~: type =old-1.txt= and =RET=, then
+1. Make two new files in a directory with ~a~: type =old-1.txt= and =RET=, then
    =old-2.txt= and =RET=.
 2. Put the cursor on =old-1.txt=. Press ~d~, which marks it and moves down,
    then ~d~ on the next, so both show =D=.
@@ -569,47 +570,194 @@ what you put there.
 An archive is one file that holds many files, often squeezed to take less
 room. A zip of recipes that a friend sent you is an archive. Rimu works with
 the common kinds: tar archives (plain, or ending =.gz=, =.bz2=, =.xz= or
-=.zst=), zip, 7z and rar, ISO disc images and cpio. It tells the kind from
-the first bytes of the file, so an archive with a wrong name still works.
-Word, EPUB and Java files are zip archives and open as such.
+=.zst=), zip, 7z and rar, ISO disc images and cpio. It reads all of them and
+makes tar, zip and 7z ones. ~c~ packs the marked entries into an archive,
+~Z~ extracts archives and ~C-c e~ shows what one holds.
+
+*** Looking inside
 
 ~C-c e~ shows what an archive holds, in a buffer of its own, without
 unpacking it. ~q~ closes it. It is a way to look inside a zip before you
-decide whether to unpack it.
+decide whether to unpack it. Each line gives the kind and permissions, the
+owner, the size, the time and the name, and where a link leads.
+
+Tuatara tells the kind from the first bytes of the file, never from its
+name, so an archive with a wrong name still works. Word, EPUB and Java files
+are zip archives and open as such.
+
+*** Extracting
 
 ~Z~ extracts the archives marked, or the one under the cursor. It asks for a
-folder, and offers one named after the archive, which it makes if it is not
-there. Several marked archives go into the one folder you give. If an
-archive is locked with a password, Tuatara asks for it and types nothing on
-the screen. The password reaches the unpacking program on its standard
-input, never on its command line, and a wrong one unpacks nothing.
-
-~c~ goes the other way. It packs the marked entries into one tar archive.
-The question asks for a name, and its ending says how the archive is
-squeezed: =.tar.gz=, =.tar.bz2=, =.tar.xz=, =.tar.zst=, or =.tar= for none.
-Another ending is refused. Entries marked in several folders go into one
-archive and keep their paths below the folder that holds them all.
+directory, and offers one named after the archive, which it makes if it is not
+there. Several marked archives go into the one directory you give.
 
 Unpacking is careful because an archive can hold anything. It happens in the
-background and shut in a sandbox. Nothing is written outside the folder you
+background and shut in a sandbox. Nothing is written outside the directory you
 chose, whatever names are inside, and a file already there is left as it is.
-Everything is first unpacked into a new folder of its own and moved into
-place after, so a half-finished unpack never damages what you had. Unpacking
-stops before the drive has less than =*archive-free-reserve*= free, which is
-a gigabyte unless you change it, so that a small archive that holds a great
-deal cannot fill the drive. Archives inside an archive stay packed.
+Everything is first unpacked into a new directory of its own and moved into
+place after, so a half-finished unpack never damages what you had. The files
+are yours, with the permissions your umask gives; none is setuid, and no named
+pipe or device is made. Unpacking stops before the drive has less than
+=*archive-free-reserve*= free, which is a gigabyte unless you change it, so
+that a small archive that holds a great deal cannot fill the drive. Archives
+inside an archive stay packed.
+
+*** Locked archives
+
+If an archive is locked with a password, Tuatara finds that out in the
+background and then asks for the password, showing only stars. The password
+reaches the unpacking program on its standard input, never on its command
+line, and a wrong one unpacks nothing. 7-Zip opens locked zip, 7z and rar
+archives; bsdtar opens only locked zip ones. The old zip encryption checks a
+password by a single byte, so one wrong password in 256 gets past the check
+and fails only while unpacking; Tuatara then says the password is not right
+or the archive is damaged.
+
+*** Making an archive
+
+~c~ goes the other way. It packs the marked entries, or the one under the
+cursor, into one archive. The question asks for a name, and its ending says
+what kind of archive it is and how it is squeezed:
+
+| Ending                      | Kind | Squeezed with |
+|-----------------------------+------+---------------|
+| =.tar=                      | tar  | nothing       |
+| =.tar.gz=, =.tgz=           | tar  | gzip          |
+| =.tar.bz2=, =.tbz2=, =.tbz= | tar  | bzip2         |
+| =.tar.xz=, =.txz=           | tar  | xz            |
+| =.tar.zst=, =.tzst=         | tar  | zstd          |
+| =.zip=                      | zip  | Deflate       |
+| =.7z=                       | 7z   | LZMA          |
+
+Another ending is refused. If you give a directory and no name, the archive
+is named after what it holds and ends =.tar.gz=. Entries marked in several
+directories go into one archive and keep their paths below the directory that
+holds them all. Directories go in with everything in them. A symbolic link
+goes in as a link, never as the file it leads to.
+
+The archive is made in the background, shut in the sandbox. The program sees
+what it packs only to read, and writes only in the directory the archive goes
+to. It writes under a passing name, and the archive gets its own name only
+once it is whole, so a failed or stopped one leaves nothing behind. If a file
+of that name is there already, Tuatara asks whether to replace it, and the old
+one goes to the trash.
+
+*** Locking an archive with a password
+
+Press ~C-u c~ in place of ~c~ to lock a zip or 7z archive with a password.
+The question for the name says =with a password=, and if you give a directory
+the name ends =.zip=. After the name, Tuatara asks for the password twice,
+showing only stars. If the two differ, nothing is made.
+
+- A zip archive is locked with AES-256, never with the old zip encryption,
+  which is easy to break. Anyone can still read the names of the files in
+  it, and with bsdtar where its links lead; only their contents are locked.
+- A 7z archive is locked with AES-256 and its names are locked too. Without
+  the password nobody can even list it. Only 7-Zip makes one.
+- A tar archive takes no password.
+
+A password may hold letters, digits, spaces and the signs of plain ASCII. A
+letter such as =ā= is refused, because 7-Zip and bsdtar would each read it
+differently and the archive might never open again. Keep the password
+somewhere safe: nothing can open the archive without it.
+
+The password goes to 7-Zip or bsdtar on its standard input, never on its
+command line, where other programs on the machine could read it. It is not
+written to the debug log, and Tuatara wipes it from memory once the archive
+is made.
+
+*** Which program does what
+
+Tuatara uses programs installed on your system for archives:
+
+| Program | Reads                              | Makes                        |
+|---------+------------------------------------+------------------------------|
+| GNU tar | tar, plain or squeezed             | tar, plain or squeezed       |
+| 7-Zip   | zip, 7z and rar, locked or not     | zip and 7z, locked or not    |
+| bsdtar  | zip, 7z, rar, ISO 9660 and cpio;   | zip, locked or not; 7z, not  |
+|         | locked only zip                    | locked                       |
+
+For zip and 7z archives Tuatara takes 7-Zip when it is installed, and bsdtar
+when it is not. bsdtar opens no locked 7z archive and makes none; 7-Zip
+opens and makes both. The programs that squeeze tar archives (gzip, bzip2, xz
+and zstd) must be installed for their endings. 7-Zip may be called =7zz=,
+=7z= or =7za=; an old p7zip of the same name is not taken.
+
+What to install for what:
+
+- tar archives: GNU tar, with gzip, bzip2, xz or zstd for the ending.
+- zip and plain 7z archives: 7-Zip, or bsdtar (=libarchive-tools= on Debian
+  and Ubuntu, =bsdtar= on Fedora, =libarchive= on Arch).
+- locked 7z archives, and rar ones: 7-Zip (=7zip= on Fedora, Debian, Ubuntu
+  and Arch).
+
+~M-x check-health~ says which of them it found.
+
+*** When Tuatara refuses
+
+Each refusal says why, and nothing is written. When making an archive:
+
+- =Name the archive .tar, .tar.gz, ... or .7z: nothing archived=: the name
+  has none of the endings in the table above.
+- =a tar archive takes no password: name it .zip or .7z=: ~C-u c~ was given
+  a tar name.
+- =The two passphrases differ: nothing done=: the password was typed
+  differently the second time.
+- =no password was given=: the password was left empty.
+- =a password takes only letters, digits, spaces and signs of plain ASCII=:
+  the password holds another letter or sign.
+- =bsdtar locks no 7z archive with a password, 7-Zip does: install 7-Zip=:
+  a locked 7z archive was asked for and only bsdtar is installed. The
+  message names the package for your system.
+- =neither 7-Zip nor bsdtar is installed to make zip archives=: there is no
+  program for zip or 7z archives. The message names what to install.
+- =gzip is not installed: install it for archives compressed so=: the
+  program for the ending is missing. The same goes for bzip2, xz and zstd.
+- =... names are too many to give 7-Zip at once=: so many entries are marked
+  that 7-Zip cannot be given all their names. Mark the directories that hold
+  them instead.
+- =... would be inside what it holds=: the archive would be put inside a
+  directory it packs.
+- =Nothing archived: ... is there already=: you said no to replacing a file.
+
+When extracting or looking inside:
+
+- =it is no archive=: the file is none of the kinds above, whatever its
+  name.
+- =it is locked with a password=: Tuatara then asks for the password.
+- =the password is not right=: nothing is unpacked.
+- =the password is not right, or the archive is damaged=: the old zip
+  encryption let a wrong password past its check.
+- =bsdtar opens no 7z archive so locked; 7-Zip does=: install 7-Zip.
+- =bsdtar is not installed=: there is no program for zip, 7z, rar, ISO 9660
+  or cpio archives.
+- =it was read as ..., not as the ... archive its first octets say it is=:
+  the file pretends to be one kind and is another.
+- =unpacking stopped=: the drive came near =*archive-free-reserve*=.
 
 #+begin_try Try it, with a zip of recipes
-1. Put a zip file called =recipes.zip= in a folder, or pack one: mark a few
-   text files and press ~c~, type =recipes.tar.gz= after the folder offered
+1. Put a zip file called =recipes.zip= in a directory, or pack one: mark a few
+   text files and press ~c~, type =recipes.zip= after the directory offered
    and press ~C-j~.
 2. Press ~U~ to clear the marks, as ~Z~ would work on the marked files. Put
    the cursor on the archive and press ~C-c e~. A list of what it holds opens.
 3. Press ~q~ to close it.
-4. Press ~Z~. The question offers a folder named =recipes=. Press ~C-j~ to
+4. Press ~Z~. The question offers a directory named =recipes=. Press ~C-j~ to
    take it.
 5. Tuatara says =Extracted 1 archive=. Press ~l~ on =recipes= and see the
    files.
+#+end_try
+
+#+begin_try Try it, with a locked 7z archive
+1. Mark a few files and press ~C-u c~. Type =private.7z= after the directory
+   offered and press ~C-j~.
+2. Type a password, press ~RET~, type it again and press ~RET~. Tuatara says
+   =Archived= when it is done.
+3. Put the cursor on =private.7z= and press ~C-c e~. Tuatara says it is
+   locked: not even the names can be read.
+4. Press ~Z~ and ~C-j~. Tuatara asks for the password. Type a wrong one:
+   Tuatara says it is not right and unpacks nothing.
+5. Press ~Z~ again and give the right one. The files are back in =private=.
 #+end_try
 
 *** Commands for archives
@@ -639,21 +787,21 @@ largest archives. Lower it to end a program that hangs sooner; ~C-x J~
 (setf *archive-seconds* (* 60 60))
 #+end_example
 
-** Drives and the folder tree
+** Drives and the directory tree
 
 A drive is a disk, a USB stick or a network share that has been attached to
 the computer, which is called mounting it. Rimu does not mount drives. Your
-desktop does that when you plug one in, and then you list the drive's folder
+desktop does that when you plug one in, and then you list the drive's directory
 like any other.
 
 Rimu knows about drives in a few places. A size worked out with ~S~ counts
-what is inside a folder on the same drive only, so a drive attached inside it
+what is inside a directory on the same drive only, so a drive attached inside it
 is not added in. A hard link works only on one drive. The trash of a drive is
 kept on that drive, as the last section explained.
 
-A folder tree is a folder with its folders and theirs, as deep as they go.
-~S~ adds up a whole tree. Copying, moving or deleting a folder goes through
-the entire tree. In a network or a mounted drive that is slow, but the
+A directory tree is a directory with its directories and theirs, as deep as they
+go. ~S~ adds up a whole tree. Copying, moving or deleting a directory goes
+through the entire tree. In a network or a mounted drive that is slow, but the
 editor stays usable, because the work is done in the background.
 
 ** Finding, checking and encrypting
@@ -662,7 +810,7 @@ A list can also be made from a search. The commands below make a list of
 results, and you work on that list as on any other: mark, copy, move, delete.
 
 ~M-x rimu-find~ lists the files whose names match a pattern, where =*= stands
-for any characters and =?= for one. =*.pdf= finds every PDF below the folder
+for any characters and =?= for one. =*.pdf= finds every PDF below the directory
 you give. ~M-x rimu-find-text~ lists the files whose text holds the words you
 type. ~M-x rimu-duplicates~ lists files that are the same as another, in
 groups, so you can mark one of each pair for deletion.
@@ -678,7 +826,7 @@ file and ~: v~ checks a signature.
 ** Colours of a list
 
 A list uses faces to tell its parts apart: marked entries, entries marked for
-deletion, folders, sizes, dates and the rest. Links that lead nowhere have a
+deletion, directories, sizes, dates and the rest. Links that lead nowhere have a
 face of their own, so a broken one stands out. Chapter 20 shows how to change
 a face.
 

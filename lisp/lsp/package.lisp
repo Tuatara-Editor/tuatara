@@ -24,7 +24,7 @@
                 #:org-parse-tree #:org-part-at #:org-part-code-lines #:org-part-index #:org-part-start
                 #:org-parts-count #:org-property #:org-src-language #:path-uri #:places-buffer #:places-name
                 #:prog-mode #:project-root #:project-trusted-p #:push-xref-marker #:put-snippet #:put-text-by-lines
-                #:real-folder #:refill-open-list #:render-pieces #:safe-directory-of #:save-buffer-with-care
+                #:real-directory #:refill-open-list #:render-pieces #:safe-directory-of #:save-buffer-with-care
                 #:say-places-end #:show-definitions #:show-help #:special-mode #:src-block #:state-list-drop
                 #:step-place #:trusted-when-asked-p #:uri-path #:use-places #:visit-entry #:visit-path
                 #:walk-directory #:word-bounds-at #:xref-find-definitions #:xref-go-back)
@@ -33,5 +33,5 @@ files kept in step with it, and what it knows shown in the editor (what it
 found wrong, completion, definitions, hints, symbols, folds, the code blocks
 of Org notes); a formatter run on a buffer before it is saved. The rest of the
 editor installs it and asks what tools a language has here.")
-  (:export #:install-lsp #:install-diagnostics-place #:language-tools-words #:*brought-language-servers-folder*
+  (:export #:install-lsp #:install-diagnostics-place #:language-tools-words #:*brought-language-servers-directory*
            #:language-server-program-name-p #:language-server-programs-here))

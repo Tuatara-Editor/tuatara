@@ -42,7 +42,7 @@ the system finds it; NIL when it is not there."
 
 (defun real-path-so-far (path)
   "PATH with every link in it followed and . and .. taken out as far as it is
-there (REAL-PATH of the deepest folder of it that is), the rest after as
+there (REAL-PATH of the deepest directory of it that is), the rest after as
 written; no / at its end. With /safe/link leading to /etc and no
 /safe/link/new, /safe/link/new/file is /etc/new/file. A .. in the rest is
 taken out and what it leads back into followed too: /safe/new/../link/file
@@ -126,8 +126,8 @@ or TO (CHECK-TREE-WRITING)."
 
 (defun rename-checked (from to &key replace)
   "RENAME-PATH's work, once where it writes has been looked at: by the
-folders of FROM and TO held open, each looked at again where it really is
-\(CALL-WITH-PARENT :WRITING), so that a folder swapped for a link meanwhile
+directories of FROM and TO held open, each looked at again where it really is
+\(CALL-WITH-PARENT :WRITING), so that a directory swapped for a link meanwhile
 leads nothing elsewhere."
   (call-with-parent
    from
@@ -152,13 +152,13 @@ it is: a [ or * in it is only a character. Refused (WRITING-REFUSED) where
 nothing may be written, whether they are there or not: what they are made
 for is written there next."
   (check-writing (if (uiop:string-suffix-p (native path) "/") (string-right-trim "/" (native path)) (parent-path path))
-                 "make the folder")
+                 "make the directory")
   (ensure-directories-exist (uiop:parse-native-namestring (native path))))
 
 (defun make-directory (path &optional (mode #o777))
   "Make the directory PATH, with MODE as your umask allows; a
 FILE-SYSTEM-ERROR when it cannot be made, as when a file of that name is there;
-WRITING-REFUSED where nothing may be written, told by the folder it is made
+WRITING-REFUSED where nothing may be written, told by the directory it is made
 in, held open."
   (call-with-parent path (lambda (dirfd name) (make-directory-at dirfd name path mode)) :writing "make the directory")
   path)
@@ -182,21 +182,21 @@ something not a directory is in the way, or when PATH is someone else's."
       (error 'file-system-error :operation "make the directory" :path name :reason "something else is there"))
     (let ((stat (sb-posix:stat name)))
       (unless (= (sb-posix:stat-uid stat) (sb-posix:getuid))
-        (error 'file-system-error :operation "keep files in" :path name :reason "the folder is someone else's"))
+        (error 'file-system-error :operation "keep files in" :path name :reason "the directory is someone else's"))
       (unless (zerop (logand (sb-posix:stat-mode stat) #o077))
         (sb-posix:chmod name (logand (sb-posix:stat-mode stat) #o700))))
     name))
 
 (defun remove-file (path)
   "Take away the name PATH of a file or a symbolic link (not where it leads);
-refused (WRITING-REFUSED) where nothing may be written, told by the folder it
+refused (WRITING-REFUSED) where nothing may be written, told by the directory it
 is in, held open."
   (call-with-parent path (lambda (dirfd name) (remove-entry-at dirfd name (native path) nil)) :writing "delete"))
 
 (defun touch-path (path)
   "Set the access and modification times of the file or directory at PATH to
 now; a symbolic link's own times, not those of where it leads. Refused
-\(WRITING-REFUSED) where nothing may be written, told by the folder it is in,
+\(WRITING-REFUSED) where nothing may be written, told by the directory it is in,
 held open, and while some place is, for a file with other names, one of
 which may be there."
   (call-with-parent
@@ -206,7 +206,7 @@ which may be there."
        (when (and stamp (eq (stamp-kind stamp) :regular) (> (stamp-nlink stamp) 1))
          (error 'writing-refused :operation "touch" :path (native path)
                                  :reason (format nil
-                                                 "it has ~d names, and one may be in an evidence folder"
+                                                 "it has ~d names, and one may be in an evidence directory"
                                                  (stamp-nlink stamp)))))
      (with-octets-sap (sap (terminated-octets name))
        (check-call (sb-alien:alien-funcall
@@ -219,7 +219,7 @@ which may be there."
 (defun make-symbolic-link (target path)
   "Make PATH a symbolic link leading to TARGET, a path as it is written in the
 link; a FILE-SYSTEM-ERROR when PATH is taken, WRITING-REFUSED where nothing
-may be written, told by the folder it is made in, held open."
+may be written, told by the directory it is made in, held open."
   (call-with-parent
    path
    (lambda (dirfd name)
@@ -237,7 +237,7 @@ may be written, told by the folder it is made in, held open."
 two names (a symbolic link at FROM gets a second name itself). A
 FILE-SYSTEM-ERROR when PATH is taken, FROM is a directory or the two are on
 different drives; WRITING-REFUSED where nothing may be written, at PATH, told
-by the folder it is made in, held open, or at FROM, whose file a second name
+by the directory it is made in, held open, or at FROM, whose file a second name
 changes (its count of names, its time of change)."
   (check-writing from "give another name to")
   (call-with-parent
@@ -304,11 +304,11 @@ a FILE-SYSTEM-ERROR when it is not a directory now, a symbolic link included."
 name in it (octets), the descriptor closed after. With WRITING, a verb
 phrase, refused (WRITING-REFUSED) when nothing may be written at PATH, told
 by where the directory opened really is."
-  (multiple-value-bind (parent name) (path-folder-and-name (string-right-trim "/" (native path)))
+  (multiple-value-bind (parent name) (path-directory-and-name (string-right-trim "/" (native path)))
     (let ((own (tuatara.text:string-octets name)))
       (when (or (zerop (length own)) (equalp own #(46)) (equalp own #(46 46)))
         (error 'file-system-error :operation "change" :path path :reason "it names no entry of a directory"))
-      ;; O_PATH: a folder you may write in but not list (-wx) is opened all the same
+      ;; O_PATH: a directory you may write in but not list (-wx) is opened all the same
       (let ((dirfd (handler-case (sb-posix:open parent (logior +o-path+ +o-directory+ +o-cloexec+))
                      (sb-posix:syscall-error (e) (fail "open" parent (sb-posix:syscall-errno e))))))
         (unwind-protect (progn (when writing (check-writing path writing :dirfd dirfd))
@@ -435,7 +435,7 @@ holds part of it). What is not a regular file is refused unopened."
 
 (defun copy-open-file-to (in from to &key cancel progress)
   "Copy the regular file open as IN, FROM's (for messages), to the new file
-TO, as COPY-OPEN-FILE does, in the folder of TO held open and looked at
+TO, as COPY-OPEN-FILE does, in the directory of TO held open and looked at
 first where it really is (CALL-WITH-PARENT :WRITING); IN read at explicit
 offsets, so that what was read of it before is copied whole. True when all
 of it was copied; NIL when CANCEL, a cons, had a true car first."
@@ -459,9 +459,9 @@ true car first (the copy then holds part of it)."
                (sb-posix:close out))))
       (sb-posix:close in))))
 
-(define-setting *folder-tree-depth-limit* 200
-  "The most folders, one inside another, that copying, moving or deleting a
-folder goes down through.
+(define-setting *directory-tree-depth-limit* 200
+  "The most directories, one inside another, that copying, moving or deleting a
+directory goes down through.
 Each holds a descriptor open while what is in it is dealt with, so a tree
 nested deeper, as a damaged file system or a hostile archive can hold, is
 refused at that depth, before descriptors or the stack run out half-way.
@@ -469,16 +469,17 @@ refused at that depth, before descriptors or the stack run out half-way.
   :values (integer 1 *))
 
 (defun check-tree-depth (depth path)
-  "Signal a FILE-SYSTEM-ERROR for PATH when DEPTH, the folders above it within
-the tree being copied or deleted, passes *FOLDER-TREE-DEPTH-LIMIT*."
-  (when (> depth *folder-tree-depth-limit*)
+  "Signal a FILE-SYSTEM-ERROR for PATH when DEPTH, the directories above it within
+the tree being copied or deleted, passes *DIRECTORY-TREE-DEPTH-LIMIT*."
+  (when (> depth *directory-tree-depth-limit*)
     (error 'file-system-error :operation "go into" :path path
-                              :reason (format nil "it is nested more than ~d folders deep" *folder-tree-depth-limit*))))
+                              :reason (format nil "it is nested more than ~d directories deep"
+                                              *directory-tree-depth-limit*))))
 
 (defun copy-entry-at (from-dirfd from-name to-dirfd to-name path to-path cancel progress skipped &optional (depth 0))
   "COPY-PATH-TREE for the entry FROM-NAME of the directory open as FROM-DIRFD,
 copied to TO-NAME of the one open as TO-DIRFD (names octets; PATH and TO-PATH
-their paths, for messages), DEPTH folders down the tree (CHECK-TREE-DEPTH)."
+their paths, for messages), DEPTH directories down the tree (CHECK-TREE-DEPTH)."
   (when (and cancel (car cancel)) (return-from copy-entry-at nil))
   (let* ((stamp (entry-stamp from-dirfd from-name path))
          (kind (stamp-kind stamp)))
@@ -553,7 +554,7 @@ leaves is a hidden .tuatara-copy-... name."
 
 (defun delete-entry-at (dirfd name path cancel &optional (depth 0))
   "DELETE-TREE for the entry NAME (octets) of the directory open as DIRFD, PATH
-its path, DEPTH folders down the tree (CHECK-TREE-DEPTH). An empty directory
+its path, DEPTH directories down the tree (CHECK-TREE-DEPTH). An empty directory
 that cannot be read is removed all the same."
   (when (and cancel (car cancel)) (return-from delete-entry-at nil))
   (if (eq (stamp-kind (entry-stamp dirfd name path)) :directory)
@@ -587,8 +588,8 @@ deleting goes on: only what is in PATH is deleted."
 
 (defun check-tree-writing (path operation)
   "Signal WRITING-REFUSED for OPERATION on PATH when nothing may be written
-there, or, PATH being a folder, in any folder within it (WRITING-REFUSAL),
-each told by where it really is: a folder holding such a place is not
+there, or, PATH being a directory, in any directory within it (WRITING-REFUSAL),
+each told by where it really is: a directory holding such a place is not
 deleted, moved or renamed as a whole. Links in it are not followed. Looks
 within PATH only while some place is refused (WRITING-REFUSED-ANYWHERE-P)."
   (check-writing path operation)
@@ -643,7 +644,7 @@ directory unless given."
                                            (user-homedir-pathname)))))
 
 (defun user-font-directories (&optional (home (home-directory)))
-  "Your own font folders, native names without a / at the end: fonts in the
+  "Your own font directories, native names without a / at the end: fonts in the
 data home ($XDG_DATA_HOME, or .local/share in HOME), then .fonts in HOME;
 HOME is your home directory unless given."
   (list (path-join (native (data-home home)) "fonts")
@@ -753,21 +754,21 @@ within it: /data/case/x is within /data/case, /data/cases/x is not."
 
 (defun real-path-or-parent (path)
   "Where the file at PATH (native) really is, every link followed and . and ..
-taken out (REAL-PATH); for a file not there, where its folder really is with
+taken out (REAL-PATH); for a file not there, where its directory really is with
 its name after; NIL when neither is there."
   (or (tuatara.runtime:ignoring-errors-reported ("finding where ~a really is" path) (real-path path))
-      (let ((folder (tuatara.runtime:ignoring-errors-reported ("finding where the folder of ~a really is" path)
+      (let ((directory (tuatara.runtime:ignoring-errors-reported ("finding where the directory of ~a really is" path)
                       (real-path (parent-path path))))
             (name (native-file-name path)))
-        (and folder name (not (member name '("." "..") :test #'string=))
-             (path-join folder name)))))
+        (and directory name (not (member name '("." "..") :test #'string=))
+             (path-join directory name)))))
 
-(defun really-within-p (path folder)
-  "True when the file at PATH (native) is FOLDER or in it, both where they
+(defun really-within-p (path directory)
+  "True when the file at PATH (native) is DIRECTORY or in it, both where they
 really are (REAL-PATH-SO-FAR), so that no link leads it out, however much of
 PATH is not there yet: what a file or a program may have the editor read or
 write is checked so."
-  (let ((top (clean-path (real-path-so-far folder) :strict t)))
+  (let ((top (clean-path (real-path-so-far directory) :strict t)))
     (and top (path-within-p (real-path-so-far path) top))))
 
 (defun percent-encoded (text &key (safe ""))
@@ -785,7 +786,7 @@ another name is written."
 octet of it in UTF-8 but ASCII letters, digits, . _ and - written as %XX
 \(PERCENT-ENCODED); for a name over 240 characters, its first 200 then ~ and
 a number made from all of PATH (TUATARA.TEXT:STRING-HASH) in base 36, so that
-it always fits in a folder. True as a second value when it was shortened."
+it always fits in a directory. True as a second value when it was shortened."
   (let ((encoded (percent-encoded path :safe "._-")))
     (if (<= (length encoded) 240)
         (values encoded nil)
@@ -926,10 +927,10 @@ FILE-SYSTEM-ERROR, PATH named, when it cannot be."
 (defun wipe-file (path &key cancel progress (passes 1))
   "Wipe the file at PATH: its contents overwritten PASSES times with random
 octets, each pass put on disk, then the file emptied, renamed to a random
-name, deleted, and its folder's change put on disk; so that its contents and
+name, deleted, and its directory's change put on disk; so that its contents and
 name are not found again where the disk writes in place. A link, what is no
 regular file, and a file with other names too (whose contents they keep) are
-refused with a FILE-SYSTEM-ERROR. The renaming and deleting go by its folder,
+refused with a FILE-SYSTEM-ERROR. The renaming and deleting go by its directory,
 held open, and only while the name still leads to the very file overwritten.
 CANCEL, a cons, stops it between pieces when its car turns true (:STOPPED
 returned, the file then partly overwritten); PROGRESS is called with the

@@ -118,11 +118,11 @@ and that it finds no other; returns how many agreed and how many there were."
             do (incf total) (format t "~&BidiBrackets: ~x is not listed~%" code))
     (values passed total)))
 
-(defun run-bidi-conformance (folder)
-  "Run the conformance files in FOLDER and say how many cases of each passed."
-  (multiple-value-bind (passed total) (run-bidi-brackets (merge-pathnames "BidiBrackets.txt" folder))
+(defun run-bidi-conformance (directory)
+  "Run the conformance files in DIRECTORY and say how many cases of each passed."
+  (multiple-value-bind (passed total) (run-bidi-brackets (merge-pathnames "BidiBrackets.txt" directory))
     (format t "~&BidiBrackets.txt: ~d of ~d agree~%" passed total))
-  (multiple-value-bind (passed total) (run-bidi-test (merge-pathnames "BidiTest.txt" folder))
+  (multiple-value-bind (passed total) (run-bidi-test (merge-pathnames "BidiTest.txt" directory))
     (format t "~&BidiTest.txt: ~d of ~d passed~%" passed total))
-  (multiple-value-bind (passed total) (run-bidi-character-test (merge-pathnames "BidiCharacterTest.txt" folder))
+  (multiple-value-bind (passed total) (run-bidi-character-test (merge-pathnames "BidiCharacterTest.txt" directory))
     (format t "~&BidiCharacterTest.txt: ~d of ~d passed~%" passed total)))

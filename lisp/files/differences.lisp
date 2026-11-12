@@ -1,11 +1,11 @@
-;;;; lisp/files/differences.lisp --- two files or folders compared, by diff shut in.
+;;;; lisp/files/differences.lisp --- two files or directories compared, by diff shut in.
 ;;;; Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
 ;;;;
 ;;;; As Emacs's M-x diff and dired's = do, with GNU diff: M-x diff-files
 ;;;; compares the file shown with another, = in rimu the two entries marked.
 ;;;; The differences are shown unified, as git shows them, in diff-mode;
-;;;; folders are compared with all in them. diff runs in the sandbox
-;;;; (TUATARA.IO:SANDBOX-RUN), seeing only the folders of the two, read only.
+;;;; directories are compared with all in them. diff runs in the sandbox
+;;;; (TUATARA.IO:SANDBOX-RUN), seeing only the directories of the two, read only.
 
 (in-package #:tuatara.defaults)
 
@@ -19,25 +19,26 @@ sooner.
 
 (defun sandbox-seen-directory (path)
   "The directory a program shut in the sandbox is shown to see the file or
-folder at PATH: the folder itself, else the one the file is in."
+directory at PATH: the directory itself, else the one the file is in."
   (let ((real (tuatara.io:real-place path)))
     (if (eq :directory (tuatara.io:path-kind real)) real (tuatara.io:parent-path real))))
 
 (defun file-differences (old new &key cancel)
-  "The differences between OLD and NEW, two files or two folders, as diff
+  "The differences between OLD and NEW, two files or two directories, as diff
 --unified writes them: the lines of OLD taken out after -, those of NEW put
-in after +, three lines around each change. Folders are compared with all in
+in after +, three lines around each change. Directories are compared with all in
 them, a file only one holds compared with none, /dev/null as an empty file, links as links, never
 followed; of files that are not text, only that they differ; a file and a
-folder, the file with the one of its name in the folder. Times are written
+directory, the file with the one of its name in the directory. Times are written
 in your time zone (SANDBOX-TIME-ZONE). An empty rope
-when they are the same. diff, shut in, sees only their folders, read only.
+when they are the same. diff, shut in, sees only their directories, read only.
 Stopped when CANCEL's car turns true; an error saying why when they cannot be
 compared, or the differences are longer than *DIFFERENCES-LIMIT*."
   (flet ((seen (path) (sandbox-seen-directory path)))
     (multiple-value-bind (output outcome said)
         (tuatara.io:sandbox-run "diff" (append (list "--unified" "--recursive" "--no-dereference")
-                                               ;; a file missing on one side counts as empty only between two folders
+                                               ;; a file missing on one side counts as empty only between two
+                                               ;; directories
                                                (and (eq :directory (tuatara.io:path-kind old))
                                                     (eq :directory (tuatara.io:path-kind new))
                                                     (list "--new-file"))
@@ -81,7 +82,7 @@ job; ROPE, those found."
                                  (cl-ppcre:regex-replace-all "~" (abbreviated-path new) "~~")))))
 
 (defun show-differences (old new)
-  "Show the differences between OLD and NEW, two files or folders, in a buffer
+  "Show the differences between OLD and NEW, two files or directories, in a buffer
 of their own in another window, found in the background (FILE-DIFFERENCES);
 \\`q' closes it. One showing these two before is made afresh; one showing
 two others of the same names is left as it is."
@@ -130,7 +131,7 @@ either is said to be left out: the files are compared as they are on disk."
 \\<rimu-mode>\\[rimu-diff] compares the two marked); with \\[universal-argument], or where
 there is none, both asked for. Unified, as git shows them: the lines of the
 first taken out after -, those of the other put in after +, three lines
-around each change. Two folders are compared with all in them; of files that
+around each change. Two directories are compared with all in them; of files that
 are not text, only that they differ. diff does it in the background, shut in
 the sandbox."
   (let* ((old (shown-file-argument "Compare file: "))

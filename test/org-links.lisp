@@ -3,7 +3,7 @@
 
 (in-package #:tuatara.tests)
 
-(define-test (org links-followed)
+(define-modal-test (org links-followed)
   (let ((text (format nil "See [[*Two]] and [[#here]] and [[target]] and [[id:x-1]].~%* One~%<<target>> is here.~%* Two~%:PROPERTIES:~%:CUSTOM_ID: here~%:ID: x-1~%:END:~%")))
     (flet ((after (keys)
              (org-line-of-point (nth-value 1
@@ -199,7 +199,7 @@
           (true (tuatara.frontend.fake:fake-frame-showing f "Open https://orgmode.org in stand-in-xdg-open, outside Tuatara?"))
           (is equal '("--new-tab" "https://orgmode.org") (opened-names record)))))))
 
-(define-test (org link-targets-alike)
+(define-modal-test (org link-targets-alike)
   ;; following a link and exporting it lead to the same place: a target before a
   ;; name before a headline of the same words; *Title a headline only; #id a custom id
   (is equal '((:target . "Kea") (:name . "Kea") (:title . "Kea")) (tuatara.defaults::org-link-target-kinds "Kea"))
@@ -236,7 +236,7 @@
                     :key #'tuatara.defaults::org-node-type)))
     (is string= "m:20[0-9]+" (tuatara.defaults::org-property link :path))))
 
-(define-test (org link-display)
+(define-modal-test (org link-display)
   (let ((text (format nil "See [[https://orgmode.org][Org]] and [[*Two]] here.~%* Two~%")))
     (flet ((first-line (keys &optional (text text))
              (tuatara.frontend.fake:fake-screen-line (run-keys (format nil "M-x o r g - m o d e RET ~a" keys)
@@ -277,7 +277,7 @@
     (is string= (format nil "See [[https://orgmode.org][Or@g]] here.~%") (org-table-after "C-u 4 l l l l h" text))
     (is string= (format nil "See@ [[https://orgmode.org][Org]] here.~%") (org-table-after "C-u 4 l h" text))))
 
-(define-test (org entity-display)
+(define-modal-test (org entity-display)
   ;; an entity shown as its character, as a Word document's $ is written, with the links shown as
   ;; their labels; SPC t L shows both as written; the text is not changed
   (let ((text (format nil "Paid \\dollar{}5,950.00 to \\alpha{}, [[x][Org]].~%")))
@@ -360,7 +360,7 @@
              (is = 1000000000 (sb-posix:stat-atime (sb-posix:stat other))))
         (forget-file-buffers)))))
 
-(define-test (org pickers-list-in-background)
+(define-modal-test (org pickers-list-in-background)
   ;; the notes offered for a link, a query, a sequence, and a new file's
   ;; subdirectories and keywords are found away from the editor's thread
   (with-test-directory (dir)
@@ -402,7 +402,7 @@
         (sb-int:unencapsulate 'tuatara.defaults::files-under 'walk-spy)
         (forget-file-buffers)))))
 
-(define-test (org insert-link)
+(define-modal-test (org insert-link)
   (with-test-directory (dir)
     (let ((org (merge-pathnames "a.org" dir))
           (notes (merge-pathnames "sub/notes.txt" dir))
@@ -428,7 +428,7 @@
         (let ((editor (in-file org "C-u 6 j M-x o r g - s t o r e - l i n k RET g e i C-c C-l RET RET")))
           (true (search "[[#sec][Second heading]]" (session-text editor))))
         (forget)
-        ;; a line of another file, from this file's folder
+        ;; a line of another file, from this file's directory
         (in-file notes "j M-x o r g - s t o r e - l i n k RET")
         (is equal "the second line" (subseq (first (first tuatara.defaults::*org-stored-links*))
                                             (- (length (first (first tuatara.defaults::*org-stored-links*))) 15)))

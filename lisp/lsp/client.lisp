@@ -2,7 +2,7 @@
 ;;;; Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
 ;;;;
 ;;;; A language server is a program run for a project and a language, in the
-;;;; project's folder. Tuatara writes it messages on its standard input and
+;;;; project's directory. Tuatara writes it messages on its standard input and
 ;;;; reads its own from its standard output, each JSON with a Content-Length
 ;;;; header (the Language Server Protocol). Each server has a thread that
 ;;;; writes what is sent to it, so that a server slow to read never holds the
@@ -44,7 +44,7 @@ answer (LSP-REQUEST-NOW) to wake.")
 
 (defstruct (lsp-server (:constructor make-lsp-server (name command root language options wake)) (:copier nil))
   "A language server. NAME is its name as known (rust-analyzer). COMMAND is
-its program and arguments. ROOT is the project's folder it serves. LANGUAGE is
+its program and arguments. ROOT is the project's directory it serves. LANGUAGE is
 the language it is started for. OPTIONS is what it is told at its start (read
 JSON), or NIL. WAKE is a function that wakes the editor, or NIL. PROCESS is
 the program running. OUTBOX is the messages waiting to be written to it, as
@@ -101,9 +101,9 @@ its events for \\[lsp-events]."
 (defparameter *command-line-scanner*
   (cl-ppcre:create-scanner "(?:(?<=spawn )|cd \"[^\"]*\" && )(?:[A-Za-z_][A-Za-z0-9_]*=\"[^\"]*\" )*\"([^\"]+)\"(?: \"[^\"]*\")*")
   "The pattern of a command line a server could not run, as it writes one in
-its words (rust-analyzer's Failed to spawn cd \"folder\" &&
+its words (rust-analyzer's Failed to spawn cd \"directory\" &&
 RUSTUP_AUTO_INSTALL=\"0\" \"rustfmt\"): after spawn, or beginning cd
-\"folder\" &&; then settings NAME=\"value\", the program and its
+\"directory\" &&; then settings NAME=\"value\", the program and its
 arguments, each in quotes. Words it does not match are said whole.")
 
 (defun lsp-error (code words)
@@ -445,7 +445,7 @@ SERVER and ARGUMENTS bound."
   (let ((o #'tuatara.text:json-object))
     (funcall o
              "general" (funcall o "positionEncodings" #("utf-8" "utf-16"))
-             "workspace" (funcall o "configuration" t "workspaceFolders" t "applyEdit" t
+             "workspace" (funcall o "configuration" t "workspaceDirectories" t "applyEdit" t
                                   "workspaceEdit" (funcall o "documentChanges" t)
                                   "inlayHint"
                                   (funcall o "refreshSupport" t)
@@ -518,7 +518,7 @@ program cannot be started (said so)."
                   "processId" (sb-posix:getpid)
                   "clientInfo" (tuatara.text:json-object "name" "Tuatara")
                   "rootUri" (path-uri root) "rootPath" (tuatara.io:native root)
-                  "workspaceFolders"
+                  "workspaceDirectories"
                   (vector (tuatara.text:json-object "uri" (path-uri root) "name" (tuatara.io:native-file-name root)))
                   "capabilities" (lsp-capabilities)
                   "initializationOptions" (or options :omit))
@@ -593,7 +593,7 @@ later; what waited for its answers is told it stopped."
                          :null)))
          (tuatara.text:json-items params "items"))))
 
-(define-lsp-request "workspace/workspaceFolders" (server params)
+(define-lsp-request "workspace/workspaceDirectories" (server params)
   (vector (tuatara.text:json-object "uri" (path-uri (lsp-server-root server)) "name" (tuatara.io:native-file-name (lsp-server-root server)))))
 
 (define-lsp-request "window/workDoneProgress/create" (server params) :null)

@@ -32,7 +32,7 @@ memory as large as the text of its files.
 - a list of directories' names, such as '(\"~/Documents/\" \"~/notes/\"): those
   directories. (list *formatted-file-directory*) is your files with formatted
   names."
-  :values (list-of folder))
+  :values (list-of directory))
 
 (define-setting *indexing-indicator* "U"
   "What the mode line shows while directories are kept read
@@ -497,7 +497,7 @@ DIRECTORY-INDEX keeps them, its text in pieces of about PIECE octets, at most
 LIMIT in all. With KEPT-ON-DISK, the pieces kept at the last session are
 taken first, at the start, and what changed is kept again after (SAVE-INDEX)."
   (let* ((root (directory-index-root index))
-         (cache (and kept-on-disk (ignoring-errors-reported ("making the folder to keep ~a in" root)
+         (cache (and kept-on-disk (ignoring-errors-reported ("making the directory to keep ~a in" root)
                                      (index-cache-directory root)))))
     (when (and cache (null (directory-index-tree index)) (zerop (length (directory-index-pieces index))))
       (load-index index cache))

@@ -179,7 +179,7 @@ shfmt for shell scripts. The section on language servers covers it.
 
 #+begin_try Try it, with a shell script
 1. Press ~C-x C-f~, type =~/code-practice/count.sh= and press ~RET~. Tuatara
-   asks to make the folder when you save, if it is not there. Press ~i~ and
+   asks to make the directory when you save, if it is not there. Press ~i~ and
    type these seven lines, pressing ~RET~ at the end of each. Do not type any
    blanks in front. If Tuatara has already put some in, leave them.
 
@@ -198,10 +198,10 @@ shfmt for shell scripts. The section on language servers covers it.
    function move in, the line inside the loop moves in again, =done= lines up
    with =for=, and the last line is at the left edge.
 3. Press ~C-g~ and ~C-x C-s~ to save. Press ~M-x~, type =compile= and press
-   ~RET~. Press ~C-a~ and ~C-k~ to clear the command offered, type =sh
-   count.sh= and press ~RET~. If Tuatara asks whether you trust the folder, it
-   is your own, so type ~y~, and at the second question type ~y~ and press
-   ~RET~ (the section on running a build explains why it asks).
+   ~RET~. Press ~C-a~ and ~C-k~ to clear the command offered, type =sh count.sh=
+   and press ~RET~. If Tuatara asks whether you trust the directory, it is your
+   own, so type ~y~, and at the second question type ~y~ and press ~RET~ (the
+   section on running a build explains why it asks).
 4. A window opens under the script with the name =*compile*=. The output is
    =12=, and the last line says the command finished with exit code 0.
 5. Press ~g g~ and ~j~ (non-modal: ~M-<~, ~C-n~) to reach the =for= line. Press
@@ -363,7 +363,9 @@ bracket instead. In NORMAL state ~W~ and ~B~ do the work of ~C-M-f~ and ~C-M-b~.
 For whole definitions, ~C-M-a~ goes to the start of the one the cursor is in
 (=beginning-of-defun=) and ~C-M-e~ to its end (=end-of-defun=). A count first
 goes that many. ~M-x mark-defun~ selects the whole definition with the comments
-above it. Press it again to add the next one.
+above it. Press it again to add the next one. In a LaTeX file the definitions
+are the sections (from =\part= down to =\subparagraph=) and the environments,
+so ~C-M-a~ and ~C-M-e~ step over those and not over each =\textbf=.
 
 Some commands change the code by its pieces. ~C-M-SPC~ or ~C-M-@~ (=mark-sexp=)
 selects the next expression. ~M-x kill-sexp~ cuts the expression after the
@@ -479,13 +481,13 @@ you trust the project. There are three answers.
 
 ~M-x trust-project~ asks again for the project of the current buffer, whatever
 was said before. ~M-x lsp-forget-project~ takes the trust back and ends its
-servers. To trust a whole folder of your own projects without being asked, put
-it in =*lsp-trusted-projects*= in the init file, but never the folder where
-files others send you are kept.
+servers. To trust a whole directory of your own projects without being asked,
+put it in =*lsp-trusted-projects*= in the init file, but never the directory
+where files others send you are kept.
 
-A /project/ is the folder that holds the language's own mark, such as
-=Cargo.toml= for Rust, or else the nearest folder above holding =.git= or
-=.project=. An empty =.project= file makes a folder a project.
+A /project/ is the directory that holds the language's own mark, such as
+=Cargo.toml= for Rust, or else the nearest directory above holding =.git= or
+=.project=. An empty =.project= file makes a directory a project.
 
 If a language has no server installed, the commands that need one say so. For
 example, ~C-c d~ says there is no way to find definitions in buffers of that
@@ -586,7 +588,7 @@ A /formatter/ is a program that sets code out as the language's community has
 agreed, so that every file of a project looks alike and a change shows only
 what changed. ~C-c f~ (=format-buffer=) runs the language's formatter in the
 background. It is shut in the sandbox, which lets it read the project and change
-nothing else. It runs from the project's folder, so a settings file of the
+nothing else. It runs from the project's directory, so a settings file of the
 formatter's own is found. If no formatter is installed the language server lays
 the code out, and if neither is there Tuatara indents each line by its own
 rules. The whole change is one step: ~u~ (non-modal: ~C-/~) takes all of it
@@ -605,8 +607,8 @@ turns off the sandbox for a formatter that cannot work shut in.
 of the usual one. =*lsp-wait*= is the seconds a command waits for an answer it
 needs at once, and a key press stops the wait sooner. =*lsp-watch-files*= tells
 servers about files other programs changed, and =*lsp-watch-skipped*= names the
-folders it never watches, such as =target= and =node_modules=. =*lsp-outline*=
-makes ~M-g o~ list the server's names.
+directories it never watches, such as =target= and =node_modules=.
+=*lsp-outline*= makes ~M-g o~ list the server's names.
 
 #+begin_try Try it, with the Python script
 This needs a language server for Python, such as pylsp, ty or ruff. Without one,
@@ -615,7 +617,7 @@ the steps still show what Tuatara says.
 1. Open =~/code-practice/sum.py=. Put the cursor on =add_up= in the =print=
    line.
 2. Press ~M-x~, type =lsp= and press ~RET~. If Tuatara asks whether you trust
-   the folder, it is your own, so type ~y~ and press ~RET~. The echo area says
+   the directory, it is your own, so type ~y~ and press ~RET~. The echo area says
    the server is starting and then that it is ready.
 3. Press ~C-c d~. The cursor jumps to the =def= line. Press ~C-c D~ to go back.
 4. Press ~C-c h~. The window shows what the server knows of the function. Press
@@ -647,7 +649,7 @@ A /snippet/ is a piece of text with places to fill in, which you put in by
 typing a short key and pressing ~TAB~. It saves typing the same few lines every
 time, such as the top of a script. Nothing in a snippet is ever run.
 
-Your snippets are files in =~/.config/tuatara/snippets/=, in a folder named
+Your snippets are files in =~/.config/tuatara/snippets/=, in a directory named
 after the major mode: =python-mode/=, =prog-mode/= for every programming
 language, or =fundamental-mode/= for every buffer. A snippet file starts with
 lines that name it and give its key, then a line of two dashes, then the text:
@@ -673,7 +675,7 @@ place. ~TAB~ moves on to the next place and ~S-TAB~ back to the one before.
 After the last place the cursor goes to =$0=. ~C-c y~ (=insert-snippet=) chooses
 a snippet from a list by name, each with its key, and with text selected the
 selection goes where the snippet has =$TM_SELECTED_TEXT=. ~M-x copy-snippet~
-copies one of Tuatara's own into your folder so that you can change it, and
+copies one of Tuatara's own into your directory so that you can change it, and
 yours takes the place of Tuatara's.
 
 #+begin_try Try it, with a Python script header
@@ -698,11 +700,11 @@ yours takes the place of Tuatara's.
 
 #+table: settings *snippet-directories* *snippet-tab* *user-full-name*
 
-=*snippet-directories*= is the list of folders your snippets are in. Each
-folder holds a folder for each major mode, as described above. It is =nil= as
-standard, which means =snippets/= in your configuration folder, the folder
-named at the start of this section. To keep them with your notes, or to use a
-folder you share with someone, name it:
+=*snippet-directories*= is the list of directories your snippets are in. Each
+directory holds a directory for each major mode, as described above. It is =nil=
+as standard, which means =snippets/= in your configuration directory, the
+directory named at the start of this section. To keep them with your notes, or
+to use a directory you share with someone, name it:
 
 #+begin_example
 (setf *snippet-directories* '("~/notes/snippets/"))
@@ -727,11 +729,11 @@ you can jump to, so the loop never leaves the keyboard.
 ~M-x compile~ asks for a command. Type anything you would type in a shell: =make
 -k=, =cargo build=, =python3 -m unittest= or =sh count.sh=. Tuatara runs it with
 your shell from the root of the project the current file is in, or from the
-file's own folder when the file is in no project. The first time it offers =make
--k= (the setting =*compile-command*=), and after that the command you used last.
-~M-p~ goes back through earlier ones. The command runs with no terminal, so a
-program that asks for a password, such as =sudo= or =ssh=, cannot reach your
-screen. Chapter 17 is for those.
+file's own directory when the file is in no project. The first time it offers
+=make -k= (the setting =*compile-command*=), and after that the command you used
+last. ~M-p~ goes back through earlier ones. The command runs with no terminal,
+so a program that asks for a password, such as =sudo= or =ssh=, cannot reach
+your screen. Chapter 17 is for those.
 
 A build runs the project's own code, so in a project you have not trusted
 Tuatara asks first, the same question the language servers ask. Answer ~n~ or
@@ -755,7 +757,8 @@ more. Tuatara counts columns from 0, while compilers usually count from 1, so a
 compiler's column 5 shows as column 4 in the mode line.
 
 The same two keys go through any list of places made last: the lines found by a
-search of files (~M-s g~) or the problems a language server found in a buffer.
+search of files (~M-s g~), the problems a language server found in a buffer, or
+the errors in =*LaTeX errors*= when a PDF could not be made cleanly (chapter 14).
 In =*compile*=, ~RET~ on a line opens that place.
 
 #+begin_try Try it, with a mistake in the Python script
@@ -763,7 +766,7 @@ In =*compile*=, ~RET~ on a line opens that place.
    line, then ~A~, type =x= and press ~C-g~. The line now reads
    =print(add_up([3, 4, 5]))x=, which is not valid Python.
 2. Press ~C-x C-s~. Press ~M-x~, type =compile= and press ~RET~. Press ~C-a~ and
-   ~C-k~, type =python3 sum.py= and press ~RET~. If asked to trust the folder,
+   ~C-k~, type =python3 sum.py= and press ~RET~. If asked to trust the directory,
    type ~y~, then ~y~ and ~RET~.
 3. =*compile*= opens under the file. It shows Python's own words, a line
    beginning =File= with the file's name and =line 3=, then the line itself and
@@ -925,6 +928,35 @@ The setting =*debug-on-error*= makes that the standard.
 *** Settings
 
 #+table: settings *debug-on-error*
+
+** LaTeX
+
+In a LaTeX file ~C-c C-e~ (=latex-insert-environment=) asks for the name of an
+environment and writes its =\begin= and =\end= on lines of their own, with the
+cursor on an empty line between them. The names the file already uses come
+first, then the usual ones (itemize, enumerate, figure, table, equation, align
+and so on), the last one you gave at the top; any other name can be typed.
+With text selected, the lines it touches are put between =\begin= and =\end=
+instead. The lines are indented as the mode indents them.
+
+~C-c ]~ (=latex-close-environment=) writes the =\end= for the nearest =\begin=
+that has none yet, on a line of its own and indented like its =\begin=. A
+=\begin= or =\end= after a =%= is a comment and does not count. When every
+environment before the cursor is closed, it says so. Both keys work in NORMAL
+and INSERT state.
+
+#+table: commands latex-insert-environment latex-close-environment
+
+~C-x T p~ shows a LaTeX file's formulas as pictures, as it does in an Org
+note (see "Formulas as pictures" in the Org chapter): =$...$= and =\(...\)=
+in the line, =\[...\]=, =$$...$$= and the environments of equations
+(=equation=, =align=, =gather=, =multline= and the like) centred on rows of
+their own when they stand alone on their lines. Only the body is read, after
+=\begin{document}=, never a comment or a =verbatim= environment. The
+formulas are drawn after the file's own preamble, so its macros work in
+them; when the sandbox cannot set that preamble (it takes in a package of
+your own beside the file), they are drawn after =*formula-preamble*=
+instead.
 
 ** The commands of each language
 

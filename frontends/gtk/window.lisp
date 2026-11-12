@@ -468,10 +468,10 @@ of comma-separated values, as a large file of them has."
               (1+ (mod i 12)) (1+ (mod i 28)) (mod i 24) (mod i 60) (mod (* 7 i) 60)
               (+ 1700000000 (* 7919 i)) (* 104729 (1+ i))))))
 
-(defun measuring-folder (&optional (name (tuatara.io:random-name)))
-  "Make the folder tuatara-drawing-NAME in the temporary directory, for you
+(defun measuring-directory (&optional (name (tuatara.io:random-name)))
+  "Make the directory tuatara-drawing-NAME in the temporary directory, for you
 alone, and return it as a directory pathname. NAME is random unless given;
-when a folder or file of that name is already there, a FILE-SYSTEM-ERROR,
+when a directory or file of that name is already there, a FILE-SYSTEM-ERROR,
 never one someone else made taken over."
   (let ((path (tuatara.io:path-join (uiop:native-namestring (uiop:temporary-directory))
                                     (tuatara.io:slash-ended (format nil "tuatara-drawing-~a" name)))))
@@ -480,10 +480,10 @@ never one someone else made taken over."
 
 (defmethod tuatara.frontend:frontend-measure-drawing ((f gtk-frontend) renderer)
   ;; a copy of Tuatara, drawn as RENDERER says, that measures itself (MEASURE-DRAWING):
-  ;; no init file, its state and cache in a folder of its own, gone after
+  ;; no init file, its state and cache in a directory of its own, gone after
   (let ((name (renderer-name renderer)))
     (when (and name tuatara.io:*saved-program*)
-      (let ((directory (measuring-folder)))
+      (let ((directory (measuring-directory)))
         (unwind-protect
             (let ((sample (merge-pathnames "sample.csv" directory))
                   (out (merge-pathnames "figures" directory)))

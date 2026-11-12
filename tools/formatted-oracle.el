@@ -2,9 +2,9 @@
 ;;; Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
 ;;;
 ;;; Usage: LC_ALL=C.UTF-8 emacs -Q --batch -l tools/formatted-oracle.el ELPA NOTES EXPECTED
-;;; ELPA is the folder Emacs keeps its packages in (~/.config/emacs/elpa), with
+;;; ELPA is the directory Emacs keeps its packages in (~/.config/emacs/elpa), with
 ;;; denote, denote-org and denote-sequence in it; NOTES the notes directory
-;;; (test/org/formatted/notes/); EXPECTED the folder the results go in
+;;; (test/org/formatted/notes/); EXPECTED the directory the results go in
 ;;; (test/org/formatted/expected/). Each note of NOTES whose name has --case-
 ;;; is visited there, its dynamic blocks made by denote-org (org-update-all-dblocks),
 ;;; and the text written to EXPECTED as the title of its name with .org; the note

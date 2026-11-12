@@ -1,20 +1,22 @@
 ;;;; lisp/files/next-place.lisp --- Going from place to place of the list in force: M-g n and M-g p.
 ;;;; Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
 ;;;;
-;;;; A compile's output, the lines a search of files found and what the
-;;;; language servers found wrong in a buffer are each a list of places. The
-;;;; one used last is the list in force, and M-g n and M-g p go to the next of
-;;;; its places or the one before, whichever kind of list it is: each kind says
-;;;; how it steps (STEP-PLACE). A place in a file opens as a line chosen from a
-;;;; search of files does (SHOW-FILE-LINE).
+;;;; A compile's output, the lines a search of files found, what the language
+;;;; servers found wrong in a buffer and the errors of a PDF made of LaTeX are
+;;;; each a list of places. The one used last is the list in force, and M-g n
+;;;; and M-g p go to the next of its places or the one before, whichever kind of
+;;;; list it is: each kind says how it steps (STEP-PLACE). A list made by a
+;;;; command whose entries name places is one as it is (ENTRY-PLACES): its mode
+;;;; says which entry names which place (ENTRY-PLACE). A place in a file opens
+;;;; as a line chosen from a search of files does (SHOW-FILE-LINE).
 
 (in-package #:tuatara.defaults)
 
 (defvar *places-in-force* nil
   "The list of places \\[next-place] and \\[previous-place] go through: the one
 used last, a compile's output (\\[compile]), the lines a search of files found
-\(\\[search-in-files]), or what the language servers found wrong in a buffer;
-NIL before any has been used.")
+\(\\[search-in-files]), what the language servers found wrong in a buffer, or
+the errors of *LaTeX errors*; NIL before any has been used.")
 
 (defgeneric step-place (places direction)
   (:documentation "Go to the place of PLACES, a list of places, after the one gone
@@ -100,12 +102,59 @@ file in the selected window is shown with the line in the middle."
                           (tuatara.display:window-recenter (current-window)))))))
     (when notes (message "~{~a~^; ~}" (nreverse notes)))))
 
+(defgeneric entry-place (mode entry)
+  (:documentation "The file and line from 1 that ENTRY of a list in major MODE names, as
+two values; NIL for an entry that names no place. A list whose entries name
+places is a list of places for \\[next-place] and \\[previous-place] (ENTRY-PLACES).")
+  (:method (mode entry)
+    "A list's entries name no places."
+    (declare (ignore mode entry))
+    nil))
+
+(defstruct (entry-places (:constructor entry-places (buffer)) (:copier nil))
+  "A list made by a command (RENDER-PIECES) in BUFFER as a list of places
+\(STEP-PLACE): its entries that name a file and a line (ENTRY-PLACE), in order,
+the one gone to last that on the line of its point."
+  (buffer nil :read-only t))
+
+(setf (documentation 'entry-places-p 'function) "True when OBJECT is an ENTRY-PLACES."
+      (documentation 'entry-places-buffer 'function) "The buffer of the list an ENTRY-PLACES goes through.")
+
+(defmethod places-buffer ((places entry-places))
+  "The buffer of the list: killed, its places are in force no more."
+  (entry-places-buffer places))
+
+(defmethod places-name ((places entry-places))
+  "The name of the buffer of the list."
+  (tuatara.buffer:buffer-name (entry-places-buffer places)))
+
+(defmethod step-place ((places entry-places) direction)
+  "Put the list's point on its next entry naming a place (DIRECTION 1), or the
+one before (-1), and open its file at its line: in another window when the list
+is in the selected one, else in the selected one; the list's line said."
+  (let ((list (entry-places-buffer places)))
+    (if (not (live-buffer-p list))
+        (message "~a has been killed" (tuatara.buffer:buffer-name list))
+        (let* ((mode (buffer-major-mode list))
+               (entry (list-step-entry list direction :test (lambda (entry) (entry-place mode entry)))))
+          (if (null entry)
+              (say-places-end places direction)
+              (let* ((start (tuatara.buffer:buffer-point list))
+                     (said (tuatara.buffer:buffer-string
+                            list :start start :end (tuatara.text:rope-line-end (tuatara.buffer:buffer-text list) start))))
+                (dolist (window (buffer-windows list))
+                  (setf (tuatara.display:window-point window) start))
+                (multiple-value-bind (path line) (entry-place mode entry)
+                  (when (show-file-line path line :other (eq list (tuatara.display:window-buffer (current-window))))
+                    (message "~a" (tuatara.display:shorten-string (string-trim " " said) 200 :one-line t))))))))))
+
 (define-command next-place ()
   "Go to the next place of the list of places used last: the next line naming
 a file and line in a compile's output (\\[compile]), the next line a search of
-files found (\\[search-in-files]), or the next place the language servers found
-something wrong in a buffer. A place in a file opens it at that line, in
-another window from the compile's output, else in this one."
+files found (\\[search-in-files]), the next place the language servers found
+something wrong in a buffer, or the next error of *LaTeX errors*. A place in a
+file opens it at that line, in another window from the list itself, else in
+this one."
   (if *places-in-force*
       (step-place *places-in-force* 1)
       (message "No list of places yet: \\[compile], \\[search-in-files] or a language server's diagnostics make one")))
@@ -113,8 +162,9 @@ another window from the compile's output, else in this one."
 (define-command previous-place ()
   "Go to the place before the one gone to last in the list of places used
 last: a compile's output (\\[compile]), the lines a search of files found
-\(\\[search-in-files]), or the places the language servers found something
-wrong in a buffer, as \\[next-place] goes to the next."
+\(\\[search-in-files]), the places the language servers found something
+wrong in a buffer, or the errors of *LaTeX errors*, as \\[next-place] goes to
+the next."
   (if *places-in-force*
       (step-place *places-in-force* -1)
       (message "No list of places yet: \\[compile], \\[search-in-files] or a language server's diagnostics make one")))

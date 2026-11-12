@@ -1,7 +1,7 @@
-;;;; lisp/files/file-places.lisp --- A place in a file or folder, found again after the text has changed.
+;;;; lisp/files/file-places.lisp --- A place in a file or directory, found again after the text has changed.
 ;;;; Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
 ;;;;
-;;;; What bookmarks and registers keep of a place: the file or folder, the octet
+;;;; What bookmarks and registers keep of a place: the file or directory, the octet
 ;;;; in it, the text that followed, and whether the file was opened safely. Made
 ;;;; from a buffer, found again in a buffer, gone to by visiting the file.
 
@@ -12,7 +12,7 @@
 text before it has changed.")
 
 (defstruct (file-place (:constructor make-file-place (path offset context safe)) (:copier nil))
-  "A place in the file or folder at PATH: the octet OFFSET in it, the text that
+  "A place in the file or directory at PATH: the octet OFFSET in it, the text that
 followed it (CONTEXT), and SAFE when the file was opened safely."
   path offset context safe)
 
@@ -20,7 +20,7 @@ followed it (CONTEXT), and SAFE when the file was opened safely."
       (documentation 'file-place-p 'function) "True when OBJECT is a FILE-PLACE.")
 
 (defun file-place-target (buffer)
-  "What a place of BUFFER is in: its file, or the folder a directory list shows;
+  "What a place of BUFFER is in: its file, or the directory a directory list shows;
 NIL for a buffer of neither."
   (let ((file (tuatara.buffer:buffer-file buffer)))
     (cond (file (tuatara.io:native file))
@@ -42,7 +42,7 @@ characters at most, up to a tab."
 
 (defun file-place-here (buffer &optional (position (tuatara.buffer:buffer-point buffer)))
   "The FILE-PLACE of POSITION (point by default) in BUFFER, safe when the buffer
-was opened so; NIL for a buffer with no file or folder."
+was opened so; NIL for a buffer with no file or directory."
   (let ((target (file-place-target buffer)))
     (and target
          (make-file-place target position (text-after-place buffer position) (tuatara.io:safe-visit-p buffer)))))
@@ -73,24 +73,24 @@ nearest place within a megabyte that does, else its offset (within the text)."
 
 (defun file-place-kind (path)
   "What the place at PATH is in, as the bookmark manager says it: \"file\",
-\"folder\", or \"gone\" when it is no longer there."
+\"directory\", or \"gone\" when it is no longer there."
   (let ((kind (tuatara.io:path-kind path)))
     (case kind
       ((nil) "gone")
-      (:directory "folder")
+      (:directory "directory")
       (t "file"))))
 
 (defun go-to-file-place (name place &key other)
-  "Visit the file or folder PLACE is in (in another window with OTHER), safely
+  "Visit the file or directory PLACE is in (in another window with OTHER), safely
 when it was opened so, and go to the place, found again where the text has
-moved it (FILE-PLACE-FOUND); a folder's in a rimu list of its project there
+moved it (FILE-PLACE-FOUND); a directory's in a rimu list of its project there
 is, moved there (*RIMU-REUSE-LISTS*), else in one of its own. Returns the
-buffer. A file or folder no longer there is said so with NAME, nothing made in
+buffer. A file or directory no longer there is said so with NAME, nothing made in
 its place, and NIL is returned."
   (let* ((path (file-place-path place))
          (kind (file-place-kind path))
          (buffer (or (buffer-visiting path)
-                     (and (string= kind "folder") (rimu-show-in-project path :show #'identity))
+                     (and (string= kind "directory") (rimu-show-in-project path :show #'identity))
                      (and (string/= kind "gone")
                           (visit-path path :safe (file-place-safe place) :show #'identity)))))
     (cond ((not (typep buffer 'tuatara.buffer:buffer))

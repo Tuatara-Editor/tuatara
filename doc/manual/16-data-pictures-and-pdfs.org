@@ -397,14 +397,17 @@ The buffer is read-only and has nothing to save. ~q~ closes it.
 This is for a quick look: is this the photo I meant, what is on this scan,
 which of these twelve files is the one with the lake. For more than a look,
 ~O~ hands the picture to the program your desktop uses for pictures, as
-chapter 9 describes. Chapter 10 shows how a folder listing can preview each
-picture as you move down the list, which is the fast way through a folder of
+chapter 9 describes. Chapter 10 shows how a directory listing can preview each
+picture as you move down the list, which is the fast way through a directory of
 photos.
 
 Drawing happens in the background. A large photo takes a moment, and in that
 moment you can go on to something else. The mode line shows that work is going
 on, and ~C-x j~ lists it as =Drawing= with the file's name. Killing the buffer
 stops the drawing.
+
+An Org note can show the pictures it links to among its lines, each drawn
+the same way; chapter 14 describes it under links.
 
 The program that turns the file into a picture runs shut in a sandbox, where
 it can reach neither the network nor your other files. A picture from a
@@ -459,7 +462,9 @@ opens it in your desktop's PDF program.
 
 The mode line says =PDF=, the page you are on and how many there are, and how
 the page is fitted, as in =Page 1 of 2, fit page=. Like pictures, the pages
-are drawn in the background by a program shut in the sandbox. The pages near
+are drawn in the background by a program shut in the sandbox. Each page is
+drawn as other PDF programs show it, trimmed to the part the PDF says is to
+be seen. The pages near
 the one you are reading are drawn ahead, so turning a page is quick. ~q~ closes
 the PDF. When you open the same PDF another day, it opens at the page and zoom
 where you left it.
@@ -530,6 +535,13 @@ file. If the PDF has none, the echo area says so.
 
 To see the raw octets of a PDF, run ~M-x hex-mode~ in its pages.
 
+*** The LaTeX line of a page
+
+For a PDF you made from a LaTeX or Org file with Tuatara, ~C-c C-v~ opens that
+file in the other window at the line that made the part of the page you see.
+A double click on the page goes to the line of the point you clicked. Chapter
+14, "From a line to the PDF and back", says how the two ways work together.
+
 #+begin_try Try it, with a scanned form
 1. Find a PDF of a few pages. A form you scanned is a good one, such as an
    enrolment form for a school in Timaru. This example calls it
@@ -558,7 +570,9 @@ To see the raw octets of a PDF, run ~M-x hex-mode~ in its pages.
 
 #+table: commands pdf-view-fit-page pdf-view-fit-width pdf-view-zoom-in pdf-view-zoom-out pdf-view-zoom-reset pdf-view-toggle-dark
 
-#+table: commands pdf-view-search pdf-view-toggle-text pdf-view-facts pdf-view-attachments pdf-attachment-save
+#+table: commands pdf-view-search pdf-view-toggle-text pdf-view-facts pdf-view-attachments pdf-attachment-save pdf-view-show-source pdf-view-show-source-at-click
+
+#+table: faces :pdf-view-mark
 
 #+table: settings *pdf-view-dark-pages*
 
@@ -609,7 +623,7 @@ records the program that made it. These facts are called metadata.
 
 ~M-x show-file-metadata~ shows them in a buffer of their own, which ~q~
 closes. It works on the file of the buffer you are in, and on the picture or
-PDF you are looking at. In a folder listing the key is ~g i~, and it reports
+PDF you are looking at. In a directory listing the key is ~g i~, and it reports
 on the file the cursor is on. With ~C-u~ before it, it asks for a file.
 
 The report has two parts. The first is what your computer knows about the
@@ -633,7 +647,7 @@ There are everyday reasons to look. Before you put a photo of your house on
 the internet, check whether it carries the place it was taken. Before you send
 a document to a customer, check whose name is in it as the author. When two
 dates disagree, the file's own record of when it was made is often the one to
-trust over the date in a folder listing, which changes each time the file is
+trust over the date in a directory listing, which changes each time the file is
 copied.
 
 The file is read in the background by Tuatara alone. Nothing in it is run, and
@@ -650,11 +664,11 @@ file itself is never handed to gpg.
 1. Open =~/members.csv=. Press ~M-x~, type =show-file-metadata= and press
    ~RET~. A buffer opens with the file's path, kind, size, owner and times.
    A plain text file keeps nothing more of itself. Press ~q~.
-2. Press ~C-x C-f~, type =~/Pictures/= and press ~RET~ to list the folder
+2. Press ~C-x C-f~, type =~/Pictures/= and press ~RET~ to list the directory
    with your photo in it. Move to the photo with ~j~.
 3. Press ~g i~. The report now has a second part, with what the camera
    wrote into the photo. Look for the time and for a position.
-4. Press ~q~ to close the report, and ~q~ again to close the folder.
+4. Press ~q~ to close the report, and ~q~ again to close the directory.
 #+end_try
 
 #+table: commands show-file-metadata

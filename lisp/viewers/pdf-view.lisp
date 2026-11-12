@@ -107,13 +107,26 @@ copy's descriptor (TUATARA.IO:SEALED-COPY when NIL, a document made a PDF
 otherwise), MAKING is held while it is made. READING is a function of the
 view's buffer showing the file read as text instead, or NIL for the PDF's own
 text. WORDS is what the line over it calls the file shown (a PDF document when
-NIL)."
+NIL). SPOT is the place of a page last shown or clicked, (PAGE X Y), X and Y
+fractions of the page from its top left; MARKED the place marked on it for a
+moment, a PDF-MARK (PDF-VIEW-SHOW-PLACE)."
   path (page 1) pages (info "") (zoom :page) (factor 1) (top 0) (left 0)
   (images '()) job text-job stopped last-search (saved t)
   (page-starts (make-array 0)) copy (lock (sb-thread:make-mutex :name "pdf view copy"))
-  maker (making (sb-thread:make-mutex :name "pdf view making")) reading words)
+  maker (making (sb-thread:make-mutex :name "pdf view making")) reading words spot marked)
 
 (setf (documentation 'pdf-view-p 'function) "True when OBJECT is a PDF-VIEW.")
+
+(defstruct (pdf-mark (:constructor make-pdf-mark (page box)) (:copier nil))
+  "A place marked on a page of a PDF's view for a moment: PAGE, BOX the
+place as (LEFT TOP RIGHT BOTTOM), fractions of the page from its top left,
+UNTIL the internal real time it is taken off, set once it is first shown, and
+again when it is first shown on the page drawn for the window, FITTED then.
+SCROLL is true until the view has scrolled it into sight. IMAGE is the page's
+picture with the mark laid over it, made from SOURCE (PDF-VIEW-SHOW-PLACE)."
+  page box until fitted (scroll t) source image)
+
+(setf (documentation 'pdf-mark-p 'function) "True when OBJECT is a PDF-MARK.")
 
 (defstruct (pdf-view-job (:include decoding-job) (:constructor make-pdf-view-job (page width &optional buffer))
                          (:copier nil))
@@ -420,7 +433,8 @@ from, the rows and columns scrolled kept within the page."
         ;; between them; one that could not be drawn, or none before, nothing (never the text)
         (when (find-if (lambda (e) (and (eql (first e) (pdf-view-page view)) (null (third e)))) (pdf-view-images view))
           (setf (tuatara.buffer:buffer-local buffer :image) nil))
-        (let ((image (pdf-view-shown-image entry)))
+        (let* ((fitted (eql (second entry) (pdf-view-width buffer)))
+               (image (pdf-view-marked-image view (pdf-view-shown-image entry) fitted)))
           (unless (eq image (tuatara.buffer:buffer-local buffer :image))
             (tuatara.runtime:debug-report :redisplay "pdf view: page ~d shown, picture ~d, ~d pixels wide~:[~; (drawn for ~d)~], ~:[as it is~;dark~], theme ~d"
                                           (pdf-view-page view)
@@ -429,6 +443,9 @@ from, the rows and columns scrolled kept within the page."
                                           (not (eql (second entry) (pdf-view-width buffer))) (second entry)
                                           *pdf-view-dark-pages* tuatara.display:*face-generation*))
           (multiple-value-bind (columns rows) (pdf-view-image-cells image)
+            ;; scrolled to a mark by the page as it is drawn for the window now, not one drawn for another width
+            (when (and (pdf-view-marked view) fitted)
+              (pdf-view-scroll-to-mark view window columns rows))
             (let ((last-top (max 0 (- rows (if window (tuatara.display:window-height window) rows))))
                   (last-left (max 0 (- columns (if window (tuatara.display:window-width window) columns)))))
               (setf (pdf-view-top view)
@@ -440,7 +457,8 @@ from, the rows and columns scrolled kept within the page."
 (defun pdf-view-take-in-text (buffer view job)
   "Give BUFFER, VIEW's, the text JOB took out, and VIEW its pages; say what
 there is when there is no text, that JOB was stopped, or why the file could
-not be read, that also in the echo area."
+not be read, that also in the echo area. Point goes to the start, or where
+the page of a place shown meanwhile begins (PDF-VIEW-SHOW-PLACE)."
   (let* ((text (pdf-view-job-text job))
          (info (or (pdf-view-job-info job) ""))
          (stopped (car (pdf-view-job-cancel job)))
@@ -458,7 +476,10 @@ not be read, that also in the echo area."
                                       (mapcar #'car notes))))
     (when (and refusal (not stopped))
       (message "~a was not read: ~a" name refusal))
-    (setf (tuatara.buffer:buffer-point buffer) 0
+    (setf (tuatara.buffer:buffer-point buffer) (or (and (pdf-view-spot view) (pdf-view-text-p buffer)
+                                                        ;; a place shown before the text came: its page
+                                                        (pdf-view-page-start view (first (pdf-view-spot view))))
+                                                   0)
           (pdf-view-page view) (max 1 (min (pdf-view-page view) (or (pdf-view-pages view) (pdf-view-page view))))
           (tuatara.display:buffer-header-line buffer)
           (let* ((kind (format nil " ~a" (or (pdf-view-words view) "PDF document")))
@@ -480,13 +501,15 @@ not be read, that also in the echo area."
 shown, show each its page, and draw the page shown,
 then those around it (PDF-VIEW-WANTED-PAGES), as wide as its window and zoom
 ask, some at once; let go of those past *PDF-VIEW-MEMORY*; keep the page and
-zoom of those changed a while ago. T while a page or a text is being made,
-and once more after the text is taken in: its header line takes a row of
-the window, so the page is fitted again to the rows left. A PDF a waiting
+zoom of those changed a while ago; take a place marked off its page once
+its moment is over. T while a page or a text is being made, and once more
+after the text is taken in: its header line takes a row of the window, so the
+page is fitted again to the rows left; else the seconds until a mark is to be
+taken off, or NIL. A PDF a waiting
 question is about is left as it is until the question is answered
 \(BUFFER-HELD-BY-QUESTION-P)."
   (declare (ignore editor))
-  (let ((working nil))
+  (let ((working nil) (later nil))
     ;; what was drawn and taken out for a PDF a waiting question is about waits for the answer
     (dolist (buffer (remove-if #'buffer-held-by-question-p *pdf-views*))
       (let ((view (pdf-view-of buffer)))
@@ -528,8 +551,15 @@ question is about is left as it is until the question is answered
               (unless (pdf-view-saved view)
                 (pdf-view-keep-place view))
               (when (or (pdf-view-job view) (pdf-view-text-job view))
-                (setf working t))))))
-    working))
+                (setf working t))
+              (let ((mark (pdf-view-marked view)))
+                (when (and mark (pdf-mark-until mark))
+                  (let ((left (/ (- (pdf-mark-until mark) (get-internal-real-time)) internal-time-units-per-second)))
+                    (if (plusp left)
+                        (setf later (min (or later left) (float left)))
+                        (progn (setf (pdf-view-marked view) nil)
+                               (pdf-view-show buffer))))))))))
+    (or working later)))
 
 (defun pdf-view-take-in-page (view job)
   "Take in the page JOB drew for VIEW: kept among VIEW's IMAGES, in place of
@@ -695,8 +725,8 @@ WORDS are as a PDF-VIEW has them, for a document shown as the PDF made of it."
 (defun pdf-view-reload (buffer)
   "Read the PDF BUFFER shows again, as it is on disk now: its text and pages
 taken out and drawn anew, at the same page, zoom and place on the page (the
-last page, when it has fewer now). The page shown stays on screen until its
-new picture comes."
+last page, when it has fewer now), a place marked or clicked forgotten. The
+page shown stays on screen until its new picture comes."
   (let ((view (pdf-view-of buffer)))
     (when view
       (dolist (job (cons (pdf-view-text-job view) (pdf-view-job view)))
@@ -704,7 +734,9 @@ new picture comes."
       (setf (pdf-view-job view) '()
             (pdf-view-images view) '()
             (pdf-view-info view) ""
-            (pdf-view-stopped view) nil)
+            (pdf-view-stopped view) nil
+            (pdf-view-spot view) nil
+            (pdf-view-marked view) nil)
       (pdf-view-start-text view buffer))))
 
 ;;; Pages and text
@@ -1003,6 +1035,147 @@ In its text, search as \\`C-s' does in any text."
                  (setf (pdf-view-last-search view) (cons query -1))
                  (message "No more of ~s; \\[pdf-view-search] RET again searches from the start" query)))))))
 
+;;; A place on a page
+
+(defparameter *pdf-view-mark-seconds* 1.5
+  "How long a place shown on a PDF's page stays marked (PDF-VIEW-SHOW-PLACE).")
+
+(defun marked-image (image box)
+  "A copy of IMAGE with BOX, (LEFT TOP RIGHT BOTTOM) as fractions of it from
+its top left, laid over in the background colour of the face :pdf-view-mark,
+the page showing through; turned about (reverse video) where the theme gives
+that face no colour."
+  (let* ((width (tuatara.frontend:image-width image))
+         (height (tuatara.frontend:image-height image))
+         (channels (tuatara.frontend:image-channels image))
+         (pixels (copy-seq (tuatara.frontend:image-pixels image)))
+         (colour (tuatara.display:colour-hex (nth-value 1 (tuatara.display:resolve-face-spec :pdf-view-mark))))
+         (default (tuatara.display:colour-hex (nth-value 1 (tuatara.display:resolve-face-spec :default)))))
+    (declare (type (simple-array (unsigned-byte 8) (*)) pixels))
+    (destructuring-bind (left top right bottom) box
+      (let ((x0 (max 0 (min (1- width) (floor (* left width)))))
+            (x1 (max 1 (min width (ceiling (* right width)))))
+            (y0 (max 0 (min (1- height) (floor (* top height)))))
+            (y1 (max 1 (min height (ceiling (* bottom height))))))
+        (setf x1 (max x1 (min width (+ x0 2))) y1 (max y1 (min height (+ y0 2))))
+        (multiple-value-bind (red green blue)
+            ;; the face's own colour only when it differs from the page's ground
+            (and colour (not (equal colour default)) (>= channels 3) (tuatara.display:parse-hex-colour colour))
+          (flet ((tint (i colour) (setf (aref pixels i) (round (+ (* 2 (aref pixels i)) (* 3 colour)) 5))))
+            (loop for y from y0 below y1
+                  do (loop for x from x0 below x1
+                           for at = (* channels (+ x (* y width)))
+                           do (if red
+                                  (progn (tint at red) (tint (+ at 1) green) (tint (+ at 2) blue))
+                                  (loop for i from at below (+ at (min channels 3))
+                                        do (setf (aref pixels i) (- 255 (aref pixels i)))))))))))
+    (tuatara.frontend:make-image width height channels pixels)))
+
+(defun pdf-view-marked-image (view image fitted)
+  "IMAGE, the picture of the page VIEW shows, with the place marked on it laid
+over it while the mark lasts (MARKED-IMAGE), made once for each picture. The
+mark's moment begins when it is first shown, and again when first shown on a
+picture FITTED, drawn for the window as it is now, so that it ends even when
+that picture never comes."
+  (let ((mark (pdf-view-marked view)))
+    (cond ((not (and mark (eql (pdf-mark-page mark) (pdf-view-page view)))) image)
+          ((eq image (pdf-mark-source mark)) (pdf-mark-image mark))
+          (t (when (or (null (pdf-mark-until mark)) (and fitted (not (pdf-mark-fitted mark))))
+               (setf (pdf-mark-fitted mark) fitted
+                     (pdf-mark-until mark) (+ (get-internal-real-time)
+                                              (round (* *pdf-view-mark-seconds* internal-time-units-per-second)))))
+             (setf (pdf-mark-source mark) image
+                   (pdf-mark-image mark) (marked-image image (pdf-mark-box mark)))))))
+
+(defun pdf-view-scroll-to-mark (view window columns rows)
+  "Scroll VIEW, shown in WINDOW, so that its mark is in sight, once, its page
+COLUMNS by ROWS cells drawn: a third of the way down the window when it was
+out of sight."
+  (let ((mark (pdf-view-marked view)))
+    (when (and window (pdf-mark-scroll mark) (eql (pdf-mark-page mark) (pdf-view-page view)))
+      (setf (pdf-mark-scroll mark) nil)
+      (destructuring-bind (left top right bottom) (pdf-mark-box mark)
+        (declare (ignore right))
+        (let* ((height (tuatara.display:window-height window))
+               (width (tuatara.display:window-width window))
+               (first-row (floor (* top rows)))
+               (last-row (ceiling (* bottom rows)))
+               (column (floor (* left columns)))
+               (shown-top (if (eq (pdf-view-top view) :bottom) (max 0 (- rows height)) (pdf-view-top view))))
+          (unless (and (<= shown-top first-row) (<= last-row (+ shown-top height)))
+            (setf (pdf-view-top view) (max 0 (- first-row (floor height 3)))))
+          (unless (<= (pdf-view-left view) column (+ (pdf-view-left view) width -1))
+            (setf (pdf-view-left view) (max 0 (- column (floor width 4))))))))))
+
+(defun pdf-view-show-place (buffer page left top right bottom)
+  "Turn BUFFER, a PDF's view, to PAGE and show the place on it from LEFT, TOP
+to RIGHT, BOTTOM, fractions of the page from its top left: scrolled into
+sight and marked for *PDF-VIEW-MARK-SECONDS* in the face :pdf-view-mark, laid
+over the page's picture. The place is the spot \\<pdf-view-mode>\\[pdf-view-show-source]
+starts from after. Where pictures are not shown, the view of the text goes to
+where the page begins. True when the place is marked, NIL when only the page
+is shown."
+  (let ((view (pdf-view-of buffer)))
+    (setf (pdf-view-spot view) (list page (/ (+ left right) 2) (/ (+ top bottom) 2)))
+    (if (pdf-view-text-p buffer)
+        (progn (with-current-buffer buffer (pdf-view-go page))
+               nil)
+        (let ((same (eql page (pdf-view-page view))))
+          (setf (pdf-view-marked view) (make-pdf-mark page (list left top right bottom)))
+          (with-current-buffer buffer (pdf-view-go page :top (if same (pdf-view-top view) 0)))
+          t))))
+
+(defun pdf-view-place-shown (buffer)
+  "The place BUFFER, a PDF's view, shows, as three values: the page and a
+point on it as fractions of the page from its top left. On the pages,
+the spot last shown or clicked when it is on the page shown and in sight,
+else the middle of the window; in the text, the page point is on, its line's
+place down the page's text."
+  (let ((view (pdf-view-of buffer)))
+    (if (pdf-view-text-p buffer)
+        (let* ((page (pdf-view-text-page buffer))
+               (start (or (pdf-view-page-start view page) 0))
+               (end (or (pdf-view-page-start view (1+ page)) (tuatara.buffer:buffer-size buffer)))
+               (first (tuatara.buffer:buffer-line-number buffer start))
+               (lines (max 1 (- (tuatara.buffer:buffer-line-number buffer end) first))))
+          (values page 0.5 (min 1 (/ (- (tuatara.buffer:buffer-line-number buffer (tuatara.buffer:buffer-point buffer))
+                                       first)
+                                    lines))))
+        (let ((image (tuatara.buffer:buffer-local buffer :image))
+              (window (buffer-window buffer))
+              (spot (pdf-view-spot view))
+              (page (pdf-view-page view)))
+          (if (not (and image window (numberp (pdf-view-top view))))
+              (values page 0.5 0.5)
+              (multiple-value-bind (columns rows) (pdf-view-image-cells image)
+                (let* ((top (pdf-view-top view)) (left (pdf-view-left view))
+                       (height (min rows (tuatara.display:window-height window)))
+                       (width (min columns (tuatara.display:window-width window))))
+                  (if (and spot (eql (first spot) page)
+                           (<= top (* (third spot) rows) (+ top height))
+                           (<= left (* (second spot) columns) (+ left width)))
+                      (values page (second spot) (third spot))
+                      (values page (/ (+ left (/ width 2)) (max 1 columns)) (/ (+ top (/ height 2)) (max 1 rows)))))))))))
+
+(defun pdf-view-place-at (buffer column row)
+  "The place on the page BUFFER, a PDF's view, shows at screen cell COLUMN,
+ROW, as three values: the page and the cell's middle as fractions of the page
+from its top left; it becomes the spot \\<pdf-view-mode>\\[pdf-view-show-source] starts from.
+NIL off the page, or where its picture is not shown."
+  (let* ((view (pdf-view-of buffer))
+         (window (window-at-cell column row))
+         (image (and view (not (pdf-view-text-p buffer)) (tuatara.buffer:buffer-local buffer :image)))
+         (offset (tuatara.buffer:buffer-local buffer :image-offset)))
+    (multiple-value-bind (cell-width cell-height) (picture-cell-pixels)
+      (when (and image cell-width window (eq buffer (tuatara.display:window-buffer window)))
+        (let ((fx (/ (* (+ (- column (tuatara.display:area-left window)) (or (second offset) 0) 1/2) cell-width)
+                     (tuatara.frontend:image-width image)))
+              (fy (/ (* (+ (- row (tuatara.display:window-text-top window)) (or (first offset) 0) 1/2) cell-height)
+                     (tuatara.frontend:image-height image))))
+          (when (and (<= 0 fx 1) (<= 0 fy 1))
+            (setf (pdf-view-spot view) (list (pdf-view-page view) fx fy))
+            (values (pdf-view-page view) fx fy)))))))
+
 ;;; What the PDF says of itself, and the files embedded in it
 
 (define-pdf-view-command pdf-view-facts nil
@@ -1118,15 +1291,15 @@ by search filters, the file on the line among those they leave."
             (destructuring-bind (number name) entry
               (let* ((suggested (attachment-file-name name (format nil "attachment-~d" number)))
                      (shown (escape-controls name))
-                     ;; nothing written beside evidence: from a folder kept safe, your Downloads offered instead
-                     (folder (if (or (safe-directory-of (pdf-view-path view)) (evidence-path-p (pdf-view-path view)))
+                     ;; nothing written beside evidence: from a directory kept safe, your Downloads offered instead
+                     (directory (if (or (safe-directory-of (pdf-view-path view)) (evidence-path-p (pdf-view-path view)))
                                  (let ((downloads (tuatara.io:native (tuatara.io:expand-path "~/Downloads/"))))
                                    (if (tuatara.io:path-stamp downloads) downloads (tuatara.io:native (tuatara.io:expand-path "~/"))))
                                  (buffer-directory list)))
                      (typed (read-native-path (format nil "Save ~a to: " suggested) :kind :any
-                                              :initial (concatenate 'string (abbreviated-path folder) suggested)
+                                              :initial (concatenate 'string (abbreviated-path directory) suggested)
                                               :writing t))
-                     ;; a folder chosen: the file goes in it under the name suggested
+                     ;; a directory chosen: the file goes in it under the name suggested
                      (target (and typed
                                   (if (eq (tuatara.io:path-kind typed) :directory)
                                       (concatenate 'string (tuatara.io:slash-ended typed) suggested)

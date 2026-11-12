@@ -6,7 +6,7 @@
 (define-test incremental-search
   :description "Incremental search: regex by default, literal with M-r; typing, repeating, wrapping, DEL, exit and abort, highlights; replacing from the prompt with pattern/replacement/flags; query-replace and replace-regexp.")
 
-(define-test (incremental-search incremental-basics)
+(define-modal-test (incremental-search incremental-basics)
   (multiple-value-bind (f editor) (run-keys "C-s w o r RET" :text "hello world")
     (declare (ignore f))
     (is = 9 (session-point editor))
@@ -89,7 +89,7 @@
     (true (tuatara.frontend.fake:fake-frame-showing f "2/3    Literal search backward: a"))
     (is = 3 (session-point editor))))
 
-(define-test (incremental-search going-on-after-ret)
+(define-modal-test (incremental-search going-on-after-ret)
   (flet ((point-after (keys)
            (multiple-value-bind (f editor) (run-keys keys :text "xb yb zb")
              (declare (ignore f))
@@ -167,7 +167,7 @@
         (declare (ignore editor))
         t))))
 
-(define-test (incremental-search incremental-regex)
+(define-modal-test (incremental-search incremental-regex)
   ;; the prompt names the direction both ways
   (multiple-value-bind (f editor) (run-keys "g e C-r o" :text "foo boo" :width 80)
     (declare (ignore editor))
@@ -236,7 +236,7 @@ of matches made in the background."
                          (plusp (length (tuatara.defaults::search-count-words state))))))
         do (sleep 0.01)))
 
-(define-test (incremental-search substitute)
+(define-modal-test (incremental-search substitute)
   ;; r r with nothing selected: the line at point, its first match; % every match in the buffer
   (multiple-value-bind (f editor) (run-keys "r r o / 0 RET" :text (format nil "foo foo~%foo") :width 80)
     (true (tuatara.frontend.fake:fake-frame-showing f "Regex replace on this line: o/0"))
@@ -343,7 +343,7 @@ of matches made in the background."
   "True when one of SPANS, (START END FACE-OR-FACES) lists, carries FACE."
   (some (lambda (span) (let ((f (third span))) (or (eq f face) (and (listp f) (member face f))))) spans))
 
-(define-test (incremental-search scope)
+(define-modal-test (incremental-search scope)
   ;; a region limits a search to itself, from its start; the prompt says so
   (multiple-value-bind (f editor) (run-keys "C-SPC l l l l l C-s a" :text "abc abc abc" :width 80)
     (declare (ignore editor))
@@ -381,7 +381,7 @@ of matches made in the background."
       (false (span-has-face-p (aref spans 0) :search-outside-scope))
       (true (span-has-face-p (aref spans 1) :search-outside-scope)))))
 
-(define-test (incremental-search replacing-keys)
+(define-modal-test (incremental-search replacing-keys)
   ;; M-% opens the prompt for replacing: RET after the text goes on to the replacement
   (multiple-value-bind (f editor) (run-keys "M-% f o o" :text "foo x foo" :width 100)
     (declare (ignore editor))
@@ -415,7 +415,7 @@ of matches made in the background."
     (declare (ignore f))
     (is string= "f00 foo" (session-text editor))))
 
-(define-test (incremental-search letter-case)
+(define-modal-test (incremental-search letter-case)
   ;; a pattern without capitals: each replacement takes the case of what it replaces
   (multiple-value-bind (f editor) (run-keys "r r % f o o / b a r RET" :text "foo Foo FOO")
     (declare (ignore f))
@@ -449,7 +449,7 @@ of matches made in the background."
   (true (tuatara.defaults::replacement-sets-case-p "\\U&"))
   (false (tuatara.defaults::replacement-sets-case-p "\\\\U&")))
 
-(define-test (incremental-search octets-and-codes)
+(define-modal-test (incremental-search octets-and-codes)
   ;; \xNN from 80 to FF is the octet itself, a raw byte, not the character of
   ;; that code, which \x{NN} gives; below 80 the two are the same
   (let ((text (format nil "é~ax" (code-char (+ #xDC00 #xE9)))))
@@ -462,7 +462,7 @@ of matches made in the background."
   (is string= "a\\.b" (tuatara.syntax::engine-pattern "a\\x{2E}b"))
   (is string= "\\\\xE9" (tuatara.syntax::engine-pattern "\\\\xE9")))
 
-(define-test (incremental-search thorough)
+(define-modal-test (incremental-search thorough)
   ;; blocks of 12 KB, each after 6 KB of other lines, matched as wholes: typed,
   ;; C-s finds the first, its search starting at the match as the pattern grows;
   ;; repeated from there it misses the second, which needs text more than 4 KB
@@ -497,7 +497,7 @@ of matches made in the background."
                                           :text "foo bar"))))
   (false tuatara.syntax:*regex-thorough*))
 
-(define-test (incremental-search symbol-at-point)
+(define-modal-test (incremental-search symbol-at-point)
   ;; M-. puts the symbol at point into the search, whole words only
   (multiple-value-bind (f editor) (run-keys "C-s M-. C-s RET" :text "alpha beta alphabet alpha" :width 80)
     (true (tuatara.frontend.fake:fake-frame-showing f "Regex search forward: (?<![\\p{L}0-9_-])alpha(?![\\p{L}0-9_-])"))
@@ -508,7 +508,7 @@ of matches made in the background."
   (is string= "a\\.b\\/c" (tuatara.defaults::search-quote "a.b/c" t))
   (is string= "a\\/b" (tuatara.defaults::search-quote "a/b" nil)))
 
-(define-test (incremental-search pattern-history)
+(define-modal-test (incremental-search pattern-history)
   ;; one history for every question that takes a pattern, kept however the question ended
   (multiple-value-bind (f editor) (run-keys "C-s b o C-g C-s M-p RET" :text "foo boo")
     (declare (ignore f))
@@ -606,7 +606,7 @@ of matches made in the background."
       (true (search "line at point" help) "~a: ~a" name help)
       (false (search "else in the whole buffer" help) "~a: ~a" name help))))
 
-(define-test (incremental-search replace-regexp-as-sed)
+(define-modal-test (incremental-search replace-regexp-as-sed)
   ;; r r with nothing selected: the first match on the line at point; % every match in the buffer
   (multiple-value-bind (f editor) (run-keys "r r o / 0 RET" :text (format nil "foo~%boo~%"))
     (declare (ignore f))
@@ -651,7 +651,7 @@ of matches made in the background."
     (declare (ignore f))
     (is string= (format nil "f0o~%b0o~%") (session-text editor))))
 
-(define-test (incremental-search replace-preview)
+(define-modal-test (incremental-search replace-preview)
   ;; while the replacement is typed, what takes each match's place is shown beside it
   (multiple-value-bind (f editor) (run-keys "r r % o / 0" :text (format nil "foo~%bar~%boo") :width 40)
     (declare (ignore editor))
@@ -698,7 +698,7 @@ of matches made in the background."
   "Recurse until the control stack runs out: the editor must survive it."
   (labels ((deep (n) (1+ (deep (1+ n))))) (deep 0)))
 
-(define-test (incremental-search memory)
+(define-modal-test (incremental-search memory)
   ;; a replacement too large for its budget goes on in the background, and completes
   (let ((tuatara.defaults::*replacement-budget* 1000000) (text (make-string 5000 :initial-element #\o)))
     (multiple-value-bind (f editor) (run-keys "r r % o / 0 RET" :text text :width 100)
@@ -718,7 +718,7 @@ of matches made in the background."
     (true (tuatara.frontend.fake:fake-frame-showing f "Stopped: control stack exhausted"))
     (is string= "ab" (session-text editor))))
 
-(define-test (incremental-search replace)
+(define-modal-test (incremental-search replace)
   ;; y, n, then ! replaces the rest as one batch
   (multiple-value-bind (f editor) (run-keys "M-% o RET 0 RET y n !" :text "foo boo zoo")
     (is string= "f0o b00 z00" (session-text editor))
@@ -838,7 +838,7 @@ of matches made in the background."
         (false (find #\# words) "~a: ~a" pattern words)
         (false (search "*" words) "~a: ~a" pattern words)))))
 
-(define-test (incremental-search pattern-language)
+(define-modal-test (incremental-search pattern-language)
   ;; what PCRE has and cl-ppcre lacks is read as PCRE reads it, never as plain letters
   (flet ((match (pattern text) (multiple-value-list (cl-ppcre:scan (tuatara.syntax:compile-regex pattern) text))))
     (is equal '(2 4) (subseq (match "[[:alpha:]]+" "12Ab]") 0 2))
@@ -929,7 +929,7 @@ of matches made in the background."
   (is string= "invalid: nothing for * to repeat"
       (nth-value 1 (tuatara.defaults::make-pattern-matcher "a+**" :regex t))))
 
-(define-test (incremental-search unusable-pattern-waits)
+(define-modal-test (incremental-search unusable-pattern-waits)
   ;; RET on a search, filter or replacement whose pattern cannot be used keeps the question open, saying why
   (multiple-value-bind (f editor) (run-keys (format nil "r r ~a RET x C-g" (key-string "%+a/b")) :text "aaa" :width 160)
     (declare (ignore editor))
@@ -983,7 +983,7 @@ than holding the run."
       (loop repeat 50 while (threads-named "tuatara search") do (sleep 0.02))
       (false (threads-named "tuatara search")))))
 
-(define-test (incremental-search slow-replacement-stopped)
+(define-modal-test (incremental-search slow-replacement-stopped)
   ;; a replacement whose pattern holds up one line goes on in the background at RET, saying why;
   ;; M-x stop-job ends it at once, though it is inside that one line
   (let ((stopped-in nil)
@@ -1010,7 +1010,7 @@ than holding the run."
     (true (< stopped-in 5) "stopped in ~,3f s" stopped-in)
     (false (find-if #'tuatara.runtime:job-running-p tuatara.runtime:*jobs*))))
 
-(define-test (incremental-search steps-through-empty-matches)
+(define-modal-test (incremental-search steps-through-empty-matches)
   ;; C-s finds the empty lines that its count counts, one after another, and fails past the last
   (multiple-value-bind (f editor) (run-keys "C-s ^ $ C-s RET" :text (format nil "a~%~%b~%~%c"))
     (declare (ignore f))
@@ -1028,7 +1028,7 @@ than holding the run."
     (declare (ignore f))
     (is = 4 (session-point editor))))
 
-(define-test (incremental-search symbol-never-inside-longer)
+(define-modal-test (incremental-search symbol-never-inside-longer)
   ;; M-. offers the symbol whole: never the start of a longer symbol holding a -
   (is string= "Z foo-bar-baz Z"
       (session-text (nth-value 1 (run-keys "r r % M-. / Z RET" :text "foo-bar foo-bar-baz foo-bar"))))
@@ -1047,7 +1047,7 @@ than holding the run."
     (declare (ignore f))
     (is = 16 (session-point editor))))
 
-(define-test (incremental-search replacement-line-breaks-as-the-file)
+(define-modal-test (incremental-search replacement-line-breaks-as-the-file)
   ;; \n in a replacement writes the buffer's own line end: a carriage return and a newline in a
   ;; Windows file, by r r here and in the background alike, and by the question that asks
   (dolist (keys (list (format nil "r r % ~a RET" (key-string ";/;\\n"))

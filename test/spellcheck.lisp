@@ -104,7 +104,7 @@ each of them and at the end, the editor woken to redraw."
       (said "text-mode" "Spellcheck every word")
       (said "lisp-mode" "Spellcheck comments and strings"))))
 
-(define-test (spellcheck going-and-correcting)
+(define-modal-test (spellcheck going-and-correcting)
   (if (not (tuatara.defaults::enchant-p))
       (skip "enchant is not installed" (true nil))
       (let ((tuatara.defaults::*spellcheck-languages* '("en_US")))
@@ -137,7 +137,7 @@ each of them and at the end, the editor woken to redraw."
           (true (tuatara.frontend.fake:fake-frame-showing f "is taken as right while the editor runs"))
           (is equal '() (spelt-wrong f))))))
 
-(define-test (spellcheck word-lists)
+(define-modal-test (spellcheck word-lists)
   (if (not (tuatara.defaults::enchant-p))
       (skip "enchant is not installed" (true nil))
       (let ((tuatara.defaults::*spellcheck-languages* '("en_US"))
@@ -193,7 +193,7 @@ each of them and at the end, the editor woken to redraw."
           (tuatara.defaults::spelling-ask languages '("hen"))
           (true (<= (hash-table-count (tuatara.defaults::spelling-table languages)) 2))))))
 
-(define-test (spellcheck file-word-list)
+(define-modal-test (spellcheck file-word-list)
   (if (not (tuatara.defaults::enchant-p))
       (skip "enchant is not installed" (true nil))
       (let ((tuatara.defaults::*spellcheck-languages* '("en_US")))
@@ -240,7 +240,7 @@ each of them and at the end, the editor woken to redraw."
     (with-test-directory (dir)
       (false (search "LocalWords" (docx-text (tuatara.defaults::org-docx-document note :file (namestring (merge-pathnames "n.org" dir)))))))))
 
-(define-test (spellcheck indented-view)
+(define-modal-test (spellcheck indented-view)
   ;; an Org file shown indented: the columns before the text under a headline stand for no
   ;; character, and are left out (an empty line there shows nothing else); the words after them
   ;; are checked, at the end of the file (g e) as at its start

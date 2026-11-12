@@ -216,7 +216,7 @@ at its start, killed afterwards."
     (is string= (format nil "one~%Ztwo~%three~%four~%five~%")
         (run "(progn (save-restriction (widen) (buffer-substring 1 4)) (goto-char 1) (insert \"Z\"))"))))
 
-(define-test (user-lisp at-the-keyboard)
+(define-modal-test (user-lisp at-the-keyboard)
   ;; M-: sees the same functions: (insert "x") goes in the buffer M-: was typed in
   (multiple-value-bind (f editor) (run-keys (format nil "M-: ~a RET" (key-string "(insert \"x\")")) :text "abc")
     (declare (ignore f))

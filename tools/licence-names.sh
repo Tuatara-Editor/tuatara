@@ -22,7 +22,7 @@
 #          LLVM-exception, AGPL-3.0-or-later AND ISC) names the licences the
 #          FILEs hold, else say how they differ and exit 1. Every licence
 #          LABEL names must be in a FILE, and every licence in a FILE must be
-#          in LABEL, but for the texts of a LICENSES/ folder (REUSE), which
+#          in LABEL, but for the texts of a LICENSES/ directory (REUSE), which
 #          may hold licences of other files of the repository than the
 #          grammar's. A FILE that holds no licence known here disagrees.
 set -euo pipefail

@@ -197,7 +197,7 @@ MEANING_SHOWN = 10
 
 
 def meaning_module():
-    """The module tools/meaning.py, loaded from its file, as the isolated interpreter does not search this folder."""
+    """The module tools/meaning.py, loaded from its file, as the isolated interpreter does not search this directory."""
     spec = importlib.util.spec_from_file_location("meaning", "tools/meaning.py")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
@@ -261,7 +261,7 @@ def report_where(descriptions):
 
 # The tree's definitions, read for the reports that cover all of it.
 TREE_DEFINERS = ("defun", "defmacro", "defmethod")
-FOLDERS = ("lisp", "src", "frontends")
+DIRECTORIES = ("lisp", "src", "frontends")
 # A body of fewer tokens than this is too short to say anything of its likeness.
 SHORTEST_BODY = 40
 RUN = 4
@@ -275,10 +275,10 @@ NUMBER = re.compile(r"^[-+]?(?:\d+\.?\d*(?:[eEdD][-+]?\d+)?|\d+/\d+|#x[0-9a-fA-F
 
 
 def source_files(packages):
-    """The Lisp files the whole-tree reports read: those of the folders, and with PACKAGES those of the package
-    repositories (their own git folders, not the worktrees of their branches), leaving out any folder called test or
-    tests. Without ../tuatara-packages/ it says so on standard error and goes on."""
-    roots = list(FOLDERS)
+    """The Lisp files the whole-tree reports read: those of the directories, and with PACKAGES those of the package
+    repositories (their own git directories, not the worktrees of their branches), leaving out any directory called
+    test or tests. Without ../tuatara-packages/ it says so on standard error and goes on."""
+    roots = list(DIRECTORIES)
     if packages:
         base = "../tuatara-packages"
         if os.path.isdir(base):
@@ -287,11 +287,11 @@ def source_files(packages):
         else:
             print(f"{base}/ is not there: the package repositories are left out", file=sys.stderr)
     for root in roots:
-        for folder, names, files in os.walk(root):
+        for directory, names, files in os.walk(root):
             names[:] = sorted(n for n in names if n not in ("test", "tests", ".git"))
             for name in sorted(files):
                 if name.endswith(".lisp"):
-                    yield os.path.join(folder, name)
+                    yield os.path.join(directory, name)
 
 
 def tree_definitions(packages):

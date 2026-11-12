@@ -278,7 +278,7 @@ and which, leaving out the commands that switch to a major mode, only counted."
 (defun run (tree)
   "Generate the tables of the manual in TREE, with the links between its chapters,
 and report what no chapter covers."
-  ;; the editor started below must not touch this account's own folders, nor sweep its cache
+  ;; the editor started below must not touch this account's own directories, nor sweep its cache
   (let ((fence (uiop:ensure-directory-pathname
                 (format nil "~a/tuatara-manual-tables-~d" (uiop:getenv "XDG_RUNTIME_DIR") (sb-posix:getpid)))))
     (dolist (variable '("XDG_CONFIG_HOME" "XDG_STATE_HOME" "XDG_CACHE_HOME" "XDG_DATA_HOME"))

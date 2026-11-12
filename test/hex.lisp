@@ -29,7 +29,7 @@
     (false (tuatara.display:hex-view-p (session-buffer editor)))
     (is string= "Hello, world!" (string-right-trim " " (tuatara.frontend.fake:fake-screen-line f 0)))))
 
-(define-test (hex-and-sums hex-motion)
+(define-modal-test (hex-and-sums hex-motion)
   ;; NORMAL state's h j k l, g h, g l, g g and g e move by octets and rows of sixteen
   (flet ((hex-after (keys)
            (session-hex-point (nth-value 1
@@ -73,7 +73,7 @@
                                               :text *hex-sample*
                                               :width 80)))))
 
-(define-test (hex-and-sums hex-editing)
+(define-modal-test (hex-and-sums hex-editing)
   (flet ((octets-after (keys)
            (let ((editor (nth-value 1
                                     (run-keys (format nil "M-x h e x - m o d e RET ~a" keys)
@@ -141,7 +141,7 @@
     (true (tuatara.frontend.fake:fake-frame-showing f "read-only"))
     (false (tuatara.frontend.fake:fake-frame-showing f "no hex digit"))))
 
-(define-test (hex-and-sums hex-view-keeps-size)
+(define-modal-test (hex-and-sums hex-view-keeps-size)
   ;; the keys that would insert or delete octets do nothing in the hex view, and say why
   (dolist (keys '("l d" "l o C-g" "l O C-g" "l i RET C-g" "y p" "l y p" "l D" "l c C-g" "C-k" "C-d" "l i DEL C-g"))
     (multiple-value-bind (f editor)
@@ -194,7 +194,7 @@
              (is = 1 (tuatara.buffer:buffer-size again))))
       (tuatara.buffer:kill-buffer buffer))))
 
-(define-test (hex-and-sums hex-search)
+(define-modal-test (hex-and-sums hex-search)
   (flet ((found (keys)
            (multiple-value-bind (f editor) (run-keys keys :text *hex-sample* :width 80)
              (values (session-hex-point editor) f))))

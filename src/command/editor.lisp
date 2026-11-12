@@ -17,15 +17,15 @@ in an editor of its own, the one who started it, on its own screen
 \(FRONTEND NIL, REMOTE false); in an editor running in the background, each
 program that attached to show it (REMOTE true), painting what the remote
 frontend FRONTEND sends, let go of once it ends.
-NUMBER tells it apart from the others; DIRECTORY is the folder it was
+NUMBER tells it apart from the others; DIRECTORY is the directory it was
 started in, and ENVIRONMENT its variables laid over the editor's for the
 programs started from its frames, each (NAME . VALUE); BEGAN, when it
 began, and ENDED, when it ended or NIL, in universal time. STARTUP-BUFFERS
 are the buffers of the files it was started with, in order: those a program
 running it as its editor waits on. EXIT-CODE and EXIT-WORDS are the code it
 ends with and what it says then; ENDINGS, functions of it called as it ends,
-before those are given. An ended client keeps only what names its folder:
-its number, folder and times."
+before those are given. An ended client keeps only what names its directory:
+its number, directory and times."
   (frontend nil)
   (remote nil :read-only t)
   (number 1 :type fixnum :read-only t)
@@ -47,7 +47,7 @@ editor running in the background, by default when it has a FRONTEND."
       (documentation 'client-remote 'function) "True when CLIENT shows an editor running in the
 background, from a program of its own."
       (documentation 'client-number 'function) "The number telling CLIENT apart from the editor's other clients."
-      (documentation 'client-directory 'function) "The folder CLIENT was started in, or NIL."
+      (documentation 'client-directory 'function) "The directory CLIENT was started in, or NIL."
       (documentation 'client-environment 'function)
       "CLIENT's variables laid over the editor's for the programs started from its frames, each (NAME . VALUE)."
       (documentation 'client-began 'function) "When CLIENT began, in universal time."

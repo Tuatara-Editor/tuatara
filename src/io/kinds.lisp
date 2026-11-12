@@ -636,8 +636,8 @@ is told by the names of the entries in it, not by words in their contents."
          (names (zip-local-names o))
          (types (member "[Content_Types].xml" names :test #'string=)))
     (flet ((has (name) (member name names :test #'string=))
-           (office (main folder)
-             (find-if (lambda (name) (or (string= name main) (and types (eql 0 (search folder name))))) names)))
+           (office (main directory)
+             (find-if (lambda (name) (or (string= name main) (and types (eql 0 (search directory name))))) names)))
       (cond ((and mimetype (search "application/epub+zip" mimetype)) (values "EPUB book" :epub))
             ((and mimetype (search "opendocument.text" mimetype)) (values "OpenDocument text" :odt))
             ((and mimetype (search "opendocument.spreadsheet" mimetype)) (values "OpenDocument spreadsheet" :ods))
@@ -882,6 +882,15 @@ give none: no picture, a camera's raw, or its size not among OCTETS."
   (let ((function (cdr (assoc (nth-value 1 (octets-kind octets)) *picture-size-functions*))))
     (multiple-value-bind (width height) (and function (funcall function octets))
       (if (and width height) (values width height) (values nil nil)))))
+
+(defun name-kinds (name)
+  "The kinds of file (OCTETS-KIND's keywords) whose names usually end as
+NAME, a file's name, does (*KIND-EXTENSIONS*): (:png) for diagram.png, none
+for a name with no extension."
+  (let ((extension (native-file-type name)))
+    (and extension
+         (loop for (kind . extensions) in *kind-extensions*
+               when (member extension extensions :test #'string-equal) collect kind))))
 
 (defun kind-name-disagrees-p (kind name)
   "True when NAME, a file's name, has an extension its KIND (OCTETS-KIND's

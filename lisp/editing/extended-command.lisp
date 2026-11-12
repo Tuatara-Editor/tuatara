@@ -215,12 +215,12 @@ others are not hindered."
 
 (defvar *file-changing-commands* '()
   "Commands that change files, refused in a buffer opened safely (a rimu list
-of a folder opened so among them); a package adds its own that do.")
+of a directory opened so among them); a package adds its own that do.")
 
 (defvar *command-refusal-functions* '()
   "Functions of a command and the current buffer, each giving what to say
 instead of running the command there, or NIL when it has nothing against
-it: a rimu list of a folder as a commit left it refuses what works on the
+it: a rimu list of a directory as a commit left it refuses what works on the
 files as they are now.")
 
 (defun command-refusal-reason (command)

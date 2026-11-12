@@ -32,7 +32,7 @@
     (let ((now (tuatara.defaults::server-permissions "me@build.example")))
       (false (getf now :clipboard))
       (false (getf now :gpg)))
-    ;; a folder that is not plain is refused, the permission left as it was
+    ;; a directory that is not plain is refused, the permission left as it was
     (servers-session (typed-command "server-list") (list :wait 0.1) "F" (list :wait 0.1) "F" "C-a C-k"
                      (typed-keys "../x") "RET" (list :wait 0.1))
     (false (getf (tuatara.defaults::server-permissions "me@build.example") :files))
@@ -172,7 +172,7 @@ KEY-ALIAS in the known hosts when given; the key file's native name."
                 (refused "ssh-add could not put your keys in the agent forwarded to build.example")))
             (is = 1 (count-matches "ControlMaster=yes" (uiop:read-file-string log)) "ssh ran for the first alone")
             (true (search "ended" (file-text-or-empty (format nil "~a.agent" log))) "the agent was ended")
-            (is = 0 (ssh-folders))))))))
+            (is = 0 (ssh-directories))))))))
 
 (define-test (daemon agent-reaches-the-far-client-frames-alone)
   ;; the agent sshd brings for the question to the Tuatara there is named to the daemon, and the programs of that
@@ -217,7 +217,7 @@ KEY-ALIAS in the known hosts when given; the key file's native name."
 
 (define-test (daemon killed-client-leaves-no-connection)
   ;; a client that ends without closing its connection, as one killed, takes the ssh connection and every forward
-  ;; with it; the next client tells a connection left behind to end before its folder goes
+  ;; with it; the next client tells a connection left behind to end before its directory goes
   (when (tuatara.io:find-program "python3")
     (with-fresh-state
       (with-stand-in-ssh (dir log bin)
@@ -241,7 +241,7 @@ KEY-ALIAS in the known hosts when given; the key file's native name."
                 (false (tuatara.io:connect-to (tuatara.terminal::ssh-link-socket link)) "no forward is left")
                 (sb-ext:process-close master)
                 (sb-posix:close (tuatara.terminal::ssh-link-lock link))))
-            ;; a client that crashed with its connection still held: the next one ends it, then sweeps its folder
+            ;; a client that crashed with its connection still held: the next one ends it, then sweeps its directory
             (let ((left (tuatara.terminal::open-ssh-link "build.example" name)))
               (true left)
               (when left
@@ -253,13 +253,13 @@ KEY-ALIAS in the known hosts when given; the key file's native name."
                   (true (wait-until (lambda () (not (sb-ext:process-alive-p master))) 10)
                         "the connection left behind is told to end")
                   (sb-ext:process-close master))
-                (false (tuatara.io:path-kind (tuatara.terminal::ssh-link-folder left)) "its folder is swept")))
+                (false (tuatara.io:path-kind (tuatara.terminal::ssh-link-directory left)) "its directory is swept")))
             (when link
-              (false (tuatara.io:path-kind (tuatara.terminal::ssh-link-folder link)) "the killed one's too"))))))))
+              (false (tuatara.io:path-kind (tuatara.terminal::ssh-link-directory link)) "the killed one's too"))))))))
 
 (defun stand-in-gpgconf (dir &key extra home agent)
   "A gpg in DIR that does nothing, with a gpgconf beside it naming EXTRA as
-gpg-agent's extra socket, HOME as GnuPG's folder and AGENT as its socket, and
+gpg-agent's extra socket, HOME as GnuPG's directory and AGENT as its socket, and
 starting nothing: the gpg's native name, for *GPG-PROGRAM*."
   (put-program (merge-pathnames "gpgconf" dir)
               (format nil "#!/bin/sh~%case \"$1 $2\" in~%  '--launch gpg-agent') ;;~%~
@@ -277,8 +277,8 @@ starting nothing: the gpg's native name, for *GPG-PROGRAM*."
   (when (tuatara.io:find-program "python3")
     (with-fresh-state
       (with-stand-in-ssh (dir log bin)
-        ;; sockets in a folder of a short name, as the test folder's is too long for one
-        (let* ((short (tuatara.defaults::private-directory-in (tuatara.defaults::daemon-folder)
+        ;; sockets in a directory of a short name, as the test directory's is too long for one
+        (let* ((short (tuatara.defaults::private-directory-in (tuatara.defaults::daemon-directory)
                                                               (format nil "test-gpg-~d/" (sb-posix:getpid))))
                (extra (tuatara.io:path-join short "extra"))
                (there (tuatara.io:path-join short "agent"))
@@ -347,21 +347,21 @@ starting nothing: the gpg's native name, for *GPG-PROGRAM*."
       (true (tuatara.terminal::gpg-autostart-p))
       (put-file (merge-pathnames "gpg.conf" dir) (format nil "# options~%  no-autostart  ~%"))
       (false (tuatara.terminal::gpg-autostart-p)))
-    (let ((folder (ensure-directories-exist (merge-pathnames "sshd_config.d/" dir)))
+    (let ((directory (ensure-directories-exist (merge-pathnames "sshd_config.d/" dir)))
           (main (merge-pathnames "sshd_config" dir)))
       (flet ((unlinks (main-text &optional conf)
                (put-file main main-text)
-               (when conf (put-file (merge-pathnames "10-mine.conf" folder) conf))
-               (let ((tuatara.terminal::*sshd-config-files* (list (namestring folder) (namestring main))))
+               (when conf (put-file (merge-pathnames "10-mine.conf" directory) conf))
+               (let ((tuatara.terminal::*sshd-config-files* (list (namestring directory) (namestring main))))
                  (tuatara.terminal::sshd-unlinks))))
         (is string= "no" (unlinks (format nil "Port 22~%")))
         (is string= "yes" (unlinks (format nil "StreamLocalBindUnlink yes~%")))
         (is string= "yes" (unlinks (format nil "streamlocalbindunlink=yes~%")))
         (is string= "no" (unlinks (format nil "Match User kiwi~%  StreamLocalBindUnlink yes~%")))
         (is string= "no" (unlinks (format nil "StreamLocalBindUnlink yes~%") (format nil "StreamLocalBindUnlink no~%")))
-        (delete-file (merge-pathnames "10-mine.conf" folder))
+        (delete-file (merge-pathnames "10-mine.conf" directory))
         (sb-posix:chmod (namestring main) 0)
-        (let ((tuatara.terminal::*sshd-config-files* (list (namestring folder) (namestring main))))
+        (let ((tuatara.terminal::*sshd-config-files* (list (namestring directory) (namestring main))))
           (is string= "unknown" (tuatara.terminal::sshd-unlinks)))
         (sb-posix:chmod (namestring main) #o600))))
   ;; a socket there that ssh could not forward is no socket of gpg's
@@ -443,7 +443,7 @@ starting nothing: the gpg's native name, for *GPG-PROGRAM*."
       (client-done runner))))
 
 (define-test (daemon dropped-files-sent-to-a-trusted-server)
-  ;; a file dropped is sent, as its contents, through the connection to the Tuatara there, into the folder the
+  ;; a file dropped is sent, as its contents, through the connection to the Tuatara there, into the directory the
   ;; server is trusted with, ssh asking nothing; one too large, or no file, is not sent, and none of the drop is
   (when (tuatara.io:find-program "python3")
     (with-fresh-state
@@ -474,15 +474,15 @@ starting nothing: the gpg's native name, for *GPG-PROGRAM*."
                      (multiple-value-bind (sent said)
                            (said-on-error-output
                           (lambda () (tuatara.terminal::send-dropped-files link (list file (namestring dir)))))
-                       (false sent "a folder is no file dropped")
+                       (false sent "a directory is no file dropped")
                        (true (plusp (length said))))
                      (is equal '(:clipboard nil) (subseq (tuatara.terminal::link-allowances link) 0 2)))
                 (tuatara.terminal::close-ssh-link link)))))))))
 
 (define-test (daemon dropped-file-received)
   ;; the Tuatara on the daemon's machine writes a file dropped for you alone, under a name nothing has, in a
-  ;; folder from the home folder made for you alone; a path that is not plain, a file too large, one that came
-  ;; short of the size said, or a link in the folder's place, is refused and nothing kept
+  ;; directory from the home directory made for you alone; a path that is not plain, a file too large, one that came
+  ;; short of the size said, or a link in the directory's place, is refused and nothing kept
   (with-test-directory (dir)
     (with-environment-variable ("HOME" (namestring dir))
       (flet ((receive (path text &optional (size (length text)))

@@ -495,12 +495,11 @@ when neither is shown."
               (tuatara.display:point-row-column rows instead)))
       (when (and row (< row (tuatara.display:window-height window)))
         ;; a row drawn large, or moved down under rows drawn large: the last screen row its band covers
-        (let* ((scale (tuatara.display:row-scale (aref rows row)))
-               (shift (loop for i below row sum (1- (tuatara.display:row-scale (aref rows i)))))
-               (last (+ row (ceiling (+ shift scale)) -1)))
+        (let* ((band (tuatara.display:row-scale (aref rows row)))
+               (last (+ (ceiling (+ (tuatara.display:window-row-top window row) band)) -1)))
           (values (+ (tuatara.display:window-text-top window) (min last (1- (tuatara.display:window-height window))))
                   (+ (tuatara.display:area-left window) (tuatara.display:window-margin window)
-                     (tuatara.display:large-column column scale))))))))
+                     (tuatara.display:large-column column (tuatara.display:text-scale band)))))))))
 
 (defun box-over-area-p (box row column columns rows)
   "True when BOX, one of POPUP-BOXES, lies over any of the ROWS by COLUMNS

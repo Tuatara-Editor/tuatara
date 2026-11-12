@@ -2,8 +2,8 @@
 ;;;; Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
 ;;;;
 ;;;; A client of a daemon on another machine runs the system's ssh, never one
-;;;; found in a folder of yours: one connection, its control socket in a
-;;;; private folder of the runtime folder here, asks the Tuatara there where
+;;;; found in a directory of yours: one connection, its control socket in a
+;;;; private directory of the runtime directory here, asks the Tuatara there where
 ;;;; its daemon listens and which build it is (tuatara --daemon-socket), then
 ;;;; has that socket forwarded to one beside the control socket. The client
 ;;;; connects there as to a daemon here, saying it is far (REQUEST-FAR), and
@@ -31,7 +31,7 @@ this order.")
 (defun write-daemon-report (stream &key home socket runs gpg-socket gpg-autostart (unlink "unknown") agent)
   "Write on STREAM, for a client on another machine, what tuatara
 --daemon-socket says of a daemon (*REPORT-KEYS*). The lines are the messages'
-format, this build's version line, HOME, the home folder, SOCKET, where the
+format, this build's version line, HOME, the home directory, SOCKET, where the
 daemon listens, and whether it RUNS. Then come GPG-SOCKET, where gpg here
 looks for its agent, or NIL, and whether gpg would start an agent of its own
 \(GPG-AUTOSTART). Then UNLINK, whether sshd here removes a socket in the way of
@@ -48,8 +48,8 @@ sshd brought here for this connection (SSH_AUTH_SOCK), or NIL."
 for none, or one ssh cannot forward), :GPG-AUTOSTART, :UNLINK (:YES, :NO
 or :UNKNOWN) and :AGENT (as :GPG-SOCKET). The result is NIL when TEXT is not
 that. It must hold each line of *REPORT-KEYS* once and in order, with the home
-folder and the sockets from the root. The sockets must be ones ssh can forward
-\(FORWARDABLE-PATH-P), and the home folder a plain path (PLAIN-PATH-P). None is
+directory and the sockets from the root. The sockets must be ones ssh can forward
+\(FORWARDABLE-PATH-P), and the home directory a plain path (PLAIN-PATH-P). None is
 named to ssh here as the other machine wrote it otherwise. What comes before
 its first line, as a shell's start files may print there, is passed over."
   (let* ((lines (remove "" (uiop:split-string text :separator '(#\Newline)) :test #'string=))
@@ -77,10 +77,10 @@ its first line, as a shell's start files may print there, is passed over."
 
 (defparameter *sshd-config-files* '("/etc/ssh/sshd_config.d/" "/etc/ssh/sshd_config")
   "Where sshd's settings are read from, in the order sshd reads them as the
-systems ship it: a folder's files ending in .conf, then the main file.")
+systems ship it: a directory's files ending in .conf, then the main file.")
 
 (defun gpgconf-directory (name)
-  "The folder or socket gpgconf --list-dirs NAME names here (agent-socket,
+  "The directory or socket gpgconf --list-dirs NAME names here (agent-socket,
 agent-extra-socket, homedir), as it writes it; NIL when there is no
 gpgconf (TUATARA.DEFAULTS::GPGCONF-PATH) or it names none."
   (let ((program (tuatara.defaults::gpgconf-path)))
@@ -93,7 +93,7 @@ gpgconf (TUATARA.DEFAULTS::GPGCONF-PATH) or it names none."
 
 (defun gpg-autostart-p ()
   "True when gpg here would start an agent of its own when it finds none: no
-line no-autostart in gpg.conf in GnuPG's folder."
+line no-autostart in gpg.conf in GnuPG's directory."
   (let* ((home (gpgconf-directory "homedir"))
          (text (and home (tuatara.runtime:ignoring-errors-reported ("reading gpg.conf")
                            (uiop:read-file-string (tuatara.io:path-join home "gpg.conf"))))))
@@ -125,19 +125,19 @@ as for one readable by root alone."
                          (return-from sshd-unlinks (if (string-equal (second words) "yes") "yes" "no"))))))))))))
 
 (defun lingering-words (user)
-  "Words saying this machine takes away USER's runtime folder, and so a
+  "Words saying this machine takes away USER's runtime directory, and so a
 daemon's socket, once USER's last session ends (systemd-logind with no
 lingering), or NIL when it keeps it or there is no telling."
   (and user (eq (tuatara.io:path-kind "/var/lib/systemd/linger/") :directory)
        (not (tuatara.io:path-kind (tuatara.io:path-join "/var/lib/systemd/linger/" user)))
-       (format nil "this machine takes your runtime folder away, the daemon's socket in it, once you have ~
+       (format nil "this machine takes your runtime directory away, the daemon's socket in it, once you have ~
                     logged out everywhere: loginctl enable-linger ~a keeps it" user)))
 
 ;;; The connection to the daemon's machine
 
-(defstruct (ssh-link (:constructor make-ssh-link (host program folder lock permissions)) (:copier nil))
+(defstruct (ssh-link (:constructor make-ssh-link (host program directory lock permissions)) (:copier nil))
   "A connection to HOST made with the ssh PROGRAM. Its control socket and the
-daemon's socket are forwarded here in FOLDER, a private folder held by the
+daemon's socket are forwarded here in DIRECTORY, a private directory held by the
 lock LOCK (a descriptor) while the client runs. PERMISSIONS is what HOST is
 trusted with (TUATARA.DEFAULTS::SERVER-PERMISSIONS), NIL for nothing. MASTER
 is the ssh holding the connection, a process of the client's own that ends
@@ -145,11 +145,11 @@ with it. AGENT is the ssh-agent of its own forwarded there, a process, while
 it runs. AGENT-THERE is where that agent is brought on HOST, or NIL. NOTES is
 what the connection said that the person should read, the latest first.
 GPG-FORWARD, (THERE HERE), is the socket of gpg-agent there forwarded from the
-one here, while it is. HOME is the home folder there, once the Tuatara there
+one here, while it is. HOME is the home directory there, once the Tuatara there
 said it."
   (host "" :type string :read-only t)
   (program "" :type string :read-only t)
-  (folder "" :type string :read-only t)
+  (directory "" :type string :read-only t)
   (lock nil :read-only t)
   (permissions nil :read-only t)
   (master nil)
@@ -159,27 +159,27 @@ said it."
   (gpg-forward nil)
   (home nil))
 
-(setf (documentation 'make-ssh-link 'function) "An SSH-LINK to HOST with PROGRAM, kept in FOLDER held by LOCK."
+(setf (documentation 'make-ssh-link 'function) "An SSH-LINK to HOST with PROGRAM, kept in DIRECTORY held by LOCK."
       (documentation 'ssh-link-p 'function) "True when OBJECT is an SSH-LINK."
       (documentation 'ssh-link-host 'function) "The machine LINK reaches, as ssh takes it."
       (documentation 'ssh-link-program 'function) "The ssh program LINK runs, by its full path."
-      (documentation 'ssh-link-folder 'function) "The private folder of LINK's sockets, ending in /."
-      (documentation 'ssh-link-lock 'function) "The descriptor of the lock that holds LINK's folder."
+      (documentation 'ssh-link-directory 'function) "The private directory of LINK's sockets, ending in /."
+      (documentation 'ssh-link-lock 'function) "The descriptor of the lock that holds LINK's directory."
       (documentation 'ssh-link-permissions 'function) "What LINK's machine is trusted with, a plist, or NIL."
       (documentation 'ssh-link-master 'function) "The ssh holding LINK's connection, a process, or NIL."
       (documentation 'ssh-link-agent 'function) "The ssh-agent LINK forwards, a process, or NIL."
       (documentation 'ssh-link-agent-there 'function) "Where LINK's agent is brought on its machine, or NIL."
       (documentation 'ssh-link-notes 'function) "What LINK's connection said for the person to read, the latest first."
       (documentation 'ssh-link-gpg-forward 'function) "The sockets of gpg-agent LINK forwards, (THERE HERE), or NIL."
-      (documentation 'ssh-link-home 'function) "The home folder on LINK's machine, ending in /, or NIL.")
+      (documentation 'ssh-link-home 'function) "The home directory on LINK's machine, ending in /, or NIL.")
 
 (defun ssh-link-socket (link)
   "Where the daemon's socket LINK forwards is here."
-  (tuatara.io:path-join (ssh-link-folder link) "s"))
+  (tuatara.io:path-join (ssh-link-directory link) "s"))
 
 (defun ssh-link-agent-socket (link)
   "Where the socket of LINK's own ssh-agent is here."
-  (tuatara.io:path-join (ssh-link-folder link) "a"))
+  (tuatara.io:path-join (ssh-link-directory link) "a"))
 
 (defun ssh-arguments (link &key master session agent (operation nil operation-p) forward remote command
                                ask-host)
@@ -196,7 +196,8 @@ connection. FORWARD, (HERE THERE), is a socket there brought here, or REMOTE,
 none of its forwards for the host joins ours.
 The host comes last but for COMMAND, after --."
   (append (list "-T" "-o" (format nil "ControlPath=~a" (cl-ppcre:regex-replace-all
-                                                         "%" (tuatara.io:path-join (ssh-link-folder link) "c") "%%")))
+                                                         "%" (tuatara.io:path-join (ssh-link-directory link) "c")
+                                                         "%%")))
           (when master
             (list* "-N" "-o" "ControlMaster=yes" "-o" "ControlPersist=no"
                    ;; ssh takes the first of an option given twice
@@ -344,7 +345,7 @@ it unlimited."
                                  host version))))))
 
 (defun start-link-agent (link)
-  "Start an ssh-agent of LINK's own, its socket in LINK's folder, and have
+  "Start an ssh-agent of LINK's own, its socket in LINK's directory, and have
 ssh-add put your keys in it, asking for their passphrases as it does: the keys ssh -G names for LINK's machine
 \(IDENTITY-FILES), each use to be confirmed here (-c) and limited to
 the machines LINK's machine is trusted to use them for, where OpenSSH can
@@ -360,7 +361,7 @@ as two values."
          (keys (and agent add (identity-files link))))
     (cond ((not (and agent add))
            (format nil "the ssh agent is not forwarded to ~a: ssh-agent and ssh-add are not installed in the ~
-                        system's folders of programs" host))
+                        system's directories of programs" host))
           ((confirm-refusal host))
           ((null keys)
            (format nil "the ssh agent is not forwarded to ~a: none of the keys ssh -G ~a names (IdentityFile) is ~
@@ -426,7 +427,7 @@ in words, and what ssh said, as two values."
                         digits, /, ., _ and - (is GnuPG installed there?)" host))
           ((getf report :gpg-autostart)
            (format nil "gpg-agent is not forwarded to ~a: gpg there would start an agent of its own in place of ~
-                        the one forwarded; add the line no-autostart to gpg.conf in GnuPG's folder there ~
+                        the one forwarded; add the line no-autostart to gpg.conf in GnuPG's directory there ~
                         (gpgconf --list-dirs homedir)" host))
           (t (let ((here (desk-extra-socket)))
                (if (null here)
@@ -466,18 +467,18 @@ made _, and one starting with . or `-' given a _ first."
           (t name))))
 
 (defun send-dropped-files (link paths)
-  "Send the files at PATHS, dropped on a window, into the folder of LINK's
+  "Send the files at PATHS, dropped on a window, into the directory of LINK's
 machine it is trusted with dropped files in. Each goes through the Tuatara
 there (tuatara --receive-file), told its size first, which writes it for you
 alone and runs nothing of it. Returns their paths there. Returns NIL, why
 said on the error output, when one is no file, larger than
 *MOST-DROPPED-OCTETS* or could not be sent, and none is named to the daemon."
-  (let ((folder (getf (ssh-link-permissions link) :files))
+  (let ((directory (getf (ssh-link-permissions link) :files))
         (host (ssh-link-host link)))
     (flet ((fail (control &rest arguments)
              (format *error-output* "tuatara: ~a~%" (shown (apply #'format nil control arguments)))
              (return-from send-dropped-files nil)))
-      (unless folder (fail "~a is not trusted with files dropped" host))
+      (unless directory (fail "~a is not trusted with files dropped" host))
       (loop for path in paths
             collect (let ((fd (handler-case (tuatara.io:open-for-reading path t :accept '(:regular) :wanted "a file")
                                 (tuatara.io:file-system-error (condition) (fail "~a" condition)))))
@@ -492,7 +493,7 @@ said on the error output, when one is no file, larger than
                                (ssh-arguments link :session t
                                                    :command (list (link-tuatara link)
                                                                   (format nil "--receive-file=~d:~a/~a" size
-                                                                          (string-right-trim "/" folder)
+                                                                          (string-right-trim "/" directory)
                                                                           (dropped-name path))))
                                :input input :seconds (+ 60 (floor size 100000)))
                             (let ((there (and (eql code 0) (uiop:string-prefix-p "dropped " said)
@@ -515,9 +516,9 @@ dropped sent there, as its machine is trusted with them."
   "Write what INPUT, standard input as standard, gives, a file dropped on a
 window of a client on another machine, as ASKED says, SIZE:PATH: SIZE
 octets, at most *MOST-DROPPED-OCTETS*, at PATH here, a plain path
-\(PLAIN-PATH-P) from your home folder unless it is from the root. Its folder
-is made for you alone when it is not there, and must then be a folder of
-yours, no link, that no one else may write in (FOLDER-REFUSAL); the file is made for you
+\(PLAIN-PATH-P) from your home directory unless it is from the root. Its directory
+is made for you alone when it is not there, and must then be a directory of
+yours, no link, that no one else may write in (DIRECTORY-REFUSAL); the file is made for you
 alone under a name nothing has yet (NAME-2 and on when NAME is taken), and
 never run. Fewer octets than SIZE, or more, and the file is deleted. The
 exit code: 0, its path said on the standard output after dropped; 1, why
@@ -531,22 +532,23 @@ said on the error output."
            (slash (position #\/ path :from-end t))
            (name (subseq path (if slash (1+ slash) 0)))
            (within (if slash (subseq path 0 slash) ""))
-           (folder (if (uiop:string-prefix-p "/" path)
+           (directory (if (uiop:string-prefix-p "/" path)
                        within
                        (tuatara.io:path-join (tuatara.io:native (user-homedir-pathname)) within))))
       (unless (and (tuatara.defaults::plain-path-p path :relative t) (plusp (length name)) (char/= (char name 0) #\.)
-                   (plusp (length folder)))
+                   (plusp (length directory)))
         (fail "~a cannot name a file dropped here: letters, digits, /, ., _ and -" path))
       (unless (and size (<= size *most-dropped-octets*))
         (fail "a file dropped is taken here with its size first, of at most ~:d octets" *most-dropped-octets*))
       (handler-case
           (progn
-            (tuatara.io:ensure-private-directory folder)
-            (let ((why (tuatara.defaults::folder-refusal (tuatara.io:native folder) "the folder of files dropped"
+            (tuatara.io:ensure-private-directory directory)
+            (let ((why (tuatara.defaults::directory-refusal (tuatara.io:native directory)
+                                                            "the directory of files dropped"
                                                          (sb-posix:getuid) :private nil)))
               (when why (fail "~a" why)))
             (multiple-value-bind (fd there)
-                (tuatara.io:create-free-file folder (lambda (n) (tuatara.io:numbered-name name n :dash)))
+                (tuatara.io:create-free-file directory (lambda (n) (tuatara.io:numbered-name name n :dash)))
               (let ((written 0) (buffer (tuatara.text:make-octets 65536)))
                 (with-open-stream (out (sb-sys:make-fd-stream fd :output t :element-type '(unsigned-byte 8)
                                                                  :auto-close t))
@@ -569,37 +571,37 @@ said on the error output."
 
 (defun open-ssh-link (host name &key start)
   "Connect to HOST with the system's ssh and bring the socket of the daemon
-NAME there to a private folder here, the daemon started first with START
+NAME there to a private directory here, the daemon started first with START
 when none runs there, with what HOST is trusted with
 \(TUATARA.DEFAULTS::SERVER-PERMISSIONS) forwarded too: the SSH-LINK, whose
 socket (SSH-LINK-SOCKET) a client connects to. NIL, why said on the error
 output, when that cannot be done: no ssh or setpriv, ssh failing, no
 Tuatara there or another build of it, no daemon, or what it is trusted with
 not forwarded. A connection left by a client that crashed is told to end
-before its folder is deleted."
+before its directory is deleted."
   (let ((program (tuatara.io:system-program tuatara.defaults::*ssh-program*)))
     (unless program
-      (format *error-output* "tuatara: ssh is not installed in the system's folders of programs: a daemon on ~
+      (format *error-output* "tuatara: ssh is not installed in the system's directories of programs: a daemon on ~
                               another machine is reached with it~%")
       (return-from open-ssh-link nil))
-    (multiple-value-bind (folder lock)
+    (multiple-value-bind (directory lock)
         (handler-case
-            (let ((base (tuatara.defaults::daemon-folder)))
-              (tuatara.defaults::forget-abandoned-folders
+            (let ((base (tuatara.defaults::daemon-directory)))
+              (tuatara.defaults::forget-abandoned-directories
                "ssh/" :base base
-                      :before (lambda (folder)
-                                (let ((control (tuatara.io:path-join folder "c")))
+                      :before (lambda (directory)
+                                (let ((control (tuatara.io:path-join directory "c")))
                                   (when (and (eq (tuatara.io:path-kind control :follow nil) :socket)
                                              (forwardable-path-p control))
                                     (tuatara.defaults::run-bounded
                                      program (list "-F" "none" "-o" (format nil "ControlPath=~a" control)
                                                    "-O" "exit" "--" "localhost")
                                      :seconds 10)))))
-              (tuatara.defaults::make-owned-folder "ssh/" :base base))
+              (tuatara.defaults::make-owned-directory "ssh/" :base base))
           ((or tuatara.runtime:refusal tuatara.io:file-system-error) (condition)
             (format *error-output* "tuatara: ~a~%" (shown (princ-to-string condition)))
             (return-from open-ssh-link nil)))
-      (let ((link (make-ssh-link host program folder lock (tuatara.defaults::server-permissions host)))
+      (let ((link (make-ssh-link host program directory lock (tuatara.defaults::server-permissions host)))
             (opened nil))
         (unwind-protect
              (multiple-value-bind (why said) (connect-ssh-link link name start)
@@ -621,12 +623,12 @@ string, on the desktop; NIL when nobody can answer it."
   "Start the ssh holding LINK's connection, a process of this client's
 that ends with it, killed or not (setpriv --pdeathsig), and every forward
 with it; ssh asks for a password or passphrase, or about a machine it has not
-seen, where you can answer (MASTER-ASKER), what it says kept in LINK's folder.
+seen, where you can answer (MASTER-ASKER), what it says kept in LINK's directory.
 NIL once its control socket is there; else why not, in words, and what ssh
 said, as two values."
   (let* ((host (ssh-link-host link))
-         (control (tuatara.io:path-join (ssh-link-folder link) "c"))
-         (said (tuatara.io:path-join (ssh-link-folder link) "e"))
+         (control (tuatara.io:path-join (ssh-link-directory link) "c"))
+         (said (tuatara.io:path-join (ssh-link-directory link) "e"))
          (asker (master-asker)))
     (flet ((said () (or (tuatara.runtime:ignoring-errors-reported ("reading what ssh said")
                           (tuatara.text:lenient-string
@@ -733,10 +735,10 @@ as two values."
 
 (defun close-ssh-link (link)
   "Close LINK: gpg-agent's socket there no longer forwarded, its connection
-ended and its ssh waited for, its own agent ended too, its folder deleted
+ended and its ssh waited for, its own agent ended too, its directory deleted
 and the lock on it let go."
   (tuatara.runtime:ignoring-errors-reported ("ending the ssh connection to ~a" (ssh-link-host link))
-    (when (tuatara.io:path-kind (tuatara.io:path-join (ssh-link-folder link) "c") :follow nil)
+    (when (tuatara.io:path-kind (tuatara.io:path-join (ssh-link-directory link) "c") :follow nil)
       (let ((gpg (shiftf (ssh-link-gpg-forward link) nil)))
         (when gpg
           (run-ssh link (ssh-arguments link :operation "cancel" :remote gpg) :seconds 10)))
@@ -746,6 +748,6 @@ and the lock on it let go."
       (tuatara.runtime:wait-until (lambda () (not (sb-ext:process-alive-p master))) 5)
       (tuatara.io:done-with-program master)))
   (stop-link-agent link)
-  (tuatara.defaults::delete-private-folder (ssh-link-folder link))
-  (tuatara.runtime:ignoring-errors-reported ("letting go of ~a" (ssh-link-folder link))
+  (tuatara.defaults::delete-private-directory (ssh-link-directory link))
+  (tuatara.runtime:ignoring-errors-reported ("letting go of ~a" (ssh-link-directory link))
     (sb-posix:close (ssh-link-lock link))))

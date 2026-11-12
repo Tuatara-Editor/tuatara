@@ -326,7 +326,7 @@ bound to the fake frontend and the editor; the file and its buffer go afterwards
       (true (find :keyword (aref (tuatara.frontend.fake:fake-spans f) 0)
                   :key (lambda (s) (let ((face (third s))) (if (listp face) (first face) face))))))))
 
-(define-test (syntax marking-expressions)
+(define-modal-test (syntax marking-expressions)
   ;; m I and m A select inside and around the brackets around point, the
   ;; grammar leaving out the bracket in the string; again at once, one pair out
   (let ((text "(a (b \"x ) y\" c) d)"))
@@ -357,7 +357,7 @@ bound to the fake frontend and the editor; the file and its buffer go afterwards
     (with-file-session ((f editor) "C-u 1 4 l m I" text "txt")
       (is string= "a (b \"x ) y\" c" (session-region-text editor)))))
 
-(define-test (syntax commenting-lines)
+(define-modal-test (syntax commenting-lines)
   ;; C comments or uncomments whole lines: the marker at the smallest
   ;; indentation, blank lines left alone, one undo
   (flet ((after (keys text extension)
@@ -384,7 +384,7 @@ bound to the fake frontend and the editor; the file and its buffer go afterwards
       (is string= "plain" (session-text editor))
       (true (tuatara.frontend.fake:fake-frame-showing f "No comment syntax is defined")))))
 
-(define-test (syntax indenting-leaves-text-alone)
+(define-modal-test (syntax indenting-leaves-text-alone)
   ;; indenting lines leaves the blanks of lines inside a comment or a string
   ;; begun on a line before, and of a line a string runs up to: they are text
   (flet ((indented (text mode)
@@ -413,7 +413,7 @@ bound to the fake frontend and the editor; the file and its buffer go afterwards
     (is string= (format nil "class A {~%  /*~%   * x~%   */~%  int y;~%}~%")
         (indented (format nil "class A {~%/*~%   * x~%   */~%int y;~%}~%") 'tuatara.defaults::java-mode))))
 
-(define-test (syntax commenting-with-ends)
+(define-modal-test (syntax commenting-with-ends)
   ;; a language whose comments have an end (HTML, CSS) comments each line
   ;; between them, and uncomments it again
   (flet ((after (keys text extension)
@@ -427,7 +427,7 @@ bound to the fake frontend and the editor; the file and its buffer go afterwards
     ;; a blank line is left alone, the others line up
     (is string= (format nil "/* a { } */~%~%/*   b { } */~%") (after "V j j C" (format nil "a { }~%~%  b { }~%") "css"))))
 
-(define-test (syntax comment-syntax-in-definitions)
+(define-modal-test (syntax comment-syntax-in-definitions)
   ;; each language's comments as its mode's definition gives them, or the definition of the mode it is made from
   (loop for (mode line block)
           in '((tuatara.defaults::lisp-mode (";" ";;") (nil)) (tuatara.defaults::lisp-interaction-mode (";" ";;") (nil))
@@ -464,7 +464,7 @@ bound to the fake frontend and the editor; the file and its buffer go afterwards
     (let ((tuatara-user:*grammars-on* '(:common jinja)))
       (is string= (format nil "{# a #}~%") (after "C" (format nil "a~%") "j2")))))
 
-(define-test (syntax indenting-lisp)
+(define-modal-test (syntax indenting-lisp)
   ;; > indents Lisp: indent-before.lisp, indented whole, gives indent-after.lisp
   (let ((tuatara.syntax:*syntax-wait* 10))
     (flet ((after (keys text)
@@ -500,7 +500,7 @@ bound to the fake frontend and the editor; the file and its buffer go afterwards
     (is string= "plain" (session-text editor))
     (true (tuatara.frontend.fake:fake-frame-showing f "No indentation rules for"))))
 
-(define-test (syntax indenting-new-lines)
+(define-modal-test (syntax indenting-new-lines)
   ;; RET, o and O put the new line at its column as the language's mode
   ;; indents it, point where its text begins
   (let ((tuatara.syntax:*syntax-wait* 30) (tuatara.defaults::*rules-wait* 30))
@@ -555,7 +555,7 @@ bound to the fake frontend and the editor; the file and its buffer go afterwards
           (setf result (session-text editor)))
         (is string= (format nil "fn main() {~%x~%}~%") result)))))
 
-(define-test (syntax new-line-in-a-block-not-closed-yet)
+(define-modal-test (syntax new-line-in-a-block-not-closed-yet)
   ;; RET after a shell block's opening line puts the new line inside the block
   ;; before its closing word is typed, as it does once the block is closed
   (let ((tuatara.syntax:*syntax-wait* 30) (tuatara.defaults::*rules-wait* 30))
@@ -607,7 +607,7 @@ bound to the fake frontend and the editor; the file and its buffer go afterwards
              (true (< (- (thread-cpu-time) start) (* 1/2 internal-time-units-per-second)))))
       (tuatara.buffer:kill-buffer buffer))))
 
-(define-test (syntax indenting-by-the-tree)
+(define-modal-test (syntax indenting-by-the-tree)
   ;; Rust and shell scripts are indented by their languages' rules: the samples,
   ;; every line indented as expected, stay as they are, and come back from the
   ;; left margin, but for lines inside strings, which keep their blanks
@@ -658,7 +658,7 @@ bound to the fake frontend and the editor; the file and its buffer go afterwards
         (format nil "if true; then~%echo a~%  fi~%")
         (after "j V j > u" (format nil "if true; then~%echo a~%  fi~%") "sh"))))
 
-(define-test (syntax selecting-by-the-tree)
+(define-modal-test (syntax selecting-by-the-tree)
   ;; m f / m F, m t / m T, m r / m R and m c / m C select the function, type,
   ;; parameter or comment around point, inside or all of it; M-o grows the
   ;; selection to the syntax around it, M-i goes back, M-n and M-p step to the
@@ -722,7 +722,7 @@ bound to the fake frontend and the editor; the file and its buffer go afterwards
   (with-file-session ((f editor) "M-o" "plain" "txt")
     (true (tuatara.frontend.fake:fake-frame-showing f "No syntax tree to select by"))))
 
-(define-test (syntax function-selected-from-its-first-line)
+(define-modal-test (syntax function-selected-from-its-first-line)
   ;; point on a function's first line, at its first column or on its name, is
   ;; in that function: m f selects its body, m F all of it
   (flet ((region (keys text extension)
@@ -752,7 +752,7 @@ bound to the fake frontend and the editor; the file and its buffer go afterwards
            (selected (region (list parsed "g g m f") (format nil "procedure P is~%begin~%   null;~%end P;~%") "adb")))
       (is equal "null;" selected))))
 
-(define-test (syntax selecting-tests-entries-elements)
+(define-modal-test (syntax selecting-tests-entries-elements)
   ;; m y / m Y a test, m e / m E an entry, m x / m X an element, inside or all
   ;; of it: from the grammar and its rules alone, nothing else installed
   (let ((tuatara.syntax:*syntax-wait* 30) (tuatara.defaults::*rules-wait* 30))

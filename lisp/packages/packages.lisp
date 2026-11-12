@@ -1,9 +1,9 @@
-;;;; lisp/packages/packages.lisp --- Packages from anywhere: a folder of a git repository, or of your disk.
+;;;; lisp/packages/packages.lisp --- Packages from anywhere: a directory of a git repository, or of your disk.
 ;;;; Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
 ;;;;
-;;;; A package is a folder of Lisp files, NAME/NAME.lisp its entry (load.lisp
+;;;; A package is a directory of Lisp files, NAME/NAME.lisp its entry (load.lisp
 ;;;; too), in a git repository anyone hosts, one package a repository or a
-;;;; folder each, or in a folder of your own disk. There is no index: the init
+;;;; directory each, or in a directory of your own disk. There is no index: the init
 ;;;; file names where each comes from,
 ;;;;
 ;;;;   (package-source "mine" "https://example.org/my-packages.git")
@@ -11,8 +11,8 @@
 ;;;;
 ;;;; and the first time Tuatara fetches only what it needs, in the background:
 ;;;; which commit the version asked for is (the repository's newest tag by date
-;;;; unless said), then that commit alone and the package's folder alone. It is
-;;;; kept in your data folder and loaded from there at every start, never
+;;;; unless said), then that commit alone and the package's directory alone. It is
+;;;; kept in your data directory and loaded from there at every start, never
 ;;;; fetched again until M-x package-update. Before a package is first compiled
 ;;;; it asks, its source offered to read; then its files are compiled into the
 ;;;; cache once a version and loaded. A package has a Lisp package of its own
@@ -33,7 +33,7 @@
 (define-setting *package-ask-before-loading* t
   "Whether you are asked before a package is first compiled and loaded: one
 fetched the first time, and again when an update brings another commit; one
-of a folder of yours the first time only, what you change in it later being
+of a directory of yours the first time only, what you change in it later being
 yours.
 - t: you are asked; y loads it, n leaves it, v shows its source first.
 - nil: packages load without asking."
@@ -41,7 +41,7 @@ yours.
 
 (define-setting *package-sources* '()
   "The places packages come from (PACKAGE-SOURCE sets them).
-- a list of (NAME . WHERE): WHERE a git repository's address or a folder of
+- a list of (NAME . WHERE): WHERE a git repository's address or a directory of
   your disk."
   :values (list-of "(NAME . WHERE)"))
 
@@ -50,7 +50,7 @@ yours.
 
 (defun package-line (entry)
   "The line of the packages file for ENTRY, (KEY COMMIT TAG ACCEPTED PREVIOUS
-PREVIOUS-TAG SIGNER). COMMIT is a dash for a folder of your disk. PREVIOUS is
+PREVIOUS-TAG SIGNER). COMMIT is a dash for a directory of your disk. PREVIOUS is
 the commit taken before it and kept to fall back on, or NIL. SIGNER is who
 signed COMMIT as git checked it when it was taken, a key's fingerprint or
 \"unsigned\", or NIL when not known."
@@ -108,8 +108,8 @@ in the init file is passed over until \\[package-load] loads it."
   (and (state-list-find *removed-packages* name) t))
 
 (defun tuatara-user:package-source (name where &key signers)
-  "Name WHERE, a git repository's address or a folder of your disk (~/ for
-your home folder), as the source NAME, for load-package's :source:
+  "Name WHERE, a git repository's address or a directory of your disk (~/ for
+your home directory), as the source NAME, for load-package's :source:
 \(package-source \"mine\" \"https://example.org/my-packages.git\").
 
 SIGNERS, a list of the keys' fingerprints that sign its versions (a secure
@@ -119,7 +119,7 @@ without it, whoever signed the first version taken is remembered and asked of
 every later one. An address of http:// or git:// is allowed only by :plain t
 on the load-package of each package fetched from it."
   (unless (and (stringp name) (plusp (length name)))
-    (refuse "package-source takes a name and an address or a folder: ~s ~s" name where))
+    (refuse "package-source takes a name and an address or a directory: ~s ~s" name where))
   (check-package-where where)
   (note-package-source-terms where signers)
   (setf *package-sources* (acons name where (remove name *package-sources* :key #'car :test #'string=)))
@@ -171,73 +171,73 @@ NIL when WHERE needs no allowing or is allowed."
   (when (and (plain-transport-p where) (not (member (cons name where) *package-plain-allowed* :test #'equal)))
     (format nil
             "The package ~a is not fetched from ~a: over http:// or git:// anyone on the way can read and change it. ~
-                 Use https://, ssh or a folder of your disk, or allow this source by adding :plain t to its load-package"
+                 Use https://, ssh or a directory of your disk, or allow this source by adding :plain t to its load-package"
             name where)))
 
 (defun package-where (source)
   "Where SOURCE, a source's name (PACKAGE-SOURCE) or itself an address or a
-folder, is."
+directory, is."
   (or (cdr (assoc source *package-sources* :test #'string=)) source))
 
 (defun local-source-p (where)
-  "True when WHERE is a folder of your disk rather than a repository's address."
+  "True when WHERE is a directory of your disk rather than a repository's address."
   (and (plusp (length where)) (find (char where 0) "/~")))
 
 (defun check-package-where (where)
-  "Signal an error unless WHERE, a package's source, is an address or a folder
-named whole (/ or ~/ first). One named from the folder Tuatara starts in would
-be another folder at each start. One that starts with - would be read by git
+  "Signal an error unless WHERE, a package's source, is an address or a directory
+named whole (/ or ~/ first). One named from the directory Tuatara starts in would
+be another directory at each start. One that starts with - would be read by git
 as an option. A line of the lists of packages that starts with @ is of a kind
 a later release adds."
   (unless (and (stringp where) (plusp (length where)))
-    (refuse "A package's source is an address or a folder: ~s" where))
+    (refuse "A package's source is an address or a directory: ~s" where))
   (when (char= (char where 0) #\-)
     (refuse "A package's source cannot start with -: ~s" where))
   (when (char= (char where 0) #\@)
     (refuse "A package's source cannot start with @: ~s" where))
   (when (char= (char where 0) #\.)
-    (refuse "A package's folder is named whole, from / or ~~/: ~s" where))
+    (refuse "A package's directory is named whole, from / or ~~/: ~s" where))
   (when (cl-ppcre:scan "^[a-z][a-z0-9+.-]*://[^/@]*@" where)
     (refuse "A package's address cannot hold a name or a password (@): ~s" where))
   (when (cl-ppcre:scan "(?i)^ftps?://" where)
-    (refuse "A package is fetched over https://, ssh or from a folder of your disk, not over ftp: ~s" where)))
+    (refuse "A package is fetched over https://, ssh or from a directory of your disk, not over ftp: ~s" where)))
 
 (defun package-key (name where version)
   "What a package called NAME from WHERE, VERSION asked for, is remembered by."
   (format nil "~a ~a ~a" name where (or version "release")))
 
 (define-setting *packages-directory* nil
-  "The folder Tuatara keeps the packages it fetches in. As *CACHE-DIRECTORY*:
+  "The directory Tuatara keeps the packages it fetches in. As *CACHE-DIRECTORY*:
 made by you, and while it is not there no package is fetched or loaded from
 it.
 - nil: ~/.local/share/tuatara/packages/ ($XDG_DATA_HOME/tuatara/packages/),
   the standard place.
-- a folder's name: that folder."
-  :values (or (member nil) folder))
+- a directory's name: that directory."
+  :values (or (member nil) directory))
 
 (defun packages-directory ()
   "Where fetched packages are kept: *PACKAGES-DIRECTORY* when set
-\(TUATARA.IO:CHOSEN-DIRECTORY), else tuatara/packages/ in your data folder."
+\(TUATARA.IO:CHOSEN-DIRECTORY), else tuatara/packages/ in your data directory."
   (tuatara.io:native (tuatara.io:chosen-directory '*packages-directory*
                                                   (merge-pathnames "tuatara/packages/" (tuatara.io:data-home)))))
 
-(defun package-kept-folder (where name)
-  "The folder the package NAME of the repository at WHERE is kept in, a folder
+(defun package-kept-directory (where name)
+  "The directory the package NAME of the repository at WHERE is kept in, a directory
 for each commit of it fetched."
   (format nil "~a~a/~a/" (packages-directory) (tuatara.io:path-file-name where) name))
 
-(defun package-folder-for (where name commit)
-  "The folder a commit of the repository at WHERE is kept in for the package NAME."
-  (format nil "~a~a/" (package-kept-folder where name) commit))
+(defun package-directory-for (where name commit)
+  "The directory a commit of the repository at WHERE is kept in for the package NAME."
+  (format nil "~a~a/" (package-kept-directory where name) commit))
 
 ;;; Declaring packages: load-package
 
-(defvar *package-folder* nil
-  "The folder of the package being loaded, for LOAD-PACKAGE-FILE.")
+(defvar *package-directory* nil
+  "The directory of the package being loaded, for LOAD-PACKAGE-FILE.")
 
-(defun package-folder-native ()
-  "The native name of the folder of the package being loaded, or NIL."
-  (and *package-folder* (tuatara.io:native *package-folder*)))
+(defun package-directory-native ()
+  "The native name of the directory of the package being loaded, or NIL."
+  (and *package-directory* (tuatara.io:native *package-directory*)))
 
 (defvar *loaded-packages* '()
   "The names of the packages loaded this session.")
@@ -269,7 +269,7 @@ Tuatara lacks; why is in *PACKAGE-FAILURES*.")
 
 (defvar *declared-packages* '()
   "The packages load-package names this session, each (NAME SOURCE VERSION
-FILE FOLDER); the first named first.")
+FILE DIRECTORY); the first named first.")
 
 (defvar *left-out-packages* '()
   "The packages a load-package left out this session (:disabled, or :if
@@ -278,7 +278,7 @@ still wanted.")
 
 (defun declared-package (name)
   "The package called NAME as load-package named it this session, (NAME SOURCE
-VERSION FILE FOLDER), or NIL."
+VERSION FILE DIRECTORY), or NIL."
   (find name *declared-packages* :key #'first :test #'string=))
 
 (defvar *package-configs* '()
@@ -302,7 +302,7 @@ each (NAME COMMAND . FUNCTION): FUNCTION runs COMMAND of the package NAME.")
 MILLISECONDS), after :START; NIL otherwise.")
 
 (defparameter *load-package-keywords*
-  '(:source :version :file :folder :signers :plain :disabled :if :defer :after :commands :modes :init :config)
+  '(:source :version :file :directory :signers :plain :disabled :if :defer :after :commands :modes :init :config)
   "What load-package takes after a package's name, each followed by its value
 or, for :commands, :modes, :init and :config, by any number of them.")
 
@@ -341,7 +341,7 @@ Tuatara, the settings and keys of it together. What follows the name, each
 keyword with its value, or for the last four with any number of them:
 
 :source  where it comes from: a source's name (package-source), a git
-         repository's address or a folder of your disk. Without it, NAME is
+         repository's address or a directory of your disk. Without it, NAME is
          \"tuatara\", a mode's name (\"org\" for org-mode) or a name of
          your own for a group of settings (\"writing\"), which load nothing
          and run :init and :config at once. A name a letter or two from a
@@ -350,7 +350,7 @@ keyword with its value, or for the last four with any number of them:
 :version the tag, branch or commit fetched, the repository's newest tag by
          date when not given or \"release\", its newest commit for \"latest\"
          or when not given and it has no tag yet.
-:folder  its folder in the repository or source folder, when not NAME.
+:directory  its directory in the repository or source directory, when not NAME.
 :file    its first file, when not NAME.lisp or load.lisp.
 :signers the fingerprints of the keys its versions must be signed by, a
          list (as package-source takes them); only those are taken.
@@ -394,7 +394,7 @@ later or nothing is."
       `(declare-package ,name :left-out ,(cond ((one :disabled) :disabled)
                                                ((getf parsed :if) `(and (not ,(one :if)) :if)))
                               :source ,(one :source) :version ,(one :version) :file ,(one :file)
-                              :folder ,(one :folder) :signers ,(one :signers) :plain ,(one :plain)
+                              :directory ,(one :directory) :signers ,(one :signers) :plain ,(one :plain)
                               :defer ,(one :defer) :after ,(one :after)
                               :commands ',(getf parsed :commands) :modes ',(getf parsed :modes)
                               :init ',(getf parsed :init) :config ',(getf parsed :config)))))
@@ -600,7 +600,7 @@ of four letters or fewer, two for a longer one."
                              (mode-names))))))
 
 (defun declare-package
-    (name &key left-out source version file folder signers plain defer after commands modes init config)
+    (name &key left-out source version file directory signers plain defer after commands modes init config)
   "Load the package NAME as LOAD-PACKAGE says, each keyword as it takes it,
 INIT and CONFIG the forms after :init and :config; LEFT-OUT :disabled or :if
 when the block is left out, said in *Messages*. A package removed
@@ -633,13 +633,13 @@ once. Returns the file loaded, or NIL when it is loaded later or nothing is."
     (cond ((and source (package-removed-p name))
            ;; listed as removed, nothing of it run
            (when (and (stringp source) (plusp (length source)))
-             (declared (list name source version file folder)))
+             (declared (list name source version file directory)))
            (say-package-removed name)
            nil)
           (source
            (run-package-forms name :init init)
            (unless (and (stringp source) (plusp (length source)))
-             (refuse "A package's :source is a source's name, an address or a folder: ~s" source))
+             (refuse "A package's :source is a source's name, an address or a directory: ~s" source))
            (check-package-where (package-where source))
            (note-package-source-terms (package-where source) signers)
            (setf *package-plain-allowed* (remove name *package-plain-allowed* :key #'car :test #'string=))
@@ -647,10 +647,12 @@ once. Returns the file loaded, or NIL when it is loaded later or nothing is."
            (when (and version (not (and (stringp version) (cl-ppcre:scan "^[^\\s~^:?*\\[\\\\]+$" version))))
              (refuse "A package's :version is a tag, a branch or a commit: ~s" version))
            (when (and file (not (and (stringp file) (cl-ppcre:scan "^[A-Za-z0-9._-]+\\.lisp$" file))))
-             (refuse "A package's :file is a .lisp file of its folder: ~s" file))
-           (when (and folder (not (and (stringp folder) (cl-ppcre:scan "^[A-Za-z0-9_][A-Za-z0-9._-]*$" folder))))
-             (refuse "A package's :folder is the name of a folder in its repository or source folder: ~s" folder))
-           (declared (list name source version file folder))
+             (refuse "A package's :file is a .lisp file of its directory: ~s" file))
+           (when (and directory (not (and (stringp directory) (cl-ppcre:scan "^[A-Za-z0-9_][A-Za-z0-9._-]*$"
+                                                                             directory))))
+             (refuse "A package's :directory is the name of a directory in its repository or source directory: ~s"
+                     directory))
+           (declared (list name source version file directory))
            (arrange (lambda () (load-package-from name source version file))))
           (t
            (let ((mode (and (string/= name "tuatara") (ignoring-errors-reported ("finding the mode ~a" name)
@@ -710,12 +712,12 @@ changed."
                                 maximize (or (file-write-date file) 0))))))))
 
 (defun packages-compiled-directory ()
-  "The folder in the cache that packages are compiled into, a folder for each
+  "The directory in the cache that packages are compiled into, a directory for each
 Steel Bank Common Lisp (SBCL) in it (PACKAGE-CACHE)."
   (format nil "~apackages/" (tuatara.io:native (tuatara.io:cache-directory))))
 
 (defun package-cache ()
-  "The folder packages are compiled into for this Tuatara and this Steel Bank
+  "The directory packages are compiled into for this Tuatara and this Steel Bank
 Common Lisp (SBCL); those of other ones are deleted the first time it is
 asked for."
   (let* ((sbcl (format nil "~a~a/" (packages-compiled-directory)
@@ -724,14 +726,14 @@ asked for."
     (unless (probe-file here)
       (dolist (other (append (ignoring-errors-reported ("reading ~a" sbcl) (uiop:subdirectories sbcl))
                              (ignoring-errors-reported ("reading ~a" sbcl) (uiop:directory-files sbcl))))
-        (delete-package-folder (namestring other))))
+        (delete-package-directory (namestring other))))
     here))
 
 (defun package-fasl (file)
   "Where the compiled FILE of a package is kept: in the cache, by which
 Tuatara and which Steel Bank Common Lisp (SBCL) compile it (PACKAGE-CACHE), in
-folders as the file's own are, fetched/ for a package fetched and local/ for
-one of a folder of yours."
+directories as the file's own are, fetched/ for a package fetched and local/ for
+one of a directory of yours."
   (let* ((native (tuatara.io:native file))
          (fetched (tuatara.io:native (packages-directory)))
          (inside (if (uiop:string-prefix-p fetched native)
@@ -741,9 +743,9 @@ one of a folder of yours."
 
 (defun tuatara-user:package-file (name)
   "The file NAME (\"helper.sh\") of the package being loaded: in its
-folder, or the folder of the file being loaded when no package is. A package
+directory, or the directory of the file being loaded when no package is. A package
 names its own files so, as where it is loaded from is the cache's."
-  (merge-pathnames name (or *package-folder*
+  (merge-pathnames name (or *package-directory*
                             (and *load-truename*
                                  (make-pathname :name nil :type nil :version nil :defaults *load-truename*))
                             *default-pathname-defaults*)))
@@ -899,9 +901,9 @@ when that is not one of OWN, the package's own Lisp packages."
                            name))))
     (if (eq (first needed) :setf-function) (format nil "(setf ~a)" word) word)))
 
-(defun forget-package-code (own &optional folder)
+(defun forget-package-code (own &optional directory)
   "Take out of Tuatara what the code of the Lisp packages OWN, loaded from
-FOLDER when given, put there, and delete them. Their jobs running, of their
+DIRECTORY when given, put there, and delete them. Their jobs running, of their
 own kinds, are asked to stop. Their modes go, a buffer in one of them put in
 the mode its file calls for, or fundamental-mode. Their commands go, and those
 whose function is theirs. The keys bound to their commands go, with their
@@ -912,13 +914,13 @@ go. Their functions on the lists of functions Tuatara calls (*FILE-VIEWS*,
 generic functions. Their settings are settings no more, their values kept for
 when they load again. Their faces stay, doing nothing. A function is theirs
 when one of their symbols names it, or it was made in one of their functions
-or by a file of FOLDER."
+or by a file of DIRECTORY."
   (when own
     (labels ((own-p (name)
                (typecase name
                  (null nil)
                  (symbol (and (member (symbol-package name) own) t))
-                 (string (and folder (tuatara.io:path-within-p name folder)))
+                 (string (and directory (tuatara.io:path-within-p name directory)))
                  (cons (or (own-p (car name)) (own-p (cdr name))))))
              (theirs-p (thing)
                ;; a function made within another is named (LAMBDA (...) :IN NAME-OR-FILE)
@@ -987,7 +989,7 @@ names the editor has may be missing: the editor refuses it as it loads."
                          (list :sources (package-check-sources check) :needs needed))))
     (tuatara.runtime:debug-report :package "~a refused, its code using names this Tuatara lacks: ~{~a~^, ~}"
                                   (package-check-name check) words)
-    (forget-package-code own (package-folder-native))
+    (forget-package-code own (package-directory-native))
     (setf *loaded-packages* (remove (package-check-name check) *loaded-packages* :test #'string=))
     (error 'package-lacks-names :name (package-check-name check) :names words)))
 
@@ -1099,15 +1101,15 @@ the loading was asked to stop (*PACKAGE-LOAD-STOP*)."
             (when missing (refuse-package check missing))))
         (setf (package-check-needs check) (union needed (package-check-needs check) :test #'equal)))
       (let ((*package* (find-package :tuatara-user))
-            (*package-folder* (make-pathname :name nil :type nil :version nil :defaults file)))
+            (*package-directory* (make-pathname :name nil :type nil :version nil :defaults file)))
         (load fasl)))))
 
 (defun tuatara-user:load-package-file (name)
   "Compile, when it has changed since, and load the file NAME (\"example.lisp\")
-of the package being loaded, or of the folder of the file being loaded: a
+of the package being loaded, or of the directory of the file being loaded: a
 package's entry loads its other files so. Compiled into the cache once, a
 package loads in a few milliseconds at the next start; meanwhile
-PACKAGE-FILE names its files from its own folder. Its warnings are said in
+PACKAGE-FILE names its files from its own directory. Its warnings are said in
 *Messages*, the first of them; a file that cannot be compiled at all is an
 error saying why (an unclosed parenthesis, where).
 
@@ -1139,7 +1141,7 @@ editor instead."
           ;; failed or stopped between its files: what of it loaded taken out again
           (let ((loaded nil))
             (unwind-protect (progn (load-checked-file file check) (setf loaded t))
-              (unless loaded (forget-package-code (package-check-own check) (package-folder-native)))))
+              (unless loaded (forget-package-code (package-check-own check) (package-directory-native)))))
           (let ((missing (remove-if #'needed-name-present-p (package-check-needs check))))
             (when missing (refuse-package check missing)))
           (let* ((name (package-check-name check))
@@ -1147,19 +1149,19 @@ editor instead."
             (setf *package-code* (acons name own (remove name *package-code* :key #'car :test #'string=))))))
     file))
 
-(defun load-package-for-test (name folder)
-  "Load the package NAME from FOLDER as load-package loads one fetched anew:
-each of its files compiled afresh, its names checked; then FOLDER's
+(defun load-package-for-test (name directory)
+  "Load the package NAME from DIRECTORY as load-package loads one fetched anew:
+each of its files compiled afresh, its names checked; then DIRECTORY's
 test.lisp, its tests, when there is one. For a package repository's tests,
 run against a Tuatara source tree. NIL when it loaded; else why Tuatara
 refused it, a string: it uses a name this Tuatara lacks."
-  (dolist (file (uiop:directory-files folder "*.lisp"))
+  (dolist (file (uiop:directory-files directory "*.lisp"))
     (uiop:delete-file-if-exists (package-fasl file)))
   (handler-case
-      (let ((*package-folder* folder)
+      (let ((*package-directory* directory)
             (*loading-package-name* name))
         (tuatara-user:load-package-file (concatenate 'string name ".lisp"))
-        (let ((tests (merge-pathnames "test.lisp" folder)))
+        (let ((tests (merge-pathnames "test.lisp" directory)))
           (when (probe-file tests) (load tests)))
         nil)
     (package-lacks-names (refusal) (princ-to-string refusal))))
@@ -1194,7 +1196,7 @@ sets it by that name, and NAME in the package's own code
 \(CLAIM-PACKAGE-SETTING). Its name begins with the package's (*facematch-).
 VALUES describes the values it takes, as Tuatara's own settings do
 \(DEFINE-SETTING): boolean, (member :left :right), (integer 0 *), string,
-folder, (list-of string), (or (member nil) string) or words. Help and the
+directory, (list-of string), (or (member nil) string) or words. Help and the
 manual show them, and \\[check-health] says when the setting holds another.
 It comes before the package's code that reads it, at the top of its file: a
 name read before it is defined is the package's own, not the setting."
@@ -1227,10 +1229,10 @@ looked for on the PATH."
                (remove *loading-package-name* *package-needs* :key #'car :test #'string=)))
   needs)
 
-(defun package-entry (folder name file)
-  "The file a package called NAME in FOLDER is loaded by: FILE when given,
+(defun package-entry (directory name file)
+  "The file a package called NAME in DIRECTORY is loaded by: FILE when given,
 else NAME.lisp, else load.lisp; NIL when there is none."
-  (some (lambda (entry) (and entry (probe-file (merge-pathnames entry folder)) entry))
+  (some (lambda (entry) (and entry (probe-file (merge-pathnames entry directory)) entry))
         (list file (concatenate 'string name ".lisp") "load.lisp")))
 
 ;;; The version of Tuatara a package needs
@@ -1254,14 +1256,14 @@ it allowed); NIL when there is none."
              (when found (return (aref found 0))))
         until (= end (length text))))
 
-(defun package-needed-version (folder name file)
-  "The version of Tuatara the package NAME in FOLDER says it needs in its
+(defun package-needed-version (directory name file)
+  "The version of Tuatara the package NAME in DIRECTORY says it needs in its
 entry file's header (NEEDED-VERSION-IN), read and never run; NIL when it
 says none, or has no entry."
-  (let ((entry (package-entry folder name file)))
+  (let ((entry (package-entry directory name file)))
     (when entry
       (let ((octets (ignoring-errors-reported ("reading the header of ~a" entry)
-                      (tuatara.io:call-with-file (tuatara.io:native (merge-pathnames entry folder))
+                      (tuatara.io:call-with-file (tuatara.io:native (merge-pathnames entry directory))
                                                  (lambda (fd path size)
                                                    (tuatara.io:read-fd-start fd path size *package-header-octets*))))))
         (and octets (needed-version-in (tuatara.text:lenient-string octets)))))))
@@ -1273,10 +1275,10 @@ is not known."
   (let ((have (tuatara.io:version-numbers (tuatara:version))))
     (or (null have) (tuatara.io:version-at-least-p have (tuatara.io:version-numbers needed)))))
 
-(defun unfitting-version (folder name file)
-  "The version of Tuatara the package NAME in FOLDER needs when it is newer
+(defun unfitting-version (directory name file)
+  "The version of Tuatara the package NAME in DIRECTORY needs when it is newer
 than this one, or NIL when it fits."
-  (let ((needed (package-needed-version folder name file)))
+  (let ((needed (package-needed-version directory name file)))
     (and needed (not (tuatara-fits-p needed)) needed)))
 
 (define-condition package-needs-newer-tuatara (error)
@@ -1292,45 +1294,45 @@ than this one: it is not loaded."))
 (setf (documentation 'package-needs-newer-tuatara-name 'function) "The name of the package not loaded."
       (documentation 'package-needs-newer-tuatara-needed 'function) "The version of Tuatara it needs.")
 
-(defvar *loaded-package-folders* '()
-  "The folder each package loaded this session was loaded from, each (NAME
-FOLDER FILE), FILE its entry when named, the one loaded last first: never
+(defvar *loaded-package-directories* '()
+  "The directory each package loaded this session was loaded from, each (NAME
+DIRECTORY FILE), FILE its entry when named, the one loaded last first: never
 deleted while the editor runs.")
 
-(defun load-package-entry (folder name file)
-  "Load the package called NAME in FOLDER by its entry (PACKAGE-ENTRY), FILE
+(defun load-package-entry (directory name file)
+  "Load the package called NAME in DIRECTORY by its entry (PACKAGE-ENTRY), FILE
 when given, its files compiled when they have changed since; one that needs
 a newer Tuatara (PACKAGE-NEEDED-VERSION) is an error, nothing of it loaded.
 Returns its entry's file."
-  (let ((entry (or (package-entry folder name file)
+  (let ((entry (or (package-entry directory name file)
                    (refuse "The package ~a has no ~:[~a.lisp or load.lisp~;~:*~a~] in ~a" name file name
-                          (abbreviated-path (tuatara.io:native folder)))))
-        (needed (unfitting-version folder name file)))
+                          (abbreviated-path (tuatara.io:native directory)))))
+        (needed (unfitting-version directory name file)))
     (when needed
       (error 'package-needs-newer-tuatara :name name :needed needed))
-    (let ((*package-folder* folder) (*loading-package-name* name) (*package-check* nil))
+    (let ((*package-directory* directory) (*loading-package-name* name) (*package-check* nil))
       (prog1 (tuatara-user:load-package-file entry)
-        (setf *loaded-package-folders*
-              (cons (list name (tuatara.io:native folder) file)
-                    (remove name *loaded-package-folders* :key #'first :test #'string=)))))))
+        (setf *loaded-package-directories*
+              (cons (list name (tuatara.io:native directory) file)
+                    (remove name *loaded-package-directories* :key #'first :test #'string=)))))))
 
-(defun load-package-folder (folder name file &optional then)
-  "Load the package called NAME in FOLDER by its entry (LOAD-PACKAGE-ENTRY),
+(defun load-package-directory (directory name file &optional then)
+  "Load the package called NAME in DIRECTORY by its entry (LOAD-PACKAGE-ENTRY),
 its files compiled, then what follows (LOADING-PACKAGE): its :config, the
 packages waiting for it, the time it took said. Returns its entry's file, or
 NIL when it failed or loads in the background, its files compiled apart
 \(COMPILE-PACKAGE-APART); THEN, when given, is called with that once it has
 loaded, and what it returns returned (LOADING-PACKAGE)."
-  (loading-package name (abbreviated-path (tuatara.io:native folder))
-                   (lambda () (load-package-entry folder name file))
+  (loading-package name (abbreviated-path (tuatara.io:native directory))
+                   (lambda () (load-package-entry directory name file))
                    then
-                   (lambda (job) (compile-package-apart job folder name file))))
+                   (lambda (job) (compile-package-apart job directory name file))))
 
-(defun package-question (name where folder then &optional signer)
+(defun package-question (name where directory then &optional signer)
   "Ask whether to compile and load the package NAME from WHERE, kept in
-FOLDER, SIGNER saying who signed it when given, answered by one key pressed
+DIRECTORY, SIGNER saying who signed it when given, answered by one key pressed
 once the question is shown (READ-ANSWER-KEY): y calls THEN, v lists its
-folder, opened safely, n leaves it, as \\`C-g' does (\"not now\"), asked again
+directory, opened safely, n leaves it, as \\`C-g' does (\"not now\"), asked again
 at the next start. Any other key says which keys answer and asks again.
 THEN at once with *PACKAGE-ASK-BEFORE-LOADING* NIL."
   (if (not *package-ask-before-loading*)
@@ -1340,9 +1342,9 @@ THEN at once with *PACKAGE-ASK-BEFORE-LOADING* NIL."
                                            '(#\y #\n #\v) :fresh t)
               (quit () nil))
         (#\y (funcall then))
-        (#\v (rimu-show-directory (tuatara.io:native folder)
+        (#\v (rimu-show-directory (tuatara.io:native directory)
                                   :safe t
-                                  :root (tuatara.io:native folder)
+                                  :root (tuatara.io:native directory)
                                   :back (current-buffer))
          (message (substitute-command-keys "~a is shown; load-package asks again at the next start, \\[package-update] now" :for-format t)
                   name))
@@ -1461,14 +1463,14 @@ checked to be one (PACKAGE-COMMIT-NAME)."
                             40 hexadecimal digits (git log shows it)" where version))
                    (t (refuse "~a has no tag, branch or commit called ~a" where version))))))))
 
-(defun delete-package-folder (folder)
-  "Delete FOLDER, with all in it, or a file, when it is inside the folders
+(defun delete-package-directory (directory)
+  "Delete DIRECTORY, with all in it, or a file, when it is inside the directories
 packages are kept or compiled in, nothing it holds followed when it is a link (DELETE-TREE);
-an error for any other folder."
-  (let ((native (tuatara.io:native folder)))
+an error for any other directory."
+  (let ((native (tuatara.io:native directory)))
     (unless (or (tuatara.io:path-within-p native (tuatara.io:native (packages-directory)))
                 (tuatara.io:path-within-p native (packages-compiled-directory)))
-      (refuse "~a is no folder of the packages': not deleted" (abbreviated-path native)))
+      (refuse "~a is no directory of the packages': not deleted" (abbreviated-path native)))
     (tuatara.io:delete-tree native)))
 
 (define-setting *package-size-limit* (* 512 1024 1024)
@@ -1488,14 +1490,14 @@ lower it to refuse large fetches, as on a metered link.
 
 (setf (documentation 'package-too-large-where 'function) "Where the package too large was fetched from.")
 
-(defun call-within-package-size (folder where thunk)
-  "Call THUNK, which fetches into FOLDER on the thread of a job, and look at
-how much FOLDER takes every second meanwhile: past *PACKAGE-SIZE-LIMIT*, the
+(defun call-within-package-size (directory where thunk)
+  "Call THUNK, which fetches into DIRECTORY on the thread of a job, and look at
+how much DIRECTORY takes every second meanwhile: past *PACKAGE-SIZE-LIMIT*, the
 program the job runs is ended and PACKAGE-TOO-LARGE signalled, also when
 THUNK has ended by then."
   (let* ((job tuatara.runtime:*job*) (most *package-size-limit*)
          (too-large nil)
-         (too-large-p (lambda () (> (or (rimu-tree-size folder) 0) most)))
+         (too-large-p (lambda () (> (or (rimu-tree-size directory) 0) most)))
          (timer (sb-ext:make-timer (lambda ()
                                      (when (and (not too-large) (funcall too-large-p))
                                        (setf too-large t)
@@ -1523,9 +1525,9 @@ older version of a package when its newest commit needs a newer Tuatara.")
 
 (defun package-entry-paths (name file)
   "The paths in its repository the package NAME may be entered by: FILE,
-NAME.lisp or load.lisp, in its folder (PACKAGE-REPOSITORY-FOLDER) or at the
+NAME.lisp or load.lisp, in its directory (PACKAGE-REPOSITORY-DIRECTORY) or at the
 top."
-  (let ((inside (package-repository-folder name)))
+  (let ((inside (package-repository-directory name)))
     (loop for top in (list (format nil "~a/" inside) "")
           append (loop for entry in (list file (format nil "~a.lisp" name) "load.lisp")
                        when entry collect (concatenate 'string top entry)))))
@@ -1578,25 +1580,25 @@ none when FLOOR is not in that history."
 
 (defun fetch-package (name where version &key file floor walk-p signature-of)
   "Fetch the package called NAME, VERSION of the repository at WHERE: that
-commit alone, and its folder (PACKAGE-REPOSITORY-FOLDER) alone when it has
+commit alone, and its directory (PACKAGE-REPOSITORY-DIRECTORY) alone when it has
 one, else the whole of it; a repository that gives no file by itself after
-its folders, that commit whole; never more than *PACKAGE-SIZE-LIMIT*
+its directories, that commit whole; never more than *PACKAGE-SIZE-LIMIT*
 \(CALL-WITHIN-PACKAGE-SIZE), finding the commit as well as checking it out.
 When that version needs a newer Tuatara than this one (UNFITTING-VERSION,
 FILE its entry when given), older ones are tried, the newest first
 \(PACKAGE-OLDER-VERSIONS), and the first that fits is kept; one that does not
 fit is not. None older than FLOOR, the commit taken now, is tried, nor any
-not built on it; and none at all when WALK-P, a function of the folder the
+not built on it; and none at all when WALK-P, a function of the directory the
 version is in, its commit and its tag, says no (its signer not trusted).
-Returns the folder it is kept in, its commit, its tag, and, when the version
+Returns the directory it is kept in, its commit, its tag, and, when the version
 asked for was passed over, (VERSION NEEDED UNTRUSTED): its tag or commit, the
-Tuatara it needs, and true when WALK-P said no; the folder NIL when no version
+Tuatara it needs, and true when WALK-P said no; the directory NIL when no version
 tried fits. SIGNATURE-OF, a function of a repository holding the version
 taken, its commit and its tag (as fetched now: for a commit kept before, the
 tag is fetched apart, into a repository of its own), gives the fifth value."
   (let* ((scratch (format nil "~a.fetching-~a/" (packages-directory) (tuatara.io:random-name)))
          (probe (format nil "~aprobe/" scratch))
-         (inside-name (package-repository-folder name)))
+         (inside-name (package-repository-directory name)))
     (tuatara.io:ensure-private-directory probe)
     (labels ((check-out (files commit tag filter)
                (call-within-package-size scratch where (lambda () (check-out-within files commit tag filter))))
@@ -1612,7 +1614,7 @@ tag is fetched apart, into a repository of its own), gives the fifth value."
                    (package-git files "sparse-checkout" "set" "--no-cone" (format nil "/~a/" inside-name))))
                (package-git files "checkout" "--quiet" commit))
              (tag-repository (commit tag)
-               ;; the tag as fetched now, apart from the folder kept, within the size watched
+               ;; the tag as fetched now, apart from the directory kept, within the size watched
                (let ((repository (format nil "~atag-~a/" scratch commit)))
                  (call-within-package-size scratch where
                                            (lambda ()
@@ -1622,40 +1624,40 @@ tag is fetched apart, into a repository of its own), gives the fifth value."
                                                           where (format nil "refs/tags/~a" tag))))
                  repository))
              (kept (commit tag)
-               ;; the folder COMMIT is kept in, or NIL and the Tuatara it needs; and the repository to check it in
-               (let ((folder (package-folder-for where name commit)))
-                 (if (probe-file folder)
-                     (let ((needed (unfitting-version (package-folder-in folder name) name file))
-                           (looked (if tag (tag-repository commit tag) folder)))
-                       (if needed (values nil needed looked) (values folder nil looked)))
+               ;; the directory COMMIT is kept in, or NIL and the Tuatara it needs; and the repository to check it in
+               (let ((directory (package-directory-for where name commit)))
+                 (if (probe-file directory)
+                     (let ((needed (unfitting-version (package-directory-in directory name) name file))
+                           (looked (if tag (tag-repository commit tag) directory)))
+                       (if needed (values nil needed looked) (values directory nil looked)))
                      (let ((files (format nil "~afiles-~a/" scratch commit)))
                        (handler-case (reporting-errors ("checking out ~a" commit) (check-out files commit tag t))
                          (package-too-large (e) (error e))
                          (error ()
-                           (delete-package-folder files)
+                           (delete-package-directory files)
                            (setf files (format nil "~awhole-~a/" scratch commit))
                            (check-out files commit tag nil)))
-                       (let ((needed (unfitting-version (package-folder-in files name) name file)))
+                       (let ((needed (unfitting-version (package-directory-in files name) name file)))
                          (cond (needed
                                 (values nil needed files))
                                (t
-                                (tuatara.io:ensure-private-directory (directory-namestring (string-right-trim "/" folder)))
+                                (tuatara.io:ensure-private-directory (directory-namestring (string-right-trim "/" directory)))
                                 ;; a fetch of the same commit beside this one may have kept it first
                                 (handler-case (sb-posix:rename (string-right-trim "/" files)
-                                                               (string-right-trim "/" folder))
-                                  (sb-posix:syscall-error (e) (unless (probe-file folder) (error e))))
-                                (values folder nil folder))))))))
-             (taken (folder commit tag looked passed)
-               (values folder commit tag passed (and signature-of (funcall signature-of looked commit tag)))))
+                                                               (string-right-trim "/" directory))
+                                  (sb-posix:syscall-error (e) (unless (probe-file directory) (error e))))
+                                (values directory nil directory))))))))
+             (taken (directory commit tag looked passed)
+               (values directory commit tag passed (and signature-of (funcall signature-of looked commit tag)))))
       (unwind-protect
            (multiple-value-bind (commit tag)
                (call-within-package-size scratch where
                                          (lambda ()
                                            (package-git probe "init" "--quiet")
                                            (package-commit probe where version)))
-             (multiple-value-bind (folder needed looked) (kept commit tag)
+             (multiple-value-bind (directory needed looked) (kept commit tag)
                (cond
-                 (folder (taken folder commit tag looked nil))
+                 (directory (taken directory commit tag looked nil))
                  ((and walk-p (not (funcall walk-p looked commit tag)))
                   (values nil nil nil (list (or tag (subseq commit 0 7)) needed t)))
                  (t
@@ -1665,33 +1667,33 @@ tag is fetched apart, into a repository of its own), gives the fifth value."
                                                                (let ((older (package-older-versions probe where version tag name file)))
                                                                  (if floor (built-on probe where floor older) older))))
                                    (values nil nil nil passed))
-                      (multiple-value-bind (folder needed looked) (kept (car older) (cdr older))
+                      (multiple-value-bind (directory needed looked) (kept (car older) (cdr older))
                         (declare (ignore needed))
-                        (when folder
-                          (return (taken folder (car older) (cdr older) looked passed))))))))))
+                        (when directory
+                          (return (taken directory (car older) (cdr older) looked passed))))))))))
         (when (probe-file scratch)
-          (delete-package-folder scratch))))))
+          (delete-package-directory scratch))))))
 
-(defun package-repository-folder (name)
-  "The folder the package NAME is in within its repository or source folder:
-its load-package's :folder, else NAME."
+(defun package-repository-directory (name)
+  "The directory the package NAME is in within its repository or source directory:
+its load-package's :directory, else NAME."
   (or (fifth (declared-package name)) name))
 
-(defun package-folder-in (folder name)
-  "The folder of the package NAME within FOLDER, a repository's or a source
-folder: its own folder there (PACKAGE-REPOSITORY-FOLDER) when it has one, else
-FOLDER itself."
-  (let ((inside (format nil "~a~a/" folder (package-repository-folder name))))
-    (if (probe-file inside) inside folder)))
+(defun package-directory-in (directory name)
+  "The directory of the package NAME within DIRECTORY, a repository's or a source
+directory: its own directory there (PACKAGE-REPOSITORY-DIRECTORY) when it has one, else
+DIRECTORY itself."
+  (let ((inside (format nil "~a~a/" directory (package-repository-directory name))))
+    (if (probe-file inside) inside directory)))
 
-(defun package-folder-of (name where entry)
-  "The folder the package NAME from WHERE is loaded from (PACKAGE-FOLDER-IN):
-within WHERE when it is a folder of your disk, else within the commit ENTRY,
+(defun package-directory-of (name where entry)
+  "The directory the package NAME from WHERE is loaded from (PACKAGE-DIRECTORY-IN):
+within WHERE when it is a directory of your disk, else within the commit ENTRY,
 what is remembered of it, says was fetched; NIL when none was."
   (cond ((local-source-p where)
-         (package-folder-in (directory-name where) name))
+         (package-directory-in (directory-name where) name))
         ((and entry (string/= (second entry) "-"))
-         (package-folder-in (package-folder-for where name (second entry)) name))))
+         (package-directory-in (package-directory-for where name (second entry)) name))))
 
 ;;; Keeping the version taken and the one before it
 
@@ -1707,17 +1709,17 @@ loaded, and fetches that version again when it next needs it."
                      when (uiop:string-prefix-p prefix (first entry))
                        collect (second entry)
                        and when (fifth entry) collect (fifth entry)))
-         (loaded (second (assoc name *loaded-package-folders* :test #'string=))))
-    (dolist (folder (ignoring-errors-reported ("reading the folders of ~a" name)
-                      (uiop:subdirectories (package-kept-folder where name))))
-      (let ((native (tuatara.io:native folder))
-            (commit (car (last (pathname-directory folder)))))
+         (loaded (second (assoc name *loaded-package-directories* :test #'string=))))
+    (dolist (directory (ignoring-errors-reported ("reading the directories of ~a" name)
+                      (uiop:subdirectories (package-kept-directory where name))))
+      (let ((native (tuatara.io:native directory))
+            (commit (car (last (pathname-directory directory)))))
         (unless (or (not (git-hash-p commit :short t))
                     (member commit keep :test #'string=)
                     (and loaded (tuatara.io:path-within-p loaded native)))
           (let ((compiled (directory-namestring (package-fasl (concatenate 'string native "x")))))
-            (when (probe-file compiled) (delete-package-folder compiled)))
-          (delete-package-folder native))))))
+            (when (probe-file compiled) (delete-package-directory compiled)))
+          (delete-package-directory native))))))
 
 (defvar *packages-in-hand* '()
   "The packages being fetched or checked, whose version waits to be decided
@@ -1728,8 +1730,8 @@ starts meanwhile.")
 (defvar *package-job-deciding* nil
   "The fetch or check whose version is being decided on (PACKAGE-FETCHED), or NIL.")
 
-(defun load-version (name where folder file before &optional then)
-  "Load the package NAME from FOLDER, a version of WHERE. When it fails and
+(defun load-version (name where directory file before &optional then)
+  "Load the package NAME from DIRECTORY, a version of WHERE. When it fails and
 BEFORE, what was remembered of the version taken before it (as
 *FETCHED-PACKAGES* has it), names one that is kept, that one is remembered
 again as the one taken, and said. It is loaded in its place once who signed it
@@ -1737,16 +1739,16 @@ is checked against the trust in force now (START-PACKAGE-CHECK). Gives :TAKEN
 and the file loaded, :PREVIOUS when the version before it is being checked, or
 NIL. When THEN is given, a function of them, it is called with them once the
 package has loaded, which may be later, in the background
-\(LOAD-PACKAGE-FOLDER). A loading stopped on purpose falls back on nothing.
+\(LOAD-PACKAGE-DIRECTORY). A loading stopped on purpose falls back on nothing.
 It returns what THEN returns. Without THEN it returns them, or NIL
 when it loads later."
-  (load-package-folder
-   folder name file
+  (load-package-directory
+   directory name file
    (lambda (loaded &optional stopped)
      (multiple-value-call (or then #'values)
        (if loaded
            (values :taken loaded)
-           (let ((back (and before (not stopped) (package-folder-of name where before))))
+           (let ((back (and before (not stopped) (package-directory-of name where before))))
              (when (and back (probe-file back))
                (state-list-put *fetched-packages* (list before))
                (message "The package ~a could not be loaded (~a): the version before it, ~a, is loaded in its place once who signed it is checked"
@@ -1780,7 +1782,7 @@ when given."
 (defstruct (package-fetch (:include tuatara.runtime:job) (:constructor make-package-fetch (name where version file key))
                           (:copier nil))
   "The package NAME being fetched from WHERE, VERSION asked for, FILE its
-entry when given, KEY what it is remembered by; once done, its FOLDER,
+entry when given, KEY what it is remembered by; once done, its DIRECTORY,
 COMMIT and TAG, PASSED the version passed over for a newer Tuatara and the
 one it needs (FETCH-PACKAGE), and SIGNATURE who signed it
 \(PACKAGE-SIGNATURE). A package compiled and loaded in the background
@@ -1788,7 +1790,7 @@ one it needs (FETCH-PACKAGE), and SIGNATURE who signed it
 with the file it was loaded by and the error that ended it once it has
 loaded; meanwhile LOADED and FAILURE keep those, and COMPILED is true once a
 file of it is compiled."
-  name where version file key folder commit tag passed signature load then loaded failure compiled)
+  name where version file key directory commit tag passed signature load then loaded failure compiled)
 
 (setf (documentation 'package-fetch-p 'function) "True when OBJECT is a PACKAGE-FETCH.")
 
@@ -1900,17 +1902,17 @@ it was stopped on purpose."
 
 ;;; load-package with a source
 
-(defun load-or-ask (name where folder file accept)
-  "Load the package NAME from FOLDER, of WHERE, once let: at once when
+(defun load-or-ask (name where directory file accept)
+  "Load the package NAME from DIRECTORY, of WHERE, once let: at once when
 *PACKAGE-ASK-BEFORE-LOADING* is NIL, else after asking (PACKAGE-QUESTION),
 once the editor has started; ACCEPT, a function, remembers that it was let."
-  (flet ((load-it () (funcall accept) (load-package-folder folder name file)))
+  (flet ((load-it () (funcall accept) (load-package-directory directory name file)))
     (if *package-ask-before-loading*
-        (defer-action (lambda () (package-question name where folder #'load-it)))
+        (defer-action (lambda () (package-question name where directory #'load-it)))
         (load-it))))
 
 (defun load-package-from (name source version file)
-  "Load the package NAME from SOURCE (LOAD-PACKAGE). A folder of your disk is
+  "Load the package NAME from SOURCE (LOAD-PACKAGE). A directory of your disk is
 loaded at once, asked about the first time. One fetched before is loaded from
 where it was kept, the version before it in its place when it fails to load
 \(LOAD-VERSION). That holds unless it is to be asked about, or who signed it is
@@ -1920,28 +1922,28 @@ Otherwise it is fetched in the background first."
   (let* ((where (package-where source))
          (key (package-key name where version))
          (entry (fetched-package key))
-         (folder (package-folder-of name where entry)))
+         (directory (package-directory-of name where entry)))
     (cond ((and (not (local-source-p where))
-                (wait-for-sweep (package-kept-folder where name)
+                (wait-for-sweep (package-kept-directory where name)
                                 (lambda () (load-package-from name source version file))))
            nil)
-          ((not (or (local-source-p where) (and folder (probe-file folder))))
+          ((not (or (local-source-p where) (and directory (probe-file directory))))
            (start-package-fetch name where version file key :quiet t))
           ((and entry (not (local-source-p where))
                 (or (not (fourth entry)) (kept-version-check-needed-p where entry))
-                (eq :directory (tuatara.io:path-kind (tuatara.io:native folder))))
+                (eq :directory (tuatara.io:path-kind (tuatara.io:native directory))))
            (start-package-check name where version file key entry :quiet t)
            nil)
-          ((not (eq :directory (tuatara.io:path-kind (tuatara.io:native folder))))
-           (message "The package ~a is not loaded: its folder ~a is not there" name (abbreviated-path (tuatara.io:native folder))))
+          ((not (eq :directory (tuatara.io:path-kind (tuatara.io:native directory))))
+           (message "The package ~a is not loaded: its directory ~a is not there" name (abbreviated-path (tuatara.io:native directory))))
           ((and entry (fourth entry) (local-source-p where))
-           (load-package-folder folder name file))
+           (load-package-directory directory name file))
           ((and entry (fourth entry))
-           (multiple-value-bind (outcome loaded) (load-version name where folder file
+           (multiple-value-bind (outcome loaded) (load-version name where directory file
                                                                        (and (fifth entry)
                                                                             (list key (fifth entry) (sixth entry) t)))
              (declare (ignore outcome))
              loaded))
-          (t (load-or-ask name where folder file
+          (t (load-or-ask name where directory file
                           (lambda () (state-list-put *fetched-packages*
                                                      (list (list key (if entry (second entry) "-") (third entry) t)))))))))

@@ -21,15 +21,15 @@ Every key in this chapter is pressed in NORMAL state unless it starts with
 
 ** What a package is
 
-A package is a folder of Lisp files that adds something to Tuatara: a
+A package is a directory of Lisp files that adds something to Tuatara: a
 command, a way of opening a kind of file, a set of colours. Lisp is the
 language Tuatara is written in. You do not need to read it to use a package,
 but you can, and Tuatara offers to show it to you before it runs anything.
 
 A package lives in one of two places. Most live in a git repository on the
-internet, which is a folder of files with a history of every change made to
-it. Tuatara fetches the version you ask for into a folder of its own. The
-other kind is a folder on your own disk, which suits something you wrote
+internet, which is a directory of files with a history of every change made to
+it. Tuatara fetches the version you ask for into a directory of its own. The
+other kind is a directory on your own disk, which suits something you wrote
 yourself. Tuatara calls the place a package comes from its source.
 
 A package does three things for you that a loose file of code would not.
@@ -62,8 +62,8 @@ If you use a source for several packages, give it a short name once with
 (load-package "hello" :source "mine")
 #+end_src
 
-An address that begins with =https://= or =ssh=, or a folder on your disk
-(=~/= means your home folder), is accepted. An address that begins with
+An address that begins with =https://= or =ssh=, or a directory on your disk
+(=~/= means your home directory), is accepted. An address that begins with
 =http://= or =git://= is refused, because anyone on the way could read it and
 change what is sent. Section "Sources that are not encrypted" says how to
 allow one on a network you trust.
@@ -71,31 +71,31 @@ allow one on a network you trust.
 *** The keywords
 
 #+caption: Table 19.1. What can follow the name in a =load-package= line.
-| Keyword            | What it says                                            |
-|--------------------+---------------------------------------------------------|
-| =:source=          | Where the package comes from: the name given with       |
-|                    | =package-source=, an address, or a folder.              |
-| =:version=         | Which version to fetch: a tag, a branch or a commit.    |
-|                    | Left out, or ="release"=, it is the newest tag. With    |
-|                    | ="latest"= it is the newest commit, and it is also the  |
-|                    | one taken when the repository has no tag yet. A whole   |
-|                    | 40-character commit keeps the package at that commit.   |
-| =:folder=, =:file= | The package's folder inside the source, and its first   |
-|                    | file, when they are not the package's name. The folder  |
-|                    | is =NAME/=, else the top of the source. The file is     |
-|                    | =NAME.lisp=, else =load.lisp=.                          |
-| =:signers=         | The fingerprints of the keys that must have signed it.  |
-| =:plain t=         | Allows an =http://= or =git://= address.                |
-| =:disabled t=      | Leaves the whole line out, as if it were not there.     |
-| =:if FORM=         | Leaves the line out when =FORM= gives =nil=. It is how  |
-|                    | one init file serves two machines.                      |
-| =:defer t=         | Loads the package once Tuatara has started, not while   |
-|                    | the init file is read.                                  |
-| =:after "other"=   | Loads it only after the package or group =other= has.   |
-| =:commands=        | Loads it when one of these commands is first run.       |
-| =:modes=           | Loads it when a buffer first takes one of these modes.  |
-| =:init=, =:config= | Forms run before the package loads, and after it. Its   |
-|                    | settings and keys go after =:config=.                   |
+| Keyword               | What it says                                              |
+|-----------------------+-----------------------------------------------------------|
+| =:source=             | Where the package comes from: the name given with         |
+|                       | =package-source=, an address, or a directory.             |
+| =:version=            | Which version to fetch: a tag, a branch or a commit.      |
+|                       | Left out, or ="release"=, it is the newest tag. With      |
+|                       | ="latest"= it is the newest commit, and it is also the    |
+|                       | one taken when the repository has no tag yet. A whole     |
+|                       | 40-character commit keeps the package at that commit.     |
+| =:directory=, =:file= | The package's directory inside the source, and its first  |
+|                       | file, when they are not the package's name. The directory |
+|                       | is =NAME/=, else the top of the source. The file is       |
+|                       | =NAME.lisp=, else =load.lisp=.                            |
+| =:signers=            | The fingerprints of the keys that must have signed it.    |
+| =:plain t=            | Allows an =http://= or =git://= address.                  |
+| =:disabled t=         | Leaves the whole line out, as if it were not there.       |
+| =:if FORM=            | Leaves the line out when =FORM= gives =nil=. It is how    |
+|                       | one init file serves two machines.                        |
+| =:defer t=            | Loads the package once Tuatara has started, not while     |
+|                       | the init file is read.                                    |
+| =:after "other"=      | Loads it only after the package or group =other= has.     |
+| =:commands=           | Loads it when one of these commands is first run.         |
+| =:modes=              | Loads it when a buffer first takes one of these modes.    |
+| =:init=, =:config=    | Forms run before the package loads, and after it. Its     |
+|                       | settings and keys go after =:config=.                     |
 
 A form is a piece of Lisp in brackets, such as =(setf *garamond-mode-line*
 nil)=. =:config= takes any number of them, one after another. This is the
@@ -130,8 +130,8 @@ Compile and load the package themes from https://github.com/...? (y, n, or v to 
 
 You answer with one key, with no =RET=. ~y~ goes on. ~n~ leaves the package
 unloaded, and Tuatara asks again at the next start. ~v~ lists the package's
-folder so that you can read its source first, opened safely so that nothing in
-it runs. ~C-g~ means "not now" and also asks again next time. Any other key
+directory so that you can read its source first, opened safely so that nothing
+in it runs. ~C-g~ means "not now" and also asks again next time. Any other key
 puts =Answer y, n or v.= before the question and asks again. Keys you typed
 before the question appeared are thrown away, so a key meant for your text can
 never answer it.
@@ -158,13 +158,13 @@ ones.
  - ----        -------  ------   -----     ---------      ------
    themes      v0.3     4c1e9a0  loaded    Aroha Ngata    https://github.com/T…
  > kitty       v0.2     b07d332  loaded    Aroha Ngata    https://github.com/T…
-   hello       folder            loaded    unsigned       ~/Projects/my-pack…
+   hello       directory            loaded    unsigned       ~/Projects/my-pack…
    outlook     v1.1     91ac7e5  unloaded  Aroha Ngata    https://github.com/T…
 
    4 packages, 3 loaded
 #+end_example
 
-The columns are the mark, the name, the version (=folder= for a folder of
+The columns are the mark, the name, the version (=directory= for a directory of
 your disk), the first letters of the commit, what became of the package this
 session, who signs its source's versions, and the source. The state is one of
 =loaded=, =fetching=, =failed=, =refused=, =declined=, =kept=, =unloaded=,
@@ -181,7 +181,7 @@ The keys are those of the lists you already know, with a few of its own.
 #+caption: Table 19.2. Keys in the package manager.
 | Modal | Non-modal          | What it does                                            |
 |-------+--------------------+---------------------------------------------------------|
-| none  | ~RET~, ~l~         | Lists the package's folder, to read its source.         |
+| none  | ~RET~, ~l~         | Lists the package's directory, to read its source.      |
 | none  | ~o~                | The same, in another window.                            |
 | none  | ~n~, ~p~           | Go to the next package, and the one before.             |
 | none  | ~m~, ~u~, ~U~, ~t~ | Mark, unmark, unmark all, swap the marks.               |
@@ -231,7 +231,7 @@ repository for the version the =load-package= line wants (the newest tag, the
 newest commit, or the tag, branch or commit you named), fetches what is new in
 the background and, when it is a different commit from the one you have, asks
 the question of the first load again. Packages that are already up to date
-are said to be so. Folders of your own disk are left alone, since you change
+are said to be so. Directories of your own disk are left alone, since you change
 those yourself.
 
 ~M-x package-update-marked~, or ~f~ in the package manager, does the same for
@@ -368,14 +368,14 @@ misbehaving, or to try Tuatara without it for the afternoon.
 
 ~M-x package-remove~ (~R~) unloads it and keeps it from loading at the next
 start as well, without changing your init file. Tuatara remembers in its state
-folder that you removed the package, passes the =load-package= line over at
+directory that you removed the package, passes the =load-package= line over at
 each start and says so once in =*Messages*=. Its code stays on the disk, so
 bringing it back is quick.
 
 ~M-x package-delete~ (~D~, or ~d~ then ~x~) unloads and removes it and then
-deletes what Tuatara keeps of it: the versions fetched and their compiled
-files. For a package from a folder of your own disk only the compiled files go.
-Your folder is never touched. It asks first, with the size of what goes:
+deletes what Tuatara keeps of it: the versions fetched and their compiled files.
+For a package from a directory of your own disk only the compiled files go. Your
+directory is never touched. It asks first, with the size of what goes:
 
 #+begin_example
 Unload, remove and delete the package hello, 1.2 MB? (y or n, then RET)
@@ -411,17 +411,17 @@ at the next start.
 *** Clearing out sources no longer used
 
 Tuatara keeps what it fetches until you say otherwise. When you rename a
-source or stop using one, the old copies stay in the packages folder.
+source or stop using one, the old copies stay in the packages directory.
 ~M-x package-remove-unused~ finds them: every source that no =package-source=
 names and no =load-package= fetches from, and every package of a source you
 still use that no =load-package= names. A =load-package= turned off with
 =:disabled t=, or left out by =:if=, still counts as used.
 
 It lists what would go in =*Help*=, each with its size, and asks once.
-Answer ~n~ and nothing is touched. Answer ~y~ and the folders are deleted in
+Answer ~n~ and nothing is touched. Answer ~y~ and the directories are deleted in
 the background. Each is looked at again just before it goes, so a source you
-name in the meantime stays. Only Tuatara's own packages folder is searched. A
-folder of your own disk named as a source is never touched. If your init file
+name in the meantime stays. Only Tuatara's own packages directory is searched. A
+directory of your own disk named as a source is never touched. If your init file
 stopped at an error when Tuatara started, the command does nothing until the
 file reads through, since everything after the error would look unused.
 
@@ -431,9 +431,9 @@ file reads through, since everything after the error would look unused.
 
 Tuatara keeps what it fetches in =~/.local/share/tuatara/packages/=, or under
 =$XDG_DATA_HOME= when you have set that. =*packages-directory*= puts them
-somewhere else. It must be a folder you made yourself, and while it is missing
-nothing is fetched or loaded from it. =*package-size-limit*= is the most a
-package may take on the disk while it is fetched, its history and files
+somewhere else. It must be a directory you made yourself, and while it is
+missing nothing is fetched or loaded from it. =*package-size-limit*= is the most
+a package may take on the disk while it is fetched, its history and files
 together. A fetch that grows past it is stopped and its files deleted. The
 standard is 512 MiB. =*package-sources*= holds the sources named with
 =package-source=. Set them with that function and not by hand.
@@ -507,7 +507,7 @@ background, and each run is one step to undo.
 *** facematch
 
 facematch ranks candidate photos by how probable it is that they show the
-person in one or more master photos. You mark photos in the folder view, then
+person in one or more master photos. You mark photos in the directory view, then
 ~C-c f f~ runs the comparison, in the background and shut in Tuatara's
 sandbox. The comparing engine is a separate program that you download from its
 release page, check against the list of sums beside it, and name in
@@ -525,7 +525,7 @@ turns it on by hand. It needs nothing installed.
 
 kitty opens windows of the kitty terminal, which Tuatara starts itself, so
 that you get its fast drawing, its ligatures and its pictures. ~M-x kitty~
-opens one in the current folder. ~M-x kitty-input~ types the selection or
+opens one in the current directory. ~M-x kitty-input~ types the selection or
 the current line into it, and ~M-x kitty-text~ brings its text, scrollback
 included, into a buffer you can search. You install kitty yourself.
 
@@ -583,9 +583,9 @@ stays on top of a theme.
 
 ** Writing a package of your own
 
-A package is a folder of Lisp files and can be small: one command in one file
+A package is a directory of Lisp files and can be small: one command in one file
 is enough. How to write one, which parts of Tuatara it may use, and how to
-publish it, is the subject of the developer handbook. To try a folder of your
+publish it, is the subject of the developer handbook. To try a directory of your
 own on your disk, name it with =package-source= and load it as the lines near
 the start of this chapter show. Tuatara compiles it and asks about it like any
 other.

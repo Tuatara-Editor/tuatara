@@ -30,7 +30,7 @@
     (false (search "WAIT" replacement) "~s" replacement)
     (false (search "CANCELLED" replacement) "~s" replacement)))
 
-(define-test (org toc-in-markdown)
+(define-modal-test (org toc-in-markdown)
   ;; saving a Markdown file makes its table again; its links lead to their headings, RET and C-c C-o
   (with-test-directory (dir)
     (let ((path (namestring (merge-pathnames "readme.md" dir))))
@@ -58,7 +58,7 @@
   (false (tuatara.defaults::markdown-link-at "- [Use](#use) x" 14))
   (is equal '("pic" "a.png") (multiple-value-list (tuatara.defaults::markdown-link-at "![pic](a.png \"title\")" 2))))
 
-(define-test (org toc-kept-and-followed)
+(define-modal-test (org toc-kept-and-followed)
   (with-test-directory (dir)
     (let ((file (merge-pathnames "toc.org" dir)))
       (flet ((in-file (keys)
@@ -111,11 +111,11 @@
 
 (define-test (org dblocks-as-org)
   ;; each file of test/org/dblock/ with its clock tables made as Org makes them (tools/dblock-oracle.el):
-  ;; read in that folder, the agenda the files of multi/ there
-  (let* ((folder (merge-pathnames "test/org/dblock/" (asdf:system-source-directory :tuatara)))
+  ;; read in that directory, the agenda the files of multi/ there
+  (let* ((dir (merge-pathnames "test/org/dblock/" (asdf:system-source-directory :tuatara)))
          (tuatara.defaults::*org-now* (encode-universal-time 0 40 15 2 10 2026))
-         (tuatara-user:*default-directory* (tuatara.io:native folder))
-         (tuatara-user:*org-agenda-files* (list (concatenate 'string (tuatara.io:native folder) "multi/"))))
+         (tuatara-user:*default-directory* (tuatara.io:native dir))
+         (tuatara-user:*org-agenda-files* (list (concatenate 'string (tuatara.io:native dir) "multi/"))))
     (true (directory (merge-pathnames "test/org/dblock/*.org" (asdf:system-source-directory :tuatara))))
     (dolist (path (directory (merge-pathnames "test/org/dblock/*.org" (asdf:system-source-directory :tuatara))))
       (let* ((text (alexandria:read-file-into-string path :external-format :utf-8))
@@ -126,7 +126,7 @@
             (dblock-masked (org-text-after "M-x o r g - u p d a t e - a l l - d b l o c k s RET" text))
             "~a" (file-namestring path))))))
 
-(define-test (org dblocks-step-needs-times)
+(define-modal-test (org dblocks-step-needs-times)
   (let ((tuatara.defaults::*org-now* (encode-universal-time 0 40 15 2 10 2026))
         (text (format nil "* A~%:LOGBOOK:~%CLOCK: [2026-10-02 Fri 08:00]--[2026-10-02 Fri 09:00] =>  1:00~%:END:~%#+BEGIN: clocktable :step day~%old~%#+END:~%")))
     ;; a step with neither a block nor both times leaves the block as it was, and says so
@@ -147,7 +147,7 @@
     (is equal (list :sort (cons 2 #\t) :header (format nil "x~%y"))
         (tuatara.defaults::dblock-read-params ":sort (2 . ?t) :header \"x\\ny\""))))
 
-(define-test (org blocks-read-nothing-they-should-not)
+(define-modal-test (org blocks-read-nothing-they-should-not)
   (let ((tuatara.defaults::*org-now* (encode-universal-time 0 40 15 2 10 2026)))
     ;; a glob matched in a pass: a pattern that would take for ever as a regular expression ends at once
     (true (tuatara.defaults::glob-match "*.org" "notes.org"))
@@ -210,19 +210,19 @@
     (tuatara.defaults::toc-without-tags (concatenate 'string "* " (make-string 1000000 :initial-element #\:) "x"))
     (true (< (- (thread-cpu-time) start) internal-time-units-per-second))))
 
-(define-test (org clocktable-archives-and-returns)
-  (let* ((folder (tuatara.io:native (merge-pathnames "test/org/dblock/" (asdf:system-source-directory :tuatara))))
+(define-modal-test (org clocktable-archives-and-returns)
+  (let* ((directory (tuatara.io:native (merge-pathnames "test/org/dblock/" (asdf:system-source-directory :tuatara))))
          (tuatara.defaults::*org-now* (encode-universal-time 0 40 15 2 10 2026))
-         (tuatara-user:*default-directory* folder)
-         (tuatara-user:*org-agenda-files* (list (concatenate 'string folder "multi/")))
-         (a (concatenate 'string folder "multi/a.org")))
+         (tuatara-user:*default-directory* directory)
+         (tuatara-user:*org-agenda-files* (list (concatenate 'string directory "multi/")))
+         (a (concatenate 'string directory "multi/a.org")))
     ;; an agenda file's archive, found as Org finds it: NAME_archive beside it, or what #+ARCHIVE: names; beside it only
     (is equal
-        (list (concatenate 'string folder "multi/a.org_archive"))
+        (list (concatenate 'string directory "multi/a.org_archive"))
         (tuatara.defaults::org-archive-files-of a "* x"))
     (is equal '() (tuatara.defaults::org-archive-files-of a (format nil "#+ARCHIVE: /etc/hostname::~%* x~%")))
     (is equal
-        (list (concatenate 'string folder "multi/b.org"))
+        (list (concatenate 'string directory "multi/b.org"))
         (tuatara.defaults::org-archive-files-of a (format nil "#+ARCHIVE: b.org::* Done~%")))
     ;; its time among the agenda's files
     (let ((new (org-text-after "SPC O b" (format nil "#+BEGIN: clocktable :scope agenda-with-archives :maxlevel 1 :fileskip0 t~%#+END:~%"))))
@@ -261,7 +261,7 @@
     (is equalp (nth-value 1 (tuatara.defaults::org-strip-returns text))
         (tuatara.defaults::org-returns-in-rope (tuatara.text:string->rope text)))))
 
-(define-test (org dblocks-kept)
+(define-modal-test (org dblocks-kept)
   (let ((tuatara.defaults::*org-now* (encode-universal-time 0 40 15 2 10 2026))
         (text (format nil "* A~%:LOGBOOK:~%CLOCK: [2026-10-02 Fri 08:00]--[2026-10-02 Fri 09:00] =>  1:00~%:END:~%#+BEGIN: clocktable :block today~%#+END:~%")))
     ;; C-c C-c on its #+BEGIN: line, C-c C-x C-u anywhere in it, SPC O b for all
@@ -295,15 +295,15 @@
         (tuatara.defaults::dblock-read-params ":a #.(error) :b (\"x\" 1) :c file"))
     (remhash "hello" tuatara.defaults::*dblock-writers*)))
 
-(defun formatted-notes-folder ()
-  "The notes of test/org/formatted/notes/, as a native folder name ending with a slash."
+(defun formatted-notes-directory ()
+  "The notes of test/org/formatted/notes/, as a native directory name ending with a slash."
   (tuatara.io:native (merge-pathnames "test/org/formatted/notes/" (asdf:system-source-directory :tuatara))))
 
-(define-test (org formatted-blocks-as-denote)
+(define-modal-test (org formatted-blocks-as-denote)
   ;; each note of test/org/formatted/notes/ named --case- with its blocks made as denote-org makes
   ;; them (tools/formatted-oracle.el), the notes there the notes directory
   (let ((tuatara-user:*org-tags-column* 0)
-        (tuatara.defaults::*formatted-file-directory* (formatted-notes-folder))
+        (tuatara.defaults::*formatted-file-directory* (formatted-notes-directory))
         (cases (directory (merge-pathnames "test/org/formatted/notes/*--case-*.org"
                                            (asdf:system-source-directory :tuatara)))))
     (is = 6 (length cases))
@@ -321,7 +321,7 @@
 
 (define-test (org formatted-blocks-own)
   (let ((tuatara-user:*org-tags-column* 0)
-        (tuatara.defaults::*formatted-file-directory* (formatted-notes-folder)))
+        (tuatara.defaults::*formatted-file-directory* (formatted-notes-directory)))
     (flet ((made (first) (org-text-after "C-c C-c" (format nil "~a~%#+END:~%" first)))
            (links (text) (cl-ppcre:all-matches-as-strings "denote:[0-9T]+" text)))
       ;; Tuatara's names read their regular expressions as its searches do: groups, smart case
@@ -396,7 +396,7 @@
 (defvar *slow-writer-go* nil
   "True once the slow writer of the tests may finish.")
 
-(define-test (org dblocks-in-the-background)
+(define-modal-test (org dblocks-in-the-background)
   ;; a writer that takes its time: the editor goes on meanwhile, and the block is put in where it is then
   (tuatara-user:define-dblock-writer "slow" (params)
     (declare (ignore params))
@@ -457,9 +457,9 @@
       (setf *slow-writer-go* t)
       (remhash "slow" tuatara.defaults::*dblock-writers*))))
 
-(define-test (org dblocks-put-in)
+(define-modal-test (org dblocks-put-in)
   (let ((tuatara.defaults::*org-now* (encode-universal-time 0 40 15 2 10 2026))
-        (tuatara.defaults::*formatted-file-directory* (formatted-notes-folder)))
+        (tuatara.defaults::*formatted-file-directory* (formatted-notes-directory)))
     ;; C-c C-x x offers the kinds of block; a clock table of the subtree, two levels, as Org's org-clock-report
     (let ((new (org-text-after "C-u 3 j C-c C-x x c l o c k t a b l e RET"
                                (format nil "* A~%:LOGBOOK:~%CLOCK: [2026-10-02 Fri 08:00]--[2026-10-02 Fri 09:00] =>  1:00~%:END:~%"))))

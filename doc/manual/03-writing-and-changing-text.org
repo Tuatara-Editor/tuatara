@@ -238,7 +238,7 @@ takes back your edits first and then the background job.
 |-------+-----------------------+----------------------+------------------------------------|
 | ~u~   | ~C-x u~, ~C-/~, ~C-_~ | =undo=               | Undoes the last change. In a narrowed buffer a change outside the part shown is undone too, and the echo area says so. |
 | ~U~   | ~M-_~, ~C-?~, ~C-M-_~ | =redo=               | Redoes the last change you undid. The cursor goes after the text that comes back. |
-| ~.~   | ~C-z .~               | =repeat=             | Runs the last command again, with the number it had. |
+| ~.~   | ~C-x z~               | =repeat=             | Runs the last command again, with the number it had. |
 | none  | ~C-u~                 | =universal-argument= | Starts a number for the next command. See "Repeat counts". |
 
 ~u~ and ~U~ (non-modal: ~C-/~, ~C-?~) work in NORMAL state. The other keys work
@@ -248,7 +248,8 @@ in both states.
 selection, the selection is made again first, as large as before, from the
 cursor. It is the same number of whole lines, or characters, or the same kind of
 text piece, or the same size of rectangle. After ~V J d~ deletes two lines, ~.~
-deletes the next two. Pressing ~.~ again runs the command once more. It repeats
+deletes the next two. Pressing ~.~ again runs the command once more (without
+the modal layer, ~z~ after ~C-x z~ does). It repeats
 one command only, so for a longer run of keys, record them (see "Recording
 keys").
 

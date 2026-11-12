@@ -16,7 +16,7 @@ list starts on its first line, on a screen WIDTH by HEIGHT."
   (let ((l (tuatara.buffer:find-buffer "*Buffers*"))) (when l (tuatara.buffer:kill-buffer l)))
   (run-keys keys :text "abc" :width width :height height))
 
-(define-test (buffers leader-selector)
+(define-modal-test (buffers leader-selector)
   ;; SPC , in NORMAL opens the buffer selector; C-j takes the typed name
   (multiple-value-bind (f editor) (run-keys "SPC , n o t e s C-j" :text "")
     (declare (ignore f))
@@ -36,13 +36,13 @@ list starts on its first line, on a screen WIDTH by HEIGHT."
                                 :buffer (tuatara.buffer:find-buffer "*scratch*"))
     (true (tuatara.frontend.fake:fake-frame-showing f ", switch-to-buffer"))))
 
-(define-test (buffers leader-list)
+(define-modal-test (buffers leader-list)
   ;; SPC I opens the list of buffers
   (multiple-value-bind (f editor) (run-keys "SPC I" :text "" :width 100 :height 20)
     (declare (ignore f))
     (is string= "*Buffers*" (current-name editor))))
 
-(define-test (buffers free-keys)
+(define-modal-test (buffers free-keys)
   ;; as in every list, moves by word and selections but by lines are free keys, V selecting lines
   (dolist (key tuatara.defaults::*list-free-keys*)
     (multiple-value-bind (f editor) (fresh-list-session (format nil "C-x C-b ~a" key))
@@ -102,7 +102,7 @@ list starts on its first line, on a screen WIDTH by HEIGHT."
            (true (find '("▾ A (1)" . :heading) pieces :test #'equal)))
       (tuatara.buffer:kill-buffer list))))
 
-(define-test (buffers list)
+(define-modal-test (buffers list)
   ;; start from a known set of buffers: earlier tests may have left some behind
   (dolist (b (copy-list tuatara.buffer:*buffers*))
     (unless (string= (tuatara.buffer:buffer-name b) "*scratch*") (tuatara.buffer:kill-buffer b)))
@@ -189,7 +189,7 @@ list starts on its first line, on a screen WIDTH by HEIGHT."
       (when (find extra tuatara.buffer:*buffers*) (tuatara.buffer:kill-buffer extra))
       (let ((l (tuatara.buffer:find-buffer "*Buffers*"))) (when l (tuatara.buffer:kill-buffer l))))))
 
-(define-test (buffers columns-and-colours)
+(define-modal-test (buffers columns-and-colours)
   (dolist (b (copy-list tuatara.buffer:*buffers*))
     (unless (string= (tuatara.buffer:buffer-name b) "*scratch*") (tuatara.buffer:kill-buffer b)))
   (let ((notes (tuatara.buffer:make-buffer "notes" :text "12345"))
@@ -272,7 +272,7 @@ list starts on its first line, on a screen WIDTH by HEIGHT."
       (sb-posix:setenv "HOME" old 1)
       (uiop:delete-directory-tree base :validate t :if-does-not-exist :ignore))))
 
-(define-test (buffers support-keys-read-and-select)
+(define-modal-test (buffers support-keys-read-and-select)
   ;; every support buffer moves, selects and copies as NORMAL state does, its own keys first
   (flet ((in-help (keys)
            (multiple-value-bind (f editor)
@@ -494,7 +494,7 @@ list starts on its first line, on a screen WIDTH by HEIGHT."
             (true (search "2 projects" (car (last lines 2))))
             ;; the heading has the project's name alone; where it is shows by its files
             (is string= "▾ one (2)" (string-right-trim " " (third lines)))))
-        ;; a rimu list of the project: under its heading, its folder in the last column
+        ;; a rimu list of the project: under its heading, its directory in the last column
         (let ((tuatara-user:*rimu-preview* nil))
           (multiple-value-bind (f editor)
               (fresh-list-session (format nil
@@ -534,7 +534,7 @@ list starts on its first line, on a screen WIDTH by HEIGHT."
           (true (tuatara.frontend.fake:fake-frame-showing f "is in no project")))))))
 
 (define-test (buffers project-kept-with-the-buffer)
-  ;; a buffer's project is looked for once while it stands in the same folder, again in another
+  ;; a buffer's project is looked for once while it stands in the same directory, again in another
   (with-test-directory (dir)
     (let ((one (namestring (merge-pathnames "one/" dir)))
           (none (namestring (merge-pathnames "none/" dir)))
@@ -587,7 +587,7 @@ list starts on its first line, on a screen WIDTH by HEIGHT."
       (tuatara.buffer:kill-buffer lisp))))
 
 (define-test (buffers section-titles-as-named)
-  ;; a project's folder named with *, ? or \ is titled as it is named, not read as a pattern
+  ;; a project's directory named with *, ? or \ is titled as it is named, not read as a pattern
   (is string= "a*b" (tuatara.defaults::buffer-section-title "/work/a*b/"))
   (is string= "back\\slash [old]" (tuatara.defaults::buffer-section-title "/work/back\\slash [old]/"))
   (is string= "notes" (tuatara.defaults::buffer-section-title "/work/notes/")))
@@ -695,7 +695,7 @@ list starts on its first line, on a screen WIDTH by HEIGHT."
            (is equal '() (tuatara.buffer:buffer-local list 'tuatara.defaults::list-section-parents)))
       (tuatara.buffer:kill-buffer list))))
 
-;;; A daemon's list: a folder for each client, a section for each project within
+;;; A daemon's list: a group for each client, a section for each project within
 
 (defun as-daemon-client (client others)
   "A step of RUN-KEYS making its editor one running in the background (its
@@ -723,10 +723,10 @@ end."
       (ensure-directories-exist (merge-pathnames ".git/" one))
       (ensure-directories-exist (merge-pathnames ".git/" two))
       (flet ((open-files ()
-               (loop for (folder name client) in (list (list one "a.txt" c2) (list one "b.txt" c2)
+               (loop for (directory name client) in (list (list one "a.txt" c2) (list one "b.txt" c2)
                                                        (list two "c.txt" c2) (list one "d.txt" c3)
                                                        (list one "e.txt" c3))
-                     for path = (merge-pathnames name folder)
+                     for path = (merge-pathnames name directory)
                      do (unless (probe-file path) (alexandria:write-string-into-file "x" path))
                         (let ((b (or (tuatara.buffer:find-buffer name)
                                      (tuatara.io:visit-file (tuatara.io:native path)))))
@@ -735,8 +735,8 @@ end."
         (funcall function #'open-files c2 c3
                  (tuatara.defaults::buffer-project (tuatara.buffer:find-buffer "a.txt")))))))
 
-(define-test (buffers client-folders-hold-projects)
-  ;; in a daemon's list each client's folder holds a section for each project, set in under it; a client
+(define-test (buffers client-groups-hold-projects)
+  ;; in a daemon's list each client's group holds a section for each project, set in under it; a client
   ;; whose buffers are all in one project shows them straight under its heading
   (call-with-two-clients-projects
    (lambda (open-files c2 c3 one)
@@ -763,7 +763,7 @@ end."
              ;; client 3's buffers straight under its heading
              (true (search "d.txt" (concatenate 'string (nth (1+ other) lines) (nth (+ 2 other) lines))))
              (false (find-if (lambda (l) (search "▾ one" l)) lines :start other)))))
-       ;; the folders as BUFFER-SECTIONS gives them: client 2's holds a section for each project, keyed by
+       ;; the groups as BUFFER-SECTIONS gives them: client 2's holds a section for each project, keyed by
        ;; the client and the root; client 3's its buffers
        (let ((mine (assoc c2 sections)) (other (assoc c3 sections)))
          (is eq :sections (second mine))
@@ -773,7 +773,7 @@ end."
              (sort (mapcar #'tuatara.buffer:buffer-name (cdr other)) #'string<)))))))
 
 (define-test (buffers project-of-a-client-killed)
-  ;; D on a project's heading within a client's folder kills that client's buffers of the project alone;
+  ;; D on a project's heading within a client's group kills that client's buffers of the project alone;
   ;; C-x p k from a file does the same, and C-u C-x p k kills the project's buffers of every client,
   ;; asking with how many each has
   (call-with-two-clients-projects
@@ -822,7 +822,7 @@ at the top shows it, without its line end."
 
 (define-test (buffers rows-start-under-their-heading)
   ;; a section's rows start under the text of its heading, at any depth: without a daemon two columns in,
-  ;; under a project's heading in a daemon's client folder four
+  ;; under a project's heading in a daemon's client group four
   (call-with-two-clients-projects
    (lambda (open-files c2 c3 one)
      (declare (ignore open-files one))
@@ -883,8 +883,8 @@ at the top shows it, without its line end."
          (is string= (concatenate 'string "    " (buffer-row-text a :marked)) row)
          (is string= "a.txt" (current-name editor)))))))
 
-(define-test (buffers every-clients-folder-stays-one)
-  ;; the buffers every client is offered stay in one folder, whatever projects they are in
+(define-test (buffers every-clients-group-stays-one)
+  ;; the buffers every client is offered stay in one group, whatever projects they are in
   (call-with-two-clients-projects
    (lambda (open-files c2 c3 one)
      (declare (ignore open-files one))
@@ -904,7 +904,7 @@ at the top shows it, without its line end."
            (true everyone)
            (when everyone
              (false (find-if (lambda (l) (search "  ▾ " l)) lines :start everyone)))))
-       (let ((folder (cdr (assoc :everyone sections))))
-         (false (eq :sections (first folder)))
-         (true (member "a.txt" folder :key #'tuatara.buffer:buffer-name :test #'string=))
-         (true (member "c.txt" folder :key #'tuatara.buffer:buffer-name :test #'string=)))))))
+       (let ((group (cdr (assoc :everyone sections))))
+         (false (eq :sections (first group)))
+         (true (member "a.txt" group :key #'tuatara.buffer:buffer-name :test #'string=))
+         (true (member "c.txt" group :key #'tuatara.buffer:buffer-name :test #'string=)))))))

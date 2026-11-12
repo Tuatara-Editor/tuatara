@@ -27,8 +27,8 @@ a process compiling a package apart (:APART)."
      (finish-output)
      (setf *package-compiling* :apart-said))))
 
-(defun package-request-text (folder name file token)
-  "What a process compiling the package NAME in FOLDER apart is given to do
+(defun package-request-text (directory name file token)
+  "What a process compiling the package NAME in DIRECTORY apart is given to do
 \(COMPILE-PACKAGE-CHILD), as text read back without evaluating anything: the
 package, FILE its entry when named; the packages loaded so far, to load
 first, oldest first; where this Tuatara keeps compiled packages; and TOKEN,
@@ -36,8 +36,8 @@ which the process is given apart too (PACKAGE-REQUEST-ALLOWED-P)."
   (with-standard-io-syntax
     (let ((*print-readably* t))
       (prin1-to-string
-       (list :token token :name name :folder (tuatara.io:native folder) :file file
-             :prelude (reverse (remove name *loaded-package-folders* :key #'first :test #'string=))
+       (list :token token :name name :directory (tuatara.io:native directory) :file file
+             :prelude (reverse (remove name *loaded-package-directories* :key #'first :test #'string=))
              :cache (tuatara.io:native (tuatara.io:cache-directory))
              :packages (packages-directory)
              :identity (tuatara-identity))))))
@@ -82,8 +82,8 @@ asks (COMPILE-PACKAGE-CHILD), then exit with its code."
 (defun compiler-core ()
   "Run from Tuatara's sources, the Steel Bank Common Lisp (SBCL) core a process
 compiling a package apart starts from, so that it starts at once. It is SBCL
-with Quicklisp and these sources loaded, saved once into the folder of compiled
-packages. That folder is this Tuatara's alone (PACKAGE-CACHE: another source
+with Quicklisp and these sources loaded, saved once into the directory of compiled
+packages. That directory is this Tuatara's alone (PACKAGE-CACHE: another source
 tree, or the same one changed, has another). The core is made again only when it
 is not there. It is made in a process of its own (save-lisp-and-die cannot run
 where threads do), under a name of its own and renamed into place whole. Returns
@@ -133,8 +133,8 @@ says; the rest of it is read and let go.")
   "The most characters read and kept in all of what a process compiling a
 package apart says; the rest is read and let go, so that it never waits.")
 
-(defun compile-package-apart (job folder name file)
-  "Compile the package NAME in FOLDER, FILE its entry when named, in a process
+(defun compile-package-apart (job directory name file)
+  "Compile the package NAME in DIRECTORY, FILE its entry when named, in a process
 of its own, this Tuatara run again (PACKAGE-COMPILER-COMMAND): it loads the
 packages loaded here so far, then this one, compiling what changed, as a
 load here would, so that its compile-time code never runs in the editor.
@@ -153,7 +153,7 @@ is refused for names this Tuatara lacks only as it loads in the editor
     (unless command
       (return-from compile-package-apart nil))
     (tuatara.io:ensure-private-directory (package-cache))
-    (tuatara.io:write-private-file request (package-request-text folder name file token))
+    (tuatara.io:write-private-file request (package-request-text directory name file token))
     (unwind-protect
          (let ((code (tuatara.io:call-with-program
                       command
@@ -188,7 +188,7 @@ is refused for names this Tuatara lacks only as it loads in the editor
 (defun package-request-allowed-p (request token cache)
   "True when REQUEST, a file, is one the editor wrote for a process compiling
 a package apart (COMPILE-PACKAGE-APART): a regular file, not a link, in CACHE,
-the folder of compiled packages the editor named, called compile-*.request,
+the directory of compiled packages the editor named, called compile-*.request,
 yours and read and written by you alone; and TOKEN, given in the
 environment, is the one it holds (checked by COMPILE-PACKAGE-CHILD)."
   (let ((stat (and request (plusp (length request)) token (plusp (length token)) cache
@@ -232,11 +232,11 @@ failed, why printed, 2 when the request was not taken."
                   tuatara-user:*cache-directory* (getf plist :cache)
                   tuatara-user:*packages-directory* (getf plist :packages))
             (let ((*package-compiling* :apart))
-              (loop for (name folder file) in (getf plist :prelude)
+              (loop for (name directory file) in (getf plist :prelude)
                     do (handler-case (reporting-errors ("loading the package ~a" name)
-                                       (load-package-entry (pathname folder) name file))
+                                       (load-package-entry (pathname directory) name file))
                          (error (e) (format t "~&~a was left out: ~a~%" name e))))
-              (load-package-entry (pathname (getf plist :folder)) (getf plist :name) (getf plist :file)))
+              (load-package-entry (pathname (getf plist :directory)) (getf plist :name) (getf plist :file)))
             0))
       (serious-condition (e)
         (format t "~&~a~%" e)
@@ -247,14 +247,14 @@ failed, why printed, 2 when the request was not taken."
 signed it (PACKAGE-SIGNATURE), then ask and load it (PACKAGE-FETCHED). An
 address of http:// or git:// not allowed (PLAIN-SOURCE-REFUSAL) is not
 fetched from, said; nor is a package in hand already (START-PACKAGE-JOB),
-said too unless QUIET. One whose folder package-remove-unused is deleting
+said too unless QUIET. One whose directory package-remove-unused is deleting
 waits for it (WAIT-FOR-SWEEP)."
   (let ((refusal (plain-source-refusal name where)))
     (when refusal
       (setf *package-failures* (acons name refusal (remove name *package-failures* :key #'car :test #'string=)))
       (message "~a" refusal)
       (return-from start-package-fetch nil)))
-  (when (wait-for-sweep (package-kept-folder where name)
+  (when (wait-for-sweep (package-kept-directory where name)
                         (lambda () (start-package-fetch name where version file key :quiet quiet)))
     (return-from start-package-fetch nil))
   (let ((plain (and (plain-transport-p where) t))
@@ -263,14 +263,14 @@ waits for it (WAIT-FOR-SWEEP)."
            (make-package-fetch name where version file key)
            (lambda (job)
              (let ((*package-plain-transport* plain))
-               (multiple-value-bind (folder commit tag passed signature)
+               (multiple-value-bind (directory commit tag passed signature)
                    (fetch-package name where version
                                   :file file :floor floor
                                   :walk-p (lambda (looked commit tag)
                                             (not (eq :refuse (package-trust-verdict where (package-signature looked commit tag where)))))
                                   :signature-of (lambda (looked commit tag) (package-signature looked commit tag where)))
-                 (setf (package-fetch-folder job) folder (package-fetch-commit job) commit (package-fetch-tag job) tag
-                       (package-fetch-passed job) passed (package-fetch-signature job) signature))))
+                 (setf (package-fetch-directory job) directory (package-fetch-commit job) commit (package-fetch-tag job)
+                       tag (package-fetch-passed job) passed (package-fetch-signature job) signature))))
            "tuatara package fetch" :quiet quiet)
       (setf *package-failures* (remove name *package-failures* :key #'car :test #'string=))
       (log-message (format nil "Fetching the package ~a from ~a" name where)))))
@@ -283,14 +283,14 @@ refused, as the trust in force says. Nothing is fetched; nothing is done
 while the package is in hand already (START-PACKAGE-JOB, QUIET as it takes
 it)."
   (let ((job (make-package-fetch name where version file key)))
-    (setf (package-fetch-folder job) (package-folder-for where name (second entry))
+    (setf (package-fetch-directory job) (package-directory-for where name (second entry))
           (package-fetch-commit job) (second entry)
           (package-fetch-tag job) (third entry))
     (when (start-package-job
            job
            (lambda (job)
              (setf (package-fetch-signature job)
-                   (package-signature (package-fetch-folder job) (package-fetch-commit job) (package-fetch-tag job) where)))
+                   (package-signature (package-fetch-directory job) (package-fetch-commit job) (package-fetch-tag job) where)))
            "tuatara package check" :quiet quiet)
       (setf *package-failures* (remove name *package-failures* :key #'car :test #'string=)))))
 
@@ -352,7 +352,7 @@ before is kept to fall back on (LOAD-VERSION), older ones deleted
          (passed (package-fetch-passed job))
          (had (fetched-package key)))
     (cond
-      ((null (package-fetch-folder job))
+      ((null (package-fetch-directory job))
        (let ((words (format nil "The package ~a ~a needs Tuatara ~a or later, and this is ~a; ~:[no older version tried fits~;~
                                  it is not signed as the versions taken before were, so no older version is looked for~]"
                             name (first passed) (second passed) (tuatara:version) (third passed)))
@@ -371,7 +371,7 @@ before is kept to fall back on (LOAD-VERSION), older ones deleted
                  (state-list-put *fetched-packages*
                                  (list (list key commit tag nil (fifth had) (sixth had) (seventh had)))))
                (refuse-package-version name where words remember))
-             (let* ((folder (package-folder-in (package-fetch-folder job) name))
+             (let* ((directory (package-directory-in (package-fetch-directory job) name))
                     (same (and had (string= (second had) commit)))
                     (previous (if (and had (fourth had) (not same)) (second had) (fifth had)))
                     (previous-tag (if (and had (fourth had) (not same)) (third had) (sixth had)))
@@ -382,7 +382,7 @@ before is kept to fall back on (LOAD-VERSION), older ones deleted
                     (load (lambda ()
                             (state-list-put *fetched-packages*
                                             (list (list key commit tag t previous previous-tag signer)))
-                            (load-version name where folder (package-fetch-file job)
+                            (load-version name where directory (package-fetch-file job)
                                           (cond ((and had (fourth had) (not same)) had)
                                                 (previous (list key previous previous-tag t)))
                                           (lambda (outcome &optional loaded)
@@ -405,6 +405,6 @@ before is kept to fall back on (LOAD-VERSION), older ones deleted
                       (funcall load))
                      ((and had (fourth had) same)
                       ;; taken before its source's signer was remembered: asked again, who signed it shown
-                      (package-question name where folder load words))
+                      (package-question name where directory load words))
                      (t (state-list-put *fetched-packages* (list (list key commit tag nil previous previous-tag signer)))
-                        (package-question name where folder load words))))))))))
+                        (package-question name where directory load words))))))))))

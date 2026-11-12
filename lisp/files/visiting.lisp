@@ -1,4 +1,4 @@
-;;;; lisp/files/visiting.lisp --- Asking for files and folders, visiting, saving and renaming files.
+;;;; lisp/files/visiting.lisp --- Asking for files and directories, visiting, saving and renaming files.
 ;;;; Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
 ;;;;
 ;;;; The questions for a path (with the paths chosen before first), the views
@@ -7,7 +7,7 @@
 
 (in-package #:tuatara.defaults)
 
-;;; Asking for files and folders
+;;; Asking for files and directories
 
 (defun buffer-visiting (path &key except)
   "The buffer visiting the file at PATH (a native name or a pathname), found
@@ -17,17 +17,17 @@ as \\[find-file] finds one, by the file and not the name it was opened by
     (and expanded (tuatara.io:buffer-for-file expanded :except except))))
 
 (define-setting *last-used-first* t
-  "Whether the questions that choose a file or a folder (\\[find-file], \\[rimu]
+  "Whether the questions that choose a file or a directory (\\[find-file], \\[rimu]
 and the rest) start where you chose last.
-Either way the folders come first, then the files, each in order of name,
+Either way the directories come first, then the files, each in order of name,
 numbers by their value (file2 before file10), case not counted. A path opened
 safely, or in one of *SAFE-DIRECTORIES*, is never remembered so.
-- t: they start in the folder of the path chosen last in any of them, and list
-  first, in each folder, what was chosen there last (or something in it), TAB
+- t: they start in the directory of the path chosen last in any of them, and list
+  first, in each directory, what was chosen there last (or something in it), TAB
   then going the way last gone; the others follow in order of name. As you
   type, what was chosen there lately comes first among the names matching as
   closely.
-- nil: they start in the folder of the current buffer, their lists in order of
+- nil: they start in the directory of the current buffer, their lists in order of
   name alone."
   :values boolean)
 
@@ -49,22 +49,22 @@ sessions chose (STATE-LIST-ENTRIES)."
   (state-list-entries *chosen-paths*))
 
 (defun shown-safely-p (native)
-  "True when a buffer shows the file or folder NATIVE (a native name) opened
+  "True when a buffer shows the file or directory NATIVE (a native name) opened
 safely: visiting it, or listing it with \\[rimu]."
-  (let ((folder (tuatara.io:slash-ended native)))
+  (let ((directory (tuatara.io:slash-ended native)))
     (some (lambda (buffer)
             (and (tuatara.io:safe-visit-p buffer)
                  (let ((file (tuatara.buffer:buffer-file buffer))
                        (listed (buffer-given-directory buffer)))
                    (or (and file (equal (tuatara.io:native file) native))
-                       (and listed (equal (tuatara.io:slash-ended (tuatara.io:native listed)) folder))))))
+                       (and listed (equal (tuatara.io:slash-ended (tuatara.io:native listed)) directory))))))
           tuatara.buffer:*buffers*)))
 
 (defun note-chosen-path (path &key directory safe)
-  "Remember PATH, a file or a folder (with DIRECTORY, a folder whatever its
+  "Remember PATH, a file or a directory (with DIRECTORY, a directory whatever its
 name ends in) just chosen in a question for one, as the latest: the next
-question starts in its folder and that folder's list offers it first; kept
-in the state folder, with what other sessions chose (STATE-LIST-PUT).
+question starts in its directory and that directory's list offers it first; kept
+in the state directory, with what other sessions chose (STATE-LIST-PUT).
 Nothing is remembered of a path opened safely (SAFE, or a buffer showing it
 so: SHOWN-SAFELY-P) or in one of *SAFE-DIRECTORIES*; a later question
 neither starts there nor offers it."
@@ -94,50 +94,50 @@ for every path when *SAFE-DIRECTORIES* cannot be read. The disk is not asked."
 (defun writing-chosen-p (native)
   "True when NATIVE, a path remembered, is never offered first in a question
 whose answer is written to: in one of *SAFE-DIRECTORIES* (NAMED-SAFE-P), or
-in an evidence folder (EVIDENCE-PATH-P)."
+in an evidence directory (EVIDENCE-PATH-P)."
   (or (named-safe-p native) (evidence-path-p native)))
 
-(defun last-chosen-native-folder (&key writing)
-  "The folder, a native name ending in /, of the latest path chosen in a
-question for a file or a folder (CHOSEN-PATHS) that is not of evidence
+(defun last-chosen-native-directory (&key writing)
+  "The directory, a native name ending in /, of the latest path chosen in a
+question for a file or a directory (CHOSEN-PATHS) that is not of evidence
 \(NAMED-SAFE-P; with WRITING, for a question whose answer is written to,
-WRITING-CHOSEN-P). This is the path itself when it is a folder (its name
-ends in /), else the folder it is in. The value is NIL when there is none or
+WRITING-CHOSEN-P). This is the path itself when it is a directory (its name
+ends in /), else the directory it is in. The value is NIL when there is none or
 *LAST-USED-FIRST* is NIL."
   (let ((last (and *last-used-first* (find-if-not (if writing #'writing-chosen-p #'named-safe-p) (chosen-paths)))))
     (and last (if (directory-input-p last) last (tuatara.io:parent-path last)))))
 
 (defvar *slow-listings* '()
-  "The folders whose listing in a question for a path had not ended within
+  "The directories whose listing in a question for a path had not ended within
 *FILE-LISTING-WAIT*, still going (a drive that does not answer): each
-\(FOLDER . GATHERING), FOLDER a native name ending in /. One is let go of
+\(DIRECTORY . GATHERING), DIRECTORY a native name ending in /. One is let go of
 once its listing ends.")
 
-(defun slow-listing-p (folder)
-  "True while the listing of FOLDER (a native name) begun in an earlier
+(defun slow-listing-p (directory)
+  "True while the listing of DIRECTORY (a native name) begun in an earlier
 question has not ended (*SLOW-LISTINGS*); those ended are let go of."
   (setf *slow-listings* (remove-if (lambda (entry)
                                      (declare (notinline gathering-done))
                                      (gathering-done (cdr entry)))
                                    *slow-listings*))
-  (and (assoc (tuatara.io:slash-ended folder) *slow-listings* :test #'string=) t))
+  (and (assoc (tuatara.io:slash-ended directory) *slow-listings* :test #'string=) t))
 
 (defun path-question-start (&key writing)
   "The text a question for a path starts with when it is given none: the
-folder chosen last (LAST-CHOSEN-FOLDER), else, or while that folder's
+directory chosen last (LAST-CHOSEN-DIRECTORY), else, or while that directory's
 listing has not ended (SLOW-LISTING-P), that of the current buffer
 \(BUFFER-DIRECTORY). With WRITING, for a question whose answer is written
-to, never a folder of evidence (*EVIDENCE-FOLDERS*): your home folder in its
+to, never a directory of evidence (*EVIDENCE-DIRECTORIES*): your home directory in its
 place."
-  (let ((folder (last-chosen-native-folder :writing writing)))
-    (if (and folder (not (slow-listing-p folder)))
-        (abbreviated-path folder)
+  (let ((directory (last-chosen-native-directory :writing writing)))
+    (if (and directory (not (slow-listing-p directory)))
+        (abbreviated-path directory)
         (let ((here (buffer-directory (current-buffer))))
           (if (and writing (evidence-path-p here)) "~/" (abbreviated-path here))))))
 
 (defun writing-start (initial)
   "INITIAL, the text a question whose answer is written to starts with, or
-in its place, when it names a place in an evidence folder, the folder
+in its place, when it names a place in an evidence directory, the directory
 PATH-QUESTION-START offers for writing, with INITIAL's name after it when
 INITIAL names a file."
   (if (and initial (plusp (length initial))
@@ -149,9 +149,9 @@ INITIAL names a file."
 (defun chosen-ranks (directory chosen)
   "How lately each entry of DIRECTORY (a native name ending in /) was chosen,
 or something in it, by CHOSEN, the paths chosen lately (CHOSEN-PATHS). The
-result is a table from its name, a folder's with a slash after it, to its
+result is a table from its name, a directory's with a slash after it, to its
 place among them, 0 the latest. Those in one of *SAFE-DIRECTORIES* are left out
-\(SAFE-DIRECTORY-OF, which may ask the disk; called where the folder is read)."
+\(SAFE-DIRECTORY-OF, which may ask the disk; called where the directory is read)."
   (let ((ranks (make-hash-table :test 'equal)) (length (length directory)))
     (loop for path in chosen
           for place from 0
@@ -191,7 +191,7 @@ again at each key typed in it."
 (defun input-directory-path (input)
   "The directory INPUT, a path being typed, names the entries of: its part up
 to its last slash as an absolute pathname, the current directory when it has
-none; a folder on another machine as its name, /ssh:HOST:/folder/."
+none; a directory on another machine as its name, /ssh:HOST:/directory/."
   (let ((dir (input-directory input)))
     (if (remote-name-p dir)
         dir
@@ -215,9 +215,9 @@ is one of its own (READ-PATH)."
           candidates))))
 
 (defun file-candidates-of (expanded chosen)
-  "The completion candidates of the entries of the folder EXPANDED, as
+  "The completion candidates of the entries of the directory EXPANDED, as
 FILE-CANDIDATES gives them, ranked by CHOSEN, the paths chosen lately: the one
-chosen there last first, then the folders and then the files, each in order
+chosen there last first, then the directories and then the files, each in order
 of name (NATURAL-STRING-LESSP)."
   (let* ((entries (tuatara.io:directory-entries expanded :stamps t
                                                          :order #'tuatara.text:natural-string-lessp))
@@ -252,7 +252,7 @@ or after the /ssh:HOST: of a file on another machine when that comes later."
 
 (defun input-directory (input)
   "The directory part of INPUT, a path being typed: up to its last slash, or
-the /ssh:HOST: naming the home folder on another machine."
+the /ssh:HOST: naming the home directory on another machine."
   (subseq input 0 (input-name-start input)))
 
 (defun substitute-file-input (input)
@@ -298,43 +298,43 @@ directory; else the first of CANDIDATES."
 (defvar *path-question-keymap* (make-keymap :name "path-question")
   "The keys of a question for a path (READ-PATH), beside the minibuffer's:
 \\<path-question>\\[minibuffer-home-directory] starts the path again from your
-home folder.")
+home directory.")
 
 (defvar *asking-for-path* nil
   "True while a question for a path asks (READ-PATH).")
 (pushnew '*asking-for-path* *question-variables*)
 
 (defun asking-for-path-p (buffer)
-  "True while a question for a file or a folder asks, whatever BUFFER is."
+  "True while a question for a file or a directory asks, whatever BUFFER is."
   (declare (ignore buffer))
   (and *asking-for-path* *editor* (editor-minibuffer-active *editor*) t))
 
 (define-command minibuffer-home-directory (:interactive nil)
-  "In a question for a file or a folder, put ~/, your home folder, in place
+  "In a question for a file or a directory, put ~/, your home directory, in place
 of the path typed, listing what is in it."
   (replace-minibuffer-text 0 (length (editor-minibuffer-text *editor*)) "~/"))
 
-(commands-for-buffers 'asking-for-path-p "a question for a file or a folder" 'minibuffer-home-directory)
+(commands-for-buffers 'asking-for-path-p "a question for a file or a directory" 'minibuffer-home-directory)
 
 (define-keys *path-question-keymap* '(("S-TAB" minibuffer-home-directory)))
 
 (defun read-path (prompt &key writing (initial (path-question-start :writing writing)) directories preview)
   "Ask with PROMPT for a path, as READ-FILE-PATH and READ-DIRECTORY-PATH do.
-The question starts from INITIAL (as standard the folder of the path chosen
-last in such a question, else the folder the current buffer stands in, by
+The question starts from INITIAL (as standard the directory of the path chosen
+last in such a question, else the directory the current buffer stands in, by
 PATH-QUESTION-START). With WRITING, for a question whose answer is written
-to, it is never a place in an evidence folder, which is then neither where
+to, it is never a place in an evidence directory, which is then neither where
 the question starts (WRITING-START) nor ranked first among the entries. The
-name is completed against the entries of the folder being typed
-\(FILE-CANDIDATES; with DIRECTORIES, its folders only), matched by any part of
-the name. While nothing is typed after the folder, the entry chosen there
+name is completed against the entries of the directory being typed
+\(FILE-CANDIDATES; with DIRECTORIES, its directories only), matched by any part of
+the name. While nothing is typed after the directory, the entry chosen there
 last comes first, the others in order of name; as you type, the best matches
 first, those chosen lately before others. A / or ~/ typed after it starts the
 path again (SUBSTITUTE-FILE-INPUT), the line holding just that
 \(REWRITE-FILE-INPUT), and
 \\<path-question>\\[minibuffer-home-directory] starts it from ~/. The line
-typed is selected while it names a folder (ends in /), else the first entry
-matching. A folder chosen is gone into, its entries offered in turn. With
+typed is selected while it names a directory (ends in /), else the first entry
+matching. A directory chosen is gone into, its entries offered in turn. With
 PREVIEW, a function as CALL-WITH-WINDOW-PREVIEW gives, the file selected is
 shown meanwhile. Returns the path, and as a second value true when it is the
 line typed, taken as it is (\\<minibuffer>\\[minibuffer-finish] on it, or
@@ -364,14 +364,14 @@ line typed, taken as it is (\\<minibuffer>\\[minibuffer-finish] on it, or
                                      (and found t)))
                                  (list-directory (path)
                                    (let* ((expanded (input-directory-path path))
-                                          (folder (tuatara.io:slash-ended (tuatara.io:native expanded)))
+                                          (directory (tuatara.io:slash-ended (tuatara.io:native expanded)))
                                           (chosen (and *last-used-first*
                                                        (if writing
                                                            (remove-if #'evidence-path-p (chosen-paths))
                                                            (chosen-paths)))))
                                      (setf listed '() listing nil)
-                                     ;; a folder whose listing has not ended yet is not listed again
-                                     (unless (slow-listing-p folder)
+                                     ;; a directory whose listing has not ended yet is not listed again
+                                     (unless (slow-listing-p directory)
                                        (setf listing (start-gathering
                                                       "tuatara file names"
                                                       (lambda (give cancel)
@@ -381,9 +381,9 @@ line typed, taken as it is (\\<minibuffer>\\[minibuffer-finish] on it, or
                                                                             (remove-if-not (lambda (c) (directory-input-p (candidate-string c)))
                                                                                            all)
                                                                             all))))))
-                                       ;; a folder read quickly is shown at once, as though read here
+                                       ;; a directory read quickly is shown at once, as though read here
                                        (unless (wait-for-gathering listing *file-listing-wait*)
-                                         (push (cons folder listing) *slow-listings*))
+                                         (push (cons directory listing) *slow-listings*))
                                        (take-listed)))))
                           (unwind-protect
                                (let ((*asking-for-path* t))
@@ -419,10 +419,10 @@ line typed, taken as it is (\\<minibuffer>\\[minibuffer-finish] on it, or
                (return (values path typed)))))))))
 
 (defun read-file-path (prompt &key new-file preview (note t) writing)
-  "Ask for a file with PROMPT, completing its name against the folder being
-typed, from the folder of the path chosen last in such a question, else the
-folder the current buffer stands in (BUFFER-DIRECTORY): that of its file,
-the one it lists, or *DEFAULT-DIRECTORY*, your home folder written ~
+  "Ask for a file with PROMPT, completing its name against the directory being
+typed, from the directory of the path chosen last in such a question, else the
+directory the current buffer stands in (BUFFER-DIRECTORY): that of its file,
+the one it lists, or *DEFAULT-DIRECTORY*, your home directory written ~
 \(READ-PATH, PATH-QUESTION-START). The file chosen is remembered as the
 latest (NOTE-CHOSEN-PATH) unless NOTE is NIL. A / or ~/ typed after it starts the path
 again (SUBSTITUTE-FILE-INPUT). The first file selected, or the line typed when
@@ -441,10 +441,10 @@ answer is written to, as READ-PATH has it."
           (t (when note (note-chosen-path path)) path))))
 
 (defun read-directory-path (prompt &key writing (initial (path-question-start :writing writing)) (note t))
-  "Ask for a folder with PROMPT, from INITIAL (as standard the folder of the
-path chosen last in such a question, else the folder the current buffer
+  "Ask for a directory with PROMPT, from INITIAL (as standard the directory of the
+path chosen last in such a question, else the directory the current buffer
 stands in: PATH-QUESTION-START), as READ-FILE-PATH asks for a file. The
-folders in the one being typed are offered, matched by any part of the name,
+directories in the one being typed are offered, matched by any part of the name,
 those chosen lately first. A / or ~/ typed after it starts the path again.
 The line typed is selected while it names a directory (ends in /), else the
 first directory matching. \\<minibuffer>\\[minibuffer-finish] or
@@ -453,7 +453,7 @@ the line typed, one step above the first (\\[minibuffer-previous-candidate]),
 takes it, as \\[minibuffer-submit-input] does at any time: a directory, or a
 new name. Returns what was taken, ./ when nothing was typed. It is
 remembered as chosen lately (NOTE-CHOSEN-PATH) unless NOTE is NIL. A caller
-that shows the folder then remembers it itself, once shown
+that shows the directory then remembers it itself, once shown
 \(NOTE-VISITED-PATH). WRITING, for a question whose answer is written to, is
 as READ-PATH has it."
   (let* ((path (read-path prompt :initial initial :directories t :writing writing))
@@ -465,11 +465,11 @@ as READ-PATH has it."
   "Ask with PROMPT for a path of KIND, :DIRECTORY (or a new name) as
 READ-DIRECTORY-PATH asks, :FILE as READ-FILE-PATH asks, or :ANY as READ-PATH
 asks, from INITIAL where it takes one, and return what was taken as a whole
-native name, ~ and the like expanded; NIL when nothing was typed. A folder
+native name, ~ and the like expanded; NIL when nothing was typed. A directory
 or file taken is remembered as chosen lately unless NOTE is NIL, for a
 caller that opens it and remembers it once opened (NOTE-VISITED-PATH).
 WRITING, for a question whose answer is written to (a place to save or copy
-to), never starts in an evidence folder nor offers one first (READ-PATH)."
+to), never starts in an evidence directory nor offers one first (READ-PATH)."
   (let ((typed (ecase kind
                  (:directory (if initial
                                  (read-directory-path prompt :initial initial :note note :writing writing)
@@ -564,60 +564,60 @@ the file's own octets (FILE-VIEW-HEX)."
           (buffer-given-directory buffer) (tuatara.io:parent-path native))
     buffer))
 
-(defun reading-buffer (registry view-path native name text mode start &key private-folder)
+(defun reading-buffer (registry view-path native name text mode start &key private-directory)
   "The buffer among those REGISTRY (the symbol of a variable holding a list of
 buffers) holds whose VIEW-PATH (a function of a buffer) is NATIVE, the path of
 a file; else a new one for that file. The new buffer is called NAME (made
 unique), saying TEXT until the file is read, read only, in major MODE, its
 directory the file's, added to REGISTRY. START is called with it, to say what
-it shows and start reading the file in the background. With PRIVATE-FOLDER,
-the name of a folder in the private cache directory (\"palimpsest/\"), the new
-buffer is given a folder of its own in it before START (NEW-PRIVATE-FOLDER).
-BUFFER-PRIVATE-FOLDER names that folder. It is deleted when the buffer is
-killed, once the buffer's jobs have ended (FORGET-PRIVATE-FOLDER)."
+it shows and start reading the file in the background. With PRIVATE-DIRECTORY,
+the name of a directory in the private cache directory (\"palimpsest/\"), the new
+buffer is given a directory of its own in it before START (NEW-PRIVATE-DIRECTORY).
+BUFFER-PRIVATE-DIRECTORY names that directory. It is deleted when the buffer is
+killed, once the buffer's jobs have ended (FORGET-PRIVATE-DIRECTORY)."
   (or (find-if (lambda (b) (and (live-buffer-p b) (equal native (funcall view-path b)))) (symbol-value registry))
       (let ((buffer (tuatara.buffer:make-buffer (tuatara.buffer:unique-buffer-name name) :text text)))
         (set-major-mode buffer mode)
         (setf (buffer-read-only-p buffer) t
               (buffer-given-directory buffer) (tuatara.io:parent-path native)
               (symbol-value registry) (cons buffer (remove-if-not #'live-buffer-p (symbol-value registry))))
-        (when private-folder
-          (setf (tuatara.buffer:buffer-local buffer 'private-folder)
-                (new-private-folder (private-cache-directory private-folder))))
+        (when private-directory
+          (setf (tuatara.buffer:buffer-local buffer 'private-directory)
+                (new-private-directory (private-cache-directory private-directory))))
         (funcall start buffer)
         buffer)))
 
-(defun buffer-private-folder (buffer)
-  "The folder of BUFFER's own READING-BUFFER made for it in the private cache
+(defun buffer-private-directory (buffer)
+  "The directory of BUFFER's own READING-BUFFER made for it in the private cache
 directory, a native name ending in /; NIL when it has none."
-  (tuatara.buffer:buffer-local buffer 'private-folder))
+  (tuatara.buffer:buffer-local buffer 'private-directory))
 
-(defun private-folder-heir (buffer folder)
-  "Another live buffer than BUFFER visiting a file in FOLDER, for whom it has
+(defun private-directory-heir (buffer directory)
+  "Another live buffer than BUFFER visiting a file in DIRECTORY, for whom it has
 to stay; NIL when there is none."
   (find-if (lambda (other)
              (let ((file (and (not (eq other buffer)) (tuatara.buffer:buffer-file other))))
-               (and file (uiop:string-prefix-p folder (tuatara.io:native file)))))
+               (and file (uiop:string-prefix-p directory (tuatara.io:native file)))))
            tuatara.buffer:*buffers*))
 
-(defun forget-private-folder (buffer)
-  "Kill-buffer function: delete BUFFER's private folder (BUFFER-PRIVATE-FOLDER)
+(defun forget-private-directory (buffer)
+  "Kill-buffer function: delete BUFFER's private directory (BUFFER-PRIVATE-DIRECTORY)
 and all in it, in the background, once the jobs of BUFFER, stopped as it goes,
 have ended; when another buffer visits a file in it, that buffer has it from
-then on. The folder is still named while the other kill-buffer functions
+then on. The directory is still named while the other kill-buffer functions
 run."
-  (let* ((folder (buffer-private-folder buffer))
-         (heir (and folder (private-folder-heir buffer folder)))
+  (let* ((directory (buffer-private-directory buffer))
+         (heir (and directory (private-directory-heir buffer directory)))
          (threads (remove nil (mapcar #'tuatara.runtime:job-thread (jobs-of buffer)))))
     (when heir
-      (setf (tuatara.buffer:buffer-local heir 'private-folder) folder
-            folder nil))
-    (when folder
+      (setf (tuatara.buffer:buffer-local heir 'private-directory) directory
+            directory nil))
+    (when directory
       (tuatara.runtime:make-guarded-thread
        (lambda ()
          (dolist (thread threads) (sb-thread:join-thread thread :default nil))
-         (delete-private-folder folder))
-       :name "tuatara private folder deleted"))))
+         (delete-private-directory directory))
+       :name "tuatara private directory deleted"))))
 
 (defun show-reading-result (job path shown &optional (failure "~a could not be read: ~a~%"))
   "Show in the buffer of JOB, a job reading the file at PATH, what was read,
@@ -676,7 +676,7 @@ file with no name; SCRATCH, that file's descriptor, and SIZE, the octets in it."
 
 (defmethod host-visit-standard-input ((host defaults-host) descriptor)
   "Make a buffer of what is read from the open DESCRIPTOR, standard input, in
-the background. The text goes into a file with no name in the cache folder
+the background. The text goes into a file with no name in the cache directory
 and is read from there as a large file is read, so that its size is bounded by
 the disk. The buffer is called *stdin*, not a file's, read only and opened
 safely, so that nothing in it is acted on. Returns the buffer at once."
@@ -737,7 +737,7 @@ the octets do."
                                                (dolist (window windows)
                                                  (tuatara.display:set-window-buffer window octets :remember nil))))))
         (hex-view-on octets)
-        (dolist (kept '(private-folder :remote-file))
+        (dolist (kept '(private-directory :remote-file))
           (setf (tuatara.buffer:buffer-local octets kept) (shiftf (tuatara.buffer:buffer-local buffer kept) nil)))
         (setf (buffer-given-directory octets) (buffer-given-directory buffer))
         (when (buffer-remote octets)
@@ -800,15 +800,15 @@ without showing it (a capture's target, a journal's day) has none of them
 called.")
 
 (defvar *visiting-safely* nil
-  "True while a file or folder is being visited safely, for the views that
-show one (*FILE-VIEWS*): a folder's list is then opened safely too.")
+  "True while a file or directory is being visited safely, for the views that
+show one (*FILE-VIEWS*): a directory's list is then opened safely too.")
 
 (defun visit-path-once (path safe show)
   "Visit the file at PATH as VISIT-PATH does, SAFE and SHOW as it takes them,
 its first octets read once meanwhile. A file in one of *SAFE-DIRECTORIES*, or
-of evidence (*EVIDENCE-FOLDERS*), is shown by no view (decrypted, read by a
+of evidence (*EVIDENCE-DIRECTORIES*), is shown by no view (decrypted, read by a
 program), however it is opened; a
-folder is listed (\\[rimu]) however it is opened, its access time kept and
+directory is listed (\\[rimu]) however it is opened, its access time kept and
 nothing in it opened."
   (let ((*file-view-said* nil)
         (*visiting-safely* (and safe t)))
@@ -819,26 +819,19 @@ nothing in it opened."
         (when view (return-from visit-path-once view))))
     (visit-path-as-text path safe show)))
 
-(defun nearest-folder (path)
-  "The nearest folder above PATH that is there, a native name ending in /."
-  (loop for folder = (tuatara.io:parent-path path) then (tuatara.io:parent-path folder)
-        until (or (string= folder "/") (tuatara.io:path-stamp folder))
-        finally (return folder)))
-
-(defun say-new-file-folder (buffer)
-  "When BUFFER is a new file whose folder is not there yet: say so, and that
-saving makes it, the buffer editable when that folder can be made, else why it
-is read-only."
+(defun say-new-file-directory (buffer)
+  "When BUFFER is a new file whose directory is not there yet: say so, and that
+saving makes it, or why the buffer is read-only when that directory cannot be
+made."
   (let* ((path (tuatara.buffer:buffer-file buffer))
-         (folder (and path (tuatara.io:parent-path path))))
-    (when (and folder (null (tuatara.io:path-stamp path)) (null (tuatara.io:path-stamp folder)))
-      (let ((above (nearest-folder path)))
+         (directory (and path (tuatara.io:parent-path path))))
+    (when (and directory (null (tuatara.io:path-stamp path)) (null (tuatara.io:path-stamp directory)))
+      (let ((above (tuatara.io:nearest-directory path)))
         (if (tuatara.io:writable-p above)
-            (progn (setf (buffer-read-only-p buffer) nil)
-                   (message "(New file; its folder ~a is not there yet: saving asks to make it)"
-                            (escape-controls (abbreviated-path folder))))
-            (message "(New file, read-only: its folder ~a is not there, and ~a may not be written)"
-                     (escape-controls (abbreviated-path folder)) (escape-controls (abbreviated-path above))))))))
+            (message "(New file; its directory ~a is not there yet: saving asks to make it)"
+                     (escape-controls (abbreviated-path directory)))
+            (message "(New file, read-only: its directory ~a is not there, and ~a may not be written)"
+                     (escape-controls (abbreviated-path directory)) (escape-controls (abbreviated-path above))))))))
 
 (defun visit-path-as-text (path safe show)
   "Visit the file at PATH as its text (or octets), as VISIT-PATH-ONCE does
@@ -875,7 +868,7 @@ up."
       (let ((said (and (not (eq *file-view-said* :none)) *file-view-said*)))
         (cond ((and (not existing) (tuatara.io:safe-visit-reason buffer)) (say-why-safe buffer said))
               (said (message "~a" said))
-              ((and (not existing) (not safe)) (say-new-file-folder buffer))))
+              ((and (not existing) (not safe)) (say-new-file-directory buffer))))
       ;; a file opened safely runs nothing after its visit, but goes back to where it was left
       (when (and (not existing) (tuatara.io:safe-visit-p buffer)) (restore-place buffer))
       ;; a new visit as usual was remembered as it was made (*find-file-functions*)
@@ -911,7 +904,7 @@ it, and tell *FILE-RENAMED-FUNCTIONS*."
 
 (defun follow-moved-paths (pairs)
   "Have the buffers visiting a file moved by PAIRS, each (FROM . TO) of native
-names, a folder's files too, visit it where it went (FOLLOW-RENAMED-FILE)."
+names, a directory's files too, visit it where it went (FOLLOW-RENAMED-FILE)."
   (dolist (buffer tuatara.buffer:*buffers*)
     (let ((file (tuatara.buffer:buffer-file buffer)))
       (when file
@@ -922,7 +915,7 @@ names, a folder's files too, visit it where it went (FOLLOW-RENAMED-FILE)."
                      (return)))))))
 
 (defun check-not-saving (paths)
-  "An error when a buffer is being saved into one of PATHS (or a folder's
+  "An error when a buffer is being saved into one of PATHS (or a directory's
 files): what it writes would land at the old name once moved."
   (dolist (buffer tuatara.buffer:*buffers*)
     (let ((file (tuatara.buffer:buffer-file buffer)))
@@ -931,8 +924,8 @@ files): what it writes would land at the old name once moved."
         (refuse "~a is being saved: try again once it is" (tuatara.buffer:buffer-name buffer))))))
 
 (defun rename-path-following (from to &key (on-disk t) (tell t))
-  "Rename the file or folder FROM to TO, native names, the buffers visiting it
-following it (FOLLOW-RENAMED-FILE), or those visiting a file in the folder
+  "Rename the file or directory FROM to TO, native names, the buffers visiting it
+following it (FOLLOW-RENAMED-FILE), or those visiting a file in the directory
 \(FOLLOW-MOVED-PATHS), and with TELL say so to the lists showing them
 \(PATHS-CHANGED). An error, nothing renamed, while a buffer is being saved
 into it. With ON-DISK NIL, only the buffers follow: a file not written yet,
@@ -950,7 +943,7 @@ or one another program renamed."
                                     (show (lambda (buffer) (show-buffer buffer))))
   "Ask for a file with PROMPT (READ-FILE-PATH) and show it with SHOW, a
 function of the buffer (in the selected window by default): visited as usual,
-or with SAFE safely (VISIT-PATH), a folder listed so, its list shown by SHOW too. A name that does not
+or with SAFE safely (VISIT-PATH), a directory listed so, its list shown by SHOW too. A name that does not
 exist becomes a new file, except for a safe visit. The path is remembered
 as the latest chosen (NOTE-CHOSEN-PATH) unless it opened safely."
   (multiple-value-bind (path kind) (read-file-path prompt :preview *preview-files* :note nil)
@@ -964,12 +957,12 @@ as the latest chosen (NOTE-CHOSEN-PATH) unless it opened safely."
           (t (note-visited-path path (visit-path path :safe safe :show show))))))
 
 (define-command find-file ()
-  "Visit a file, completing its name against the folder being typed.
-The question starts in the folder of the path chosen last in a
-question for a file or a folder (*LAST-USED-FIRST*), the entry chosen
+  "Visit a file, completing its name against the directory being typed.
+The question starts in the directory of the path chosen last in a
+question for a file or a directory (*LAST-USED-FIRST*), the entry chosen
 there last listed first, the others by name;
 \\<path-question>\\[minibuffer-home-directory] starts again from ~/. A
-folder candidate descends into it; a name that does not exist becomes
+directory candidate descends into it; a name that does not exist becomes
 a new file. With a prefix argument (\\[universal-argument]
 \\[find-file]), open it safely, as find-file-safely does."
   (find-file-reading (and (prefix-argument) t)))
@@ -992,7 +985,7 @@ may write the file. It gets what \\[find-file] gives a file: its major mode
 and a place among the files visited lately that opens it as usual. Point,
 changes not saved and undo stay as they are. It stays opened safely, and
 says why (SAFE-VISIT-KEPT-REASON), in these cases: the file is evidence
-\(*EVIDENCE-FOLDERS*) or was when it was opened, it has another name that may
+\(*EVIDENCE-DIRECTORIES*) or was when it was opened, it has another name that may
 be evidence, or its name leads to another file now than the one read."
   (let ((b (current-buffer)))
     (if (not (tuatara.io:safe-visit-p b))
@@ -1009,20 +1002,20 @@ be evidence, or its name leads to another file now than the one read."
   "Why BUFFER, visiting its file safely, stays so (\\[end-safe-visit]), a
 phrase, or NIL. It opened safely for being evidence, or for having another
 name that may be (its reason, TUATARA.IO:SAFE-VISIT-REASON, names
-*EVIDENCE-FOLDERS*). It also stays safe when its name no longer leads to the
+*EVIDENCE-DIRECTORIES*). It also stays safe when its name no longer leads to the
 file it read, as a link changed meanwhile, when the file there is evidence
-now, or when it has another name that may be in an evidence folder. Each is
+now, or when it has another name that may be in an evidence directory. Each is
 asked anew, nothing kept used."
   (let* ((file (tuatara.buffer:buffer-file buffer))
          (path (and file (tuatara.io:native file)))
          (why (tuatara.io:safe-visit-reason buffer))
          (read (tuatara.io:buffer-file-stamp buffer)))
-    (cond ((and why (search "*evidence-folders*" why)) why)
+    (cond ((and why (search "*evidence-directories*" why)) why)
           ((and read path (not (tuatara.io:same-stamped-file-p read (tuatara.io:path-stamp path :failure nil))))
            "its name no longer leads to the file it read")
           ((and path (evidence-visit-reason path)))
           ((evidence-elsewhere-p buffer)
-           "it has more than one name, and one may be in an evidence folder"))))
+           "it has more than one name, and one may be in an evidence directory"))))
 
 (defun visit-as-usual (b)
   "Have B, visiting its file safely, visit it as usual from now on: editable
@@ -1058,9 +1051,9 @@ itself once ready (SAVE-BUFFER-WITH-CARE).")
 
 (define-command save-buffer ()
   "Save the current buffer to its file, asking for one if it has none, as
-\\[find-file] asks. The names of the folder being typed are completed, from
-the folder of the path chosen last in a question for a path (else the
-buffer's own folder, your home folder for the scratch buffers); a name that
+\\[find-file] asks. The names of the directory being typed are completed, from
+the directory of the path chosen last in a question for a path (else the
+buffer's own directory, your home directory for the scratch buffers); a name that
 does not exist is the new file. The file is written safely (a new copy
 renamed over the old, keeping its owner, permissions and labels); a file
 changed on disk since it was read is not overwritten without asking. Every
@@ -1072,31 +1065,31 @@ carry on, its progress in the mode line."
         (save-buffer-with-care b)
         (multiple-value-bind (path kind) (read-file-path "Save as: " :writing t)
           (cond ((null path) (message "Not saved"))
-                (kind (message "~a is a folder: not saved; give the file's name after it" path))
+                (kind (message "~a is a directory: not saved; give the file's name after it" path))
                 (t (save-buffer-with-care b :path path)))))))
 
 (define-command write-file ()
   "Write the current buffer to another file, asked for as \\[find-file] asks
-\(\\`C-x C-w'), from the folder of the path chosen last in a question for a
-path, else the buffer's own folder. The buffer then visits that file, named
+\(\\`C-x C-w'), from the directory of the path chosen last in a question for a
+path, else the buffer's own directory. The buffer then visits that file, named
 after it, in the major mode its name calls for; the file it visited before is
-left as it was. A folder alone is the file's
-own name in that folder. A file there already is overwritten only when you
+left as it was. A directory alone is the file's
+own name in that directory. A file there already is overwritten only when you
 say so."
   (let ((b (current-buffer)))
     (multiple-value-bind (path kind) (read-file-path "Write file: " :writing t)
       (let ((path (if (and path kind (tuatara.buffer:buffer-file b))
-                      ;; into the folder, under the file's own name
+                      ;; into the directory, under the file's own name
                       (concatenate 'string path (tuatara.io:native-file-name (tuatara.buffer:buffer-file b)))
                       path)))
         (cond ((null path) (message "Not written"))
               ((char= (char path (1- (length path))) #\/)
-               (message "~a is a folder: not written; give the file's name after it" path))
+               (message "~a is a directory: not written; give the file's name after it" path))
               (t (save-buffer-with-care b :path path)))))))
 
 (define-command rename-visited-file ()
   "Give the file the current buffer visits a new name, asked for, its own
-offered to change: a name alone keeps it in its folder, a path (~/notes/a.org,
+offered to change: a name alone keeps it in its directory, a path (~/notes/a.org,
 ../a.org) moves it there on the same drive. The file itself is renamed, not
 written again, and the buffer follows it, named after it, in the mode its
 new name calls for; changes not saved stay so. A name there already, or
@@ -1119,7 +1112,7 @@ another machine, is left as it is."
                   (taken (and to (buffer-visiting to))))
              (cond ((or (null to) (string= to from)) (message "Not renamed"))
                    ((char= (char new (1- (length new))) #\/)
-                    (message "~a is a folder: not renamed; give the file's name after it" new))
+                    (message "~a is a directory: not renamed; give the file's name after it" new))
                    ((tuatara.io:path-stamp to :follow nil) (message "~a is there already: not renamed"
                                                                     (abbreviated-path to)))
                    ((and taken (not (eq taken b)))

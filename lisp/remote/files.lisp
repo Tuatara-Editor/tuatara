@@ -3,7 +3,7 @@
 ;;;;
 ;;;; A file on another machine is named /ssh:HOST:/path, HOST as ssh takes it.
 ;;;; Visiting one reads it in the background through SFTP (sftp.lisp) into a
-;;;; copy of its own here, in a private folder of the cache, readable by you
+;;;; copy of its own here, in a private directory of the cache, readable by you
 ;;;; alone and deleted with its buffer; the buffer visits that copy, so that a
 ;;;; large file is read in pieces as a large file here is, and is named and
 ;;;; placed after the file there. Saving writes the copy, then sends it to a
@@ -14,8 +14,8 @@
 ;;;; is around it here: no language server, git, auto-saved copy or build;
 ;;;; the settings a file names for itself, and the shared program parsing
 ;;;; trusted text, only for the servers on the trusted list (M-x server-list).
-;;;; A file of evidence (*EVIDENCE-FOLDERS* naming /ssh:HOST:/folder/, HOST
-;;;; any name ssh takes for that machine, the folder as written or where it
+;;;; A file of evidence (*EVIDENCE-DIRECTORIES* naming /ssh:HOST:/directory/, HOST
+;;;; any name ssh takes for that machine, the directory as written or where it
 ;;;; really is there) opens safely and is never written.
 ;;;;
 ;;;; A file larger than a file read whole into memory is shown as soon as
@@ -45,7 +45,7 @@ SHA-256 sum before a save writes over it, besides its size and time.")
 (defun remote-path-normal (path)
   "PATH, a path on another machine, its . and .. parts and doubled slashes
 worked out by its words alone; ~ or ~/ first taken away, a path from the
-home folder there; \"\" for that home folder. A / at the end is kept."
+home directory there; \"\" for that home directory. A / at the end is kept."
   (let* ((path (cond ((string= path "~") "")
                      ((uiop:string-prefix-p "~/" path) (subseq path 2))
                      (t path)))
@@ -68,8 +68,8 @@ a host ssh could take for something else (HOST-REFUSAL)."
     (when (host-refusal host) (refuse "~a" (host-refusal host)))
     (values host (remote-path-normal (subseq name (1+ end))))))
 
-(defun remote-folder-name (host path)
-  "The name of the folder holding PATH on HOST, ending in /."
+(defun remote-parent-directory-name (host path)
+  "The name of the directory holding PATH on HOST, ending in /."
   (let ((slash (position #\/ path :from-end t)))
     (remote-name host (if slash (subseq path 0 (1+ slash)) ""))))
 
@@ -81,37 +81,37 @@ TUATARA.IO:STAMP, as a file here is described."
                          (or (getf attributes :gid) 0)))
 
 (defparameter *remote-candidates-seconds* 5
-  "The seconds the candidates of a folder on another machine, read for a
+  "The seconds the candidates of a directory on another machine, read for a
 question for a file, are kept to be offered again (REMOTE-CANDIDATES).")
 
 (sb-ext:defglobal **remote-candidates-kept** (make-hash-table :test 'equal :synchronized t)
-  "The candidates of the folders on other machines read last, by the
-folder's name, each (WHEN . CANDIDATES), WHEN the internal real time they
+  "The candidates of the directories on other machines read last, by the
+directory's name, each (WHEN . CANDIDATES), WHEN the internal real time they
 were read.")
 
-(defun remote-candidates (folder)
-  "Completion candidates of the entries of FOLDER, a name /ssh:HOST:PATH
-ending in /, as FILE-CANDIDATES gives those of a folder here: folders first,
+(defun remote-candidates (directory)
+  "Completion candidates of the entries of DIRECTORY, a name /ssh:HOST:PATH
+ending in /, as FILE-CANDIDATES gives those of a directory here: directories first,
 each with what is known of it; read from the server on the thread asking,
 those read for it within *REMOTE-CANDIDATES-SECONDS* given again instead,
 older ones let go of as new ones are kept. A
 name that would not show as it is (REMOTE-CLEAN-NAME-P) is left out."
-  (let ((kept (gethash folder **remote-candidates-kept**)) (now (get-internal-real-time)))
+  (let ((kept (gethash directory **remote-candidates-kept**)) (now (get-internal-real-time)))
     (if (and kept (< (- now (car kept)) (* *remote-candidates-seconds* internal-time-units-per-second)))
         (cdr kept)
-        (let ((candidates (read-remote-candidates folder))
+        (let ((candidates (read-remote-candidates directory))
               (oldest (- now (* *remote-candidates-seconds* internal-time-units-per-second))))
           (sb-ext:with-locked-hash-table (**remote-candidates-kept**)
             (maphash (lambda (key value) (when (<= (car value) oldest) (remhash key **remote-candidates-kept**)))
                      **remote-candidates-kept**)
-            (setf (gethash folder **remote-candidates-kept**) (cons now candidates)))
+            (setf (gethash directory **remote-candidates-kept**) (cons now candidates)))
           candidates))))
 
-(defun read-remote-candidates (folder)
+(defun read-remote-candidates (directory)
   "The candidates of REMOTE-CANDIDATES, read from the server, which is never
 asked to put a question to you for them (*SSH-MAY-ASK*)."
-  (multiple-value-bind (host path) (remote-name-parts folder)
-    (let ((now (get-universal-time)) (folders '()) (files '()))
+  (multiple-value-bind (host path) (remote-name-parts directory)
+    (let ((now (get-universal-time)) (directories '()) (files '()))
       (dolist (entry (sort (let ((*ssh-may-ask* nil)) (remote-listing host (if (string= path "") "." path)))
                            #'tuatara.text:natural-string-lessp
                            :key #'car))
@@ -119,9 +119,9 @@ asked to put a question to you for them (*SSH-MAY-ASK*)."
           (when (remote-clean-name-p name)
             (let ((fields (stamp-fields (remote-stamp attributes) now)))
               (if (eq (remote-kind attributes) :directory)
-                  (push (make-candidate (concatenate 'string name "/") :annotation fields) folders)
+                  (push (make-candidate (concatenate 'string name "/") :annotation fields) directories)
                   (push (make-candidate name :annotation fields) files))))))
-      (nconc (nreverse folders) (nreverse files)))))
+      (nconc (nreverse directories) (nreverse files)))))
 
 ;;; The buffer of a file on another machine
 
@@ -175,9 +175,9 @@ while part of it has not arrived, NIL once all of it is here."
            tuatara.buffer:*buffers*))
 
 (defun remote-place-real-path (host path)
-  "Where the place PATH, a path on HOST, really is: the folder it is in where
+  "Where the place PATH, a path on HOST, really is: the directory it is in where
 that really is there, with PATH's own name after it, not followed when it
-is a link; NIL when that folder is not there. Any other failure is
+is a link; NIL when that directory is not there. Any other failure is
 signalled."
   (let* ((path (if (string= path "/") path (string-right-trim "/" path)))
          (slash (position #\/ path :from-end t)))
@@ -190,8 +190,8 @@ signalled."
         (if (remote-missing-p condition) nil (error condition))))))
 
 (defun remote-machine-entries (rules host)
-  "The entries of RULES naming folders on the machine HOST reaches
-\(/ssh:OTHER:/folder/, OTHER any name ssh takes for it, SSH-MACHINE)."
+  "The entries of RULES naming directories on the machine HOST reaches
+\(/ssh:OTHER:/directory/, OTHER any name ssh takes for it, SSH-MACHINE)."
   (let ((machine nil))
     (remove-if-not (lambda (entry)
                      (let ((given (evidence-entry-given entry)))
@@ -205,7 +205,7 @@ signalled."
   "PATH, a place on HOST, and where it really is there
 \(REMOTE-PLACE-REAL-PATH), the names it is told by as evidence. When where it
 really is cannot be found, PATH alone; but refused, saying why, when an
-entry of *EVIDENCE-FOLDERS* names a folder on that machine, as it could not
+entry of *EVIDENCE-DIRECTORIES* names a directory on that machine, as it could not
 then be told whether the place is evidence."
   (handler-case (list path (remote-place-real-path host path))
     (tuatara.io:file-system-error (condition)
@@ -215,10 +215,10 @@ then be told whether the place is evidence."
         (list path)))))
 
 (defun remote-evidence-entries (rules host)
-  "The entries of RULES naming folders on the machine HOST reaches
-\(/ssh:OTHER:/folder/, OTHER any name ssh takes for it, SSH-MACHINE), each
+  "The entries of RULES naming directories on the machine HOST reaches
+\(/ssh:OTHER:/directory/, OTHER any name ssh takes for it, SSH-MACHINE), each
 made an entry naming them under HOST, as written and with their fixed
-folders at the front where those really are there (REMOTE-KEPT-REAL-PATH)."
+directories at the front where those really are there (REMOTE-KEPT-REAL-PATH)."
   (loop for entry in (remote-machine-entries rules host)
         for given = (evidence-entry-given entry)
         collect (let* ((written (first (evidence-entry-pattern entry)))
@@ -236,11 +236,11 @@ folders at the front where those really are there (REMOTE-KEPT-REAL-PATH)."
                                            nil nil))))
 
 (defun remote-evidence (host names)
-  "The evidence folder a place on HOST is, or is in, by *EVIDENCE-FOLDERS*,
+  "The evidence directory a place on HOST is, or is in, by *EVIDENCE-DIRECTORIES*,
 and the entry making it one as written, two values; NIL when it is none.
 NAMES are the place's paths there from the root, as written and where it
 really is: each is matched against every entry by its words, and against
-the entries naming folders on the machine HOST reaches under any name of it,
+the entries naming directories on the machine HOST reaches under any name of it,
 as written and where they really are there (REMOTE-EVIDENCE-ENTRIES). May ask
 the server and run ssh -G: for work in the background."
   (let ((rules (evidence-rules)))
@@ -255,20 +255,20 @@ the server and run ssh -G: for work in the background."
   "Why PATH on HOST is evidence, in words (EVIDENCE-WORDS), or NIL: told by
 PATH as written, by where it really is there (REMOTE-PLACE-REAL-PATH), and
 by REALS, other paths there that lead to it (REMOTE-EVIDENCE). When an
-entry names a folder on that machine and where the place, or that folder,
+entry names a directory on that machine and where the place, or that directory,
 really is cannot be found, words saying it could not be told, so that it is
-kept as evidence is. Asks the server only while *EVIDENCE-FOLDERS* names
-some folder; for work in the background."
+kept as evidence is. Asks the server only while *EVIDENCE-DIRECTORIES* names
+some directory; for work in the background."
   (when (evidence-rules)
     (handler-case
-        (multiple-value-bind (folder entry) (remote-evidence host (append (remote-place-names host path) reals))
-          (and folder (evidence-words folder entry)))
+        (multiple-value-bind (directory entry) (remote-evidence host (append (remote-place-names host path) reals))
+          (and directory (evidence-words directory entry)))
       ((or tuatara.io:file-system-error tuatara.runtime:refusal) (condition)
         (if (remote-machine-entries (evidence-rules) host)
             (format nil "it could not be told whether ~a is evidence (~a), so nothing is written there"
                     (remote-name host path) condition)
-            (multiple-value-bind (folder entry) (remote-evidence host (list path))
-              (and folder (evidence-words folder entry))))))))
+            (multiple-value-bind (directory entry) (remote-evidence host (list path))
+              (and directory (evidence-words directory entry))))))))
 
 (defun remote-text-trusted-p (buffer)
   "True when BUFFER visits a copy of a file on a trusted server, not of evidence."
@@ -294,13 +294,13 @@ copy here or remembers it."
                             (:copier nil))
   "A file on another machine being read for BUFFER, a job: REMOTE, the
 REMOTE-FILE as asked for (its path as typed), SAFE, true for a safe visit;
-then PATH, where it is there, links followed; FOLDER, the private folder of
+then PATH, where it is there, links followed; DIRECTORY, the private directory of
 its copy here, and COPY, the copy's path; KIND, :FILE, :NEW for a file not
 there yet, or :DIRECTORY. AGAIN, true when it is read again for a buffer
 visiting it. ARRIVAL, an ARRIVAL, and FD, the open copy, for a file read in
 two parts (REMOTE-EARLY-P): the first read before it opens, by this job; the
 rest after it opened by another of these, whose REST is true."
-  remote safe path folder copy kind again arrival fd rest)
+  remote safe path directory copy kind again arrival fd rest)
 
 (setf (documentation 'remote-read-job-p 'function) "True when OBJECT is a REMOTE-READ-JOB.")
 
@@ -377,7 +377,7 @@ it is read, or ended sooner than it said, or room here runs short (REMOTE-CHECK-
 
 (defun read-remote-copy (job)
   "The work of JOB, a REMOTE-READ-JOB: where the file is there found, and,
-for a file, read into a new copy here in its private folder, readable by you
+for a file, read into a new copy here in its private directory, readable by you
 alone, its sum taken when it is small; a large one only as far as opening it
 needs (REMOTE-EARLY-P), the copy its whole size and left open for the rest."
   (let* ((remote (remote-read-job-remote job))
@@ -399,10 +399,11 @@ needs (REMOTE-EARLY-P), the copy its whole size and left open for the rest."
       (refuse "~a names no file" (remote-name host path)))
     (setf (remote-file-evidence remote) (remote-evidence-words host asked path))
     (when (eq :file (remote-read-job-kind job))
-      (let ((folder (or (remote-read-job-folder job) (new-private-folder (private-cache-directory "remote/")))))
-        (setf (remote-read-job-folder job) folder)
+      (let ((directory (or (remote-read-job-directory job)
+                           (new-private-directory (private-cache-directory "remote/")))))
+        (setf (remote-read-job-directory job) directory)
         (multiple-value-bind (fd copy)
-            (tuatara.io:create-free-file folder
+            (tuatara.io:create-free-file directory
                                          (lambda (n) (format nil "~a~:[.~d~;~*~]" (tuatara.io:native-file-name path)
                                                               (= n 1) n)))
           (setf (remote-read-job-copy job) copy)
@@ -431,7 +432,7 @@ visits a file: SAFE for a safe visit, SHOW a function of the buffer. A
 buffer visiting it already is shown; else one saying it is being read is
 shown at once and the file read in the background (a job, each request
 within *REMOTE-SECONDS*), its own buffer taking that one's place once read.
-A name ending in /, and one found to be a folder once read, is listed with
+A name ending in /, and one found to be a directory once read, is listed with
 rimu (RIMU-SHOW-DIRECTORY). Returns the buffer shown, and true when it
 visited the file already."
   (multiple-value-bind (host path) (remote-name-parts name)
@@ -448,7 +449,7 @@ visited the file already."
                  (job (make-remote-read-job buffer remote safe)))
             (setf (buffer-read-only-p buffer) t
                   (remote-file-trusted remote) (remote-trusted-p host)
-                  (buffer-given-directory buffer) (remote-folder-name host path)
+                  (buffer-given-directory buffer) (remote-parent-directory-name host path)
                   (tuatara.buffer:buffer-local buffer :remote-reading) remote)
             (tuatara.runtime:start-job-thread job #'read-remote-copy :name "tuatara remote read")
             (funcall show buffer)
@@ -459,15 +460,15 @@ visited the file already."
   "Show what JOB read in its buffer, or why it could not be read."
   (let* ((buffer (tuatara.runtime:job-buffer job))
          (remote (remote-read-job-remote job))
-         (folder (remote-read-job-folder job))
+         (directory (remote-read-job-directory job))
          (name (remote-name (remote-file-host remote) (or (remote-read-job-path job) (remote-file-path remote)))))
     (cond ((remote-read-job-rest job) (remote-rest-in buffer job name))
           ((not (live-buffer-p buffer))
            (close-remote-copy job)
-           (when (and folder (not (remote-read-job-again job))) (delete-private-folder folder)))
+           (when (and directory (not (remote-read-job-again job))) (delete-private-directory directory)))
           ((not (eq (tuatara.runtime:job-status job) :done))
            (close-remote-copy job)
-           (when (and folder (not (remote-read-job-again job))) (delete-private-folder folder))
+           (when (and directory (not (remote-read-job-again job))) (delete-private-directory directory))
            (if (remote-read-job-again job)
                (message "~a was not read again: ~a" name (tuatara.runtime:job-ending-words job))
                (show-reading-result job name nil "~a could not be read: ~a~%")))
@@ -477,13 +478,13 @@ visited the file already."
 (defun remote-copy-in (placeholder job)
   "Visit the copy JOB read in a buffer of its own, which takes the place of
 PLACEHOLDER, the buffer that said it was being read, in every window; a
-buffer visiting the file already is shown instead. A folder is listed with
+buffer visiting the file already is shown instead. A directory is listed with
 rimu in its place."
   (let* ((remote (remote-read-job-remote job))
          (host (remote-file-host remote))
          (path (remote-read-job-path job))
          (other (remote-buffer host path :except placeholder))
-         (folder (remote-read-job-folder job)))
+         (directory (remote-read-job-directory job)))
     (cond ((eq :directory (remote-read-job-kind job))
            (let ((windows (buffer-windows placeholder)))
              (rimu-show-directory (remote-name host path) :safe (remote-read-job-safe job)
@@ -495,7 +496,7 @@ rimu in its place."
           (t
            (let ((buffer (if other
                              (progn (close-remote-copy job)
-                                    (when folder (delete-private-folder folder))
+                                    (when directory (delete-private-directory directory))
                                     other)
                              (remote-visit-copy remote path job)))
                  (name (tuatara.buffer:buffer-name placeholder)))
@@ -523,12 +524,12 @@ safely when the visit is safe or the file is evidence. Else it is shown by one
 of *REMOTE-FILE-VIEWS* when one shows it and all of it has come. Else it is
 opened with only the find-file functions REMOTE-FIND-FILE-FUNCTIONS gives. One
 that looks binary is opened in the hex view (*HEX-VIEW-BINARY-FILES*). It is
-named and placed after the file there, its copy's folder deleted with it."
+named and placed after the file there, its copy's directory deleted with it."
   (let* ((host (remote-file-host remote))
-         (folder (remote-read-job-folder job))
+         (directory (remote-read-job-directory job))
          (copy (or (remote-read-job-copy job)
-                   (progn (setf folder (new-private-folder (private-cache-directory "remote/")))
-                          (tuatara.io:path-join folder (tuatara.io:native-file-name path)))))
+                   (progn (setf directory (new-private-directory (private-cache-directory "remote/")))
+                          (tuatara.io:path-join directory (tuatara.io:native-file-name path)))))
          (final (make-remote-file host path))
          (safe (or (remote-read-job-safe job) (remote-file-evidence remote)))
          (arrival (remote-read-job-arrival job))
@@ -557,9 +558,9 @@ named and placed after the file there, its copy's folder deleted with it."
           (remote-file-trusted final) (remote-file-trusted remote)
           (remote-file-sent final) (and (remote-file-attributes remote) (tuatara.buffer:buffer-content-number buffer))
           (tuatara.buffer:buffer-local buffer :remote-file) final
-          (tuatara.buffer:buffer-local buffer 'private-folder) folder
+          (tuatara.buffer:buffer-local buffer 'private-directory) directory
           (tuatara.buffer:buffer-local buffer :reread) (and (not view) #'remote-read-again)
-          (buffer-given-directory buffer) (remote-folder-name host path))
+          (buffer-given-directory buffer) (remote-parent-directory-name host path))
     (remember-file (remote-name host path) :safe safe)
     (when arrival (remote-rest-begin buffer job path))
     (message "~a~:[~*~; (~a)~]~@[: ~a~]" (remote-name host path) (remote-file-attributes remote)
@@ -731,7 +732,7 @@ was, of the same size and time, and then, when small enough
 \(+REMOTE-HASH-MOST+), of the same contents. The contents are read into a file of
 its own beside the copy and taken away after. A job writing it WHOLE over a file
 left partly written skips the comparing. A file with other names is not written
-in place while *EVIDENCE-FOLDERS* names a folder on that machine, as one of them
+in place while *EVIDENCE-DIRECTORIES* names a directory on that machine, as one of them
 may be in it. The sum of what was sent is taken likewise."
   (let* ((remote (remote-write-job-remote job))
          (host (remote-file-host remote))
@@ -767,7 +768,7 @@ may be in it. The sum of what was sent is taken likewise."
                                     :like then
                                     :linked-refusal (let ((rules (evidence-rules)))
                                                       (and rules (remote-machine-entries rules host)
-                                                           "one of them may be in an evidence folder"))
+                                                           "one of them may be in an evidence directory"))
                                     :partly partly)))
              (when (<= size +remote-hash-most+)
                (setf (remote-write-job-sum job) (file-sha256 copy))))
@@ -797,7 +798,7 @@ partly written, it is written over whole only after a yes."
   (let ((remote (buffer-remote buffer)))
     (when remote
       (if (not (equal (tuatara.io:parent-path (tuatara.buffer:buffer-file buffer))
-                      (buffer-private-folder buffer)))
+                      (buffer-private-directory buffer)))
           (setf (tuatara.buffer:buffer-local buffer :remote-file) nil
                 (buffer-given-directory buffer) nil)
           (let ((job (make-remote-write-job buffer remote (tuatara.io:native (tuatara.buffer:buffer-file buffer))
@@ -847,7 +848,7 @@ is read again from it, one step that undo takes back."
          (remote (make-remote-file (remote-file-host old) (remote-file-path old)))
          (job (make-remote-read-job buffer remote (tuatara.io:safe-visit-p buffer))))
     (setf (remote-file-trusted remote) (remote-file-trusted old)
-          (remote-read-job-folder job) (buffer-private-folder buffer)
+          (remote-read-job-directory job) (buffer-private-directory buffer)
           (remote-read-job-again job) t)
     (tuatara.runtime:start-job-thread job #'read-remote-copy :name "tuatara remote read")
     (take-in-soon job *save-wait* (format nil "Reading ~a again" (buffer-remote-name buffer)))))

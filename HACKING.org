@@ -97,9 +97,9 @@ build/tuatara --gui FILE      # in a window of its own
 
 Each script does nothing when what it makes is up to date. =tools/release.sh=
 lays out a directory to give to others, its program built from the last commit
-in a new folder of its own, =/tmp/tuatara-release-build.XXXXXX/=, so that it
-names no folder of the machine it was built on (it refuses one that names the
-home folder or the account); =tools/appimage.sh= makes an AppImage of it (it
+in a new directory of its own, =/tmp/tuatara-release-build.XXXXXX/=, so that it
+names no directory of the machine it was built on (it refuses one that names the
+home directory or the account); =tools/appimage.sh= makes an AppImage of it (it
 takes its libraries from Ubuntu 24.04, in a podman container), and
 =tools/distro-packages.sh= Fedora, Ubuntu and Arch packages (each made by its
 system's own tools in a podman container; =--check= installs each in a new
@@ -160,7 +160,14 @@ together.
 
 #+begin_example
 tools/test.sh                 # the whole suite and its benchmarks, about 25 minutes
+TUATARA_TEST_MODAL=off tools/test.sh   # the same with the modal layer off
 #+end_example
+
+With =TUATARA_TEST_MODAL=off= every session starts with =*modal-editing*= nil,
+so the Emacs keys and the commands behind them are tested alone. A test that
+types =SPC= or the keys of NORMAL state on purpose, or reads the state in the
+mode line, is defined with =define-modal-test= (instead of =define-test=), which
+runs it with the layer on whatever the setting. Both runs are to be clean.
 
 One group or one test runs from a Lisp session with the tests loaded:
 =(ql:quickload :tuatara/tests)= then =(parachute:test 'tuatara.tests::terminal)=.
@@ -203,28 +210,27 @@ a change that breaks it within a major version (CONTRIBUTING.md, "Keeping what
 others build on"). =tools/pin-stable-surface.sh= writes it again; it is run
 at each version bump, its =git diff= read first.
 
-=test/api/kept-files.sexp= pins the files Tuatara keeps in your folders: each
-list kept between sessions (=define-state-list=, =lisp/editing/state.lisp=)
-with its class (=:kept= or =:remembered=) and the version of its format (a
-list of trust with =:trust t= and its =:fields=, which may not change within
-a major version), and
-the other files with theirs. =test/kept-files/VERSION/= holds each list's file
-as that release wrote it; the =kept-files= tests read them all with today's
-code. A new list needs its class, a row in the pin, sample entries in
+=test/api/kept-files.sexp= pins the files Tuatara keeps in your directories:
+each list kept between sessions (=define-state-list=, =lisp/editing/state.lisp=)
+with its class (=:kept= or =:remembered=) and the version of its format (a list
+of trust with =:trust t= and its =:fields=, which may not change within a major
+version), and the other files with theirs. =test/kept-files/VERSION/= holds each
+list's file as that release wrote it; the =kept-files= tests read them all with
+today's code. A new list needs its class, a row in the pin, sample entries in
 =*kept-file-entries*= (=test/kept-files.lisp=) and a sample file:
 =tools/pin-kept-files.sh= writes the pin and the samples of the version in
-=tuatara.asd=, never over a file there. A list's format changes only by
-adding (a field at the end of a line, after every field of today written
-even when empty; or a line of a new kind) with its =:version= raised; old
-samples are never edited. A line of a new kind begins with =@=, which no
-list reads as an entry and no =:line-key= takes; each list's =:line-key=
-(=field-line-key=, =spaced-line-key=) gives NIL for a line not of its
-entries' shape. On a list of trust (=:trust t=) an older release always
-fails closed on a later field: adding one raises =:version=, and an older
-release reads no line of a later version with more than =:fields= fields,
-so it asks again. A version-1 line with extra fields is read (only a hand
-edit or a release breaking this rule writes one). A later field may only add
-information; a narrowing of a trust is a line of a new kind.
+=tuatara.asd=, never over a file there. A list's format changes only by adding
+(a field at the end of a line, after every field of today written even when
+empty; or a line of a new kind) with its =:version= raised; old samples are
+never edited. A line of a new kind begins with =@=, which no list reads as an
+entry and no =:line-key= takes; each list's =:line-key= (=field-line-key=,
+=spaced-line-key=) gives NIL for a line not of its entries' shape. On a list of
+trust (=:trust t=) an older release always fails closed on a later field: adding
+one raises =:version=, and an older release reads no line of a later version
+with more than =:fields= fields, so it asks again. A version-1 line with extra
+fields is read (only a hand edit or a release breaking this rule writes one). A
+later field may only add information; a narrowing of a trust is a line of a new
+kind.
 
 ** The reuse index
 
@@ -241,7 +247,7 @@ lists up to 20 entries added and removed.
 file, it runs =tools/reuse-index.sh= and adds the index to the commit if it
 changed. It works in a worktree too. Without the toolbox it warns and lets the
 commit go; the test still catches the drift. Install it once in the main
-checkout, next to the =commit-msg= hook (worktrees share the hooks folder):
+checkout, next to the =commit-msg= hook (worktrees share the hooks directory):
 
 : cp tools/git-hooks/pre-commit "$(git rev-parse --git-common-dir)/hooks/"
 
@@ -285,12 +291,12 @@ text given to C by =with-c-string= and read back by =sap-string=
 (=src/io/posix.lisp=, =src/runtime/resources.lisp=).
 
 Tuatara carries no packages of its own: a package is loaded on asking from a
-git repository or a folder, =(load-package "NAME" :source ...)= in the init
+git repository or a directory, =(load-package "NAME" :source ...)= in the init
 file, and is written, tested and kept where it lives ("Writing a package").
 
 * Writing a package
 
-A package is a git repository of its own (or a folder of your disk), the
+A package is a git repository of its own (or a directory of your disk), the
 project's own packages each in =Tuatara-Editor/tuatara-NAME=. Its entry,
 =NAME.lisp=, is at the top, loading its other files with
 =load-package-file=; =test.lisp= holds its tests, and =tools/test.sh= with
@@ -300,7 +306,7 @@ project's own packages each in =Tuatara-Editor/tuatara-NAME=. Its entry,
 (load-package "NAME" :source "https://example.org/you/tuatara-NAME")
 #+end_src
 
-=:folder= naming the folder within the repository when the package is not
+=:directory= naming the directory within the repository when the package is not
 at its top.
 
 The entry's header says the oldest Tuatara the package works with, in a
@@ -348,7 +354,7 @@ them in words, and ~M-x check-health~ names a setting holding another value:
 
 A description is =boolean= (t or nil), =(member :left :right nil)=,
 =(integer 0 *)= or =(number 0.5 10)= (=*= for an open end), =integer=,
-=number=, =string= (text), =file=, =folder=, =function=, =(list-of
+=number=, =string= (text), =file=, =directory=, =function=, =(list-of
 DESCRIPTION)=, =(or DESCRIPTION ...)=, or words in a string for anything else
 (="a list of (NAME . PATTERN)"=), which are shown but never checked. The
 docstring's first sentence says what the setting changes; a line beginning
@@ -365,7 +371,7 @@ prefix too. The package binds its keys itself as it loads, in its own mode or
 one it adds to, never in every buffer; Tuatara binds none of a package's.
 
 The tests run against a Tuatara source tree, =../tuatara= beside the
-package's repository or =../../tuatara= beside the folder it is in, unless
+package's repository or =../../tuatara= beside the directory it is in, unless
 =TUATARA_SOURCE= names another, with Tuatara's own test helpers, and in its
 toolbox when there is one. A package follows the conventions below.
 
@@ -376,9 +382,9 @@ When it needs a helper Tuatara has but does not export, the helper is
 exported (added to =lisp/api.lisp=), not copied. These are the ones a
 package most often needs:
 
-- Scratch files :: a buffer that needs a folder of its own for its working
-  files asks for one when it is made, =(reading-buffer ... :private-folder
-  "NAME/")=, and =buffer-private-folder= names it. It lies in Tuatara's
+- Scratch files :: a buffer that needs a directory of its own for its working
+  files asks for one when it is made, =(reading-buffer ... :private-directory
+  "NAME/")=, and =buffer-private-directory= names it. It lies in Tuatara's
   private cache, readable by you alone, and is deleted when the buffer is
   killed, once the buffer's background jobs have ended.
 - Files kept :: a file written for keeping (a report, a copy taken out) is
@@ -388,13 +394,13 @@ package most often needs:
   =copy-file-checked= copies a file and checks the copy's SHA-256
   against the original's.
 - Evidence :: =evidence-path-p= says whether a file is in an evidence
-  folder (=*evidence-folders*=) and by which entry; =writing-refusal=
-  gives, in Tuatara's words, why nothing may be written in a folder, or
-  NIL. Tuatara's own writes refuse such folders by themselves
+  directory (=*evidence-directories*=) and by which entry; =writing-refusal=
+  gives, in Tuatara's words, why nothing may be written in a directory, or
+  NIL. Tuatara's own writes refuse such directories by themselves
   (=writing-refused=, a =file-system-error=); a package asks first only
   to say so before it begins.
 - Paths :: =native=, =expand-path=, =parent-path=, =path-join=,
-  =slash-ended=, =path-within-p= (inside a folder, =..= taken into
+  =slash-ended=, =path-within-p= (inside a directory, =..= taken into
   account), =native-file-name=, =native-file-stem=, =native-file-type=.
 - Files read whole :: =file-octets= with =:limit=, or =fd-octets= on a
   file already open, reads a file whole and refuses one larger than the

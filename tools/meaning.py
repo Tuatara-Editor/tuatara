@@ -9,7 +9,7 @@ editor or a release. It reads JSON on standard input and writes JSON:
   -> {"nearest": [[[score, index into corpus], ...], ...]}   one list per query
 
 Each corpus line becomes a vector, once: the vectors are kept in the cache
-folder by the hash of the line, so a later run embeds only the lines that
+directory by the hash of the line, so a later run embeds only the lines that
 changed. A query is embedded in the form the model was trained on, with a
 task sentence before it, and the corpus lines are ranked by cosine likeness
 to it. The result is a list to read, never a verdict.
@@ -27,7 +27,7 @@ Run it where llama-server and numpy are. Set-up, once:
 Settings, taken from the environment when set:
 
   TUATARA_AI_MODEL      path of the model file
-  TUATARA_AI_CACHE      folder of the cached vectors
+  TUATARA_AI_CACHE      directory of the cached vectors
   TUATARA_AI_TOOLBOX    name of the toolbox that has llama-server
   TUATARA_AI_THREADS    threads the server uses (default: all processors)
   TUATARA_AI_SERVER     path of llama-server (default: the Vulkan build below

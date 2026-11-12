@@ -46,7 +46,7 @@ buffers of its files killed after."
           do (let ((tuatara-user:*journal-title-format* style))
                (is string= title (tuatara.defaults::journal-title time) "~s" style)))))
 
-(define-test (journal made-as-denote-journal-makes-it)
+(define-modal-test (journal made-as-denote-journal-makes-it)
   (with-journal (dir)
     ;; made, named and headed as your entries are, and saved at once
     (let ((editor (nth-value 1 (run-keys "SPC d j" :width 100 :height 24))))
@@ -79,7 +79,7 @@ buffers of its files killed after."
     (let ((editor (nth-value 1 (run-keys "C-u SPC d j 2 0 2 6 - 0 3 - 0 1 RET" :width 100 :height 30))))
       (is string= "20260301T133958--sunday-1-march-2026__journal.org" (current-file-name editor)))))
 
-(define-test (journal intervals-and-settings)
+(define-modal-test (journal intervals-and-settings)
   (with-journal (dir)
     ;; a week's entry: made on Monday, opened again on Friday, a new one the Monday after
     (let ((tuatara-user:*journal-interval* :weekly))
@@ -117,7 +117,7 @@ buffers of its files killed after."
       (is string= (format nil "#+title: Friday 20 March 2026~%#+options: toc:t~%~%")
           (journal-file-text dir "20260320T133958--friday-20-march-2026__journal.org")))))
 
-(define-test (journal plain-names)
+(define-modal-test (journal plain-names)
   (with-journal (dir)
     (let ((tuatara-user:*journal-file-name* "%Y/%m-%d.org"))
       ;; named by the date, the title alone at its top, saved at once
@@ -139,7 +139,7 @@ buffers of its files killed after."
         (run-keys "SPC d j" :width 100 :height 24)
         (is string= (format nil "# Friday 20 March 2026~%~%") (journal-file-text dir "2026-03-20.md"))))))
 
-(define-test (journal before-1900)
+(define-modal-test (journal before-1900)
   (with-journal (dir)
     (let ((tuatara.defaults::*org-now* (tuatara.dates:day-universal-time (tuatara.dates:day-number 1850 3 4) 13 39 58)))
       ;; named, titled and headed with its own day
@@ -156,13 +156,13 @@ buffers of its files killed after."
 (define-test (journal names-of-no-day)
   ;; a file whose identifier names a day there is not (the 40th) is no entry, never taken for another day
   (with-journal (dir)
-    (let ((folder (merge-pathnames "journal/" dir)))
-      (ensure-directories-exist folder)
+    (let ((directory (merge-pathnames "journal/" dir)))
+      (ensure-directories-exist directory)
       (dolist (name '("20261340T090000--odd__journal.org" "20261001T090000--fine__journal.org"))
-        (alexandria:write-string-into-file "x" (merge-pathnames name folder))))
+        (alexandria:write-string-into-file "x" (merge-pathnames name directory))))
     (is equal (list (calendar-day 2026 10 1)) (mapcar #'cdr (tuatara.defaults::journal-entries)))))
 
-(define-test (journal in-the-calendar)
+(define-modal-test (journal in-the-calendar)
   (with-journal (dir)
     (let ((tuatara.defaults::*org-now* (encode-universal-time 0 0 12 1 10 2026)))
       (run-keys "SPC d j" :width 100 :height 24))
@@ -190,7 +190,7 @@ buffers of its files killed after."
       (is string= "20261001T120000--thursday-1-october-2026__journal.org" (current-file-name editor)))
     (is = 2 (length (journal-files dir)))))
 
-(define-test (journal opened-from-a-marked-day)
+(define-modal-test (journal opened-from-a-marked-day)
   (with-journal (dir)
     (let ((tuatara.defaults::*org-now* (encode-universal-time 0 0 12 1 10 2026)))
       (run-keys "SPC d j" :width 100 :height 24))

@@ -5,7 +5,7 @@
 ;;;; :header-args: property of a subtree, or in #+PROPERTY: header-args for
 ;;;; the whole file) has its code written to FILE, the blocks for one file
 ;;;; one after another. tangle-code-files lists every file it would write,
-;;;; new, changed or the same, and those outside the Org file's folder, and
+;;;; new, changed or the same, and those outside the Org file's directory, and
 ;;;; writes them only when told to; the Org file decides where they go.
 ;;;; Nothing in a block is run: <<name()>>, which Org would run, is left as it is.
 
@@ -22,8 +22,8 @@
   "The end of a file's name :tangle yes gives the code of each language: the
 Org file's name with it (notes.el); a language not here, its own name.")
 
-(define-setting *code-files-make-folders* nil
-  "Whether tangle-code-files makes the folders a file goes in.
+(define-setting *code-files-make-directories* nil
+  "Whether tangle-code-files makes the directories a file goes in.
 - nil: only for blocks with :mkdirp yes, so that an Org file writes the same
   everywhere.
 - t: for every block, as :mkdirp yes does; a block's :mkdirp no still says
@@ -109,12 +109,12 @@ there and NAME+ adding to it; NIL when none."
   "The header arguments of BLOCK, a source block of TREE, merged: its own over
 its language's (header-args:LANGUAGE) over all languages' (header-args), each
 as the subtrees above it and the file give them, over the defaults (:tangle
-no, :padline yes, :noweb no), with :mkdirp as *CODE-FILES-MAKE-FOLDERS* says."
+no, :padline yes, :noweb no), with :mkdirp as *CODE-FILES-MAKE-DIRECTORIES* says."
   (let ((language (org-property block :language))
         (merged (list (cons "tangle" "no")
                       (cons "padline" "yes")
                       (cons "noweb" "no")
-                      (cons "mkdirp" (if *code-files-make-folders* "yes" "no")))))
+                      (cons "mkdirp" (if *code-files-make-directories* "yes" "no")))))
     (flet ((over (pairs) (loop for (key . value) in pairs
                                do (setf merged (cons (cons key value) (remove key merged :key #'car :test #'string=))))))
       (over (org-header-arguments (org-inherited-property tree block "header-args")))
@@ -217,7 +217,7 @@ Only the permissions are taken: setuid, setgid and sticky are left out."
 (defun org-code-files (tree org-file)
   "The files TREE's source blocks write, as CODE-FILE objects in the order of
 their first block, ORG-FILE (a native path, or NIL) the Org file the blocks
-are in, relative :tangle files taken from its folder."
+are in, relative :tangle files taken from its directory."
   (let ((files '()) (names (org-named-blocks tree))
         (directory (if org-file
                        (tuatara.io:parent-path org-file)
@@ -272,8 +272,8 @@ file its links lead to, or its own path."
 (defun check-code-file (file)
   "Find out what writing FILE would do: STATE :new, :changed or :same, or :cannot with REASON."
   (let* ((path (code-file-path file))
-         (folder (tuatara.io:parent-path path))
-         ;; where writing it lands: a link in its path, the file's own or a folder's, followed
+         (directory (tuatara.io:parent-path path))
+         ;; where writing it lands: a link in its path, the file's own or a directory's, followed
          (real (or (ignoring-errors-reported ("finding where ~a leads" path) (tuatara.io:real-path path))
                    (let* ((resolved (or (ignoring-errors-reported ("finding where ~a leads" path)
                                           (tuatara.io:native (tuatara.io:resolve-links path)))
@@ -292,21 +292,21 @@ file its links lead to, or its own path."
                         (tuatara.io:file-octets (code-file-place file)))))
              (setf (code-file-state file)
                    (if (equalp old (tuatara.text:string-octets (code-file-text file))) :same :changed))))
-          ((or (tuatara.io:path-stamp folder :failure nil) (code-file-make-directories file))
+          ((or (tuatara.io:path-stamp directory :failure nil) (code-file-make-directories file))
            (setf (code-file-state file) :new))
           (t (setf (code-file-state file) :cannot
-                   (code-file-reason file) "its folder does not exist (:mkdirp yes makes it)")))
+                   (code-file-reason file) "its directory does not exist (:mkdirp yes makes it)")))
     file))
 
 (define-major-mode code-files-mode special-mode
   "The files tangle-code-files would write from an Org file's source blocks,
 listed while it asks whether to write them: each new, changed or the same
 (not written again), those it cannot write with why, and those outside the
-Org file's folder marked."
+Org file's directory marked."
   :lighter "Code files" :interactive nil)
 
 (defun code-file-inside-p (file home)
-  "True when FILE (a CODE-FILE) lands in the folder HOME (native, ending in /),
+  "True when FILE (a CODE-FILE) lands in the directory HOME (native, ending in /),
 by its name and by where its links lead."
   (and (uiop:string-prefix-p home (code-file-path file))
        (uiop:string-prefix-p (or (ignoring-errors-reported ("finding where ~a leads" home) (tuatara.io:real-path home))
@@ -322,18 +322,18 @@ really landed when a link led elsewhere (out.sh → ~/.bashrc)."
 (defun code-files-listing (files org-file)
   "The text listing FILES (CODE-FILE objects) for tangle-code-files, ORG-FILE the
 Org file's native path or NIL: what writing each does, its blocks, and its
-path, from the Org file's folder when it is in it."
+path, from the Org file's directory when it is in it."
   (let ((home (and org-file (tuatara.io:parent-path org-file))))
     (with-output-to-string (out)
       (format out "Code files from ~a~%~%" (if org-file (abbreviated-path org-file) "this buffer"))
       (dolist (file files)
         (let* ((path (code-file-path file))
                (inside (and home (code-file-inside-p file home))))
-          (format out "  ~9a ~22a ~a~@[  → ~a~]~:[  outside the Org file's folder~;~]~%"
+          (format out "  ~9a ~22a ~a~@[  → ~a~]~:[  outside the Org file's directory~;~]~%"
                   (ecase (code-file-state file) (:new "new") (:changed "changed") (:same "the same") (:cannot "cannot"))
                   (if (eq (code-file-state file) :cannot)
                       ""
-                      (format nil "~d block~:p~a~:[~;, folder made~]" (code-file-blocks file)
+                      (format nil "~d block~:p~a~:[~;, directory made~]" (code-file-blocks file)
                               (let ((mode (code-file-mode file)))
                                 (cond ((null mode) "")
                                       ((eq mode :executable) ", executable")
@@ -347,7 +347,7 @@ path, from the Org file's folder when it is in it."
             (format out "            ~a~%" (code-file-reason file))))))))
 
 (defun tangle-write-code-file (file)
-  "Write FILE (a CODE-FILE), its folders made first with :mkdirp, its mode
+  "Write FILE (a CODE-FILE), its directories made first with :mkdirp, its mode
 given; NIL when done, else why not. It is written where CHECK-CODE-FILE found
 it lands, into a new file renamed into place: a symbolic link put there since,
 or a file put there or changed since, is refused, never followed or written
@@ -356,12 +356,12 @@ over."
       (reporting-errors ("writing ~a" (code-file-path file))
         (let ((path (code-file-path file)))
           (when (code-file-make-directories file)
-            (let ((folders '()))
-              (loop for folder = (string-right-trim "/" (tuatara.io:parent-path path))
-                      then (string-right-trim "/" (tuatara.io:parent-path folder))
-                    while (and (plusp (length folder)) (not (tuatara.io:path-stamp folder :failure nil)))
-                    do (push folder folders))
-              (dolist (folder folders) (tuatara.io:make-directory folder))))
+            (let ((directories '()))
+              (loop for directory = (string-right-trim "/" (tuatara.io:parent-path path))
+                      then (string-right-trim "/" (tuatara.io:parent-path directory))
+                    while (and (plusp (length directory)) (not (tuatara.io:path-stamp directory :failure nil)))
+                    do (push directory directories))
+              (dolist (directory directories) (tuatara.io:make-directory directory))))
           (let ((mode (code-file-mode file)))
             (tuatara.io:write-text-file (tuatara.text:make-rope (code-file-text file)) (code-file-place file)
                                         :expected (code-file-stamp file) :follow-links nil
@@ -376,14 +376,14 @@ over."
   "Write the code files of this Org file's source blocks (\\`C-c C-v t'), each
 block with :tangle FILE (on its #+begin_src line, in a subtree's property
 :header-args: or :header-args:LANGUAGE:, or in #+PROPERTY: header-args for the
-file) goes to FILE. The file is relative to the Org file's folder, the blocks
+file) goes to FILE. The file is relative to the Org file's directory, the blocks
 for one file in order, a blank line between them unless :padline no. :tangle yes
 the Org file's name with the language's ending (*CODE-FILE-EXTENSIONS*); :mkdirp
-yes makes the folders a file goes in when they are not there (for every block
-with *CODE-FILES-MAKE-FOLDERS*); :shebang \"#!/bin/sh\" begins the file and
+yes makes the directories a file goes in when they are not there (for every block
+with *CODE-FILES-MAKE-DIRECTORIES*); :shebang \"#!/bin/sh\" begins the file and
 makes it executable, :tangle-mode o755 gives it that mode; :noweb yes puts in
 the code <<name>> stands for. First it lists every file, new, changed, the same
-or not to be written, and those outside the Org file's folder, and writes the
+or not to be written, and those outside the Org file's directory, and writes the
 new and changed ones only when you say so. Nothing in a block is ever run."
   (let ((buffer (current-buffer)))
     (if (not (typep (buffer-major-mode buffer) 'org-mode))
@@ -408,7 +408,7 @@ new and changed ones only when you say so. Nothing in a block is ever run."
                       (if (null to-write)
                           (message "Nothing to write: ~:[every file is as it would be written~;the files listed cannot be written~]"
                                    (find :cannot files :key #'code-file-state))
-                          (if (yes-or-no-p* (format nil "Write ~d file~:p~@[ (~d outside the Org file's folder)~]?"
+                          (if (yes-or-no-p* (format nil "Write ~d file~:p~@[ (~d outside the Org file's directory)~]?"
                                                     (length to-write)
                                                     (let ((home (and org-file (tuatara.io:parent-path org-file))))
                                                       (and home (let ((n (count-if-not (lambda (f) (code-file-inside-p f home)) to-write)))

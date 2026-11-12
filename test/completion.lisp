@@ -66,7 +66,7 @@
                                                               "old-report.org"
                                                               "report-2026.org"))))))
 
-(define-test (completion m-x-and-buffers)
+(define-modal-test (completion m-x-and-buffers)
   ;; partial, out-of-order input selects end-of-buffer; RET runs it
   (multiple-value-bind (f editor) (run-keys "M-x b u f SPC e n d RET" :text "abc")
     (declare (ignore f))
@@ -141,7 +141,7 @@
         (tuatara.buffer:kill-buffer b))
       (uiop:delete-directory-tree dir :validate t :if-does-not-exist :ignore))))
 
-(define-test (completion key-hints)
+(define-modal-test (completion key-hints)
   (let ((f (tuatara.frontend.fake:make-fake-frontend :width 140 :height 20)))
     (let ((scratch (tuatara.buffer:find-buffer "*scratch*"))) (when scratch (tuatara.buffer:kill-buffer scratch)))
     (tuatara.buffer:make-buffer "*scratch*" :text "")
@@ -311,7 +311,7 @@
       (is = 1 tall)
       (is = usual back))))
 
-(define-test (completion narrow-panel)
+(define-modal-test (completion narrow-panel)
   ;; in a frame 40 columns by 8 rows the panel leaves a window's row and its
   ;; mode line, and no row runs past the edge: keys give way whole from the end
   (let (rows)

@@ -223,24 +223,24 @@ the main one, then call THEN with its path; said so when there is none."
 
 (defun git-worktree-default-path (top branch)
   "Where a worktree for BRANCH of the repository at TOP goes when nothing is
-typed: beside the repository's folder, named after it and the branch."
-  (let ((folder (string-right-trim "/" top)))
-    (format nil "~a-~a/" folder (substitute #\- #\/ branch))))
+typed: beside the repository's directory, named after it and the branch."
+  (let ((directory (string-right-trim "/" top)))
+    (format nil "~a-~a/" directory (substitute #\- #\/ branch))))
 
-(defun git-read-new-folder (prompt &key initial)
-  "Ask with PROMPT for a folder that is not there yet, from INITIAL when
+(defun git-read-new-directory (prompt &key initial)
+  "Ask with PROMPT for a directory that is not there yet, from INITIAL when
 given (READ-NEW-NATIVE-PATH); its path without its last /, or NIL, said so."
   (let ((path (apply #'read-new-native-path prompt :kind :any :writing t (and initial (list :initial initial)))))
     (and path (string-right-trim "/" path))))
 
 (defun git-read-worktree-path (branch top)
   "Ask where the worktree for BRANCH goes (GIT-WORKTREE-DEFAULT-PATH offered),
-as GIT-READ-NEW-FOLDER asks."
-  (git-read-new-folder (format nil "Worktree for ~a at: " branch)
+as GIT-READ-NEW-DIRECTORY asks."
+  (git-read-new-directory (format nil "Worktree for ~a at: " branch)
                        :initial (abbreviated-path (git-worktree-default-path top branch))))
 
 (define-command git-worktree-checkout ()
-  "Make a worktree for a branch asked for, in a folder asked for: the
+  "Make a worktree for a branch asked for, in a directory asked for: the
 branch checked out there, to work on beside this one."
   (with-git-repository (top)
     (git-ask-branch "Worktree for branch: " top
@@ -253,7 +253,7 @@ branch checked out there, to work on beside this one."
 
 (define-command git-worktree-branch ()
   "Make a new branch, asked for, starting at a revision asked for, and a
-worktree for it in a folder asked for."
+worktree for it in a directory asked for."
   (with-git-repository (top)
     (git-ask-new-branch "New" top
                         (lambda (name start)
@@ -263,25 +263,25 @@ worktree for it in a folder asked for."
                                        (format nil "The new branch ~a checked out in ~a" name (abbreviated-path path)))))))))
 
 (define-command git-worktree-move ()
-  "Move a worktree, asked for, not the main one, to a folder asked for."
+  "Move a worktree, asked for, not the main one, to a directory asked for."
   (with-git-repository (top)
     (git-ask-worktree "Move worktree: " top
                       (lambda (path)
-                        (let ((to (git-read-new-folder (format nil "Move ~a to: " (abbreviated-path path)))))
+                        (let ((to (git-read-new-directory (format nil "Move ~a to: " (abbreviated-path path)))))
                           (when to
                             (git-run "Moving a worktree" top (list "worktree" "move" path to)
                                      (format nil "Moved the worktree to ~a" (abbreviated-path to))))))
                       :others t)))
 
 (define-command git-worktree-delete ()
-  "Delete a worktree, asked for, not the main one, after asking: its folder
+  "Delete a worktree, asked for, not the main one, after asking: its directory
 goes, its branch stays. One with changes not committed is deleted only after
 asking again, as they would be lost."
   (with-git-repository (top)
     (git-ask-worktree "Delete worktree: " top
                       (lambda (path)
                         (let ((shown (abbreviated-path path)))
-                          (when (yes-or-no-p* (format nil "Delete the worktree ~a and its folder? Its branch stays" shown))
+                          (when (yes-or-no-p* (format nil "Delete the worktree ~a and its directory? Its branch stays" shown))
                             (git-delete-asking-again "Deleting a worktree" top (list "worktree" "remove" path) "modified or untracked"
                                                      (list "worktree" "remove" "--force" path)
                                                      (format nil "~a has changes not committed; delete it all the same? They cannot be got back" shown)

@@ -4,10 +4,10 @@
 (in-package #:tuatara.tests)
 
 (define-test snippets
-  :description "A snippet, a file in a mode's folder, is put in by its key and TAB or chosen with C-c y; its fields ($1, ${1:text}, ${1|a,b|}, $0) are gone through with TAB and S-TAB, a number used again filled in as the field is, $NAME standing for a value; nothing in it is run.")
+  :description "A snippet, a file in a mode's directory, is put in by its key and TAB or chosen with C-c y; its fields ($1, ${1:text}, ${1|a,b|}, $0) are gone through with TAB and S-TAB, a number used again filled in as the field is, $NAME standing for a value; nothing in it is run.")
 
 (defmacro with-snippets ((&rest files) &body body)
-  "Run BODY with the snippets FILES, each (MODE NAME TEXT), in a folder of their own, modal editing off."
+  "Run BODY with the snippets FILES, each (MODE NAME TEXT), in a directory of their own, modal editing off."
   (let ((dir (gensym)))
     `(with-test-directory (,dir)
        (loop for (mode name text) in (list ,@(mapcar (lambda (f) `(list ,@f)) files))
@@ -116,8 +116,8 @@
     ;; a file whose lines end in carriage returns puts in lines without them
     (is string= (format nil "line1~%line2") (session-text (nth-value 1 (run-keys "c r TAB" :text ""))))
     ;; the snippets read are kept, and read again once their files change
-    (let* ((place (tuatara.io:native (tuatara.defaults::own-folder (first tuatara-user:*snippet-directories*) "fundamental-mode")))
-           (kept (cdr (gethash place tuatara.defaults::*snippet-folders*))))
+    (let* ((place (tuatara.io:native (tuatara.defaults::own-subdirectory (first tuatara-user:*snippet-directories*) "fundamental-mode")))
+           (kept (cdr (gethash place tuatara.defaults::*snippets-read-by-directory*))))
       (true kept)
       (is eq (first kept) (first (tuatara.defaults::user-snippets-of "fundamental-mode")))
       (alexandria:write-string-into-file (format nil "# key: zp~%# --~%changed and longer")
@@ -162,8 +162,8 @@
     (let ((consed (loop repeat 3 minimize (nth-value 2 (tuatara.bench::measuring (tuatara.defaults::built-in-snippets-of "org-mode"))))))
       (true (< consed 256) "~:d octets consed" consed))))
 
-(define-test (snippets folder-in-the-configuration-folder)
-  ;; with none set, your snippets are in snippets/ of the configuration folder as the
+(define-test (snippets directory-in-the-configuration-directory)
+  ;; with none set, your snippets are in snippets/ of the configuration directory as the
   ;; environment names it when asked, never a place fixed when Tuatara was built
   (let ((old (uiop:getenv "XDG_CONFIG_HOME")))
     (unwind-protect

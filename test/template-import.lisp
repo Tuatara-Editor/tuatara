@@ -9,7 +9,7 @@ text {{{body}}}, and a note template: its fields as keywords with comments, empt
 %date% for a date, then its text as Org with headings, lists, tables, pictures and footnotes. A Word
 document's macros, comments and tracked changes are left out and what it fetches from elsewhere is said; a
 LaTeX command taking in a file outside the template is made a comment. A picture outside the document's
-folder is never taken, a part named to land outside the template refused, nothing is written beside the
+directory is never taken, a part named to land outside the template refused, nothing is written beside the
 document or over what exists, and a Tuatara template is taken as it is.")
 
 (defparameter *survey-latex*
@@ -110,7 +110,7 @@ Words.
             (has (format nil "** Scope~%:EXPORT:~%numbered: no~%:END:~%# Write the scope.") note)
             (has (format nil "* Conclusion~%# Write the conclusion.~%~%* Terms") note)
             (has "* Terms :appendix:" note)
-            ;; the picture in its folder saved, the one outside it not; nothing beside the document
+            ;; the picture in its directory saved, the one outside it not; nothing beside the document
             (true (probe-file (concatenate 'string media "logo.png")))
             (is = 1 (length (tuatara.io:directory-entries media)))
             (is equal
@@ -170,7 +170,7 @@ Words.
     (let ((source (namestring (merge-pathnames "outside.tex" dir)))
           (tex (namestring (merge-pathnames "out/outside.tex" dir)))
           (tuatara.defaults::*note-templates-directory* (namestring (merge-pathnames "nt/" dir))))
-      ;; a file taken in from a home folder: a comment in the template made, and said
+      ;; a file taken in from a home directory: a comment in the template made, and said
       (alexandria:write-string-into-file
        (format nil "\\documentclass{article}~%\\usepackage{graphicx}~%\\includegraphics{~~/x.png}~%\\begin{document}~%\\section{Text}~%Words.~%\\end{document}~%")
        source)
@@ -185,11 +185,11 @@ Words.
 (define-test (template-import docx-made-template)
   (with-test-directory (dir)
     (let* ((source (write-docx-report (merge-pathnames "report.docm" dir)))
-           (folder (namestring (merge-pathnames "pair/" dir)))
+           (directory (namestring (merge-pathnames "pair/" dir)))
            (tex (namestring (merge-pathnames "pair.tex" dir)))
            (note-path (namestring (merge-pathnames "note.org" dir))))
       (multiple-value-bind (made words) (tuatara.defaults::docx-import source "pair"
-                                                                       :folder folder
+                                                                       :directory directory
                                                                        :tex tex
                                                                        :note note-path)
         (is string= note-path made)
@@ -242,7 +242,7 @@ Words.
           ;; a date field's place in the LaTeX half keeps the document's pattern
           (has "{{{issue_date:date=d MMMM yyyy}}}" latex)))
       ;; written over by none: a second import refused
-      (fail (tuatara.defaults::docx-import source "pair" :folder folder :tex tex :note note-path)))))
+      (fail (tuatara.defaults::docx-import source "pair" :directory directory :tex tex :note note-path)))))
 
 (define-test (template-import docx-note-and-pictures)
   (with-test-directory (dir)
@@ -258,8 +258,8 @@ Words.
                            ("word/_rels/document.xml.rels" . "<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\"><Relationship Id=\"rId9\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/image\" Target=\"media/image1.png\"/></Relationships>")
                            ("word/media/image1.png" . "not really a picture")))
                         out))
-      ;; the note template in the note templates' folder, its picture beside it, linked by its whole path
-      (let ((made (tuatara.defaults::docx-import source "form" :folder (namestring (merge-pathnames "form/" dir))
+      ;; the note template in the note templates' directory, its picture beside it, linked by its whole path
+      (let ((made (tuatara.defaults::docx-import source "form" :directory (namestring (merge-pathnames "form/" dir))
                                                                :tex (namestring (merge-pathnames "form.tex" dir))))
             (picture (concatenate 'string templates "form-media/image1.png")))
         (is string= (concatenate 'string templates "form.org") made)
@@ -320,7 +320,7 @@ is there or TRIES turns have gone."
 (define-test (template-import docx-hostile-documents)
   (with-test-directory (dir)
     (let ((w *docx-report-w*))
-      ;; parts named to land outside the template's folder: refused, nothing written anywhere
+      ;; parts named to land outside the template's directory: refused, nothing written anywhere
       (let ((path (namestring (merge-pathnames "slip.docx" dir))))
         (with-open-file (out path :direction :output :element-type '(unsigned-byte 8))
           (write-sequence (tuatara.defaults::zip-octets
@@ -328,14 +328,14 @@ is there or TRIES turns have gone."
                              ("../../escaped.txt" . "owned")
                              ("word/../../../escaped2.txt" . "owned")))
                           out))
-        (fail (tuatara.defaults::docx-import path "slip" :folder (namestring (merge-pathnames "t/slip/" dir))
+        (fail (tuatara.defaults::docx-import path "slip" :directory (namestring (merge-pathnames "t/slip/" dir))
                                                          :tex (namestring (merge-pathnames "t/slip.tex" dir))
                                                          :note (namestring (merge-pathnames "slip.org" dir))))
         (false (probe-file (merge-pathnames "escaped.txt" dir)))
         (false (probe-file (merge-pathnames "t/" dir)))
         (false (probe-file (merge-pathnames "slip.org" dir))))
-      ;; a folder's own entry, as zip -r makes them: nothing to refuse; a pictures' folder there already: refused
-      (let ((path (namestring (merge-pathnames "folders.docx" dir))))
+      ;; a directory's own entry, as zip -r makes them: nothing to refuse; a pictures' directory there already: refused
+      (let ((path (namestring (merge-pathnames "directories.docx" dir))))
         (with-open-file (out path :direction :output :element-type '(unsigned-byte 8))
           (write-sequence (tuatara.defaults::zip-octets
                            `(("word/" . "")
@@ -343,14 +343,15 @@ is there or TRIES turns have gone."
                           out))
         (ensure-directories-exist (merge-pathnames "kept-media/" dir))
         (true (search "kept-media exists already"
-                      (handler-case (progn (tuatara.defaults::docx-import path "kept" :folder (namestring (merge-pathnames "k/kept/" dir))
+                      (handler-case (progn (tuatara.defaults::docx-import path "kept" :directory (namestring (merge-pathnames "k/kept/" dir))
                                                                                        :tex (namestring (merge-pathnames "k/kept.tex" dir))
                                                                                        :note (namestring (merge-pathnames "kept.org" dir)))
                                            "")
                         (error (e) (princ-to-string e)))))
-        (true (tuatara.defaults::docx-import path "folders" :folder (namestring (merge-pathnames "f/folders/" dir))
-                                                            :tex (namestring (merge-pathnames "f/folders.tex" dir))
-                                                            :note (namestring (merge-pathnames "folders.org" dir))))))))
+        (true (tuatara.defaults::docx-import path "directories"
+                                             :directory (namestring (merge-pathnames "f/directories/" dir))
+                                             :tex (namestring (merge-pathnames "f/directories.tex" dir))
+                                             :note (namestring (merge-pathnames "directories.org" dir))))))))
 
 (define-test (template-import docx-odd-bodies)
   ;; the importer on odd bodies: no body, one closing itself, an empty control
@@ -361,7 +362,7 @@ is there or TRIES turns have gone."
                  (write-sequence (tuatara.defaults::zip-octets (list (cons "word/document.xml" document))) out))
                (let ((name (format nil "odd~d" (random 1000000))))
                  (tuatara.defaults::docx-import path name
-                                                :folder (namestring (merge-pathnames (format nil "~a/" name) dir))
+                                                :directory (namestring (merge-pathnames (format nil "~a/" name) dir))
                                                           :tex (namestring (merge-pathnames (format nil "~a.tex" name) dir))
                                                           :note (namestring (merge-pathnames (format nil "~a.org" name) dir)))))))
       (fail (imported (format nil "<w:document ~a></w:document>" *docx-report-w*)))
@@ -401,7 +402,7 @@ columns with margins of its own, as Word writes sections."
       (with-open-file (out source :direction :output :element-type '(unsigned-byte 8))
         (write-sequence (tuatara.defaults::zip-octets (docx-sectioned-parts)) out))
       (multiple-value-bind (made words)
-          (tuatara.defaults::docx-import source "sect" :folder (namestring (merge-pathnames "sect/" dir))
+          (tuatara.defaults::docx-import source "sect" :directory (namestring (merge-pathnames "sect/" dir))
                                                        :tex (namestring (merge-pathnames "sect.tex" dir))
                                                        :note note-path)
         (declare (ignore made))
@@ -449,7 +450,7 @@ columns with margins of its own, as Word writes sections."
                            ("word/_rels/document.xml.rels" . "<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\"><Relationship Id=\"rId9\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/image\" Target=\"http://example.com/seen.png\" TargetMode=\"External\"/><Relationship Id=\"rId10\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink\" Target=\"http://example.com/clicked\" TargetMode=\"External\"/></Relationships>")))
                         out))
       (multiple-value-bind (made words)
-          (tuatara.defaults::docx-import source "fetching" :folder (namestring (merge-pathnames "t/fetching/" dir))
+          (tuatara.defaults::docx-import source "fetching" :directory (namestring (merge-pathnames "t/fetching/" dir))
                                                            :tex (namestring (merge-pathnames "t/fetching.tex" dir))
                                                            :note (namestring (merge-pathnames "fetching.org" dir)))
         (declare (ignore made))
@@ -473,14 +474,14 @@ columns with margins of its own, as Word writes sections."
                          `(("word/document.xml" . ,(format nil "<w:document ~a><w:body><w:p><w:r><w:t>Hi</w:t></w:r></w:p></w:body></w:document>" *docx-report-w*))
                            ("word/styles.xml" . ,(format nil "<w:styles ~a><w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:ascii=\"No Such Font&#10;\\input{/etc/passwd}\"/></w:rPr></w:rPrDefault></w:docDefaults></w:styles>" *docx-report-w*))))
                         out))
-      (true (tuatara.defaults::docx-import path "font" :folder (namestring (merge-pathnames "font/" dir)) :tex tex
+      (true (tuatara.defaults::docx-import path "font" :directory (namestring (merge-pathnames "font/" dir)) :tex tex
                                                        :note (namestring (merge-pathnames "font.org" dir))))
       (let ((latex (alexandria:read-file-into-string tex)))
         (false (search "\\input{/etc/passwd}" latex))
         (false (cl-ppcre:scan "(?m)^\\\\input" latex))))))
 
 (define-test (template-import picture-names-kept-apart)
-  ;; two pictures of one name from two folders of a document: each saved under a name of its own
+  ;; two pictures of one name from two directories of a document: each saved under a name of its own
   (let ((pictures '()))
     (flet ((name (source)
              (let ((file (tuatara.defaults::import-picture-file source "m"
@@ -492,7 +493,7 @@ columns with margins of its own, as Word writes sections."
       (is string= "m/a.png" (name "word/media/a.png")))))
 
 (define-test (template-import latex-outside-files-every-form)
-  ;; files above the document's folder, named without braces, read by \openin or tested for: each made a comment
+  ;; files above the document's directory, named without braces, read by \openin or tested for: each made a comment
   (let ((tuatara.defaults::*template-import* (tuatara.defaults::make-template-import))
         (outside '("\\input{../../.ssh/x}" "\\input /etc/passwd" "\\input/etc/passwd" "\\openin\\x=/etc/passwd"
                    "\\IfFileExists{/etc/passwd}" "\\includegraphics{\"~/x\"}" "\\import{sec/}{../../f}"

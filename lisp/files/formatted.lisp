@@ -18,7 +18,7 @@ new-file-formatted makes new ones there, and the keywords in their names are
 offered for every new file with a formatted name.
 - a directory's name: your home directory unless set, (setf
   *formatted-file-directory* \"~/notes/\") in the init file."
-  :values folder)
+  :values directory)
 
 (define-setting *formatted-file-keywords* '()
   "Keywords offered for a new file with a formatted name, besides the keywords in
@@ -130,7 +130,7 @@ header.
     kind))
 
 (defvar *note-templates-directory* nil
-  "The folder of your own templates for new notes (NOTE-TEMPLATES-DIRECTORY);
+  "The directory of your own templates for new notes (NOTE-TEMPLATES-DIRECTORY);
 NIL, as standard, for note-templates/ in the configuration directory.")
 
 (defun note-templates-directory ()
@@ -743,6 +743,7 @@ says encrypted: that one is made when its buffer is saved."
                (tuatara.buffer:buffer-insert buffer 0 text)
                (setf (tuatara.buffer:buffer-point buffer) (tuatara.buffer:buffer-size buffer)))
              (show-buffer buffer)
+             (say-new-file-directory buffer)
              buffer)))))
 
 (defun file-name-base-of (name)
@@ -776,7 +777,7 @@ joined by _. Nothing is written until the file is saved."
          (if (or (tuatara.io:path-stamp full)
                  (buffer-visiting full))
              (note-visited-path full (visit-path full))
-             (multiple-value-bind (directory name) (tuatara.io:path-folder-and-name full)
+             (multiple-value-bind (directory name) (tuatara.io:path-directory-and-name full)
                (if (unencryptable-name-p name)
                    (message "~a is not made: only .gpg files can be encrypted" name)
                    (let* ((title (read-string "New file TITLE: " :initial (file-name-base-of name)))

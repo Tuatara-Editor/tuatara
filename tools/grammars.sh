@@ -9,7 +9,7 @@
 # one NAME.so per grammar, from the directory the manifest's fifth column
 # names in its repository when it has one, and build/grammars/licenses/NAME/
 # with its licence: its own licence files (LICENSE, COPYING, a LICENSES/
-# folder; in that directory, else at the top of its repository), else
+# directory; in that directory, else at the top of its repository), else
 # syntax/licenses/NAME.txt for one that has none; that file goes beside its
 # own files too when they name a licence without holding its text (an
 # SPDX-License-Identifier line, a notice). A grammar without a licence stops
@@ -20,7 +20,7 @@
 # and its parser generated again with the pinned tree-sitter program first;
 # tree-sitter itself is patched with syntax/patches/tree-sitter.patch.
 # Each is compiled from a checkout of its pinned commit with nothing changed
-# or added (one that has been changed stops it: delete its folder in
+# or added (one that has been changed stops it: delete its directory in
 # build/grammar-sources/ to fetch it again), and only when what compiling it
 # reads (its parser, its scanner, the headers they include, and the
 # grammar.js a parser is generated from) hashes as syntax/grammar-inputs.sha256
@@ -89,7 +89,7 @@ while IFS=$'"'"'\t'"'"' read -r name url commit license subpath; do
   [ "$name" = tree-sitter-cli ] && continue
   dir="$sources/$name"; kept="$out/licenses/$name"; found=""
   for place in "$dir${subpath:+/$subpath}" "$dir"; do
-    # LICENSE, COPYING and the like, and the texts of a LICENSES/ folder (REUSE)
+    # LICENSE, COPYING and the like, and the texts of a LICENSES/ directory (REUSE)
     found=$({ find "$place" -maxdepth 1 -type f -iregex ".*/\(licen[cs]e\|copying\|unlicense\)[^/]*"
               if [ -d "$place/LICENSES" ]; then find "$place/LICENSES" -maxdepth 1 -type f; fi; } | sort)
     [ -n "$found" ] && break
@@ -146,7 +146,7 @@ fi
 # only when what it compiles is what was recorded
 recorded="$root/syntax/grammar-inputs.sha256"
 pristine() { pristine_grammar "$sources/$1"; }
-inputs_of() { grammar_inputs_of "$root" "$1" "$2"; }  # the SHA-256 of what compiling $1 (subfolder $2) reads
+inputs_of() { grammar_inputs_of "$root" "$1" "$2"; }  # the SHA-256 of what compiling $1 (subdirectory $2) reads
 checked() {  # stop unless the checkout of $1 (subpath $2) is its pinned commit as fetched, hashing as recorded
   grammar_checked "$1" "$sources/$1" "$recorded" "$(inputs_of "$1" "$2")" || exit 1
 }

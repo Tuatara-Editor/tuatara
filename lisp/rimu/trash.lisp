@@ -34,12 +34,12 @@ deletion. \\[rimu-trash-empty] empties the trash (asked twice).
 (defvar *rimu-trash-keymap* (mode-keymap 'rimu-trash-mode)
   "Keys of the list of the trash (rimu-trash-mode's keymap).")
 
-(defstruct (trashed (:constructor make-trashed (trash name top path date folder)) (:copier nil))
+(defstruct (trashed (:constructor make-trashed (trash name top path date directory)) (:copier nil))
   "A thing in the trash: TRASH, the trash directory it is in; NAME, its name
 there; TOP, the top of the drive TRASH is on (NIL for your own trash); PATH,
 where it was, whole; DATE, when it went there, as its .trashinfo has it;
-FOLDER, true when it is a directory."
-  trash name top path date folder)
+DIRECTORY, true when it is a directory."
+  trash name top path date directory)
 
 (setf (documentation 'trashed-p 'function) "True when OBJECT is a TRASHED.")
 
@@ -150,7 +150,7 @@ file, a link followed, never a named pipe or a device, at most
 
 (defparameter *trash-columns* '((" M" :width 2) ("Name" :width 28) ("Deleted" :width 19) ("Where it was"))
   "The columns of the list of the trash, as TABLE-HEADING-PIECES takes them:
-the mark (> or D), the thing's name, when it went there and the folder it was in.")
+the mark (> or D), the thing's name, when it went there and the directory it was in.")
 
 (defun trashed-key (thing)
   "What a mark on THING in the list of the trash is kept by: its trash and its
@@ -160,7 +160,7 @@ name there."
 (defun trash-sections (things)
   "THINGS in sections, each (SECTION . THINGS): your own trash first (SECTION
 :HOME), then each drive's in the order of their names, SECTION the drive's
-top folder (GROUP-SECTIONS)."
+top directory (GROUP-SECTIONS)."
   (group-sections things (lambda (thing) (or (trashed-top thing) :home)) :first :home :order #'string<))
 
 (defun trash-section-title (section)
@@ -169,10 +169,10 @@ top folder (GROUP-SECTIONS)."
 
 (defun trash-cells (thing mark)
   "The cells of THING's line, marked MARK, in the list of the trash."
-  (let ((folder (trashed-folder thing)))
+  (let ((directory (trashed-directory thing)))
     (list (list-mark-sign mark)
-          (cons (escape-controls (format nil "~a~:[~;/~]" (tuatara.io:native-file-name (trashed-path thing)) folder))
-                (or (list-mark-face mark) (and folder :list-directory)))
+          (cons (escape-controls (format nil "~a~:[~;/~]" (tuatara.io:native-file-name (trashed-path thing)) directory))
+                (or (list-mark-face mark) (and directory :list-directory)))
           (substitute #\Space #\T (trashed-date thing))
           (abbreviated-path (tuatara.io:parent-path (trashed-path thing))))))
 
@@ -298,7 +298,7 @@ thing's name, when it went and where it was. There \\<rimu-trash-mode>\\[list-vi
 (defun trash-restore-refusal (thing)
   "Why THING is not put back where its .trashinfo says it was, in a few words,
 or NIL when it may be: that place must be a whole path in your own trash, and
-within its drive in a drive's (the folders on the way as they really are,
+within its drive in a drive's (the directories on the way as they really are,
 links followed); it may not climb with .. anywhere, nor hold a control
 character (a null (NUL) among them)."
   (let ((path (trashed-path thing))
@@ -310,7 +310,7 @@ character (a null (NUL) among them)."
           ((not (uiop:string-prefix-p "/" path))
            "its .trashinfo gives no whole path")
           ((and top (not (and (tuatara.io:path-within-p path top)
-                              ;; the nearest folder there, links followed
+                              ;; the nearest directory there, links followed
                               (let ((above (tuatara.io:parent-path path)))
                                 (loop until (or (tuatara.io:path-stamp above) (string= above "/"))
                                       do (setf above (tuatara.io:parent-path (string-right-trim "/" above))))
@@ -341,16 +341,16 @@ it went, or NIL (said why)."
 (defun trash-restore-question (things refused)
   "The question whether to put THINGS back, where they go said; REFUSED, each
 \(THING . WHY), those left in the trash (TRASH-RESTORE-REFUSAL)."
-  (let ((folders (remove-duplicates (mapcar (lambda (thing)
+  (let ((directories (remove-duplicates (mapcar (lambda (thing)
                                               (abbreviated-path (tuatara.io:parent-path (trashed-path thing)))) things)
                                     :test #'string= :from-end t)))
     (format nil "~a?~@[ (left in the trash: ~{~a~^; ~})~]"
             (list-question "Put back" "thing" things
                            :name-of (lambda (thing) (abbreviated-path (trashed-path thing)))
                            :where (and (rest things)
-                                       (format nil "to ~{~a~^, ~}~@[ and ~d more folders~]"
-                                               (subseq folders 0 (min 3 (length folders)))
-                                               (and (> (length folders) 3) (- (length folders) 3)))))
+                                       (format nil "to ~{~a~^, ~}~@[ and ~d more directories~]"
+                                               (subseq directories 0 (min 3 (length directories)))
+                                               (and (> (length directories) 3) (- (length directories) 3)))))
             (trash-refused-words refused))))
 
 (defun trash-refused-words (refused)

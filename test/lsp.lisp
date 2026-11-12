@@ -1079,7 +1079,7 @@ what marks a project; check-health saying which are installed.")
 
 (define-test (lsp servers-told-of-files-on-disk)
   ;; a server that asks is told of its project's files made, changed and deleted by other programs,
-  ;; those its patterns match, in folders found in the background; folders a build makes never watched
+  ;; those its patterns match, in directories found in the background; directories a build makes never watched
   (with-test-directory (dir)
     (ensure-directories-exist (merge-pathnames ".git/" dir))
     (ensure-directories-exist (merge-pathnames "pkg/" dir))
@@ -1118,7 +1118,7 @@ what marks a project; check-health saying which are installed.")
         (true (funcall (told-p "watched new.py 1")))
         (true (funcall (told-p "watched old.py 2")))
         (true (funcall (told-p "watched gone.py 3")))
-        (false (funcall (told-p "watched made.py 1")) "a build's folder is not watched")
+        (false (funcall (told-p "watched made.py 1")) "a build's directory is not watched")
         (false (find-if (lambda (line) (search "notes.txt" line)) (told log))
                "a file the patterns do not match is not told")))))
 

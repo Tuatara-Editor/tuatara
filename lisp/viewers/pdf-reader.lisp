@@ -1395,3 +1395,69 @@ stop."
                   (t (operand item))))
           (setf i end))))
     count))
+
+;;; Pages
+
+(defun pdf-box (octets value)
+  "VALUE, a rectangle of the PDF in OCTETS (an array of four numbers, or a
+reference to one), as (LEFT BOTTOM RIGHT TOP) in points, its corners put in
+order; NIL when it is no rectangle with some width and height."
+  (let ((numbers (mapcar (lambda (item) (pdf-resolve octets item)) (pdf-array-items (pdf-resolve octets value)))))
+    (when (and (= 4 (length numbers)) (every #'realp numbers))
+      (destructuring-bind (x1 y1 x2 y2) numbers
+        (and (/= x1 x2) (/= y1 y2)
+             (list (min x1 x2) (min y1 y2) (max x1 x2) (max y1 y2)))))))
+
+(defun pdf-page-boxes (octets &key (most 100000))
+  "The pages of the PDF in OCTETS in their order, as a vector of (MEDIA CROP
+TURN) for each: MEDIA, the page's media box, and CROP, the part of it shown
+\(its crop box within the media box, the media box when it gives none), each
+\(LEFT BOTTOM RIGHT TOP) in points; TURN, the degrees it is turned clockwise
+when shown, 0, 90, 180 or 270. Each is read from the page, or the page tree
+above it when the page leaves it out. At most MOST pages, the tree held to 64
+levels and each node read once; NIL when the PDF's page tree cannot be read.
+In a job, it ends when the job is asked to stop."
+  (with-pdf-objects-found
+    (let* ((*pdf-most-objects-found* (+ 64 (* 2 most)))
+           (*pdf-item-limit* (max *pdf-item-limit* most))
+           (trailer (pdf-trailer octets))
+           (root (pdf-resolve octets (pdf-get trailer "/Root")))
+           (pages (make-array 0 :adjustable t :fill-pointer 0))
+           (seen (make-hash-table))
+           (stack (list (list (pdf-get root "/Pages") nil nil 0 0)))
+           (popped 0))
+      (declare (type fixnum popped))
+      (flet ((unseen-p (value)
+               ;; each node once, told by its number before it is read
+               (let ((number (pdf-ref-p value)))
+                 (or (null number)
+                     (and (not (gethash number seen)) (setf (gethash number seen) t))))))
+        (unseen-p (first (first stack)))
+        (loop while (and stack (< (length pages) most))
+              do (when (zerop (logand (incf popped) 255)) (tuatara.runtime:job-check-stop))
+                 (destructuring-bind (value media crop turn depth) (pop stack)
+                   (let ((node (pdf-resolve octets value)))
+                     (when (and (pdf-dictionary-p node) (<= depth 64))
+                       (let* ((media (or (pdf-box octets (pdf-get node "/MediaBox")) media))
+                              (crop (or (pdf-box octets (pdf-get node "/CropBox")) crop))
+                              (rotate (pdf-resolve octets (pdf-get node "/Rotate")))
+                              (turn (if (and (integerp rotate) (zerop (mod rotate 90))) (mod rotate 360) turn))
+                              (kids (pdf-resolve octets (pdf-get node "/Kids"))))
+                         (if (and kids (not (equal (pdf-get node "/Type") "/Page")))
+                             (dolist (kid (reverse (pdf-array-items kids)))
+                               (when (unseen-p kid)
+                                 (push (list kid media crop turn (1+ depth)) stack)))
+                             (when media
+                               (vector-push-extend
+                                (list media
+                                      (if crop
+                                          (destructuring-bind (l b r tp) crop
+                                            (destructuring-bind (ml mb mr mt) media
+                                              ;; a crop box wholly outside the media box: the media box
+                                              (if (and (< (max l ml) (min r mr)) (< (max b mb) (min tp mt)))
+                                                  (list (max l ml) (max b mb) (min r mr) (min tp mt))
+                                                  media)))
+                                          media)
+                                      turn)
+                                pages))))))))
+        (and (plusp (length pages)) (coerce pages 'simple-vector))))))

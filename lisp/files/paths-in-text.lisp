@@ -8,7 +8,7 @@
 ;;;; the path is still being typed. The list is the one completion at point
 ;;;; shows (COMPLETE-IN-TEXT), its candidates those of the questions for a file
 ;;;; (DIRECTORY-CANDIDATES). C-x C-p opens the path at the cursor as C-x C-f
-;;;; would: a folder in a list of it, a file in its buffer.
+;;;; would: a directory in a list of it, a file in its buffer.
 
 (in-package #:tuatara.defaults)
 
@@ -91,7 +91,7 @@ beside the cursor, in a path being typed (PATH-AT-POINT): read the path's
 directory on a thread of its own, for PATH-COMPLETION-TICK to list it once
 read. Nothing is done where COMPLETE-PATHS-P says not, the buffer is
 read-only or shown as a hex dump, or a list is shown already, nor for a
-folder on another machine: only a question for a file reads one there."
+directory on another machine: only a question for a file reads one there."
   (let ((buffer (current-buffer)))
     (when (and (member (editor-last-command editor) '(self-insert-command popup-insert))
                (null (editor-popup editor))
@@ -104,7 +104,7 @@ folder on another machine: only a question for a file reads one there."
           (path-at-point buffer (tuatara.buffer:buffer-point buffer))
         (declare (ignore name-start name-end))
         (let ((expanded (and start (not (remote-name-p directory))
-                             ;; a path not from the root or ~ is in the buffer's folder, maybe there
+                             ;; a path not from the root or ~ is in the buffer's directory, maybe there
                              (or (and (plusp (length directory)) (find (char directory 0) "/~"))
                                  (not (remote-name-p (buffer-directory buffer))))
                              (ignoring-errors-reported ("expanding ~a" directory)
@@ -122,17 +122,17 @@ folder on another machine: only a question for a file reads one there."
                                                             (directory-candidates expanded chosen))))))))))))))
 
 (defun path-listing-order (candidates)
-  "CANDIDATES, the entries of a folder as DIRECTORY-CANDIDATES gives them,
+  "CANDIDATES, the entries of a directory as DIRECTORY-CANDIDATES gives them,
 ranked for the list beside the cursor: among those that match as closely,
-the folders first (those chosen lately first), then the files chosen
+the directories first (those chosen lately first), then the files chosen
 lately, then the others."
   (mapcar (lambda (c)
-            (let ((folder (uiop:string-suffix-p (candidate-string c) "/"))
+            (let ((directory (uiop:string-suffix-p (candidate-string c) "/"))
                   (rank (candidate-rank c)))
               (make-candidate (candidate-string c) :annotation (candidate-annotation c) :value (candidate-value c)
                                                    :group (candidate-group c) :columns (candidate-columns c)
                                                    :suffix (candidate-suffix c)
-                                                   :rank (cond (folder (or rank 500000))
+                                                   :rank (cond (directory (or rank 500000))
                                                                (rank (+ 1000000 rank))))))
           candidates))
 
@@ -185,8 +185,8 @@ nothing is there."
           (and (plusp (length trimmed)) (string/= trimmed typed) (there trimmed))))))
 
 (define-command open-path-at-point ()
-  "Open the file or folder whose path is at the cursor in the text, as
-\\[find-file] opens it: a folder (/etc/, ~/notes/) in a list of it, a file
+  "Open the file or directory whose path is at the cursor in the text, as
+\\[find-file] opens it: a directory (/etc/, ~/notes/) in a list of it, a file
 \\(~/notes/todo.org, ./README.org, or a file: link's) in its buffer. A path not
 starting with / or ~ is taken from the directory the buffer stands in. With a
 prefix argument (\\[universal-argument] \\[open-path-at-point]), open it safely, as
@@ -197,7 +197,7 @@ safely or the buffer it is written in is open safely."
          (typed (path-around b (tuatara.buffer:buffer-point b)))
          (native (and typed (existing-path typed b))))
     (cond ((null typed) (message "No path at point"))
-          ((null native) (message "No file or folder: ~a" typed))
+          ((null native) (message "No file or directory: ~a" typed))
           (t (let ((buffer (visit-path native :safe (and (prefix-argument) t))))
                ;; a path written in a file opened safely is evidence too: not remembered
                (unless (tuatara.io:safe-visit-p b)

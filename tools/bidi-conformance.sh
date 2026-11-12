@@ -10,17 +10,17 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 . tools/inside.sh
-folder=build/bidi-conformance
-mkdir -p "$folder"
-fetch() {  # download Unicode's file $1 into the folder, kept only when its SHA-256 is $2
-  if ! echo "$2  $folder/$1" | sha256sum -c --status 2>/dev/null; then
-    curl -sSfL --retry 3 -o "$folder/$1.part" "https://www.unicode.org/Public/15.0.0/ucd/$1"
-    if ! echo "$2  $folder/$1.part" | sha256sum -c --status; then
-      rm -f "$folder/$1.part"
+directory=build/bidi-conformance
+mkdir -p "$directory"
+fetch() {  # download Unicode's file $1 into the directory, kept only when its SHA-256 is $2
+  if ! echo "$2  $directory/$1" | sha256sum -c --status 2>/dev/null; then
+    curl -sSfL --retry 3 -o "$directory/$1.part" "https://www.unicode.org/Public/15.0.0/ucd/$1"
+    if ! echo "$2  $directory/$1.part" | sha256sum -c --status; then
+      rm -f "$directory/$1.part"
       echo "$1 is not the file expected: not used" >&2
       exit 1
     fi
-    mv "$folder/$1.part" "$folder/$1"
+    mv "$directory/$1.part" "$directory/$1"
   fi
 }
 fetch BidiTest.txt 72a7a509dba0e147322c17997fb5159431042ff4a49fa08c7c25ccc1e291bbfe
@@ -31,4 +31,4 @@ inside sbcl --dynamic-space-size 2GB --non-interactive \
   --eval "(push (truename \"./\") asdf:*central-registry*)" \
   --eval "(ql:quickload :tuatara/core :silent t)" \
   --load tools/bidi-conformance.lisp \
-  --eval "(let ((*print-pretty* nil)) (tuatara.display::run-bidi-conformance (truename \"$folder/\")))"
+  --eval "(let ((*print-pretty* nil)) (tuatara.display::run-bidi-conformance (truename \"$directory/\")))"

@@ -136,7 +136,7 @@ package's settings left out."
     (is string= "a whole number" (words 'integer))
     (is string= "text" (words 'string))
     (is string= "nil, or text" (words '(or (member nil) string)))
-    (is string= "a list, each a folder's name" (words '(list-of folder)))
+    (is string= "a list, each a directory's name" (words '(list-of directory)))
     (is string= "a list of (NAME . PATTERN)" (words "a list of (NAME . PATTERN)"))
     (is eq :yes (fits nil 'boolean))
     (is eq :no (fits :yes 'boolean))

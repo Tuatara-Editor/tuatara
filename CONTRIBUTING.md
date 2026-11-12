@@ -62,9 +62,9 @@ anyone else is closed by the checks, with a note pointing here.
   employer, a customer or a case. Test files are small, made up for the test,
   and say nothing about real people.
 - **No paths outside the project.** Code, tests, documentation and examples
-  refer to no file or folder of anyone's own: no home folder layout, note or
-  file name, tag, template, account or machine. They name only the project's
-  own files, a test's own temporary folder, what every system has (`/tmp`,
+  refer to no file or directory of anyone's own: no home directory layout, note
+  or file name, tag, template, account or machine. They name only the project's
+  own files, a test's own temporary directory, what every system has (`/tmp`,
   `/etc`), or plain made-up places (`~/notes/`, `~/Documents/report.org`).
 
 ## Keeping what others build on
@@ -90,10 +90,10 @@ version. Before 1.0.0 the surface may still change; a pull request that
 changes it says so.
 
 The files Tuatara keeps for you are kept the same way. Your own files in its
-folders (the init file, snippets, templates, your grammars, the auto-saved
+directories (the init file, snippets, templates, your grammars, the auto-saved
 copies) and the bookmarks are kept: a release reads those an earlier one of
 its major version read, with the same result. The other lists in the state
-folder are remembered: read by every later release of the major version. A
+directory are remembered: read by every later release of the major version. A
 list's format grows only by adding: a field at the end of a line, after every
 field of today written even when empty, or a line of a new kind, with the
 version its first line says raised (`# tuatara bookmarks 1`). An earlier

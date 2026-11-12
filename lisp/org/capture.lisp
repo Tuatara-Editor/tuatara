@@ -12,10 +12,10 @@
 (in-package #:tuatara.defaults)
 
 (define-setting *capture-template-directories* nil
-  "The folders your capture templates are in, a template a file.
+  "The directories your capture templates are in, a template a file.
 \\[org-capture] offers them with Tuatara's own (t, n, j, m).
-- a list of folders: those folders.
-- nil, as standard: capture-templates/ in your configuration folder
+- a list of directories: those directories.
+- nil, as standard: capture-templates/ in your configuration directory
   (~/.config/tuatara/capture-templates/, XDG_CONFIG_HOME's when it is set).
 
 One of yours with the key of one of Tuatara's takes its place. A file's head names it, then its
@@ -40,7 +40,7 @@ The key is the character that chooses it. Where the text is filed:
   # file: FILE alone                   at FILE's end
 
 FILE written *org-agenda-files* is the first of the files the agenda reads:
-that file, or agenda.org in the first folder (or a pattern's folder) named.
+that file, or agenda.org in the first directory (or a pattern's directory) named.
   # journal: t                         at the end of today's journal entry
                                        (\\[journal-new-or-existing-entry])
 With # clock-in: t the entry is clocked from when its capture begins; with
@@ -61,7 +61,7 @@ it goes under, with these filled in:
   %<%H:%M>  the time as the pattern says (format-time's %-specifiers)
   %%  a %
 \\[org-capture-template-copy] makes one of Tuatara's yours to change."
-  :values (list-of folder))
+  :values (list-of directory))
 
 (defparameter *built-in-capture-templates* (built-in-data-files "capture-templates/")
   "Tuatara's own capture templates, each (FILE-NAME TEXT): a TODO for the
@@ -101,8 +101,8 @@ has no key."
            :clock-in (yes "clock-in") :clock-resume (yes "clock-resume") :file file-name :own own))))))
 
 (defun capture-template-directories ()
-  "The folders your capture templates are in (*CAPTURE-TEMPLATE-DIRECTORIES*):
-capture-templates/ in your configuration folder when it names none."
+  "The directories your capture templates are in (*CAPTURE-TEMPLATE-DIRECTORIES*):
+capture-templates/ in your configuration directory when it names none."
   (or (setting-list '*capture-template-directories* *capture-template-directories*)
       (list (config-path "capture-templates/"))))
 
@@ -110,7 +110,7 @@ capture-templates/ in your configuration folder when it names none."
   "The templates \\[org-capture] offers, in the order of their keys: Tuatara's
 own and yours (*CAPTURE-TEMPLATE-DIRECTORIES*), one of yours taking the place
 of one of Tuatara's with the same key."
-  (let ((yours (loop for (file . text) in (folder-files (capture-template-directories))
+  (let ((yours (loop for (file . text) in (directory-files (capture-template-directories))
                      for template = (and text (read-capture-template file text))
                      when template collect template))
         (own (loop for (file text) in *built-in-capture-templates*
@@ -122,7 +122,7 @@ of one of Tuatara's with the same key."
 
 (define-command org-capture-template-copy ()
   "Copy one of Tuatara's own capture templates, chosen by its name, into your
-capture templates folder (the first of *CAPTURE-TEMPLATE-DIRECTORIES*) and
+capture templates directory (the first of *CAPTURE-TEMPLATE-DIRECTORIES*) and
 visit it: your copy, changed as you like (where it files, its text), takes
 the place of Tuatara's on the same key. One you have already is visited as it
 is."
@@ -231,10 +231,10 @@ says, \\[org-capture-kill] throws it away; either way you are back where you wer
 (defun org-agenda-main-file ()
   "The agenda's main file, a native path, which a capture template's # file:
 *org-agenda-files* names. It is the first of *ORG-AGENDA-FILES* when it is a
-file, else agenda.org in the folder it names or its pattern's folder."
+file, else agenda.org in the directory it names or its pattern's directory."
   (let* ((first (or (first *org-agenda-files*) "~/org/agenda.org"))
          (path (tuatara.io:native (tuatara.io:expand-path first))))
-    (multiple-value-bind (parent name) (tuatara.io:path-folder-and-name path)
+    (multiple-value-bind (parent name) (tuatara.io:path-directory-and-name path)
       (cond ((find-if (lambda (c) (find c "*?")) name) (tuatara.io:path-join parent "agenda.org"))
             ((or (uiop:string-suffix-p first "/") (eq :directory (tuatara.io:path-kind path)))
              (tuatara.io:path-join path "agenda.org"))
@@ -248,13 +248,13 @@ file, else agenda.org in the folder it names or its pattern's folder."
 
 (defun org-capture-target-buffer (target &optional (day (org-today)))
   "The buffer of the file TARGET files into, read when it is not open,
-without showing it, editable when its folder is not there yet but can be
+without showing it, editable when its directory is not there yet but can be
 made (saving asks to make it); for the journal, the entry of DAY (a day
 number, today unless given), made when there is none."
   (case (first target)
     ((:file-headline :file :olp)
      (multiple-value-bind (buffer existing) (tuatara.io:visit-file (capture-target-path (second target)))
-       (unless existing (say-new-file-folder buffer))
+       (unless existing (say-new-file-directory buffer))
        buffer))
     (:journal (let ((path (first (journal-entries-of day))))
                 (if path

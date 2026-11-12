@@ -258,7 +258,7 @@ TEXTS with the mode line's sign of work, P, lit in :mode-line-sign."
   "The buffer of the editor's selected window."
   (tuatara.display:window-buffer (tuatara.command:editor-window editor)))
 
-(define-test (command insert-and-normal)
+(define-modal-test (command insert-and-normal)
   (multiple-value-bind (f editor) (run-keys "i h i SPC t h e r e C-g h h d")
     (is string= "hi thee" (session-text editor))
     (is = 6 (session-point editor))
@@ -271,7 +271,7 @@ TEXTS with the mode line's sign of work, P, lit in :mode-line-sign."
       (declare (ignore f2))
       (is string= "abc" (session-text e2)))))
 
-(define-test (command repeat-with-its-selection)
+(define-modal-test (command repeat-with-its-selection)
   ;; . repeats a change with the selection it took, made again as large from point:
   ;; whole lines, characters, a text object as many times, a rectangle
   (flet ((after (keys text) (substitute #\| #\Newline (session-text (nth-value 1 (run-keys keys :text text))))))
@@ -284,7 +284,7 @@ TEXTS with the mode line's sign of work, P, lit in :mode-line-sign."
       (is string= "three|four|five|six|" (after "V J d j ." lines)))
     (is string= "cdef|ef|cdef|abcdef|" (after "m v j l d ." (format nil "abcdef~%abcdef~%abcdef~%abcdef~%")))))
 
-(define-test (command insert-undoes-at-once)
+(define-modal-test (command insert-undoes-at-once)
   ;; one INSERT session is one step to undo, line breaks and all, with what the
   ;; key that began it did: c's deletion, o's new line
   (flet ((after (keys) (session-text (nth-value 1 (run-keys keys :text (format nil "The tui sings.~%"))))))
@@ -294,7 +294,7 @@ TEXTS with the mode line's sign of work, P, lit in :mode-line-sign."
     ;; two sessions, two steps
     (is string= (format nil "aThe tui sings.~%") (after "i a C-g i b C-g u"))))
 
-(define-test (command undo-redo-kill-yank)
+(define-modal-test (command undo-redo-kill-yank)
   (multiple-value-bind (f editor) (run-keys "i a b c C-g u")
     (declare (ignore f))
     (is string= "" (session-text editor)))
@@ -331,7 +331,7 @@ TEXTS with the mode line's sign of work, P, lit in :mode-line-sign."
       (declare (ignore f))
       (is equal '("e" "d" "c") (tuatara.command:editor-kill-ring editor)))))
 
-(define-test (command inserting-drops-selection)
+(define-modal-test (command inserting-drops-selection)
   ;; every key that enters INSERT state drops the selection, a rectangle too: V i then
   ;; RET leaves nothing selected
   (flet ((region-shown-p (f)
@@ -351,7 +351,7 @@ TEXTS with the mode line's sign of work, P, lit in :mode-line-sign."
     (declare (ignore f))
     (is string= (format nil "abc~%Xdef") (session-text editor))))
 
-(define-test (command delete-and-change-alike)
+(define-modal-test (command delete-and-change-alike)
   (flet ((text (keys text) (session-text (nth-value 1 (run-keys keys :text text)))))
     ;; without a selection, COUNT characters at point
     (is string= "def" (text "C-u 3 d" "abcdef"))
@@ -360,7 +360,7 @@ TEXTS with the mode line's sign of work, P, lit in :mode-line-sign."
     (is string= (format nil "twoone~%") (text "V d g e p" (format nil "one~%two")))
     (is string= (format nil "~%twoone") (text "V c C-g g e p" (format nil "one~%two")))))
 
-(define-test (command visual-lines)
+(define-modal-test (command visual-lines)
   ;; V d removes whole lines including the newline
   (multiple-value-bind (f editor) (run-keys "j V J d" :text (format nil "one~%two~%three~%four"))
     (declare (ignore f))
@@ -385,7 +385,7 @@ TEXTS with the mode line's sign of work, P, lit in :mode-line-sign."
     (declare (ignore f))
     (is string= (format nil "a b c~%d") (session-text editor))))
 
-(define-test (command jump-back-and-repeat)
+(define-modal-test (command jump-back-and-repeat)
   ;; G records the position before the jump; S returns there
   (multiple-value-bind (f editor) (run-keys "l l g e S" :text (format nil "abc~%def"))
     (declare (ignore f))
@@ -402,7 +402,7 @@ TEXTS with the mode line's sign of work, P, lit in :mode-line-sign."
     (declare (ignore f))
     (is string= "" (session-text editor))))
 
-(define-test (command minibuffer-and-files)
+(define-modal-test (command minibuffer-and-files)
   (let ((path (merge-pathnames (format nil "tuatara-cmd-~a.txt" (random 1000000)) (uiop:temporary-directory))))
     (unwind-protect
          (progn
@@ -428,7 +428,7 @@ TEXTS with the mode line's sign of work, P, lit in :mode-line-sign."
       (let ((b (find path tuatara.buffer:*buffers* :key #'tuatara.buffer:buffer-file :test #'equal)))
         (when b (tuatara.buffer:kill-buffer b))))))
 
-(define-test (command hooks-cannot-end-the-editor)
+(define-modal-test (command hooks-cannot-end-the-editor)
   ;; an error or C-g in what runs after each command is said, and the editor carries on with the keys after it
   (dolist (trouble (list (lambda (editor) (declare (ignore editor)) (error "boom"))
                          (lambda (editor) (declare (ignore editor)) (tuatara.command:keyboard-quit-signal))))
@@ -524,7 +524,7 @@ TEXTS with the mode line's sign of work, P, lit in :mode-line-sign."
       (dolist (place places)
         (remhash place tuatara.defaults::*broken-command-places*)))))
 
-(define-test (command odd-places)
+(define-modal-test (command odd-places)
   ;; the minibuffer's commands outside it say where they work; . repeats a command run with M-x
   (let ((f (run-keys "M-x m i n i b u f f e r - k i l l - l i n e RET" :text "abc" :width 120 :height 8)))
     (false (tuatara.frontend.fake:fake-frame-showing f "bounding indices"))
@@ -581,7 +581,7 @@ TEXTS with the mode line's sign of work, P, lit in :mode-line-sign."
         (session-text (nth-value 1 (run-keys "C-x h M-x d e l e t e - t r a i l i n g - w h i t e s p a c e RET C-/"
                                              :text (format nil "a b c")))))))
 
-(define-test (command mode-line-groups-digits)
+(define-modal-test (command mode-line-groups-digits)
   (let ((text (with-output-to-string (o) (dotimes (i 1234) (format o "x~%")))))
     ;; G to the last line: 1,235 in the mode line; goto-line accepts grouped digits
     (multiple-value-bind (f editor) (run-keys "g e" :text text)
@@ -607,7 +607,7 @@ TEXTS with the mode line's sign of work, P, lit in :mode-line-sign."
                                                                   (session-point editor))
                    "~a" keys)))))
 
-(define-test (command screen-and-scrolling)
+(define-modal-test (command screen-and-scrolling)
   (multiple-value-bind (f editor)
       (run-keys "g e" :text (format nil "~{l~a~%~}" (loop for i below 50 collect i)) :height 6)
     (declare (ignore editor))
@@ -620,7 +620,7 @@ TEXTS with the mode line's sign of work, P, lit in :mode-line-sign."
     (is eq :block (tuatara.frontend.fake:fake-cursor-shape f))
     (true (search "TUATARA[I]" (tuatara.frontend.fake:fake-screen-line f 6)))))
 
-(define-test (command cursor-looks)
+(define-modal-test (command cursor-looks)
   ;; one shape and colour for all, a block in the text's colour unless set;
   ;; each of the modal states can have its own
   (flet ((look (keys)
@@ -650,7 +650,7 @@ TEXTS with the mode line's sign of work, P, lit in :mode-line-sign."
   (is equal '(2 6 4) (mapcar #'tuatara.frontend.tui::cursor-shape-code '(:block :bar :underline)))
   (is string= "#ff0000" (tuatara.frontend.tui::cursor-colour-code "#ff0000")))
 
-(define-test (command region-is-highlighted)
+(define-modal-test (command region-is-highlighted)
   ;; v then two steps right: the two selected characters are painted with the region face
   (multiple-value-bind (f editor) (run-keys "v l l" :text "abcdef")
     (declare (ignore editor))
@@ -691,7 +691,7 @@ TEXTS with the mode line's sign of work, P, lit in :mode-line-sign."
                                                 :file (merge-pathnames "x.txt" (user-homedir-pathname)))))
   (let ((buffer (tuatara.buffer:find-buffer "*home*"))) (when buffer (tuatara.buffer:kill-buffer buffer))))
 
-(define-test (command modified-indicator)
+(define-modal-test (command modified-indicator)
   ;; the modal state first, the sign of the buffer's jobs, then [-], [*] or [%], then the name
   (multiple-value-bind (f editor) (run-keys "" :text "abc")
     (declare (ignore editor))
@@ -728,7 +728,7 @@ TEXTS with the mode line's sign of work, P, lit in :mode-line-sign."
     (is string= (format nil "line 2~%line 3~%line 4~%")
         (tuatara.buffer:buffer-string (tuatara.buffer:find-buffer "*Messages*")))))
 
-(define-test (command system-clipboard)
+(define-modal-test (command system-clipboard)
   ;; what is copied goes on the system clipboard as well
   (multiple-value-bind (f editor) (run-keys "v l l y" :text "abcdef")
     (declare (ignore editor))
@@ -748,7 +748,7 @@ TEXTS with the mode line's sign of work, P, lit in :mode-line-sign."
       (declare (ignore editor))
       (false (tuatara.frontend.fake:fake-clipboard f)))))
 
-(define-test (command unbalanced-brackets)
+(define-modal-test (command unbalanced-brackets)
   ;; W and B on a bracket without a partner say so and stay, as over a grammar's text
   (multiple-value-bind (f editor) (run-keys "W" :text "(a (b c d")
     (is = 0 (session-point editor))
@@ -767,7 +767,7 @@ TEXTS with the mode line's sign of work, P, lit in :mode-line-sign."
       (is = 0 (session-point editor))
       (true (search "The brackets do not balance" (tuatara.frontend.fake:fake-screen-line f 7))))))
 
-(define-test (command large-kills)
+(define-modal-test (command large-kills)
   ;; a kill too large for the system clipboard is kept as a rope, pasted by a
   ;; splice; a large deletion is a splice that undo swaps back: with the limits
   ;; small, a few words do what gigabytes would
@@ -806,7 +806,7 @@ TEXTS with the mode line's sign of work, P, lit in :mode-line-sign."
       (declare (ignore editor))
       (true (tuatara.frontend.fake:fake-frame-showing f "too large to paste at every cursor")))))
 
-(define-test (command tick-function-errors)
+(define-modal-test (command tick-function-errors)
   ;; an error in work taken in between keys is said, and the editor goes on
   (let ((failing (lambda (editor) (declare (ignore editor)) (error "broken tick"))))
     (push failing tuatara.command:*tick-functions*)
@@ -848,7 +848,7 @@ TEXTS with the mode line's sign of work, P, lit in :mode-line-sign."
                    (is = 20 (- (search "  L1" line) (+ (search "[-] " line) 4))))))
           (tuatara.buffer:kill-buffer b))))))
 
-(define-test (command modal-editing-off)
+(define-modal-test (command modal-editing-off)
   ;; with *modal-editing* off, typing inserts and Emacs's keys work, with no state in the mode line;
   ;; the commands the modal keys run are still there
   (let ((tuatara-user:*modal-editing* nil))
@@ -976,7 +976,7 @@ TEXTS with the mode line's sign of work, P, lit in :mode-line-sign."
       (declare (ignore f))
       (is string= "*scratch*" (tuatara.buffer:buffer-name (session-buffer editor))))))
 
-(define-test (command escape-quits)
+(define-modal-test (command escape-quits)
   ;; *escape-quits*: Escape is C-g everywhere, but C-q ESC still an escape character
   (let ((tuatara-user:*escape-quits* t))
     ;; INSERT state left as C-g leaves it
@@ -1197,7 +1197,7 @@ the terminal's reads and waits stood in for, with kitty's keyboard on when KITTY
       (tuatara.frontend.fake:fake-queue-event f (tuatara.frontend:make-event :paste :text text))
       (when keys (tuatara.frontend.fake:fake-queue-keys f keys)))))
 
-(define-test (command paste-goes-in-as-text)
+(define-modal-test (command paste-goes-in-as-text)
   ;; an escape, a colon and letters that are commands in NORMAL: all go in as text, point after them
   (let ((pasted (format nil "~c:(+ 1 2)~%dd x" #\Escape)))
     (multiple-value-bind (f editor) (run-keys (list (paste-then pasted)) :text "abc")
@@ -1225,7 +1225,7 @@ the terminal's reads and waits stood in for, with kitty's keyboard on when KITTY
   (push (tuatara.frontend:key-description (tuatara.frontend:key-spec (tuatara.command:editor-this-key tuatara.command:*editor*)))
         *recorded-keys*))
 
-(define-test (command repeat-as-its-key)
+(define-modal-test (command repeat-as-its-key)
   ;; . runs the last command again as the key that ran it, not as .
   (setf *recorded-keys* '())
   (run-keys (list (lambda () (tuatara-user:bind-key "C-c z" 'test-record-key)) "C-c z . .") :text "x")
@@ -1237,11 +1237,11 @@ the terminal's reads and waits stood in for, with kitty's keyboard on when KITTY
     (multiple-value-bind (f editor)
         (run-keys (list (lambda ()
                           (setf answer (tuatara.defaults::read-string
-                                        "Trust /tmp/a-long-folder-name/that-matters/? Its language servers run its code, from now on (y or n) ")))
+                                        "Trust /tmp/a-long-directory-name/that-matters/? Its language servers run its code, from now on (y or n) ")))
                         "y RET")
                   :text "" :width 60 :height 12)
       (declare (ignore editor))
-      (true (tuatara.frontend.fake:fake-frame-showing f "Trust /tmp/a-long-folder-name/that-matters/?"))
+      (true (tuatara.frontend.fake:fake-frame-showing f "Trust /tmp/a-long-directory-name/that-matters/?"))
       (true (tuatara.frontend.fake:fake-frame-showing f "(y or n)"))
       (is string= "y" answer))))
 
@@ -1251,14 +1251,14 @@ the terminal's reads and waits stood in for, with kitty's keyboard on when KITTY
   (let ((answer nil) (screen nil))
     (run-keys (list (lambda ()
                       (setf answer (tuatara.command:read-key
-                                    "Compile and load the package pkg from /tmp/a-long-folder-name/that-matters/? (y, n, or v to view its source) ")))
+                                    "Compile and load the package pkg from /tmp/a-long-directory-name/that-matters/? (y, n, or v to view its source) ")))
                     (lambda ()
                       (let ((f (tuatara.command::frame-frontend (tuatara.command::editor-frame tuatara.command:*editor*))))
                         (setf screen (loop for row below 12 collect (tuatara.frontend.fake:fake-screen-line f row)))))
                     "y")
               :text "" :width 60 :height 12)
     ;; the rows it is broken into, between words, read as one
-    (true (search "Compile and load the package pkg from /tmp/a-long-folder-name/that-matters/? (y, n, or v to view its source)"
+    (true (search "Compile and load the package pkg from /tmp/a-long-directory-name/that-matters/? (y, n, or v to view its source)"
                   (format nil "~{~a~^ ~}" (mapcar (lambda (line) (string-trim " " line)) screen))))
     (is equal '(#\y) (tuatara.frontend:key-spec answer))))
 
@@ -1269,7 +1269,7 @@ the terminal's reads and waits stood in for, with kitty's keyboard on when KITTY
     (run-keys (list (lambda ()
                       (tuatara.command:read-key
                        (tuatara.command:substitute-command-keys
-                        "\\`C-g' leaves the package pkg from /tmp/a-long-folder-name/that-matters/ alone; load it? (y or n) "
+                        "\\`C-g' leaves the package pkg from /tmp/a-long-directory-name/that-matters/ alone; load it? (y or n) "
                         :marks t)))
                     (lambda ()
                       (let ((f (tuatara.command::frame-frontend (tuatara.command::editor-frame tuatara.command:*editor*))))
@@ -1280,7 +1280,7 @@ the terminal's reads and waits stood in for, with kitty's keyboard on when KITTY
               :text "" :width 60 :height 12)
     (true (member :help-key-binding faces))))
 
-(define-test (command moving-by-clusters)
+(define-modal-test (command moving-by-clusters)
   ;; a letter with its accent and an emoji with its skin tone are one character to move
   ;; over, to type beside and to delete; backspace takes off the last mark alone
   (let ((text (format nil "e~cx ~c~cy" (code-char #x301) (code-char #x1F44D) (code-char #x1F3FD))))
@@ -1528,7 +1528,7 @@ TUATARA: what a job of its own would take from a buffer before it starts.")
     (true (> sb-ext:*gc-run-time* before))
     (false (tuatara.defaults::start-up-garbage-tick nil))))
 
-(define-test (command count-digits-after-c-u-c-u)
+(define-modal-test (command count-digits-after-c-u-c-u)
   ;; digits after C-u C-u give their own number, not one after 16
   (flet ((text (keys text) (session-text (nth-value 1 (run-keys keys :text text)))))
     (is string= "defghij" (text "C-u C-u 3 d" "abcdefghij"))
@@ -1681,7 +1681,7 @@ TUATARA: what a job of its own would take from a buffer before it starts.")
   ;; the buffer the test before made and left is gone
   (false (tuatara.buffer:find-buffer "left by a test")))
 
-(define-test (command insert-escape-keys)
+(define-modal-test (command insert-escape-keys)
   (let ((tuatara-user:*insert-escape-keys* "jk"))
     (flet ((run (keys &optional (text ""))
              (let ((editor (nth-value 1 (run-keys keys :text text :width 60 :height 8))))
@@ -1735,7 +1735,7 @@ TUATARA: what a job of its own would take from a buffer before it starts.")
       (true (tuatara.frontend.fake:fake-frame-showing f "Quit") "~a" keys)
       (false (tuatara.frontend.fake:fake-frame-showing f "is undefined") "~a" keys))))
 
-(define-test (command prefix-key-quit-touches-nothing-else)
+(define-modal-test (command prefix-key-quit-touches-nothing-else)
   ;; C-g after a prefix key gives up the keys typed and leaves the rest as it was
   (let ((editor (nth-value 1 (run-keys "i C-SPC M-f C-x C-g" :text "one two" :width 60 :height 8))))
     (true (tuatara.buffer:buffer-mark-active-p (session-buffer editor)))

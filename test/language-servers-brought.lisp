@@ -2,8 +2,8 @@
 ;;;; Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
 ;;;;
 ;;;; The server is the stand-in for ssh of remote-files: OpenSSH's sftp-server
-;;;; for files, and for a command the shell in the test's folder, the home
-;;;; folder there; FAKES put a program of the same name first on the PATH of
+;;;; for files, and for a command the shell in the test's directory, the home
+;;;; directory there; FAKES put a program of the same name first on the PATH of
 ;;;; those commands.
 
 (in-package #:tuatara.tests)
@@ -124,7 +124,7 @@ glibc version GLIBC, text such as \"2.38\". One piece loaded at address 0."
         "a server saying no glibc cannot run one that wants it"))
 
 (defmacro with-server-for-language-servers ((dir log &key fakes) &body body)
-  "Run BODY as WITH-STAND-IN-SFTP does, DIR the home folder there and the
+  "Run BODY as WITH-STAND-IN-SFTP does, DIR the home directory there and the
 commands ssh runs there run by the shell in DIR, the name and text of each of
 FAKES put first on their PATH; skipped when there is no sftp-server here."
   `(if (null (sftp-server-program))
@@ -139,8 +139,8 @@ FAKES put first on their PATH; skipped when there is no sftp-server here."
          ,@body)))
 
 (defun brought-file (dir name)
-  "The native name of NAME in the folder of brought language servers in the home folder DIR."
-  (namestring (merge-pathnames (concatenate 'string tuatara.lsp:*brought-language-servers-folder* name) dir)))
+  "The native name of NAME in the directory of brought language servers in the home directory DIR."
+  (namestring (merge-pathnames (concatenate 'string tuatara.lsp:*brought-language-servers-directory* name) dir)))
 
 (defun bring-program (host name path)
   "Do the work of bringing PATH, the program NAME, to HOST, on this thread."
@@ -148,7 +148,7 @@ FAKES put first on their PATH; skipped when there is no sftp-server here."
    (tuatara.defaults::make-server-program-job nil host name path)))
 
 (defun put-here-program (dir name octets)
-  "Put OCTETS as the program NAME in the folder here/ of DIR; its native name."
+  "Put OCTETS as the program NAME in the directory here/ of DIR; its native name."
   (let ((path (merge-pathnames (concatenate 'string "here/" name) dir)))
     (ensure-directories-exist path)
     (alexandria:write-byte-vector-into-file octets path :if-exists :supersede)
@@ -161,7 +161,7 @@ FAKES put first on their PATH; skipped when there is no sftp-server here."
     (tuatara.runtime:refusal (c) (princ-to-string c))))
 
 (defun leftover-names (dir)
-  "The names of the files in the folder of brought language servers in the home folder DIR."
+  "The names of the files in the directory of brought language servers in the home directory DIR."
   (mapcar #'file-namestring (uiop:directory-files (brought-file dir ""))))
 
 (define-test (remote-files language-server-sum-mismatch-never-takes-the-name)
@@ -213,11 +213,11 @@ FAKES put first on their PATH; skipped when there is no sftp-server here."
           (true (search "not a sum" why)))))))
 
 (define-test (remote-files language-server-kept-from-evidence)
-  ;; a folder of evidence named from the root is told by the first bring, when nothing is there yet, and by removal
+  ;; a directory of evidence named from the root is told by the first bring, when nothing is there yet, and by removal
   (with-server-for-language-servers (dir log)
     (with-fresh-state
       (let ((path (put-here-program dir "gopls" (made-program))))
-        (with-evidence-folders ((list (format nil "/ssh:build.example:~a" (namestring dir))))
+        (with-evidence-directories ((list (format nil "/ssh:build.example:~a" (namestring dir))))
           (true (search "evidence" (bring-refusal "build.example" "gopls" path)))
           (false (probe-file (brought-file dir "gopls")))
           (fail (tuatara.defaults::remove-language-server
@@ -225,24 +225,24 @@ FAKES put first on their PATH; skipped when there is no sftp-server here."
               'tuatara.runtime:refusal))))))
 
 (define-test (remote-files language-server-held-to-what-the-daemon-uses)
-  ;; a folder or an "already there" file the daemon would not use is refused and said, never reported brought
+  ;; a directory or an "already there" file the daemon would not use is refused and said, never reported brought
   (with-server-for-language-servers (dir log)
     (with-fresh-state
       (let* ((octets (made-program))
              (path (put-here-program dir "gopls" octets))
-             (folder (string-right-trim "/" (brought-file dir "")))
+             (directory (string-right-trim "/" (brought-file dir "")))
              (there (brought-file dir "gopls")))
         (ensure-directories-exist there)
-        (sb-posix:chmod folder #o775)
+        (sb-posix:chmod directory #o775)
         (true (search "others may write in it" (bring-refusal "build.example" "gopls" path)))
-        (sb-posix:chmod folder #o700)
+        (sb-posix:chmod directory #o700)
         (alexandria:write-byte-vector-into-file octets there :if-exists :supersede)
         (put-file (brought-file dir ".manifest") (format nil "gopls ~a~%" (tuatara.defaults::octets-sha256 octets)))
         (sb-posix:chmod there #o644)
         (true (search "would not use it" (bring-refusal "build.example" "gopls" path)))
         (sb-posix:chmod there #o755)
         (false (bring-refusal "build.example" "gopls" path)))))
-  ;; the same for an account the folder is not owned by
+  ;; the same for an account the directory is not owned by
   (with-server-for-language-servers (dir log :fakes (list (list "id" (format nil "#!/bin/sh~%echo 1~%"))))
     (with-fresh-state
       (let ((path (put-here-program dir "gopls" (made-program))))
@@ -297,7 +297,7 @@ FAKES put first on their PATH; skipped when there is no sftp-server here."
 
 (define-test (remote-files language-server-brought-and-taken-away)
   ;; the whole way: from the list of servers, a language server here is copied there, 0755, listed with its sum and
-  ;; found matching; then taken away, the rest left and the folder with it once empty
+  ;; found matching; then taken away, the rest left and the directory with it once empty
   (with-server-for-language-servers (dir log)
     (with-fresh-state
       (let* ((octets (made-program :loader "/lib64/ld-linux-x86-64.so.2" :libraries '("libc.so.6") :glibc "2.17"))
@@ -325,7 +325,7 @@ FAKES put first on their PATH; skipped when there is no sftp-server here."
                (is = #o600 (logand #o777 (sb-posix:stat-mode (sb-posix:stat (brought-file dir ".manifest")))))
                (is equalp octets (alexandria:read-file-into-byte-vector there))
                (is string= (format nil "gopls ~a~%" sum) (uiop:read-file-string (brought-file dir ".manifest")))
-               ;; another's file in the folder stays when ours is taken away
+               ;; another's file in the directory stays when ours is taken away
                (put-file (brought-file dir "taplo") (format nil "not ours~%"))
                (servers-session (typed-command "server-list") (list :wait 0.1)
                                 (typed-command "server-remove-language-server")
@@ -339,15 +339,15 @@ FAKES put first on their PATH; skipped when there is no sftp-server here."
 
 (define-test (lsp brought-language-server-found-after-the-path)
   ;; a language server brought to this machine is found where the daemon there looks: after the PATH, only
-  ;; a plain file of yours in a folder of yours; check-health says brought
+  ;; a plain file of yours in a directory of yours; check-health says brought
   (with-test-directory (dir)
     (with-environment-variable ("HOME" (namestring dir))
       (with-environment-variable ("PATH" (format nil "~apath" (namestring dir)))
-        (let ((folder (merge-pathnames tuatara.lsp:*brought-language-servers-folder* dir)))
-          (ensure-directories-exist folder)
-          (sb-posix:chmod (namestring folder) #o700)
+        (let ((directory (merge-pathnames tuatara.lsp:*brought-language-servers-directory* dir)))
+          (ensure-directories-exist directory)
+          (sb-posix:chmod (namestring directory) #o700)
           (false (tuatara.lsp::installed-program '("gopls")))
-          (let ((there (put-program (merge-pathnames "gopls" folder) (format nil "#!/bin/sh~%"))))
+          (let ((there (put-program (merge-pathnames "gopls" directory) (format nil "#!/bin/sh~%"))))
             (sb-posix:chmod there #o755)
             (is string= there (tuatara.lsp::installed-program '("gopls")))
             (is string= there (tuatara.lsp::brought-language-server "gopls"))

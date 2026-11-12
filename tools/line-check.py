@@ -5,7 +5,7 @@
 
 Usage: tools/line-check.py [--summary] [ROOT]
 
-ROOT is a repository (the current folder when left out). Code files (Lisp,
+ROOT is a repository (the current directory when left out). Code files (Lisp,
 C, shell, Python, Emacs Lisp, JavaScript, Rust, workflows) are held to 120
 columns. Documents (Org, Markdown) are held to 80; their tables, lines that
 are only a link, and source, example and quote blocks are left out. Vendored
@@ -61,7 +61,7 @@ def main(argv):
     roots = [a for a in argv if a != "--summary"]
     root = Path(roots[0] if roots else ".")
     if not root.is_dir():
-        print(f"line-check: {root} is not a folder", file=sys.stderr)
+        print(f"line-check: {root} is not a directory", file=sys.stderr)
         return 2
     total = 0
     for name in tracked_files(root):

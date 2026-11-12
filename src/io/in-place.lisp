@@ -75,7 +75,7 @@ On a file system that keeps no birth time for files (ext4 made with 128-octet
 inodes), a new file may be made under the old name and be given the old one's
 number by the system. It is told apart from the old file only by its times.
 With NIL, every program finds the old file or the new one. A file opened
-safely, or in an evidence folder, is never written, so never put back
+safely, or in an evidence directory, is never written, so never put back
 either."
   :values boolean)
 
@@ -360,7 +360,7 @@ turned true first. PROGRESS is called with the octets copied so far."
   "Name JOURNAL, a descriptor of an unnamed file in DIRECTORY, as TARGET's
 journal and flush the directory. NIL when the system will not name it or a
 journal of TARGET is there already."
-  (call-with-folder directory
+  (call-with-directory directory
                     (lambda (dirfd)
                       (and (zerop (sb-alien:alien-funcall
                                    (sb-alien:extern-alien "linkat" (function sb-alien:int sb-alien:int sb-alien:c-string
@@ -378,7 +378,7 @@ journal of TARGET is there already."
 (defun remove-journal (directory target)
   "Take away TARGET's journal's name and flush the directory: what it kept is
 not needed any more."
-  (call-with-folder directory
+  (call-with-directory directory
                     (lambda (dirfd)
                       (unless (unlink-entry-at dirfd (native-file-name (journal-path target)))
                         (fail "remove the journal of" target)))
@@ -485,7 +485,7 @@ was before it is signalled."
                        ((journal-there-p target)
                         (tell-writing (format nil "The save of ~a failed; the file is as it was, but its journal ~a could not be removed: it is used, and removed, when the file is next opened"
                                               (native target) (journal-path target))))
-                       (t (tell-writing (format nil "The save of ~a failed; the file is as it was, but its folder could not be flushed: after a power cut now, its journal may be beside it again, and is used when the file is next opened"
+                       (t (tell-writing (format nil "The save of ~a failed; the file is as it was, but its directory could not be flushed: after a power cut now, its journal may be beside it again, and is used when the file is next opened"
                                                 (native target))))))))
       (unwind-protect
            (handler-bind ((error (lambda (e) (declare (ignore e)) (give-back))))

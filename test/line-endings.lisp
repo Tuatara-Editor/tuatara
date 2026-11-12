@@ -46,7 +46,7 @@
            (is string= (coerce '(#\Return #\Newline) 'string) (tuatara.buffer:buffer-newline b)))
       (tuatara.buffer:kill-buffer b))))
 
-(define-test (line-endings files)
+(define-modal-test (line-endings files)
   (with-test-directory (dir)
     (let ((path (merge-pathnames "windows.txt" dir))
           (crlf (coerce '(#\Return #\Newline) 'string)))
@@ -68,7 +68,7 @@
         (is string= (format nil "abZ~aY~acd~a" crlf crlf crlf) (file-text path))
         (tuatara.buffer:kill-buffer (session-buffer editor))))))
 
-(define-test (line-endings searching-and-pasting)
+(define-modal-test (line-endings searching-and-pasting)
   (let ((crlf (format nil "ab~c~%cb~c~%" #\Return #\Return)))
     (flet ((after (keys &optional (text crlf))
              (session-text (nth-value 1 (run-keys-in-turns (list keys "") :text text :crlf t)))))
@@ -154,7 +154,7 @@
       (is = 65539 (tuatara.text:tally-line-start tally rope 2))
       (is = 2 (tuatara.text:tally-line-number tally rope 65540)))))
 
-(define-test (line-endings lone-return-files)
+(define-modal-test (line-endings lone-return-files)
   (with-test-directory (dir)
     (let ((path (merge-pathnames "mac.txt" dir)))
       (put-file path (cr "one|two|three|"))

@@ -14,7 +14,7 @@
   "The echo row after KEYS are typed on TEXT."
   (tuatara.frontend.fake:fake-screen-line (run-keys keys :text text :width 60 :height 10) 9))
 
-(define-test (split split-verbs)
+(define-modal-test (split split-verbs)
   ;; i types before every match, a after, c empties them first, d deletes them
   (is string= "Xfoo bar Xfoo" (split-text "f f o o RET i X C-g" "foo bar foo"))
   (is string= "foo! bar foo!" (split-text "f f o o RET a ! C-g" "foo bar foo"))
@@ -36,7 +36,7 @@
   ;; DEL at a place's start takes the character before every place, the same one
   (is string= "1 1" (split-text "f 1 RET i DEL C-g" "a1 a1")))
 
-(define-test (split escape-in-a-split)
+(define-modal-test (split escape-in-a-split)
   ;; Escape does in a split what it does in INSERT state elsewhere: it ends the split as C-g
   ;; does, while typing or waiting for a verb, with *escape-quits* or without
   (dolist (quits '(t nil))
@@ -46,7 +46,7 @@
       (true (search "Split ended: 2 places left alone" (split-echo "f f o o RET ESC" "foo bar foo")))
       (is string= (run-keys-text "i N C-g M") (run-keys-text "i N ESC M")))))
 
-(define-test (split deletions-beside-places)
+(define-modal-test (split deletions-beside-places)
   ;; a deletion past a place's edge is made at the others only where the very
   ;; same text is there; else the split ends, the deletion made at the one place
   (let ((text (format nil "a foo bar~%c foo bazooka")))
@@ -100,7 +100,7 @@ whether the buffer has changes not saved; the frontend fourth."
                (values (session-text editor) (file-text path) (tuatara.buffer:buffer-modified-p b) f)
             (tuatara.buffer:kill-buffer b)))))))
 
-(define-test (split split-read-again)
+(define-modal-test (split split-read-again)
   ;; the file read again while typing at a split: the split ends first, what was
   ;; typed one step for undo and the reading again one of its own
   (let ((text (format nil "foo bar foo baz~%"))
@@ -113,7 +113,7 @@ whether the buffer has changes not saved; the frontend fourth."
     (is string= (format nil "fooX bar fooX baz~%") (split-file-session (format nil "~a C-g u u" keys) text))
     (is string= text (split-file-session (format nil "~a C-g u u u" keys) text))))
 
-(define-test (split split-saved-whole)
+(define-modal-test (split split-saved-whole)
   ;; not saved while typing at a split, nor while it writes in the background
   (let ((text (format nil "foo bar foo baz~%")))
     (multiple-value-bind (now file modified f) (split-file-session "f f o o RET a X C-x C-s" text)
@@ -158,7 +158,7 @@ whether the buffer has changes not saved; the frontend fourth."
                                     (uiop:split-string (file-text path) :separator '(#\Newline)))))
             (tuatara.buffer:kill-buffer b)))))))
 
-(define-test (split split-wrapping)
+(define-modal-test (split split-wrapping)
   ;; a delimiter wraps every place, the split staying for more
   (is string= "(foo) bar (foo)" (split-text "f f o o RET ( C-g" "foo bar foo"))
   (is string= "([foo]) bar ([foo])" (split-text "f f o o RET ( [ C-g" "foo bar foo"))
@@ -169,7 +169,7 @@ whether the buffer has changes not saved; the frontend fourth."
   ;; asked for the delimiter, C-g gives up: nothing wrapped
   (is string= "foo bar foo" (split-text "f f o o RET w C-g C-g" "foo bar foo")))
 
-(define-test (split split-scope)
+(define-modal-test (split split-scope)
   ;; with nothing selected, the line at point
   (is string= (format nil "Xa Xa~%a a") (split-text "f a RET i X C-g" (format nil "a a~%a a")))
   ;; the selection
@@ -190,7 +190,7 @@ whether the buffer has changes not saved; the frontend fourth."
   ;; point moving into another place writes there
   (is string= "fooXY bar fooXY" (split-text "f f o o RET a X C-e Y C-g" "foo bar foo")))
 
-(define-test (split split-typing-in-sight)
+(define-modal-test (split split-typing-in-sight)
   ;; typing at a split of matches writes each key where it can be seen, the
   ;; places out of sight once the typing ends: one change for undo all the same
   ;; (the keys after f are typed once its search in the background is done, as a person's would be)
@@ -224,7 +224,7 @@ whether the buffer has changes not saved; the frontend fourth."
         (is string= "fooXY fooXY" (first (lines editor)))
         (is string= "fooXY 299" (nth 300 (lines editor)))))))
 
-(define-test (split split-limit)
+(define-modal-test (split split-limit)
   ;; more matches than *split-limit*: those in sight held, as many as it allows,
   ;; counted as far as one past it, as the cursors are
   (let ((tuatara-user:*split-limit* 2))
@@ -241,7 +241,7 @@ whether the buffer has changes not saved; the frontend fourth."
     (let ((tuatara.defaults::*split-budget* (* 2 tuatara.defaults::+split-place-octets+)))
       (true (search "Split: 2 places of 3 in the selection" (split-echo "% f a RET" "a a a"))))))
 
-(define-test (split sight-looked-at-once)
+(define-modal-test (split sight-looked-at-once)
   ;; past its limit, a split looks for the places in sight again only when the text, its
   ;; places or what is in sight changed, not after every command
   (let ((tuatara-user:*split-limit* 5) (looks nil))
@@ -279,7 +279,7 @@ BACKGROUND, the search too goes to the background."
         (tuatara.defaults::*rewrite-threshold* (if background 0 tuatara.defaults::*rewrite-threshold*)))
     (session-text (nth-value 1 (run-keys-in-turns (append turns '("")) :text text :width 120 :height 10)))))
 
-(define-test (split every-match)
+(define-modal-test (split every-match)
   ;; past what a split holds, the places in sight are typed at and the others
   ;; written in the background as the verb is done
   (let ((text "one two three four"))
@@ -304,7 +304,7 @@ BACKGROUND, the search too goes to the background."
     ;; the search in the background holds those in sight as it ends
     (is string= "ne tw three fur" (every-match-text '("% f o RET" "d") text :background t))))
 
-(define-test (split rectangles-read-as-they-come)
+(define-modal-test (split rectangles-read-as-they-come)
   ;; a rectangle over more than *rewrite-threshold* is searched a row at a time,
   ;; in the background: the matches in its columns only
   (let ((text (format nil "ab ab~%ab ab~%ab ab~%")))
@@ -346,7 +346,7 @@ BACKGROUND, the search too goes to the background."
                                          (constantly nil)))
       (is equal '((0 . 3) (8 . 11)) (reverse found)))))
 
-(define-test (split seams-in-the-background)
+(define-modal-test (split seams-in-the-background)
   ;; in pieces of 8 octets, a pattern whose matches run over line ends and past a piece's end
   ;; holds the same places, and writes at every other match the same, as one scan finds them
   (let ((text (format nil "a1  b~%~%~%2c d   ~%  e~%~%f3~%")))
@@ -362,7 +362,7 @@ BACKGROUND, the search too goes to the background."
                               :background t)
             "~a written" pattern)))))
 
-(define-test (split split-in-the-background)
+(define-modal-test (split split-in-the-background)
   (let ((text (format nil "foo bar~%foo baz~%foo~%")))
     ;; a large text is searched in the background, the mode line saying how far,
     ;; and the split stands when the search ends; each piece takes a moment, so that
@@ -419,7 +419,7 @@ BACKGROUND, the search too goes to the background."
       (true (tuatara.frontend.fake:fake-frame-showing f "Split ended: 3 places left alone"))
       (is string= (format nil "oo bar~%foo baz~%foo~%") (session-text editor)))))
 
-(define-test (split split-cursors)
+(define-modal-test (split split-cursors)
   (let ((three (format nil "abc~%abc~%abc")))
     ;; t adds a cursor below at the column, and keys act at every cursor
     (is string= (format nil "ac~%ac~%ac") (split-text "l t t d" three))
@@ -493,7 +493,7 @@ end its lines with a carriage return and a newline."
   (let ((tuatara-user:*cursors-limit* limit))
     (session-text (nth-value 1 (run-keys-in-turns (append turns '("")) :text text :width 150 :height 10 :crlf crlf)))))
 
-(define-test (split cursors-paste-pieces)
+(define-modal-test (split cursors-paste-pieces)
   (let ((four (format nil "aaa~%bbb~%ccc~%ddd~%")))
     ;; p over a line selected at every cursor replaces it as whole lines, as at one cursor
     (is string= (format nil "ddd~%ddd~%ddd~%ddd~%") (split-text "j j j V y g g t t V p" four))
@@ -511,7 +511,7 @@ end its lines with a carriage return and a newline."
     (is string= (format nil "aaa~%bbb~%aaa~%bbb~%aaa~%bbb~%ddd~%")
         (split-text "V j y g g t t V p" four))))
 
-(define-test (split cursors-past-the-limit)
+(define-modal-test (split cursors-past-the-limit)
   ;; more lines selected than cursors are made for: the cursors in sight stand,
   ;; as many as the limit, and the others are written in the background as each
   ;; verb is done, at the cursors' column, a shorter line at its end
@@ -584,7 +584,7 @@ end its lines with a carriage return and a newline."
       (is string= (format nil "aXbc~%aXbc~%aX~%aXbc~%") (every-line-text '("l C-u 3 t y i X C-g") text))
       (is string= (format nil "aXbc~%aXbc~%aX~%aXbc~%") (every-line-text '("l C-u 3 t n i X C-g") text)))))
 
-(define-test (split split-thorough)
+(define-modal-test (split split-thorough)
   ;; f misses a match that needs text more than 4 KB past where the scan looks;
   ;; split-selection-thorough holds it, and writes there
   (let* ((filler (with-output-to-string (o) (dotimes (i 3000) (format o "y~%"))))
@@ -608,7 +608,7 @@ end its lines with a carriage return and a newline."
       (declare (ignore editor))
       (true (tuatara.frontend.fake:fake-frame-showing f (second case)) "~a" (first case)))))
 
-(define-test (split cursor-typing-in-sight)
+(define-modal-test (split cursor-typing-in-sight)
   ;; typing at cursors writes each key where it can be seen, the cursors out
   ;; of sight once the typing ends: one change for undo all the same
   (let ((tuatara.defaults::*split-sight-octets* 16)
@@ -623,7 +623,7 @@ end its lines with a carriage return and a newline."
         (true (every (lambda (line) (or (string= line "") (string= "XYfoo" line :end2 5))) (lines editor))))
       (is string= text (session-text (nth-value 1 (run-keys "V g e t i X Y C-g u" :text text :width 80 :height 10)))))))
 
-(define-test (split changing-case)
+(define-modal-test (split changing-case)
   ;; M-u M-l M-c change the case of words, moving over them
   (multiple-value-bind (f editor) (run-keys "M-u" :text "hello world")
     (declare (ignore f))
@@ -642,7 +642,7 @@ end its lines with a carriage return and a newline."
   (is string= "HElLO" (split-text "v l l C-x C-u" "helLO"))
   (is string= "hello" (split-text "% C-x C-l" "HELLO")))
 
-(define-test (split tutor)
+(define-modal-test (split tutor)
   ;; every command the tutor names is a command
   (let ((names (cl-ppcre:all-matches-as-strings "\\\\\\[[a-z-]+\\]" tuatara.defaults::*tuatara-tutor-text*)))
     (true (plusp (length names)))
@@ -671,7 +671,7 @@ end its lines with a carriage return and a newline."
     (declare (ignore f))
     (is = 0 (search "uatara tutor" (session-text editor)))))
 
-(define-test (split tutor-exercises)
+(define-modal-test (split tutor-exercises)
   ;; M over a rectangle lets it go and marks the word at point
   (is string= "four" (selection-after "m v j l M" (format nil "one two three~%four five six")))
   ;; % in a mark run selects the whole text, and the run goes on
@@ -691,7 +691,7 @@ end its lines with a carriage return and a newline."
   (is string= (format nil "fresh apple~%fresh pear~%fresh plum")
       (split-text "t t M w c f r e s h C-g C-g" (format nil "old red apple~%old green pear~%old blue plum"))))
 
-(define-test (split opening-lines)
+(define-modal-test (split opening-lines)
   ;; o with a count: the cursor on the first new line, the rest blank below it
   (multiple-value-bind (f editor) (run-keys "C-u 3 o x C-g" :text (format nil "a~%b"))
     (declare (ignore f))
@@ -701,7 +701,7 @@ end its lines with a carriage return and a newline."
   ;; one undo takes them all back
   (is string= (format nil "a~%b") (split-text "C-u 3 o C-g u" (format nil "a~%b"))))
 
-(define-test (split cursors-past-the-limit-move-alike)
+(define-modal-test (split cursors-past-the-limit-move-alike)
   ;; % t on more lines than there may be cursors, then motions that move every cursor alike:
   ;; those out of sight follow, a shorter line done at its end
   (let ((text (format nil "abcd~%abcd~%ab~%abcd~%abcd~%")))
@@ -733,7 +733,7 @@ end its lines with a carriage return and a newline."
     (is eq 'tuatara.defaults::split-wrap-key (bound tuatara.defaults::*split-chooser-keymap* #\())
     (is eq 'tuatara.defaults::split-delete (bound tuatara.defaults::*split-chooser-keymap* #\d))))
 
-(define-test (split cursors-below-and-above-alike)
+(define-modal-test (split cursors-below-and-above-alike)
   (flet ((typed (keys) (session-text (nth-value 1 (run-keys keys :text (format nil "a~%b~%c~%d~%e"))))))
     (is string= (format nil "a~%Xb~%Xc~%Xd~%e") (typed "j j t T i X C-g"))
     (is string= (format nil "a~%b~%Xc~%Xd~%Xe") (typed "j j C-u 2 t i X C-g"))
@@ -744,7 +744,7 @@ end its lines with a carriage return and a newline."
     ;; more added below the last and above the first
     (is string= (format nil "Xa~%Xb~%Xc~%Xd~%Xe") (typed "j j t t T T i X C-g"))))
 
-(define-test (split cursor-typing-said-where)
+(define-modal-test (split cursor-typing-said-where)
   ;; as the cursors end, the echo row says where the text went
   (let ((three (format nil "abc~%abc~%abc")))
     (flet ((said (keys) (string-trim " " (split-echo keys three))))

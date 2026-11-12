@@ -852,7 +852,7 @@ no longer start by themselves."
     (if (null roots)
         (message "~a is no file of a project" (tuatara.buffer:buffer-name buffer))
         (dolist (root roots)
-          (state-list-drop *lsp-trusted* (list (or (real-folder root) root)))
+          (state-list-drop *lsp-trusted* (list (or (real-directory root) root)))
           (dolist (server (copy-list *lsp-servers*))
             (when (string= (lsp-server-root server) root) (lsp-stop server)))
           (message "~a is trusted no more~:[~;; it is in *lsp-trusted-projects*, which still trusts it~]"

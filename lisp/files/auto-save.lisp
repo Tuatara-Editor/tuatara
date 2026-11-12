@@ -2,8 +2,8 @@
 ;;;; Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
 ;;;;
 ;;;; A buffer visiting a file, with changes not saved, is written now and then
-;;;; to a copy of its own in *AUTO-SAVE-DIRECTORY* (a folder only you can read,
-;;;; in Tuatara's state folder as standard): after *AUTO-SAVE-IDLE* seconds
+;;;; to a copy of its own in *AUTO-SAVE-DIRECTORY* (a directory only you can read,
+;;;; in Tuatara's state directory as standard): after *AUTO-SAVE-IDLE* seconds
 ;;;; without a change, and at least every *AUTO-SAVE-INTERVAL* seconds while
 ;;;; the changes go on. The file itself is never written but by a save. The
 ;;;; copy is written on a thread of its own from the text as it was, so that
@@ -28,12 +28,12 @@ The copy is never the file itself; M-x recover-file takes such a copy back.
   :values boolean)
 
 (define-setting *auto-save-directory* nil
-  "The folder auto-saved copies are kept in.
+  "The directory auto-saved copies are kept in.
 It is made for you alone when it is not there.
-- nil: auto-save/ in Tuatara's state folder ($XDG_STATE_HOME/tuatara/, or
+- nil: auto-save/ in Tuatara's state directory ($XDG_STATE_HOME/tuatara/, or
   ~/.local/state/tuatara/).
-- a folder's name: that folder, \"~/backups/tuatara/\" for example."
-  :values (or (member nil) folder))
+- a directory's name: that directory, \"~/backups/tuatara/\" for example."
+  :values (or (member nil) directory))
 
 (define-setting *auto-save-idle* 5
   "Seconds without a change after which a buffer's changes not saved are
@@ -63,7 +63,7 @@ little room.
   :values (integer 0 *))
 
 (defun auto-save-directory ()
-  "The folder auto-saved copies go in, as *AUTO-SAVE-DIRECTORY* says; a native
+  "The directory auto-saved copies go in, as *AUTO-SAVE-DIRECTORY* says; a native
 name ending in /. It is made, for you alone, when a copy is first written."
   (tuatara.io:slash-ended
    (if *auto-save-directory*
@@ -72,7 +72,7 @@ name ending in /. It is made, for you alone, when a copy is first written."
 
 (defun auto-save-path (file)
   "The auto-saved copy of FILE, a native name: its whole name written as one
-name in the folder (AUTO-SAVE-DIRECTORY, TUATARA.IO:PATH-FILE-NAME), or, for a
+name in the directory (AUTO-SAVE-DIRECTORY, TUATARA.IO:PATH-FILE-NAME), or, for a
 name too long for that, its start and a number made from all of it, its own
 name then kept beside it in NAME.path."
   (concatenate 'string (auto-save-directory) (tuatara.io:path-file-name file)))

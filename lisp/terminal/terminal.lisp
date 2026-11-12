@@ -730,8 +730,8 @@ says, as \\[terminal] opens one; quitting it brings back what the window showed.
   "Open a terminal in a buffer of its own, where *TERMINAL-PLACE* says or, with
 PLACE, in a new window there (SHOW-TERMINAL). It opens in the current buffer's
 directory. It opens in your home directory instead when that buffer was opened
-safely or its directory is in one of *SAFE-DIRECTORIES* or *EVIDENCE-FOLDERS*,
-so that your shell's prompt and its helpers read nothing a folder of evidence
+safely or its directory is in one of *SAFE-DIRECTORIES* or *EVIDENCE-DIRECTORIES*,
+so that your shell's prompt and its helpers read nothing a directory of evidence
 holds, such as its .git or .envrc; the echo area says so. It runs your shell
 \(or *TERMINAL-PROGRAM*) on a screen as large as the window, which follows the
 window's size. Everything typed there goes to the program, Escape

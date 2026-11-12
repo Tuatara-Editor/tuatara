@@ -38,7 +38,7 @@ or narrow it; KIND :added, :changed or :deleted."
       (documentation 'vc-mark-kind 'function) "The mark's kind: :added, :changed or :deleted.")
 
 (defun committed-name (path)
-  "The name of the file at PATH from its folder, as git is given it there (GIT-OBJECT-NAME)."
+  "The name of the file at PATH from its directory, as git is given it there (GIT-OBJECT-NAME)."
   (concatenate 'string "./" (tuatara.io:native-file-name path)))
 
 (defun committed-id (path &key cancel)

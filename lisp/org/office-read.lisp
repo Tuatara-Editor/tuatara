@@ -27,14 +27,14 @@
   "The most cells of an Excel workbook read as text, all its sheets together:
 the cells past them are left out, and the note says where it stopped.")
 
-(defun docx-unlisted-parts (folder listed)
-  "The parts of the document being read directly in FOLDER (xl/worksheets/,
+(defun docx-unlisted-parts (directory listed)
+  "The parts of the document being read directly in DIRECTORY (xl/worksheets/,
 ppt/slides/), XML ones, that are not among LISTED, the names of those its own
 list names: parts its program never shows, sorted."
   (sort (loop for entry in (docx-reading-entries *docx-reading*)
               for name = (getf entry :name)
-              when (and (uiop:string-prefix-p folder name) (uiop:string-suffix-p name ".xml")
-                        (not (find #\/ name :start (length folder)))
+              when (and (uiop:string-prefix-p directory name) (uiop:string-suffix-p name ".xml")
+                        (not (find #\/ name :start (length directory)))
                         (not (member name listed :test #'string-equal)))
                 collect name)
         #'string<))

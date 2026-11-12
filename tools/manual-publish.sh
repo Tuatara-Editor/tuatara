@@ -2,7 +2,7 @@
 # tools/manual-publish.sh --- Publish the manual's web pages on GitHub Pages.
 # Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
 # Build the pages (tools/manual-html.sh), refuse them if they name this
-# account or its home folder, and commit them as the whole of the branch
+# account or its home directory, and commit them as the whole of the branch
 # gh-pages, one signed commit on top of what REMOTE has, which is then
 # pushed. GitHub Pages serves that branch.
 # Usage: tools/manual-publish.sh REMOTE [--no-push]

@@ -80,7 +80,10 @@
 
 (define-language latex
   "LaTeX documents, parsed with tree-sitter-latex."
-  :grammar "latex" :modes (latex-mode) :indent 4 :queries "latex" :injection-names "tex" :definitions :textobjects)
+  :grammar "latex" :modes (latex-mode) :indent 4 :queries "latex" :injection-names "tex"
+  :definitions "[(part) (chapter) (section) (subsection) (subsubsection) (paragraph) (subparagraph)
+ (generic_environment) (math_environment) (verbatim_environment) (listing_environment) (minted_environment)
+ (pycode_environment) (comment_environment)] @definition")
 
 (define-major-mode bibtex-mode text-mode
   "BibTeX bibliographies."

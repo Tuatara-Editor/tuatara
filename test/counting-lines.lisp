@@ -179,7 +179,7 @@ begins."
             (true (<= started 2) "started ~d times" started)
             (tuatara.buffer:kill-buffer b)))))))
 
-(define-test (counting-lines mapped-file-counted-in-the-background)
+(define-modal-test (counting-lines mapped-file-counted-in-the-background)
   ;; a file too large to be read into memory is mapped and opens before its lines are counted, however
   ;; little larger it is
   (with-test-directory (dir)
@@ -192,7 +192,7 @@ begins."
           (true (tuatara.frontend.fake:fake-frame-showing f "L…"))
           (tuatara.buffer:kill-buffer b))))))
 
-(define-test (counting-lines in-the-editor)
+(define-modal-test (counting-lines in-the-editor)
   (with-test-directory (dir)
     (let ((path (namestring (put-file (merge-pathnames "big.txt" dir) (sample-lines 5000)))))
       (unwind-protect
@@ -287,7 +287,7 @@ and the editor."
     (values f (tuatara.command:run-editor f :files (list path) :setup #'tuatara.defaults:install-defaults
                                             :buffer (tuatara.buffer:find-buffer "*scratch*")))))
 
-(define-test (counting-lines rows-written-once-counted)
+(define-modal-test (counting-lines rows-written-once-counted)
   ;; typing at a cursor on every line of a file still being counted waits for nothing: the lines
   ;; out of sight are written by a job queued until the lines are counted, then on its own
   (with-test-directory (dir)
@@ -387,7 +387,7 @@ and the editor."
              (is = 3001 (tuatara.buffer:buffer-line-count b)))
         (tuatara.buffer:kill-buffer b)))))
 
-(define-test (counting-lines replacement-queued-while-counted)
+(define-modal-test (counting-lines replacement-queued-while-counted)
   ;; a replacement asked for while the file's lines are still being counted waits its turn in
   ;; the queue, the editor answering keys meanwhile, and starts by itself once they are
   (with-test-directory (dir)
@@ -530,12 +530,12 @@ to be carried (TUATARA.TEXT:CARRY-TALLY), as two values."
          (tally (tuatara.text:make-tally)))
     (tuatara.text:index-rope rope :threads 1 :chunk 4096 :tally tally)
     (let ((b (tuatara.buffer:make-buffer (format nil "*carried-~a*" (namestring dir)) :text rope)))
-      (setf (tuatara.buffer:buffer-local b 'scratch-folder) dir)
+      (setf (tuatara.buffer:buffer-local b 'scratch-dir) dir)
       (values b (tuatara.text:carry-tally tally (tuatara.buffer:buffer-version b))))))
 
 (defun forget-counted-carried (buffer)
-  "Kill BUFFER, made by COUNTED-CARRIED, and remove its folder."
-  (let ((dir (tuatara.buffer:buffer-local buffer 'scratch-folder)))
+  "Kill BUFFER, made by COUNTED-CARRIED, and remove its directory."
+  (let ((dir (tuatara.buffer:buffer-local buffer 'scratch-dir)))
     (tuatara.buffer:kill-buffer buffer)
     (uiop:delete-directory-tree dir :validate (lambda (p) (search "/carried-" (namestring p))))))
 
@@ -726,7 +726,7 @@ does."
   "Where the rows of EDITOR's window begin, as an octet of its buffer."
   (tuatara.display:row-start (aref (tuatara.display:window-rows (tuatara.command:editor-window editor)) 0)))
 
-(define-test (counting-lines read-ahead-where-the-window-goes)
+(define-modal-test (counting-lines read-ahead-where-the-window-goes)
   ;; what a window shows of a large file, and the stretch past it the way the window moves, is
   ;; read in ahead on a thread of its own, asked for again only near the stretch's edge: paging
   ;; down from the top, the stretch reaches on past the rows; paging up from the end, back before

@@ -33,7 +33,7 @@ client's terminal, as the editor checked it.")
 
 (defparameter *machine-variables* '("DISPLAY" "WAYLAND_DISPLAY" "SSH_AUTH_SOCK" "PATH")
   "Those of *CLIENT-VARIABLES* that name what is on the client's machine:
-its desktop, its ssh agent, its folders of programs. A client on another
+its desktop, its ssh agent, its directories of programs. A client on another
 machine has them in its own, where they mean nothing here; the editor's own
 stay for the programs started from its frames.")
 
@@ -58,7 +58,7 @@ everyone's."
 
 (defun keep-for-every-client (buffers)
   "Make each of BUFFERS no client has every client's for good: shown in a
-client, it stays in the buffer list's folder of every client's and is not
+client, it stays in the buffer list's group of every client's and is not
 taken into the client's own (BUFFER-FOR-EVERY-CLIENT-P). An editor running in
 the background does this to the buffers it has before its first client comes."
   (dolist (buffer buffers)
@@ -149,7 +149,7 @@ oldest first), then *CLIENT-END-FUNCTIONS*; a client on a frontend of its own
 is told the code it ends with and what it says, and its frames are closed, the
 idle frame kept in their place when they were EDITOR's last (KEEP-IDLE-FRAME).
 Its buffers stay, still its, for another client to take up; of the client
-itself only what names its folder is kept, its frontend, environment and
+itself only what names its directory is kept, its frontend, environment and
 files let go."
   (unless (client-ended client)
     (setf (client-ended client) (get-universal-time))
@@ -175,7 +175,7 @@ files let go."
         (setf (client-frontend client) nil (client-environment client) '()
               (client-startup-buffers client) '() (client-endings client) '())))))
 
-(defun client-folder-words (client)
+(defun client-group-words (client)
   "What the lists of buffers call CLIENT's: its number, when it began and
 where it was started (\"client 3 since 14:02, ~/notes\"); one that ended,
 when it ended first (\"Ended 15:47 — client 2 since 14:02, ~/cases/x\")."

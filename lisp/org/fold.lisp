@@ -512,13 +512,16 @@ the drawers and notes of its tasks folded (*ORG-FOLD-METADATA*)."
     (ignoring-errors-reported ("folding ~a as it opens" (tuatara.buffer:buffer-name buffer))
       (org-startup-visibility buffer options))
     (ignoring-errors-reported ("indenting ~a as it opens" (tuatara.buffer:buffer-name buffer))
-      (org-startup-indentation buffer options))))
+      (org-startup-indentation buffer options))
+    (ignoring-errors-reported ("showing the pictures of ~a" (tuatara.buffer:buffer-name buffer))
+      (org-startup-pictures buffer options))))
 
 (defmethod mode-exit ((mode org-mode) buffer)
   "Let go of the view Org mode gave BUFFER (indentation, signs, folds, large
 headlines) and of its parse, so that the mode that follows shows the text as
 it is."
-  (dolist (local '(:line-scale-function :line-prefix-function :folds
+  (dolist (local '(:line-scale-function :line-prefix-function :folds :inline-pictures-function :row-pictures-function
+                   :tall-lines-function :line-float-function :float-before-function inline-picture-blocks
                    org-indent org-links-literal org-state org-fresh-returns org-hidden org-hidden-anchors
                    org-src-colours))
     (setf (tuatara.buffer:buffer-local buffer local) nil))

@@ -27,7 +27,7 @@
 # Each grammar is first put back to its pinned commit, checked against
 # syntax/grammar-inputs.sha256 and patched, as tools/grammars.sh does; its
 # code runs in bubblewrap, with no network, the sources to read and nothing
-# but a scratch folder to write. The hostile texts are made from SEED (the
+# but a scratch directory to write. The hostile texts are made from SEED (the
 # time unless given, or $FUZZ_SEED), said with each result, so that a failure
 # is made again with --seed.
 # Usage: tools/fuzz-grammars.sh [-n ITERATIONS] [NAME...]

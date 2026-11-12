@@ -364,8 +364,8 @@ the frontend and the editor."
         (is string= (format nil "x~%two~%") (tuatara.buffer:buffer-string buffer))
         (is = 2 (tuatara.buffer:buffer-point buffer))))))
 
-(define-test (conflicts sides-shown-from-the-file-folder)
-  ;; the buffer showing how the sides differ stands in the conflicted file's folder, as the
+(define-test (conflicts sides-shown-from-the-file-directory)
+  ;; the buffer showing how the sides differ stands in the conflicted file's directory, as the
   ;; mode line shows
   (with-test-directory (dir)
     (flet ((shown () (tuatara.buffer:find-buffer "*Conflict: a.txt*")))

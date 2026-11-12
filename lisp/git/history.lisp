@@ -204,11 +204,11 @@ menu's switches go with it (--autosquash orders fixups first)."
   (with-git-repository (top switches)
     (git-ask-revision "Rebase the commits after: " top
                       (lambda (base)
-                        (let ((folder (new-private-folder (private-cache-directory "git/")))
+                        (let ((directory (new-private-directory (private-cache-directory "git/")))
                               (shown nil))
                           (start-git-job "Reading the commits to rebase"
                                          (lambda (job)
-                                           (let ((copy (concatenate 'string folder "todo-from-git")))
+                                           (let ((copy (concatenate 'string directory "todo-from-git")))
                                              ;; git writes its list, which is copied out, then the rebase
                                              ;; is given up: the editor fails, and git starts nothing
                                              (run-git top (append (list "rebase" "-i") switches (list base))
@@ -221,44 +221,44 @@ menu's switches go with it (--autosquash orders fixups first)."
                                          (lambda (todo)
                                            (cond ((null todo) (message "git made no list of commits after ~a to rebase" base))
                                                  ((null (git-rebase-todo-lines todo)) (message "No commits after ~a to rebase" base))
-                                                 (t (git-show-rebase-todo top base switches folder todo)
+                                                 (t (git-show-rebase-todo top base switches directory todo)
                                                     (setf shown t))))
-                                         :after (lambda () (unless shown (delete-private-folder folder)))
+                                         :after (lambda () (unless shown (delete-private-directory directory)))
                                          :quiet t))))))
 
-(defun git-show-rebase-todo (top base switches folder todo)
+(defun git-show-rebase-todo (top base switches directory todo)
   "Show git's list TODO of the commits of the repository at TOP after BASE to
-change, the rebase to take SWITCHES and keep its files in FOLDER, which goes
-with the list when it is killed or given up (FORGET-PRIVATE-FOLDER), and the
-folder of a list it replaces with it."
+change, the rebase to take SWITCHES and keep its files in DIRECTORY, which goes
+with the list when it is killed or given up (FORGET-PRIVATE-DIRECTORY), and the
+directory of a list it replaces with it."
   (let ((old (git-buffer-of top 'git-rebase-mode)))
-    (when (and old (buffer-private-folder old))
-      (delete-private-folder (buffer-private-folder old))))
+    (when (and old (buffer-private-directory old))
+      (delete-private-directory (buffer-private-directory old))))
   (git-edit-buffer "*git rebase: ~a*" top 'git-rebase-mode
                    (format nil "# C-c C-c rebases as these lines say, C-c C-k gives it up.~%~a" todo) 1
-                   'git-rebase (list base switches folder)
-                   'private-folder folder))
+                   'git-rebase (list base switches directory)
+                   'private-directory directory))
 
 (define-command git-rebase-todo-finish ()
   "Rebase as this list says: each reword line asks the commit's new subject
 first (the rest of its message kept), then git rebases in the background; the
-list's folder, the new messages in it, is deleted once git is done."
+list's directory, the new messages in it, is deleted once git is done."
   (let* ((buffer (current-buffer))
          (top (git-here))
          (rebase (tuatara.buffer:buffer-local buffer 'git-rebase)))
     (if (null rebase)
         (message "Not a rebase's list")
-        (destructuring-bind (base switches folder) rebase
+        (destructuring-bind (base switches directory) rebase
           (let* ((lines (uiop:split-string (tuatara.buffer:buffer-string buffer) :separator '(#\Newline)))
                  (rewords (loop for line in lines
                                 for (hash subject) = (multiple-value-list (git-reword-line-p line))
                                 when hash
                                   collect (list hash (read-string (format nil "New subject of ~a: " hash) :initial subject)))))
-            ;; the folder goes when git is done, not with the list
-            (setf (tuatara.buffer:buffer-local buffer 'private-folder) nil)
+            ;; the directory goes when git is done, not with the list
+            (setf (tuatara.buffer:buffer-local buffer 'private-directory) nil)
             (start-git-job "Rebasing"
                            (lambda (job)
-                             (let ((todo (concatenate 'string folder "todo"))
+                             (let ((todo (concatenate 'string directory "todo"))
                                    (n 0))
                                (tuatara.io:write-private-file
                                 todo
@@ -269,7 +269,7 @@ list's folder, the new messages in it, is deleted once git is done."
                                           (format out "~a~%" line)
                                           (let* ((subject (second (find hash rewords :key #'first :test #'string=)))
                                                  (body (git-output-line job top (list "log" "-1" "--format=%b" "--end-of-options" hash)))
-                                                 (file (format nil "~amessage-~d" folder (incf n))))
+                                                 (file (format nil "~amessage-~d" directory (incf n))))
                                             (tuatara.io:write-private-file
                                              file
                                              (format nil "~a~@[~%~%~a~]~%" subject (and (plusp (length body)) body)))
@@ -288,7 +288,7 @@ list's folder, the new messages in it, is deleted once git is done."
                                             "Stopped at a commit to edit: c a amends it, R c goes on"
                                             "Rebased as the list said"))))
                            :after (lambda ()
-                                    (delete-private-folder folder)
+                                    (delete-private-directory directory)
                                     (git-refresh-repository top))))))))
 
 (define-command git-rebase-todo-cancel ()

@@ -48,7 +48,7 @@ nothing read yet."
   "Each list kept between sessions with an entry another session puts there and one put here.")
 
 (define-test (state-and-files temporary-files-kept-to-the-run)
-  ;; what a test writes to the temporary folder lands in the run's own directory, removed with it
+  ;; what a test writes to the temporary directory lands in the run's own directory, removed with it
   (let ((tmp (uiop:temporary-directory)))
     (true (uiop:subpathp tmp *test-state-directory*) "~a" tmp)
     (true (uiop:directory-exists-p tmp))))
@@ -402,8 +402,8 @@ file of text; their native names, as two values."
       (false (tuatara.defaults::project-root (tuatara.io:home-directory)))
       (false (tuatara.defaults::project-root "/")))))
 
-(define-test (state-and-files folders-chosen)
-  ;; *cache-directory*, *state-directory* and *packages-directory* name folders of your own; one not
+(define-test (state-and-files directories-chosen)
+  ;; *cache-directory*, *state-directory* and *packages-directory* name directories of your own; one not
   ;; there is never made, its things kept in memory ($XDG_RUNTIME_DIR) instead and said
   (with-test-directory (dir)
     (let* ((chosen (namestring (merge-pathnames "chosen/" dir)))
@@ -424,7 +424,7 @@ file of text; their native names, as two values."
                (true (search "(*state-directory*) is not there: kept in memory"
                              (first (tuatara.io:directories-in-memory-words))))
                (true (tuatara.io:directory-in-memory-p 'tuatara-user:*state-directory*)))
-             ;; the setting changed, that folder is no longer kept in memory nor said to be
+             ;; the setting changed, that directory is no longer kept in memory nor said to be
              (false (tuatara.io:directory-in-memory-p 'tuatara-user:*state-directory*))
              (false (tuatara.io:directories-in-memory-words))
              (let ((tuatara-user:*packages-directory* chosen))
@@ -434,7 +434,7 @@ file of text; their native names, as two values."
         (if old-memory (sb-posix:setenv "XDG_RUNTIME_DIR" old-memory 1) (sb-posix:unsetenv "XDG_RUNTIME_DIR"))))))
 
 (define-test (state-and-files path-helpers)
-  ;; the one way of each: the folder paths share, a file: address, a folder
+  ;; the one way of each: the directory paths share, a file: address, a directory
   ;; kept safe, a project's top found by a pattern, a glob, the buffer
   ;; visiting a file, a file holding octets, a size walk let go
   (is string= "/a/" (tuatara.defaults::paths-common-directory '("/a/b/c.txt" "/a/bc/d.txt" "/a/x")))
@@ -502,7 +502,7 @@ file of text; their native names, as two values."
 
 (define-test (state-and-files path-one-file-name)
   ;; a path written as one name: %XX but for letters, digits and ._-; a long one shortened with a
-  ;; number made from all of it, so that an index's cache of a deep folder can still be written
+  ;; number made from all of it, so that an index's cache of a deep directory can still be written
   (is equal '("%2Fa%20b%2Fc.txt" nil) (multiple-value-list (tuatara.io:path-file-name "/a b/c.txt")))
   (is = 2819150120103270219 (tuatara.text:string-hash "abc"))
   (let* ((root (format nil "/~a/" (make-string 400 :initial-element #\r)))
@@ -516,21 +516,21 @@ file of text; their native names, as two values."
         (tuatara.defaults::auto-save-path root))))
 
 (define-test (state-and-files walk-directory-policies)
-  ;; one walk of the folders under a folder: depth first or breadth first, links followed only
-  ;; when asked, a depth and a number of folders at most, stopped when asked
+  ;; one walk of the directories under a directory: depth first or breadth first, links followed only
+  ;; when asked, a depth and a number of directories at most, stopped when asked
   (with-test-directory (dir)
     (let ((root (tuatara.io:native dir)))
       (dolist (file '("a/x.txt" "a/deep/y.txt" "b/z.txt" ".h/w.txt"))
         (put-file (ensure-directories-exist (merge-pathnames file dir)) "x"))
       (sb-posix:symlink "a" (concatenate 'string root "link"))
       (flet ((entered (&rest keys)
-               (let ((folders '()))
+               (let ((directories '()))
                  (apply #'tuatara.defaults::walk-directory root
                         (lambda (directory relative entry)
                           (declare (ignore directory))
-                          (if entry (eq (second entry) :directory) (push relative folders)))
+                          (if entry (eq (second entry) :directory) (push relative directories)))
                         keys)
-                 (nreverse folders))))
+                 (nreverse directories))))
         (is equal '("" ".h/" "a/" "a/deep/" "b/") (entered))
         (is equal '("" ".h/" "a/" "b/" "a/deep/") (entered :breadth-first t))
         (is equal '("" ".h/" "a/" "a/deep/" "b/" "link/" "link/deep/") (entered :follow-links t))
@@ -538,13 +538,13 @@ file of text; their native names, as two values."
         (is equal '("" ".h/") (entered :limit 2))
         (is equal '() (entered :cancel (list t)))
         (false (tuatara.defaults::walk-directory root (constantly t) :limit 2)))
-      ;; the language servers' watch: nearest folders first, hidden ones left out, as many as allowed
+      ;; the language servers' watch: nearest directories first, hidden ones left out, as many as allowed
       (let ((tuatara.lsp::*lsp-watched-most* 3))
-        (multiple-value-bind (folders stamps) (tuatara.lsp::project-folders root)
-          (is equal (list root (concatenate 'string root "a/") (concatenate 'string root "b/")) folders)
+        (multiple-value-bind (directories stamps) (tuatara.lsp::project-directories root)
+          (is equal (list root (concatenate 'string root "a/") (concatenate 'string root "b/")) directories)
           (is eq :directory (gethash "deep" (gethash (concatenate 'string root "a/") stamps)))
           (true (gethash ".h" (gethash root stamps)))))
-      ;; files under a folder keep their order, a folder's files in place among its folders
+      ;; files under a directory keep their order, a directory's files in place among its directories
       (sb-posix:unlink (concatenate 'string root "link"))
       (is equal '("a/deep/y.txt" "a/x.txt" "b/z.txt")
           (mapcar #'cdr (tuatara.defaults::files-under root)))
@@ -559,7 +559,7 @@ file of text; their native names, as two values."
         (start (thread-cpu-time)))
     (false (tuatara.defaults::gitignored-p rules name (concatenate 'string "/top/" name) nil))
     (true (< (- (thread-cpu-time) start) (/ internal-time-units-per-second 4))))
-  ;; git's stars: * and ? within a folder's name, ** across folders, **/ none too
+  ;; git's stars: * and ? within a directory's name, ** across directories, **/ none too
   (dolist (case '(("**/x" "x" t) ("**/x" "a/b/x" t) ("a/**/b" "a/b" t) ("a/**/b" "a/x/y/b" t) ("a/*" "a/b/c" nil)
                   ("a/*" "a/b" t) ("a/**" "a/b/c" t) ("a?b" "a/b" nil) ("*.o" "lib/x.o" nil) ("**.o" "lib/x.o" t)))
     (destructuring-bind (glob path expected) case
@@ -605,7 +605,7 @@ file of text; their native names, as two values."
 (define-test (state-and-files unchanged-lists-looked-at-cheaply)
   ;; a list kept between sessions that nothing changed is looked at again
   ;; (as each edit asks whether its file's project is trusted) with its file
-  ;; looked at only for a change, its name and folder not worked out again
+  ;; looked at only for a change, its name and directory not worked out again
   (let ((list tuatara.defaults::*lsp-trusted*))
     (tuatara.defaults::state-list-entries list)
     (let ((octets (nth-value 2 (tuatara.bench::measuring
@@ -654,7 +654,7 @@ file of text; their native names, as two values."
              (buffer (tuatara.buffer:make-buffer "*trust asked*" :text ""))
              (stamps 0)
              (list tuatara.defaults::*lsp-trusted*)
-             (real (tuatara.defaults::real-folder (tuatara.defaults::project-root (namestring project)))))
+             (real (tuatara.defaults::real-directory (tuatara.defaults::project-root (namestring project)))))
         (unwind-protect
              (progn
                (setf (tuatara.buffer:buffer-file buffer) file)

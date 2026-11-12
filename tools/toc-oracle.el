@@ -2,7 +2,7 @@
 ;;; Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
 ;;;
 ;;; Usage: emacs -Q --batch -l tools/toc-oracle.el ELPA DIRECTORY
-;;; ELPA is the folder Emacs keeps its packages in, with toc-org (Sergei
+;;; ELPA is the directory Emacs keeps its packages in, with toc-org (Sergei
 ;;; Nosov's package, from MELPA) in it. For each FILE.org and FILE.md of
 ;;; DIRECTORY (test/org/toc/), writes FILE.expected: the file as toc-org
 ;;; leaves it on saving, its table of contents made again under the first

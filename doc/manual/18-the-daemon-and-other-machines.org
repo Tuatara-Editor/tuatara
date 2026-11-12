@@ -130,14 +130,14 @@ can see what each screen has open.
 A buffer you open or make in a client is that client's. The buffers the daemon
 had before its first client came, such as its =*lisp-scratch*= and
 =*org-scratch*=, are every client's and stay so. You can show them in any
-client, and they stay in the folder =Every client's=. Each client starts on a
+client, and they stay in the group =Every client's=. Each client starts on a
 scratch buffer of its own instead, numbered when the name is taken
 (=*lisp-scratch*<2>=), and ~M-x org-scratch~ in a client shows its own
 =*org-scratch*=, made for it the first time.
 
 Figure 18.1 shows the list in a client that was started at two o'clock, with
 one client that has already ended. The client has files of two projects open,
-so its folder holds a section for each.
+so its directory holds a section for each.
 
 #+caption: Figure 18.1. The buffer list of a daemon with two clients.
 #+name: fig-client-list
@@ -158,36 +158,36 @@ so its folder holds a section for each.
     %  *Messages*             1,210 Special
 #+end_example
 
-Your own client comes first, marked =This client=, with the folder it was
+Your own client comes first, marked =This client=, with the directory it was
 started in. Other running clients follow, folded. The clients that have ended
 come after them in a faint colour, the last to end first. Their buffers are
 still in the daemon, and the list keeps them until you take them up or kill
 them. The last section holds the buffers every client is offered, in one
 section whatever projects they are in.
 
-Within a client's folder, the buffers are in a section for each project, in the
-order of the list of chapter 7, each heading under the text of the client's
-and its buffers under the text of its own, as chapter 7 has them. A
-client whose buffers are all in one project, or all in none, shows them
-straight under its heading. ~TAB~ folds a project's section on its own. Folding
-the client folds its projects with it, and they come back as they were when you
-unfold it. ~D~ on a project's heading kills that client's buffers of the
-project, and the other clients keep theirs; ~D~ on the client's heading kills
-its whole folder. ~C-x p k~ kills your client's buffers of the project you are
-in, and ~C-u C-x p k~ those of every client, as chapter 7 says.
+Within a client's group, the buffers are in a section for each project, in
+the order of the list of chapter 7, each heading under the text of the client's
+and its buffers under the text of its own, as chapter 7 has them. A client whose
+buffers are all in one project, or all in none, shows them straight under its
+heading. ~TAB~ folds a project's section on its own. Folding the client folds
+its projects with it, and they come back as they were when you unfold it. ~D~ on
+a project's heading kills that client's buffers of the project, and the other
+clients keep theirs; ~D~ on the client's heading kills its whole group. ~C-x
+p k~ kills your client's buffers of the project you are in, and ~C-u C-x p k~
+those of every client, as chapter 7 says.
 
-On the heading of a client that has ended, ~RET~ takes its buffers up into
-your client. ~d~ there marks every buffer of that folder for deletion, and ~x~
-kills them, asking first about unsaved changes. Starting =tuatara --client=
-with no file names does the same as ~RET~ for the client that ended last. The
-face =:list-dim= is the faint colour of the ended clients.
+On the heading of a client that has ended, ~RET~ takes its buffers up into your
+client. ~d~ there marks every buffer of that group for deletion, and ~x~
+kills them, asking first about unsaved changes. Starting =tuatara --client= with
+no file names does the same as ~RET~ for the client that ended last. The face
+=:list-dim= is the faint colour of the ended clients.
 
 *** The client that stays
 
 When the last buffer of a client is closed, the client closes. That would
 leave a daemon with no screen to show you. So one client may stay open, left
 on a scratch buffer of its own, made for it when it has none. It never takes
-a buffer of another client or of the folder =Every client's=. The setting
+a buffer of another client or of the group =Every client's=. The setting
 =*client-kept-without-buffers*= says which:
 
 | Value   | The client that stays                                |
@@ -230,10 +230,10 @@ the person who opened them.
 
 ~M-x daemon-quit~ in any client, or =tuatara --stop= in a terminal, stops the
 daemon. It asks about every change you have not saved, in every buffer of
-every client, those of ended clients included, one folder at a time. For each
-folder you press one of three keys:
+every client, those of ended clients included, one group at a time. For each
+group you press one of three keys:
 
-- ~s~ saves the changes of that folder.
+- ~s~ saves the changes of that group.
 - ~l~ leaves them unsaved. They are lost.
 - ~C-g~ stops the question and keeps the daemon running.
 
@@ -260,19 +260,19 @@ given. Read it when a daemon seems to have stopped late.
 ** Sessions for each client
 
 The session setting =*keep-session*= of chapter 7 works for a daemon too. The
-daemon keeps one session file for each daemon name, written client by client,
-so the windows of one client are never mixed with another's. If the daemon is
-started again, each client's folder is there as one that ended, and =tuatara
+daemon keeps one session file for each daemon name, written client by client, so
+the windows of one client are never mixed with another's. If the daemon is
+started again, each client's group is there as one that ended, and =tuatara
 --client= with no file names takes up the one that ended last. Files opened
-safely are not opened again by themselves. They wait, closed, in their folder,
-and open safely when a client takes the folder up.
+safely are not opened again by themselves. They wait, closed, in their
+group, and open safely when a client takes the group up.
 
 #+begin_try Try it, with the daemon stopped and started again
 1. Add =(setf *keep-session* t)= to your init file and restart the daemon
    with =tuatara --stop= followed by =tuatara --daemon=.
 2. Type =tuatara --client ~/notes.txt=, then press ~C-x C-c~. Type =tuatara
    --stop= and answer ~s~ if asked.
-3. Start the daemon again and type =tuatara --client=. The folder of the
+3. Start the daemon again and type =tuatara --client=. The group of the
    client that ended last is taken up, and =notes.txt= is open.
 #+end_try
 
@@ -316,7 +316,7 @@ A name with a dot or an =@= in it is taken as a server. A plain name such as
 from your =~/.ssh/config= file needs a colon after it, as in =pinetree:=.
 
 The files you name are the server's. A relative name such as =notes.org= is
-=notes.org= in your home folder on pinetree, and =/etc/hosts= is the file of
+=notes.org= in your home directory on pinetree, and =/etc/hosts= is the file of
 that name there.
 
 *** What has to be in place
@@ -338,9 +338,9 @@ only when OpenSSH's own server carries the connection. It refuses a
 connection through any other ssh server. The daemon must run under an ordinary
 account, directly on the server, not as root and not in a container.
 
-If the server removes your runtime folder when you log out, the daemon's
+If the server removes your runtime directory when you log out, the daemon's
 socket goes with it. =--start= says so. On a server run by systemd, the
-command =loginctl enable-linger= keeps the folder.
+command =loginctl enable-linger= keeps the directory.
 
 *** Keys limited with command=
 
@@ -383,35 +383,35 @@ off asks nothing.
    napier.example    no                   no  no        no               2026-11-06
 #+end_example
 
-| Column           | What it says                                          |
-|------------------+-------------------------------------------------------|
-| M                | A mark (=>= or =D=) put on the line.                   |
-| Server           | The machine, as =--client= names it.                  |
-| Agent            | Whether your ssh agent is forwarded there.            |
+| Column           | What it says                                                                        |
+|------------------+-------------------------------------------------------------------------------------|
+| M                | A mark (=>= or =D=) put on the line.                                                |
+| Server           | The machine, as =--client= names it.                                                |
+| Agent            | Whether your ssh agent is forwarded there.                                          |
 | Keys used for    | The machines the agent's keys may be used for from there; =any= when none is named. |
-| GPG              | Whether gpg-agent is forwarded there.                 |
-| Clipboard        | Whether the clipboard is shared with it.              |
-| Dropped files to | The folder there that dropped files are sent to, or =no=. |
-| Trusted          | The day you trusted the machine.                      |
-| Tuatara there    | The program to run there, if not the one on its =PATH=. |
+| GPG              | Whether gpg-agent is forwarded there.                                               |
+| Clipboard        | Whether the clipboard is shared with it.                                            |
+| Dropped files to | The directory there that dropped files are sent to, or =no=.                        |
+| Trusted          | The day you trusted the machine.                                                    |
+| Tuatara there    | The program to run there, if not the one on its =PATH=.                             |
 
 *** The keys of the list
 
 Each key acts on the servers marked with ~m~, or on the line the cursor is on
 when none is marked.
 
-| Modal | Non-modal | What it does                                                   |
-|-------+-----------+----------------------------------------------------------------|
-| none  | ~+~       | trust another machine, with nothing turned on                  |
-| none  | ~A~       | forward the ssh agent, or stop                                 |
-| none  | ~H~       | name the machines the agent's keys may be used for from there  |
-| none  | ~G~       | forward gpg-agent, or stop                                     |
-| none  | ~C~       | share the clipboard, or stop                                   |
-| none  | ~F~       | send dropped files to a folder there, or stop                  |
-| none  | ~T~       | name the tuatara to run there                                  |
-| none  | ~D~       | forget the server, after asking                                |
+| Modal | Non-modal | What it does                                                  |
+|-------+-----------+---------------------------------------------------------------|
+| none  | ~+~       | trust another machine, with nothing turned on                 |
+| none  | ~A~       | forward the ssh agent, or stop                                |
+| none  | ~H~       | name the machines the agent's keys may be used for from there |
+| none  | ~G~       | forward gpg-agent, or stop                                    |
+| none  | ~C~       | share the clipboard, or stop                                  |
+| none  | ~F~       | send dropped files to a directory there, or stop              |
+| none  | ~T~       | name the tuatara to run there                                 |
+| none  | ~D~       | forget the server, after asking                               |
 
-The list is kept in a file named =ssh-servers= in Tuatara's state folder. A
+The list is kept in a file named =ssh-servers= in Tuatara's state directory. A
 line it cannot read gives its server nothing.
 
 *** The ssh agent
@@ -444,7 +444,7 @@ or change your keys, so nothing on the server can take them. While gpg-agent
 here keeps the passphrase, the server can use that key without asking again.
 
 Two things need setting on the server. gpg there must not start an agent of
-its own, so put the line =no-autostart= in =gpg.conf= in GnuPG's folder there
+its own, so put the line =no-autostart= in =gpg.conf= in GnuPG's directory there
 (=gpgconf --list-dirs homedir= says where it is, usually =~/.gnupg=). And the
 ssh server should remove a leftover socket before forwarding a new one, which
 means adding =StreamLocalBindUnlink yes= to =/etc/ssh/sshd_config= as root.
@@ -463,17 +463,17 @@ and the daemon may read what you copied here. Text that comes from the server
 loses its control characters, so that pasting it into a terminal cannot carry
 a hidden escape sequence. Without ~C~, nothing of the clipboard crosses.
 
-With ~F~ on, a file you drop onto the window showing the server's daemon is
-sent into a folder there, =Dropped= in your home folder unless you give another
-name. A name beginning with =/= is taken from the root. The file is written
-for you alone under a name nothing else has, and nothing in it is run. Only
-files are sent, at most 100 MB each.
+With ~F~ on, a file you drop onto the window showing the server's daemon is sent
+into a directory there, =Dropped= in your home directory unless you give another
+name. A name beginning with =/= is taken from the root. The file is written for
+you alone under a name nothing else has, and nothing in it is run. Only files
+are sent, at most 100 MB each.
 
 *** A language server for a server
 
 A language server runs where the daemon runs. If pinetree has none installed
 and you cannot install one, =M-x server-bring-language-server= copies one from
-your computer, in the background, to a folder of the editor's own on the
+your computer, in the background, to a directory of the editor's own on the
 server. Nothing is fetched from the internet. It must be a program for the
 server's kind of machine that needs nothing but the usual system libraries.
 =M-x server-remove-language-server= takes it away again.
@@ -486,8 +486,8 @@ server's kind of machine that needs nothing but the usual system libraries.
 1. On pinetree, over ssh, type =tuatara --daemon=. Then leave the ssh
    session. Check that you can type =ssh pinetree= without a surprise.
 2. On your own computer, type =tuatara --client=pinetree: --start todo.org=.
-   The file opens, in the home folder on pinetree. The mode line shows =D=.
-3. Press ~C-x C-b~. The client is listed with the folder it started in.
+   The file opens, in the home directory on pinetree. The mode line shows =D=.
+3. Press ~C-x C-b~. The client is listed with the directory it started in.
 4. Press ~M-x~, type =server-trust=, press ~RET~, type =pinetree= and press
    ~RET~. Answer the question. Press ~M-x~ and type =server-list=.
 5. Put the cursor on the =pinetree= line and press ~C~. Answer =y=. The

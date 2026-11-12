@@ -77,7 +77,7 @@ checkpoints, so that a small text exercises all of the job's machinery."
       ;; a pattern that may cross lines, cut at line starts all the same
       (alike (format nil "r r ~a RET" (key-string "%[^,]*,/;")) text))))
 
-(define-test (rewrite seams-same-as-one-scan)
+(define-modal-test (rewrite seams-same-as-one-scan)
   ;; in pieces of 40 octets, a pattern whose matches run over line ends, and past a piece's
   ;; end or over several pieces, replaces what one scan finds, with g and without
   (let ((text (with-output-to-string (o)
@@ -102,7 +102,7 @@ checkpoints, so that a small text exercises all of the job's machinery."
                   :text text :width 100 :height 8))
       (true (> pieces 10) "~a pieces" pieces))))
 
-(define-test (rewrite case-followed-alike)
+(define-modal-test (rewrite case-followed-alike)
   ;; with case ignored the replacement follows each match's case, the same in memory and in the
   ;; background; a replacement that says its case (\\L, \\U) is written so in both
   (let ((text (format nil "kea KEA Kea k3a~%")))
@@ -115,7 +115,7 @@ checkpoints, so that a small text exercises all of the job's machinery."
           (is string= expected (replaced-text keys text) "~a in memory" typed)
           (is string= expected (replaced-text keys text :background t) "~a in the background" typed))))))
 
-(define-test (rewrite makes-no-garbage-for-each-match)
+(define-modal-test (rewrite makes-no-garbage-for-each-match)
   ;; a replacement the match does not enter makes nothing for each match, so that a large file
   ;; replaced in the background never keeps the collector, which every thread waits on, busy:
   ;; what four times the matches cost more than the first, for each match added
@@ -142,7 +142,7 @@ checkpoints, so that a small text exercises all of the job's machinery."
         (let ((each (/ (- large small) (- large-matches small-matches))))
           (true (< each 8) "~,1f octets a match" each))))))
 
-(define-test (rewrite literal-makes-no-garbage-for-each-match)
+(define-modal-test (rewrite literal-makes-no-garbage-for-each-match)
   ;; a literal pattern, its letter case ignored and followed, as x for h over a
   ;; file of x's: the text of each match is given again as it was for the same
   ;; octets, so a great many matches make nothing each
@@ -168,7 +168,7 @@ checkpoints, so that a small text exercises all of the job's machinery."
         (let ((each (/ (- large small) (- large-matches small-matches))))
           (true (< each 8) "~,1f octets a match" each))))))
 
-(define-test (rewrite read-only-meanwhile)
+(define-modal-test (rewrite read-only-meanwhile)
   ;; a buffer made read-only while a replacement runs in the background: the change is not forced on it, and said
   (with-background ()
     (let ((tuatara.defaults::*rewrite-piece-hook* (lambda () (sleep 0.2))))
@@ -222,7 +222,7 @@ FACE)) in a job's face, as (ROW START END FACE)."
   (loop for (spans) in (reverse (tuatara.frontend.fake::fake-face-history frontend))
         append (job-spans spans)))
 
-(define-test (rewrite job-shading)
+(define-modal-test (rewrite job-shading)
   ;; the pieces of a job, followed through edits made since it began
   (let ((b (tuatara.buffer:make-buffer "*shading-test*" :text (format nil "aaaa~%bbbb~%cccc~%"))))
     (unwind-protect
@@ -260,7 +260,7 @@ FACE)) in a job's face, as (ROW START END FACE)."
         (true (every (lambda (span) (<= (- (third span) (second span)) 2)) spans))
         (false (job-spans (car (first (tuatara.frontend.fake::fake-face-history f)))))))))
 
-(define-test (rewrite split-job-shading)
+(define-modal-test (rewrite split-job-shading)
   ;; a split past its limit, its matches out of sight deleted in the background, shades only
   ;; the matches it has still to delete, never the lines between them
   (let ((tuatara-user:*split-limit* 2)
@@ -279,7 +279,7 @@ FACE)) in a job's face, as (ROW START END FACE)."
     (unwind-protect (is equal '((5 6) (12 13)) (funcall shade '(0 14) 0 14))
       (tuatara.buffer:kill-buffer b))))
 
-(define-test (rewrite undo-stands-where-begun)
+(define-modal-test (rewrite undo-stands-where-begun)
   ;; a job's change stands in the undo history where it began: an edit made while it ran is
   ;; undone first, then the whole replacement, the part made in sight with it
   (let ((tuatara.defaults::*rewrite-piece-hook* (lambda () (sleep 0.2))))
@@ -310,7 +310,7 @@ FACE)) in a job's face, as (ROW START END FACE)."
           (is string= text (third steps))
           (is string= (concatenate 'string done "Z") (fifth steps)))))))
 
-(define-test (rewrite typing-meanwhile-made-again)
+(define-modal-test (rewrite typing-meanwhile-made-again)
   ;; several keys typed while a job runs, each its own edit, are made again by redo where they
   ;; were typed, in their order, after the job's change, and a queued job's after that: the
   ;; text the same keys make with no job in the background
@@ -360,7 +360,7 @@ FACE)) in a job's face, as (ROW START END FACE)."
                 (is = 6 (tuatara.buffer:buffer-point b)))
       (tuatara.buffer:kill-buffer b))))
 
-(define-test (rewrite undo-stands-where-given-queued)
+(define-modal-test (rewrite undo-stands-where-given-queued)
   ;; one replacement running, a second waiting its turn, then an edit typed: undo takes back
   ;; the edit first, then the second replacement, then the first, the order they were given in
   (let ((tuatara.defaults::*rewrite-piece-hook* (lambda () (sleep 0.2))))
@@ -383,7 +383,7 @@ FACE)) in a job's face, as (ROW START END FACE)."
           (is equal '("Xf00 c00" "f00 c00" "f00 b00" "foo boo" "f00 b00" "f00 c00" "Xf00 c00")
               (nreverse steps)))))))
 
-(define-test (rewrite lit-after-edits)
+(define-modal-test (rewrite lit-after-edits)
   ;; while a job runs, only what it will change is lit, after an edit made meanwhile too
   ;; each piece slow enough that none is written by the frame after the edit
   (let ((tuatara.defaults::*rewrite-piece-hook* (lambda () (sleep 2)))
@@ -397,7 +397,7 @@ FACE)) in a job's face, as (ROW START END FACE)."
           (true spans)
           (true (every (lambda (span) (<= (- (third span) (second span)) 2)) spans)))))))
 
-(define-test (rewrite lit-quickly-after-much-typing)
+(define-modal-test (rewrite lit-quickly-after-much-typing)
   ;; what a running job lights is found as quickly after thousands of keys typed meanwhile as
   ;; after a few: the stretches edited are walked, not every version since the job began
   (let ((tuatara.defaults::*rewrite-piece-hook* (lambda () (sleep 5)))
@@ -422,7 +422,7 @@ FACE)) in a job's face, as (ROW START END FACE)."
       (true (< many (+ (* 3 few) (/ internal-time-units-per-second 200))) "~,2f ms after a few keys, ~,2f after many"
             (/ few 1000.0) (/ many 1000.0)))))
 
-(define-test (rewrite lit-quickly-under-filters)
+(define-modal-test (rewrite lit-quickly-under-filters)
   ;; search filters set while a job runs hide most lines: the job lights only what the rows
   ;; show, never all that lies hidden between them, which kept the editor busy for seconds
   (let* ((path (records-file (with-output-to-string (o)
@@ -446,7 +446,7 @@ FACE)) in a job's face, as (ROW START END FACE)."
           "the filter and its frames took ~,2f s"
           (/ spent internal-time-units-per-second))))
 
-(define-test (rewrite while-editing)
+(define-modal-test (rewrite while-editing)
   ;; keys typed while the job runs act at once; the job's result keeps them
   (let ((tuatara.defaults::*rewrite-piece-hook* (lambda () (sleep 0.2))))
     (with-background ()
@@ -476,7 +476,7 @@ FACE)) in a job's face, as (ROW START END FACE)."
         (true (tuatara.frontend.fake:fake-frame-showing f "In the background: *scratch*: Replacing" "stop it, then exit?"))
         (is string= "f00 b00" (session-text editor))))))
 
-(define-test (rewrite in-sight-first)
+(define-modal-test (rewrite in-sight-first)
   ;; a large replacement changes what is in sight on RET, the rest in the background, one undo for both
   (let ((text (format nil "~{foo ~d~%~}" (loop for i below 20000 collect i))))
     (with-background ()
@@ -503,7 +503,7 @@ FACE)) in a job's face, as (ROW START END FACE)."
         (declare (ignore f))
         (is string= (format nil "~{f0o ~d~%~}" (loop for i below 20000 collect i)) (session-text editor))))))
 
-(define-test (rewrite after)
+(define-modal-test (rewrite after)
   (with-background ()
     ;; one undo takes the whole replacement back, and point stays with its text
     (multiple-value-bind (f editor) (run-keys "g e r r % o / 0 0 RET" :text "foo boo" :width 100)
@@ -549,7 +549,7 @@ FACE)) in a job's face, as (ROW START END FACE)."
                         "% M-^" "C-f C-x r SPC C-n C-n C-f C-f M-x u p c a s e - r e g i o n RET"))
           (is equal (outcome keys text crlf nil) (outcome keys text crlf t) "~a~:[~; (CR LF)~] on ~s" keys crlf text))))))
 
-(define-test (rewrite split-typing-across-a-job)
+(define-modal-test (rewrite split-typing-across-a-job)
   ;; typing at a split's places goes on when a job before it is taken in
   (let ((tuatara.defaults::*rewrite-piece* 8)
         (tuatara.defaults::*rewrite-checkpoint* 2)
@@ -560,7 +560,7 @@ FACE)) in a job's face, as (ROW START END FACE)."
       (is string= (format nil "bbbQWE x~%bbbQWE x~%bbbQWE x~%") (session-text editor))
       (false (tuatara.frontend.fake:fake-frame-showing f "an edit away from the places")))))
 
-(define-test (rewrite killed-while-stuck)
+(define-modal-test (rewrite killed-while-stuck)
   ;; a job that does not stop when told (a piece taking long, its stop flag unread meanwhile): the
   ;; buffer is killed within the wait, the job left to end on its own, its text still there to read
   (let* ((tuatara.defaults::*rewrite-threshold* 0) (tuatara.defaults::*rewrite-piece* 8)

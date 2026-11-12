@@ -165,6 +165,7 @@ button that changes between light and dark colours."
   ":root { --mono: \"Cascadia Code\", \"Cascadia Mono\", \"JetBrains Mono\", \"Fira Code\", \"Source Code Pro\",
   \"DejaVu Sans Mono\", ui-monospace, monospace; --head: var(--mono); }
 body, code, kbd, pre, input, button { font-family: var(--mono); }
+main article p, main article li, main article dd { line-height: 1.2; }
 nav.contents a, .node a { text-decoration: none; }
 nav.toc li.here > a, nav.toc a.in-view { color: var(--accent); font-weight: 700; }
 main article h1, main article h2 { font-weight: 700; }
@@ -190,7 +191,8 @@ section.chapter + section.chapter { border-top: 1px solid var(--rule); margin-to
 "
   "The manual's own rules after the export's stylesheet: every text in a monospaced font, the
 headings, the contents column and the captions too, the first of these the reader has, as the pages
-load no font from elsewhere. Links in the contents are not underlined. The headings of the text are
+load no font from elsewhere. The lines of a paragraph or list item sit as close as a terminal's
+rows. Links in the contents are not underlined. The headings of the text are
 bold, and a section's has a rule in the link colour under it, to be found while scrolling. The
 section being read is marked in the column as the current chapter is, and on the whole manual its
 chapter too. The contents column is kept in view on a wide screen, and so is the colour button. On

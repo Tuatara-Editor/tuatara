@@ -52,10 +52,10 @@ before a dead connection is noticed; lower it to learn of one sooner.
 (defconstant +sftp-most-said+ 4096 "The most octets of a server's words for why a request failed.")
 
 (defparameter *sftp-most-listed* 100000
-  "The most entries of one folder on a server listed; past them the listing is cut, and says so.")
+  "The most entries of one directory on a server listed; past them the listing is cut, and says so.")
 
 (defparameter *sftp-most-listed-characters* (* 64 1024 1024)
-  "The most characters of names one listing of a folder on a server holds;
+  "The most characters of names one listing of a directory on a server holds;
 past them the listing is cut, as past *SFTP-MOST-LISTED* entries.")
 
 (defparameter *sftp-status-words*
@@ -227,7 +227,7 @@ of them."
   "The connection to the SFTP server of HOST, as ssh takes it, used by one
 thread at a time, holding LOCK. PROCESS is the ssh reaching it. FD is this end
 of the local socket ssh reads and writes. INBOX and OUTBOX are what the server
-said and not yet read, and what is to be sent. FOLDER is a private folder
+said and not yet read, and what is to be sent. DIRECTORY is a private directory
 holding what ssh said on its error output. NEXT-ID is the number of the last
 request. WAITING is how many requests sent have no answer yet. WANTING is how
 many threads wait for the connection, for which whoever holds it gives it up
@@ -242,7 +242,7 @@ is where paths lead there as asked once for this connection
   (fd nil)
   (inbox nil)
   (outbox nil)
-  (folder nil)
+  (directory nil)
   (next-id 0 :type (unsigned-byte 32))
   (waiting 0 :type fixnum)
   (extensions '())
@@ -259,7 +259,7 @@ is where paths lead there as asked once for this connection
       (documentation 'sftp-link-fd 'function) "This end of the socket of LINK's ssh, or NIL when LINK is closed."
       (documentation 'sftp-link-inbox 'function) "What LINK's server said and is not yet read."
       (documentation 'sftp-link-outbox 'function) "What is to be sent to LINK's server."
-      (documentation 'sftp-link-folder 'function) "The private folder of what LINK's ssh said, or NIL."
+      (documentation 'sftp-link-directory 'function) "The private directory of what LINK's ssh said, or NIL."
       (documentation 'sftp-link-next-id 'function) "The number of the last request sent over LINK."
       (documentation 'sftp-link-waiting 'function) "How many requests sent over LINK have no answer yet."
       (documentation 'sftp-link-wanting 'function) "How many threads wait for LINK's connection."
@@ -297,26 +297,27 @@ ASKING has it (SSH-ASKING-OPTIONS), no connection of another shared
 (defun sftp-ssh-said (link)
   "What LINK's ssh said on its error output, on one line, cleaned to be
 shown, the first *PROGRAM-SAID-LIMIT* octets at most; \"\" when nothing."
-  (let ((folder (sftp-link-folder link)))
-    (or (and folder
+  (let ((directory (sftp-link-directory link)))
+    (or (and directory
              (ignoring-errors-reported ("reading what ssh said")
                (tuatara.frontend:shown-words
                 (tuatara.text:one-line
                  (tuatara.text:lenient-string
-                  (tuatara.io:file-octets (tuatara.io:path-join folder "e") :limit tuatara.io:*program-said-limit*))))))
+                  (tuatara.io:file-octets (tuatara.io:path-join directory "e")
+                                          :limit tuatara.io:*program-said-limit*))))))
         "")))
 
 (defun sftp-close (link)
-  "Close LINK's connection, its ssh ended and its folder deleted; it is
+  "Close LINK's connection, its ssh ended and its directory deleted; it is
 connected again when next used."
   (incf (sftp-link-generation link))
   (let ((fd (shiftf (sftp-link-fd link) nil)) (process (shiftf (sftp-link-process link) nil))
-        (folder (shiftf (sftp-link-folder link) nil)))
+        (directory (shiftf (sftp-link-directory link) nil)))
     (when fd
       (ignoring-errors-reported ("closing the connection to ~a" (sftp-link-host link)) (sb-posix:close fd)))
     (when process (tuatara.io:done-with-program process))
     (close-link-asking link)
-    (when folder (delete-private-folder folder))
+    (when directory (delete-private-directory directory))
     (clrhash (sftp-link-real-paths link))
     (setf (sftp-link-inbox link) nil (sftp-link-outbox link) nil (sftp-link-extensions link) '()
           (sftp-link-waiting link) 0)))
@@ -393,10 +394,10 @@ cannot be started."
   (let* ((host (sftp-link-host link))
          (program (tuatara.io:system-program *ssh-program*)))
     (when (host-refusal host) (sftp-fail link "reach" "" "~a" (host-refusal host)))
-    (unless program (sftp-fail link "reach" "" "ssh is not installed in the system's folders of programs"))
-    (setf (sftp-link-folder link) (new-private-folder (private-cache-directory "remote/")))
+    (unless program (sftp-fail link "reach" "" "ssh is not installed in the system's directories of programs"))
+    (setf (sftp-link-directory link) (new-private-directory (private-cache-directory "remote/")))
     (when (ssh-can-ask-p program)
-      (setf (sftp-link-asking link) (open-ssh-asking program (sftp-link-folder link) host)))
+      (setf (sftp-link-asking link) (open-ssh-asking program (sftp-link-directory link) host)))
     (multiple-value-bind (mine theirs) (tuatara.io:socket-pair)
       (setf (sftp-link-fd link) mine
             (sftp-link-inbox link) (tuatara.frontend:make-inbox mine :editor)
@@ -408,7 +409,7 @@ cannot be started."
               (handler-case
                   (tuatara.io:start-program (cons program (sftp-ssh-arguments host asking))
                                             :input stream :output stream
-                                            :error (tuatara.io:path-join (sftp-link-folder link) "e")
+                                            :error (tuatara.io:path-join (sftp-link-directory link) "e")
                                             :if-error-exists :supersede
                                             :environment (apply #'ssh-environment (ssh-asking-environment asking))
                                             :with-editor t :close-fds (list theirs))
@@ -439,8 +440,8 @@ refused."
       (sftp-fail link "reach" "" "the host key of ~a differs from the one ssh knows, and ssh refuses it: check with ~
                                   the machine's owner before removing the old key with ssh-keygen -R" host))
     (when (search "ssh_askpass" said)
-      (sftp-fail link "reach" "" "ssh could not run the small program that asks its questions, in the cache folder ~
-                                  here (a folder programs may not be run from, mounted noexec?): ~a" said))
+      (sftp-fail link "reach" "" "ssh could not run the small program that asks its questions, in the cache directory ~
+                                  here (a directory programs may not be run from, mounted noexec?): ~a" said))
     (sftp-fail link "reach" "" "ssh could not reach it~:[~*~;: ~a~]~:[~;; a machine whose key ssh does not know yet ~
                                 is refused: connect once with ssh ~a and check its key~]"
                (plusp (length said)) said
@@ -634,7 +635,7 @@ them, a link's own with FOLLOW NIL; NIL when there is no such file."
   (call-with-sftp host path "examine" (lambda (link) (sftp-attributes link path :follow follow))))
 
 (defun remote-real-path (host path)
-  "Where PATH leads on HOST, links followed, from the root; \"\" or . for the home folder there."
+  "Where PATH leads on HOST, links followed, from the root; \"\" or . for the home directory there."
   (call-with-sftp host path "find" (lambda (link) (sftp-real-path link (if (string= path "") "." path)))))
 
 (defun remote-kept-real-path (host path)
@@ -659,20 +660,20 @@ signalled."
          (case (logand permissions #o170000)
            (#o040000 :directory) (#o100000 :file) (#o120000 :link) (t :other)))))
 
-(defun remote-listing (host folder)
-  "The entries of FOLDER on HOST, a path ending in /, each (NAME . ATTRIBUTES),
+(defun remote-listing (host directory)
+  "The entries of DIRECTORY on HOST, a path ending in /, each (NAME . ATTRIBUTES),
 . and .. left out, in the server's order; with true as a second value when
 it was cut at *SFTP-MOST-LISTED* entries, or *SFTP-MOST-LISTED-CHARACTERS*
 characters of names."
   (call-with-sftp
-   host folder "list"
+   host directory "list"
    (lambda (link)
      (sftp-with-handle
-      link :opendir (list folder) folder "list"
+      link :opendir (list directory) directory "list"
       (lambda (handle)
         (let ((entries '()) (count 0) (characters 0) (cut nil))
           (loop
-            (multiple-value-bind (answer names) (sftp-ask link :readdir (list handle) folder "list")
+            (multiple-value-bind (answer names) (sftp-ask link :readdir (list handle) directory "list")
               (when (eq answer :end) (return))
               (unless (eq answer :name) (tuatara.frontend:malformed "~(~a~) where names were asked for" answer))
               (dolist (entry names)
@@ -907,18 +908,18 @@ pieces when the job doing it is asked to stop."
     (sftp-done link :extended (list "fsync@openssh.com" handle) path "write")))
 
 (defun sftp-entry-attributes (link path)
-  "The attributes PATH's entry has in the listing of its folder on LINK's
+  "The attributes PATH's entry has in the listing of its directory on LINK's
 server, with :LINKS, the count of its names, when the server's long name of
-it says it (SFTP-LONG-NAME-LINKS); NIL when it is not listed. The folder is
+it says it (SFTP-LONG-NAME-LINKS); NIL when it is not listed. The directory is
 read until the entry comes."
   (let* ((slash (position #\/ path :from-end t))
-         (folder (if slash (subseq path 0 (1+ slash)) "."))
+         (directory (if slash (subseq path 0 (1+ slash)) "."))
          (name (subseq path (if slash (1+ slash) 0))))
     (sftp-with-handle
-     link :opendir (list folder) folder "examine"
+     link :opendir (list directory) directory "examine"
      (lambda (handle)
        (loop
-         (multiple-value-bind (answer names) (sftp-ask link :readdir (list handle) folder "examine")
+         (multiple-value-bind (answer names) (sftp-ask link :readdir (list handle) directory "examine")
            (case answer
              (:end (return nil))
              (:name (let ((entry (assoc name names :test #'string=)))
@@ -1062,8 +1063,8 @@ never written in place."
          (values (sftp-attributes link path) why))))))
 
 (defun remote-change (host operation path &optional to)
-  "Do OPERATION on PATH on HOST: :REMOVE a file, :RMDIR an empty folder,
-:MKDIR a folder, with TO its permissions when given, or :RENAME it TO, never
+  "Do OPERATION on PATH on HOST: :REMOVE a file, :RMDIR an empty directory,
+:MKDIR a directory, with TO its permissions when given, or :RENAME it TO, never
 over a file there already."
   (call-with-sftp host path (string-downcase operation)
                   (lambda (link)

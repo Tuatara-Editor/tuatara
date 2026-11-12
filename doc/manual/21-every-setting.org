@@ -17,7 +17,7 @@ of the setting. The second is its default, the value Tuatara has until you
 change it, and a long value is cut short with three dots. The third says which
 values the setting takes: =t, nil= for a setting that is on or off, a list of
 the words it understands, such as =:absolute, :relative, nil=, or a kind of
-value, such as a whole number, text or a folder's name. The fourth says what
+value, such as a whole number, text or a directory's name. The fourth says what
 the setting changes. Its full description in the editor says what each value
 does.
 

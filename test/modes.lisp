@@ -49,7 +49,7 @@ extension and #! line, the mode name in the mode line, CSV colours and the colum
                                  (- (tuatara.bench::bytes-consed) before)))))
     (true (< consed (* 64 1024)) "a lookup consed ~:d octets" consed)))
 
-(define-test (modes switching-and-mode-line)
+(define-modal-test (modes switching-and-mode-line)
   ;; M-x switches mode; the mode line shows its name; the parent's keys work
   (multiple-value-bind (f editor) (run-keys "M-x t e s t - p a r e n t - m o d e RET C-c z" :text "abc")
     (is = 3 (session-point editor))
@@ -102,7 +102,7 @@ goes on. More."))
            f)
       (ignore-errors (delete-file path)))))
 
-(define-test (modes csv)
+(define-modal-test (modes csv)
   (let ((f (csv-spans "" (format nil "id,name,price~%1,\"a, b\",3.5~%"))))
     ;; each column has its own face; the quoted field with a comma is one column
     (is equal '((0 2 :csv-column-0) (3 7 :csv-column-1) (8 13 :csv-column-2))
@@ -243,7 +243,7 @@ the buffer killed."
              (values f point)))
       (ignore-errors (delete-file path)))))
 
-(define-test (modes csv-separator)
+(define-modal-test (modes csv-separator)
   (let ((text (format nil "a;b;c~%1;2;3~%"))
         (one '((0 5 :csv-column-0)))
         (three '((0 1 :csv-column-0) (2 3 :csv-column-1) (4 5 :csv-column-2))))
@@ -356,7 +356,8 @@ the buffer killed."
                        (notevery (lambda (class) (eq class (find-class t))) (sb-mop:method-specializers method))
                        (let ((inside (subseq path (+ (search root path) (length root)))))
                          (or (not (find #\/ inside))
-                             (some (lambda (folder) (eql 0 (search folder inside))) '("modes/" "modal/" "editing/"))))
+                             (some (lambda (directory) (eql 0 (search directory inside)))
+                                   '("modes/" "modal/" "editing/"))))
                        (null (documentation method t)))
               (pushnew (format nil "~(~a~) in ~a" s (file-namestring path)) missing :test #'string=))))))
     (is equal '() missing "undocumented: ~{~a~^; ~}" missing)))

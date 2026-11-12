@@ -633,7 +633,7 @@ session.")
   "True when the file system holding DIRECTORY shares blocks between files.
 Only the kinds of file system that can (*BLOCK-SHARING-FILE-SYSTEMS*) are
 tried, once for each, by cloning one new unnamed file into another in the
-first folder on it that may be written in (*BLOCK-SHARING-DEVICES*): an XFS
+first directory on it that may be written in (*BLOCK-SHARING-DEVICES*): an XFS
 made without reflink shares none. Until then, as its kind says."
   (and (member (path-file-system directory) *block-sharing-file-systems*)
        (let ((device (let ((stamp (path-stamp directory :failure nil))) (and stamp (stamp-dev stamp)))))
@@ -647,10 +647,10 @@ made without reflink shares none. Until then, as its kind says."
 
 (defun try-sharing-blocks (directory)
   ":SHARES when one new unnamed file in DIRECTORY can be cloned into another,
-:APART when it cannot, NIL when it could not be tried: the folder may not be
+:APART when it cannot, NIL when it could not be tried: the directory may not be
 written in, or its file system has no unnamed files. Nothing is left behind."
   (handler-case
-      (call-with-folder
+      (call-with-directory
        directory
        (lambda (dirfd)
          (let ((source (open-unnamed-at dirfd #o600)))
@@ -1205,7 +1205,7 @@ for a buffer whose file was not there."
 itself and not by the name: x, ./x and a/../x are one file and have one
 buffer. NIL when there is none. A file with two names (a link) shares a
 buffer between them only as far as that is safe. A buffer opened safely
-\(evidence, a safe folder, or asked) is the one for both names. A buffer that
+\(evidence, a safe directory, or asked) is the one for both names. A buffer that
 is not is never given to a name asked SAFE, nor to one that
 HOST-VISIT-SAFELY-REASON says is to be visited safely, which gets a buffer of
 its own. One stat of PATH, none of the buffers (their STAMP is kept)."
@@ -1235,6 +1235,12 @@ is, not as a link made the way back look."
         (expand-path (real-path-so-far (native path)))
         path)))
 
+(defun nearest-directory (path)
+  "The nearest directory above PATH that is there, a native name ending in /."
+  (loop for directory = (parent-path path) then (parent-path directory)
+        until (or (string= directory "/") (path-stamp directory))
+        finally (return directory)))
+
 (defun visit-file (path &key safe)
   "The buffer visiting the file at PATH, made if no live buffer does: its text
 kept safe from other programs (OPEN-FILE-TEXT); for a file not there yet, an
@@ -1242,8 +1248,9 @@ empty buffer that saving will create. A new buffer is passed to
 TUATARA.BUFFER:*FIND-FILE-FUNCTIONS*, which give it its major mode, unless SAFE:
 then the buffer is read-only, no mode and no hook sees it, and the file
 system the file is on is left as it was. The buffer is read-only too when this
-user may not write the file, or, for a file not there yet, make it in its
-directory (\\[read-only-mode] makes it editable). A file not asked to be
+user may not write the file, or, for a file not there yet, make it and the
+directories it needs in the nearest directory that is there (\\[read-only-mode] makes
+it editable). A file not asked to be
 visited SAFE is all the same when HOST-VISIT-SAFELY-REASON gives one, kept
 for SAFE-VISIT-REASON. Returns the buffer, and true as a second value when a
 buffer visited the file already (it comes as it is)."
@@ -1276,7 +1283,7 @@ buffer visited the file already (it comes as it is)."
               (progn
                 (unless (if (path-stamp path)
                             (writable-p path)
-                            (writable-p (parent-path path)))
+                            (writable-p (nearest-directory path)))
                   (setf (tuatara.buffer:buffer-read-only-p buffer) t))
                 (tuatara.runtime:run-hook tuatara.buffer:*find-file-functions* buffer)))
           (values buffer nil)))))
@@ -1902,7 +1909,7 @@ refuses the rename or the naming, for the caller to write in place."
          (temp nil))
     (unless fd
       (setf temp (scratch-name directory "save")
-            fd (call-with-folder directory
+            fd (call-with-directory directory
                                  (lambda (dirfd)
                                    (multiple-value-bind (fd errno)
                                        (openat-octets dirfd (tuatara.text:string-octets (native-file-name temp))
@@ -1955,7 +1962,7 @@ refuses the rename or the naming, for the caller to write in place."
             (when (and now (not (eq (stamp-kind now) :regular)))
               (error 'file-system-error :operation "save to" :path target
                                         :reason (format nil "it is ~a now" (kind-words (stamp-kind now)))))))
-        ;; renamed within the folder held open, looked at again where it really is
+        ;; renamed within the directory held open, looked at again where it really is
         (call-with-parent
          target
          (lambda (dirfd own)
@@ -2159,7 +2166,7 @@ held, and that is told (TELL-WRITING)."
                                                                           :nofollow (not follow-links) :mode mode))))
                         (cond ((and (eq r :refused) apart)
                                (error 'writing-refused :operation "save" :path target
-                                                       :reason (format nil "it has ~d names, one may be in an evidence folder, and it cannot be saved as a file of its own here" names)))
+                                                       :reason (format nil "it has ~d names, one may be in an evidence directory, and it cannot be saved as a file of its own here" names)))
                               ((eq r :refused)
                                (write-in-place rope target existing :mappings mappings :cancel cancel :progress progress
                                                                     :nofollow (not follow-links) :mode mode))

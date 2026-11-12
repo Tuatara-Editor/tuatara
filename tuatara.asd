@@ -5,7 +5,7 @@
   :description "Tuatara: an Emacs-shaped editor in Common Lisp."
   :author "Michael A Jones <yardquit@pm.me>"
   :license "GPL-3.0-or-later"
-  :version "0.90.25"
+  :version "0.90.26"
   :depends-on ("tuatara/core")
   :in-order-to ((test-op (test-op "tuatara/tests"))))
 
@@ -99,11 +99,12 @@ and the frontend interface. Depends on nothing under lisp/ or frontends/."
                                            "file-places") (:file
                                                            "bookmarks") (:file "file-local") (:file "next-place")))
                (:module "viewers" :serial t :components
-                        ((:file "hex") (:file "decode") (:file "pdf-view") (:file "image-view") (:file "office-view")
-                         (:file "pdf-reader") (:file "metadata")))
+                        ((:file "hex") (:file "decode") (:file "pdf-view") (:file "image-view")
+                         (:file "inline-pictures") (:file "office-view") (:file "pdf-reader") (:file "synctex")
+                         (:file "metadata")))
                (:module "calendar" :serial t :components ((:file "calendar")))
                (:module "lisp-and-org" :pathname "modes" :serial t :components
-                        ((:file "lisp") (:file "lisp-indent") (:file "tree-indent") (:file "org")))
+                        ((:file "lisp") (:file "lisp-indent") (:file "tree-indent") (:file "latex") (:file "org")))
                (:module "word-completion" :pathname "editing" :components ((:file "word-completion")))
                (:module "org"     :serial t :components
                         ((:file "syntax") (:file "parts") (:file "fontify") (:file "dates") (:file "indent")
@@ -112,9 +113,9 @@ and the frontend interface. Depends on nothing under lisp/ or frontends/."
                          (:file "linking") (:file "clock") (:file "checklist") (:file "agenda") (:file "dblock")
                          (:file "agenda-view") (:file "notify") (:file "formatted-blocks") (:file "latex-fonts")
                          (:file "latex-pictures") (:file "latex") (:file "latex-languages") (:file "export-settings")
-                         (:file "docx") (:file "docx-templates") (:file "docx-read") (:file "office-read")
-                         (:file "odf-read") (:file "template-import") (:file "docx-import") (:file "latex-import")
-                         (:file "refile") (:file "capture") (:file "prose")
+                         (:file "pictures") (:file "docx") (:file "docx-templates") (:file "docx-read")
+                         (:file "office-read") (:file "odf-read") (:file "template-import") (:file "docx-import")
+                         (:file "latex-import") (:file "refile") (:file "capture") (:file "prose")
                                                    (:static-file "template-org" :pathname
                                                                  "../../data/latex-templates/org.tex")
                                                    (:static-file "template-article" :pathname
@@ -127,7 +128,8 @@ and the frontend interface. Depends on nothing under lisp/ or frontends/."
                         ((:file "replace") (:file "substitute") (:file "rewrite") (:file "jobs") (:file "incremental")
                          (:file "filters") (:file "files") (:file "results") (:file "indexed") (:file "outline")))
                (:module "compile" :serial t :components ((:file "compile")))
-               (:module "export"  :serial t :components ((:file "export") (:file "redactions") (:file "templates")))
+               (:module "export"  :serial t :components ((:file "export") (:file "redactions") (:file "templates") (:file "pdf-sync")
+                                                          (:file "formulas")))
                (:module "git-run" :pathname "git" :serial t :components ((:file "run") (:file "look-only")))
                (:module "gutter"  :serial t :components ((:file "line-numbers") (:file "vc")))
                (:module "lisp-tools" :pathname "modes" :serial t :components
@@ -154,7 +156,7 @@ and the frontend interface. Depends on nothing under lisp/ or frontends/."
                (:module "rimu"    :serial t :components
                         ((:file "rimu") (:file "preview") (:file "operations") (:file "trash") (:file "sizes")
                          (:file "found")))
-               ;; rimu's git column and its lists of a folder as a commit left it, in git's package
+               ;; rimu's git column and its lists of a directory as a commit left it, in git's package
                (:module "git-rimu" :pathname "git" :components ((:file "rimu")))
                (:module "gpg"     :serial t :components ((:file "encrypted") (:file "gpg-commands") (:file "rimu")))
                (:module "modal-states" :pathname "modal" :components ((:file "states")))
@@ -177,7 +179,8 @@ and the frontend interface. Depends on nothing under lisp/ or frontends/."
                (:file "servers")
                ;; files on another machine, through SFTP
                (:module "remote"  :serial t :components
-                        ((:file "asking") (:file "sftp") (:file "files") (:file "folders") (:file "language-servers")))
+                        ((:file "asking") (:file "sftp") (:file "files") (:file "directories")
+                         (:file "language-servers")))
                (:file "setup")
                (:file "api")))
 
@@ -215,6 +218,7 @@ the program's entry point."
   :serial t
   :components ((:file "package")
                (:file "fences")
+               (:file "modal-layer")
                (:file "time-bound")
                (:file "harness")
                (:file "pool")
@@ -269,6 +273,7 @@ the program's entry point."
                (:file "pdf-view")
                (:file "external")
                (:file "latex-export")
+               (:file "pdf-sync")
                (:file "latex-languages")
                (:file "html-export")
                (:file "docx-view")
@@ -283,6 +288,7 @@ the program's entry point."
                (:file "image-view")
                (:file "org")
                (:file "org-view")
+               (:file "inline-pictures")
                (:file "org-links")
                (:file "org-tables")
                (:file "org-agenda")

@@ -2,7 +2,7 @@
 .TH TUATARA-INIT 5 "" "Tuatara @VERSION@" "File Formats"
 .ad l
 .SH NAME
-tuatara\-init \- the init file of tuatara and the folders it keeps
+tuatara\-init \- the init file of tuatara and the directories it keeps
 .SH DESCRIPTION
 Tuatara reads one file of Lisp when it starts, after its defaults are
 installed: the init file.
@@ -91,7 +91,7 @@ It takes
 .BR :source ,
 .BR :version ,
 .BR :file ,
-.BR :folder ,
+.BR :directory ,
 .BR :signers ,
 .BR :plain ,
 .BR :disabled ,
@@ -108,7 +108,7 @@ from a git repository, verified by who signed it and asked about before it is
 compiled and loaded.
 .TP
 .BI "(package\-source " "NAME ADDRESS " :signers " KEYS)"
-Name a source of packages: a git repository or a folder of your disk.
+Name a source of packages: a git repository or a directory of your disk.
 .PP
 The starter shows each keyword with an example.
 .SS Safe defaults
@@ -117,13 +117,13 @@ out, so a start with the starter and one without an init file are the same.
 A project's language servers and tools run only when you answered that you
 trust the project, and a package is compiled and loaded only after you
 answered the question about it (\fB*package\-ask\-before\-loading*\fR).
-The setting \fB*safe\-directories*\fR names folders whose files are always
+The setting \fB*safe\-directories*\fR names directories whose files are always
 opened safely: read only, no mode or hook acting on them.
 .B \-Q
 starts without the init file and so without any of that, with what is kept
 between sessions kept apart for that session.
-.SH FOLDERS
-Four folders, each named
+.SH DIRECTORIES
+Four directories, each named
 .IR tuatara/ ,
 and where the XDG variable is not set:
 .TP
@@ -147,7 +147,7 @@ The settings
 .B *state\-directory*
 and
 .B *cache\-directory*
-put the last two elsewhere; a folder named that is not there (a drive not
+put the last two elsewhere; a directory named that is not there (a drive not
 mounted) is replaced in memory for the session, so that nothing lands on
 another drive.
 .SH FILES KEPT

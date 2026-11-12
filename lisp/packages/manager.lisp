@@ -8,7 +8,7 @@
 (in-package #:tuatara.packages)
 
 (define-command package-update ()
-  "Fetch again each package load-package fetched (not the folders of your
+  "Fetch again each package load-package fetched (not the directories of your
 disk), in the background. The version it asks for is looked up anew (the
 newest tag, the newest commit, or the tag, branch or commit named). It is
 fetched and loaded when it is another commit than the one there, asked about
@@ -36,7 +36,7 @@ takes it); one that fails to load gives way to the version before it."
   "The package manager (\\[package-manager]): a line each package the init file
 loads from a source, as the buffer list (\\[buffers]) has its buffers.
 \\<support>\\[next-line] and \\[previous-line] move.
-\\<packages-mode>\\[list-visit] or \\`RET' lists the folder of
+\\<packages-mode>\\[list-visit] or \\`RET' lists the directory of
 the package on the line in rimu, \\[list-visit-other] in another window.
 \\[quit-window] or \\`h' returns. \\[list-mark-entry] marks a package (>),
 \\[list-mark-for-deletion] marks it for deletion (D), \\[list-unmark-entry]
@@ -71,7 +71,7 @@ columns and this much of the source, else below it.")
 entry remembered (KEY COMMIT TAG ACCEPTED) and where it is kept, as two values."
   (let* ((where (package-where source))
          (entry (fetched-package (package-key name where version))))
-    (values entry (package-folder-of name where entry))))
+    (values entry (package-directory-of name where entry))))
 
 (defun package-condition (name entry)
   "What is become of the package NAME this session, ENTRY what is remembered
@@ -98,7 +98,7 @@ load), kept or not fetched."
 (defun package-signed-words (where)
   "Who signs the versions of the source WHERE, as the package manager says it:
 the signer's name or key remembered (*PACKAGE-TRUST*), unsigned, nothing yet
-or for a folder of your disk; \"unencrypted\" first for an address of
+or for a directory of your disk; \"unencrypted\" first for an address of
 http:// or git://."
   (if (local-source-p where)
       ""
@@ -130,7 +130,7 @@ CONDITION, none for one loaded."
               (where (package-where source)))
          (list (list-mark-sign mark)
                (cons name (package-name-face mark condition))
-               (or (third entry) version (if (local-source-p where) "folder" ""))
+               (or (third entry) version (if (local-source-p where) "directory" ""))
                (if (and entry (string/= (second entry) "-")) (subseq (second entry) 0 (min 7 (length (second entry)))) "")
                condition
                (package-signed-words where)
@@ -166,7 +166,7 @@ fetched). It also has who signs its source's versions (unsigned, and
 unencrypted for an address of http:// or git://) and where it comes from. The
 names of those not loaded are set apart. Why one was refused or failed is
 shown beside the list in place of its README. \\<packages-mode>\\[list-visit]
-or \\`RET' lists a package's folder in rimu, to read its source,
+or \\`RET' lists a package's directory in rimu, to read its source,
 \\[list-visit-other] in another window. \\[list-mark-entry] marks it,
 \\[list-mark-for-deletion] marks it for deletion, \\[list-unmark-entry] and
 \\[list-unmark-all] unmark, \\[list-toggle-marks] swaps marked and unmarked, a
@@ -295,20 +295,20 @@ became is in *Messages* (\\[view-echo-area-messages])."
   "package")
 
 (defmethod visit-entry ((mode packages-mode) list name other)
-  "List the folder of the package called NAME in rimu, in another window with
+  "List the directory of the package called NAME in rimu, in another window with
 OTHER, opened safely, to read its source, each file previewed beside it;
-\\<rimu-mode>\\[rimu-up] in the package's folder comes back to LIST."
+\\<rimu-mode>\\[rimu-up] in the package's directory comes back to LIST."
   (let ((package (declared-package name)))
     (if (null package)
         (message "No package on this line")
         (destructuring-bind (name source version &rest more) package
           (declare (ignore more))
-          (let ((folder (nth-value 1 (package-state name source version))))
-            (if folder
-                (rimu-show-directory (tuatara.io:native folder)
+          (let ((directory (nth-value 1 (package-state name source version))))
+            (if directory
+                (rimu-show-directory (tuatara.io:native directory)
                                      :other other
                                      :safe t
-                                     :root (tuatara.io:native folder)
+                                     :root (tuatara.io:native directory)
                                      :back list)
                 (message "~a is not fetched yet" name)))))))
 
@@ -342,10 +342,10 @@ current line, as \\[package-update] does them all."
   (start-packages-delete names)
   (unmark-list list))
 
-(defun package-readme (folder)
-  "The README of the package in FOLDER: README.org, README.md, README.txt or
+(defun package-readme (directory)
+  "The README of the package in DIRECTORY: README.org, README.md, README.txt or
 README, in any case; NIL when it has none."
-  (let ((files (ignoring-errors-reported ("reading ~a" folder) (uiop:directory-files folder))))
+  (let ((files (ignoring-errors-reported ("reading ~a" directory) (uiop:directory-files directory))))
     (loop for name in '("readme.org" "readme.md" "readme.txt" "readme")
           for file = (find name files :key #'file-namestring :test #'string-equal)
           when file return file)))
@@ -357,9 +357,9 @@ refused or failed when it was not loaded for that, else its README opened
 safely, else a note that it has none or is not fetched yet."
   (destructuring-bind (name source version &rest more) package
     (declare (ignore more))
-    (let* ((folder (nth-value 1 (package-state name source version)))
+    (let* ((directory (nth-value 1 (package-state name source version)))
            (failure (and (not (package-loaded-p name)) (assoc name *package-failures* :test #'string=)))
-           (readme (and folder (not failure) (package-readme folder))))
+           (readme (and directory (not failure) (package-readme directory))))
       (cond
         (failure
          (values (side-preview-note name (format nil "~a is not loaded: ~a" name (cdr failure))) t))
@@ -368,7 +368,7 @@ safely, else a note that it has none or is not fetched yet."
            (values buffer (not existing))))
         (t
          (values (side-preview-note name (format nil "~a ~:[is not fetched yet: there is nothing of it to show.~;~:*has no README in ~a.~]"
-                                                 name (and folder (abbreviated-path (tuatara.io:native folder)))))
+                                                 name (and directory (abbreviated-path (tuatara.io:native directory)))))
                  t))))))
 
 (defmethod preview-entry ((mode packages-mode) list name)

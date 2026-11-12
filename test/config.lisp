@@ -6,7 +6,7 @@
 (define-test config
   :description "The init file is loaded in TUATARA-USER; bind-key binds in the global, NORMAL and leader maps; an error in it becomes a message.")
 
-(define-test (config bind-key)
+(define-modal-test (config bind-key)
   (let ((file (merge-pathnames (format nil "tuatara-init-~a.lisp" (random 1000000)) (uiop:temporary-directory)))
         ;; what the leader's ; is before "; ;" makes it a prefix, put back after
         (semicolon (tuatara.command:lookup-key tuatara.defaults::*tuatara-leader-keymap*
@@ -57,7 +57,7 @@
       (tuatara.command:define-key tuatara.defaults::*tuatara-leader-keymap* ";" semicolon)
       (tuatara-user:unbind-key "z" :map :buffers))))
 
-(define-test (config key-labels)
+(define-modal-test (config key-labels)
   ;; the leader's prefixes are labelled; bind-key labels a key, either way it
   ;; takes a label, and a prefix; the key hints show the labels
   (flet ((hints (keys) (run-keys keys :text "abc" :width 140 :height 20)))
@@ -97,7 +97,7 @@
     ;; a key bound to a command is no prefix to label under
     (fail (tuatara-user:bind-key "b x" nil :map :leader :label "no"))))
 
-(define-test (config keys-for-modes)
+(define-modal-test (config keys-for-modes)
   (flet ((point-after (keys) (session-point (nth-value 1 (run-keys keys :text "abc"))))
          (hints (keys) (run-keys keys :text "abc" :width 140 :height 20)))
     (unwind-protect
@@ -130,7 +130,7 @@
       (tuatara-user:unbind-key "o" :map :leader :mode '(org-mode markdown-mode text-mode))
       (tuatara-user:unbind-key "C-c z" :map :normal :mode 'org-mode))))
 
-(define-test (config leader-on-another-key)
+(define-modal-test (config leader-on-another-key)
   (unwind-protect
        (let ((tuatara-user:*leader-key* ","))
          (tuatara-user:bind-key "o z" 'end-of-buffer :map :leader)
@@ -265,7 +265,7 @@
            (run-keys "i { C-g" :text "" :width 140))
          "*pair-delimiters* is (#\\{ . #\\}), not a list of pairs: read as ((#\\{ . #\\}))")))
 
-(define-test (config starting-past-a-slip)
+(define-modal-test (config starting-past-a-slip)
   ;; an init file setting the pairs as one dotted pair: the editor starts, and pairs
   (let* ((file (merge-pathnames (format nil "init-~36r.lisp" (random (expt 36 8))) (tuatara.io:cache-directory)))
          (pairs tuatara-user:*pair-delimiters*)
@@ -405,15 +405,15 @@ commented inside another one commented (;;   ;; (setf ...) in a load-package's
     (true (member :pattern named))
     (is equal '() (set-difference named (list* :map :mode :label maps)))))
 
-(define-test (config data-folder-not-kept-in-the-program)
+(define-test (config data-directory-not-kept-in-the-program)
   ;; a saved program forgets where data/ was when it was built
   (true (member 'tuatara.defaults::forget-data-directory sb-ext:*save-hooks*))
   (let ((tuatara.defaults::*data-directory* tuatara.defaults::*data-directory*))
     (tuatara.defaults::forget-data-directory)
     (is eq nil tuatara.defaults::*data-directory*)))
 
-(define-test (config subfolders-named-by-config-path)
-  ;; every subfolder of the configuration folder is named by CONFIG-PATH, and so
+(define-test (config subdirectories-named-by-config-path)
+  ;; every subdirectory of the configuration directory is named by CONFIG-PATH, and so
   ;; follows XDG_CONFIG_HOME alike
   (true (< 100 (length (source-files "lisp"))))
   (dolist (file (source-files "lisp"))
@@ -423,12 +423,12 @@ commented inside another one commented (;;   ;; (setf ...) in a load-package's
         (tuatara-user:*capture-template-directories* nil)
         (tuatara-user:*logos-directory* nil)
         (tuatara.defaults::*note-templates-directory* nil))
-    (dolist (folder (list (first (tuatara.defaults::capture-template-directories))
+    (dolist (directory (list (first (tuatara.defaults::capture-template-directories))
                           (tuatara.defaults::logos-directory)
                           (tuatara.defaults::docx-templates-directory)
                           (tuatara.defaults::latex-templates-directory)
                           (tuatara.defaults::note-templates-directory)))
-      (true (uiop:string-prefix-p config folder) "~a" folder))))
+      (true (uiop:string-prefix-p config directory) "~a" directory))))
 
 (define-test (config budgets-are-not-settings)
   ;; limits the editor decides for itself are neither the init file's settings nor in the starter
@@ -531,12 +531,12 @@ commented inside another one commented (;;   ;; (setf ...) in a load-package's
       (uiop:delete-directory-tree dir :validate (lambda (p) (search "/init-" (namestring p)))))))
 
 (define-test (config starter-config-failure-reported)
-  ;; a folder that may not be looked into: not written, and why; with debug mode on, in its log too
+  ;; a directory that may not be looked into: not written, and why; with debug mode on, in its log too
   (with-test-directory (dir)
-    (let* ((folder (ensure-directories-exist (merge-pathnames "closed/" dir)))
-           (file (namestring (merge-pathnames "tuatara/init.lisp" folder))))
+    (let* ((directory (ensure-directories-exist (merge-pathnames "closed/" dir)))
+           (file (namestring (merge-pathnames "tuatara/init.lisp" directory))))
       (drain-debug-reports)
-      (sb-posix:chmod (namestring folder) 0)
+      (sb-posix:chmod (namestring directory) 0)
       (unwind-protect
            (progn
              (multiple-value-bind (written why) (tuatara.defaults::write-starter-config file)
@@ -549,5 +549,5 @@ commented inside another one commented (;;   ;; (setf ...) in a load-package's
                (true (find-if (lambda (text) (search (format nil "writing the starter init file ~a failed" file) text))
                               texts)
                      "~s" texts)))
-        (sb-posix:chmod (namestring folder) #o700)
+        (sb-posix:chmod (namestring directory) #o700)
         (drain-debug-reports)))))

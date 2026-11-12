@@ -4,7 +4,7 @@
 (in-package #:tuatara.tests)
 
 (define-test daemon
-  :description "tuatara --daemon runs an editor with no screen, listening in a folder of the user's alone.
+  :description "tuatara --daemon runs an editor with no screen, listening in a directory of the user's alone.
 tuatara --client shows it in a terminal: a frame of its own, buffers of its own, C-x C-c closing it alone with
 the exit code its files left. The daemon takes no other user's or container's program, one of a name runs at
 once, and M-x daemon-quit or tuatara --stop stops it.")
@@ -134,40 +134,40 @@ ended have: the frames shown, the one with no screen left out."
                                     (not (tuatara.command:idle-frame-p editor frame)))))
                            (tuatara.command:editor-frames editor))))))
 
-;;; The folder, the lock and who may connect
+;;; The directory, the lock and who may connect
 
-(define-test (daemon folder-refusals)
-  ;; the folder of sockets must be a folder, no link, the user's, and for the user alone
+(define-test (daemon directory-refusals)
+  ;; the directory of sockets must be a directory, no link, the user's, and for the user alone
   (let ((uid (sb-posix:geteuid)))
     (flet ((refusal (mode &optional (owner uid) (private t))
-             (tuatara.defaults::runtime-folder-refusal (tuatara.io:make-stamp 1 2 0 0 1 mode owner 0) "F" uid
+             (tuatara.defaults::runtime-directory-refusal (tuatara.io:make-stamp 1 2 0 0 1 mode owner 0) "F" uid
                                                        :private private)))
       (false (refusal #o40700))
       (true (search "may be used by others" (refusal #o40755)))
       (true (search "may be used by others" (refusal #o40710)))
       (true (search "a link" (refusal #o120777)))
-      (true (search "not a folder" (refusal #o100600)))
+      (true (search "not a directory" (refusal #o100600)))
       (true (search "another user's" (refusal #o40700 (1+ uid))))
       ;; XDG_RUNTIME_DIR itself need only be closed to others' writing
       (false (refusal #o40755 uid nil))
       (true (refusal #o40777 uid nil))
-      (true (search "not there" (tuatara.defaults::runtime-folder-refusal nil "F" uid)))))
+      (true (search "not there" (tuatara.defaults::runtime-directory-refusal nil "F" uid)))))
   ;; with no XDG_RUNTIME_DIR, or one others may write in, nowhere: no fallback to /tmp
   (let ((tuatara.defaults::*runtime-directory* nil))
     (with-environment-variable ("XDG_RUNTIME_DIR" nil)
-      (fail (tuatara.defaults::daemon-folder) 'tuatara.runtime:refusal)
+      (fail (tuatara.defaults::daemon-directory) 'tuatara.runtime:refusal)
       (sb-posix:setenv "XDG_RUNTIME_DIR" "/tmp" 1)
-      (fail (tuatara.defaults::daemon-folder) 'tuatara.runtime:refusal)))
-  ;; the tests' own folder, made for them alone
-  (let ((folder (tuatara.defaults::daemon-folder)))
-    (is = #o700 (logand #o777 (tuatara.io:stamp-mode (tuatara.io:path-stamp folder :follow nil))))
-    (true (search "/runtime/tuatara/" folder))))
+      (fail (tuatara.defaults::daemon-directory) 'tuatara.runtime:refusal)))
+  ;; the tests' own directory, made for them alone
+  (let ((directory (tuatara.defaults::daemon-directory)))
+    (is = #o700 (logand #o777 (tuatara.io:stamp-mode (tuatara.io:path-stamp directory :follow nil))))
+    (true (search "/runtime/tuatara/" directory))))
 
-(define-test (daemon folders-on-the-way)
-  ;; a folder on the way to one kept safe is root's or the user's, written in by others only with the sticky bit
+(define-test (daemon directories-on-the-way)
+  ;; a directory on the way to one kept safe is root's or the user's, written in by others only with the sticky bit
   (let ((uid (sb-posix:geteuid)))
     (flet ((refusal (mode owner)
-             (tuatara.defaults::runtime-folder-refusal (tuatara.io:make-stamp 1 2 0 0 1 mode owner 0) "F" uid
+             (tuatara.defaults::runtime-directory-refusal (tuatara.io:make-stamp 1 2 0 0 1 mode owner 0) "F" uid
                                                        :on-the-way t)))
       (false (refusal #o40755 0))
       (false (refusal #o40755 uid))
@@ -182,14 +182,14 @@ ended have: the frames shown, the one with no screen left out."
         (when outside
           (false (refusal #o41777 outside))
           (true (search "another user's" (refusal #o40755 outside)))))))
-  ;; the folder of sockets is refused when a folder on the way to it is open to others
+  ;; the directory of sockets is refused when a directory on the way to it is open to others
   (with-test-directory (dir)
     (let ((open (namestring (merge-pathnames "open/runtime/" dir))))
       (ensure-directories-exist open)
       (sb-posix:chmod open #o700)
       (sb-posix:chmod (namestring (merge-pathnames "open/" dir)) #o777)
       (let ((tuatara.defaults::*runtime-directory* open))
-        (fail (tuatara.defaults::daemon-folder) 'tuatara.runtime:refusal)))))
+        (fail (tuatara.defaults::daemon-directory) 'tuatara.runtime:refusal)))))
 
 (define-test (daemon peer-refusals)
   ;; another user's program, or one in another mount namespace, is refused; the same user's in the same one taken
@@ -264,12 +264,12 @@ ended have: the frames shown, the one with no screen left out."
                          (let ((ended (find-if #'tuatara.command:client-ended
                                                (tuatara.command:buffer-clients buffer))))
                            (true ended)
-                           ;; of an ended client only what names its folder is kept
+                           ;; of an ended client only what names its directory is kept
                            (false (tuatara.command:client-frontend ended))
                            (false (tuatara.command:client-environment ended)))))))))))
 
 (define-test (daemon buffers-kept-by-client)
-  ;; each client is offered its own buffers; one that ended leaves its folder in M-x buffers, to be taken up
+  ;; each client is offered its own buffers; one that ended leaves its group in M-x buffers, to be taken up
   (with-test-directory (dir)
     (let ((alpha (namestring (put-file (merge-pathnames "alpha.txt" dir) "alpha text")))
           (beta (namestring (put-file (merge-pathnames "beta.txt" dir) "beta text"))))
@@ -285,7 +285,7 @@ ended have: the frames shown, the one with no screen left out."
             (type-keys b "C-g")
             (type-keys a "C-x C-c")
             (is equal '(0 nil) (client-ends a-runner))
-            ;; B's list of buffers: A's folder, ended, holding A's file
+            ;; B's list of buffers: A's group, ended, holding A's file
             (type-keys b "C-x C-b")
             (true (shows b "Ended"))
             (true (shows b "client 1"))
@@ -414,7 +414,7 @@ ended have: the frames shown, the one with no screen left out."
                   "closed with its client")))))))
 
 (define-test (daemon stopped-from-a-client)
-  ;; M-x daemon-quit asks about the changes not saved, folder by folder; the other client exits 1, told why
+  ;; M-x daemon-quit asks about the changes not saved, group by group; the other client exits 1, told why
   (with-test-directory (dir)
     (let ((file (namestring (put-file (merge-pathnames "unsaved.txt" dir) "unsaved"))))
       (with-test-daemon (name thread)
@@ -433,7 +433,7 @@ ended have: the frames shown, the one with no screen left out."
               (true (search "stopped" (second other))))
             (true (not (eq :late (sb-thread:join-thread thread :timeout 30 :default :late))) "the daemon ended")))))))
 
-(define-test (daemon stopped-with-no-terminal)
+(define-modal-test (daemon stopped-with-no-terminal)
   ;; tuatara --stop with no terminal asks nothing: with auto-saving off, changes would be lost, so it stops nothing
   ;; and says which buffers hold them; with it on, the changes are kept as auto-saved copies and the daemon ends
   (with-test-directory (dir)
@@ -568,7 +568,7 @@ ended have: the frames shown, the one with no screen left out."
   (listed-host-variables host))
 
 (define-test (daemon own-variables-ignore-the-client)
-  ;; a client's variables are what programs run for it get, never what the editor's own folders and terminal are read from
+  ;; a client's variables are what programs run for it get, never what the editor's own directories and terminal are read from
   (with-environment-variable ("TUATARA_TEST_OWN" "/editor/own")
     (let ((tuatara.runtime:*host* (make-instance 'listed-host :variables '("TUATARA_TEST_OWN=/client/own"))))
       (is string= "/client/own" (tuatara.io:program-variable "TUATARA_TEST_OWN"))
@@ -767,7 +767,7 @@ ended have: the frames shown, the one with no screen left out."
         (type-keys local "C-x C-c")
         (is equal '(0 nil) (client-ends runner))))))
 
-(define-test (daemon rows-drawn-large-in-a-window-client)
+(define-modal-test (daemon rows-drawn-large-in-a-window-client)
   ;; a headline whose face is drawn two rows tall: laid out so for a client in a window, as one row in a terminal
   (with-test-directory (dir)
     (let ((file (namestring (put-file (merge-pathnames "tall.org" dir) (format nil "* Tall~%Under it.~%"))))
@@ -992,7 +992,7 @@ ended have: the frames shown, the one with no screen left out."
         (type-keys a "C-g C-x C-c")
         (is equal '(0 nil) (client-ends a-runner))))))
 
-(define-test (daemon leader-on-c-x-spc-in-a-client)
+(define-modal-test (daemon leader-on-c-x-spc-in-a-client)
   ;; in a client's frame C-x SPC opens the leader's keys in INSERT state, their key hints shown there
   (unwind-protect
        (progn
@@ -1021,7 +1021,7 @@ after, as it does by itself."
               (not (eq :late (sb-thread:join-thread thread :timeout 30 :default :late))))
     (sb-sys:enable-interrupt sb-unix:sigterm #'sb-unix::sigterm-handler)))
 
-(define-test (daemon terminated-keeps-auto-saved-copies)
+(define-modal-test (daemon terminated-keeps-auto-saved-copies)
   ;; SIGTERM, as at logout: nothing asked, a question open given up, every client told and exiting 1, the
   ;; changes kept as auto-saved copies, never an encrypted file's text
   (with-test-directory (dir)
@@ -1156,7 +1156,7 @@ returns true when it would have been. The function is left out again after."
 
 (define-test (daemon session-kept-by-name)
   ;; with the session kept, a daemon keeps it in a file of its name, the editor's own left alone; started
-  ;; again it has its clients' folders, as ended, and a client asking for no files takes up the last, its
+  ;; again it has its clients' groups, as ended, and a client asking for no files takes up the last, its
   ;; windows as they were
   (with-test-directory (dir)
     (let* ((file (namestring (put-file (merge-pathnames "kept.txt" dir) "kept text")))
@@ -1186,7 +1186,7 @@ returns true when it would have been. The function is left out again after."
                                   (let ((buffer (tuatara.defaults::buffer-visiting file)))
                                     (and buffer (some #'tuatara.command:client-ended
                                                       (tuatara.command:buffer-clients buffer))))))
-                     "its folder is there, as ended")
+                     "its group is there, as ended")
                (multiple-value-bind (local runner) (attach-test-client daemon-name :directory dir)
                  (true (shows local "kept text"))
                  (true (wait-until (lambda () (in-daemon (lambda () (= 2 (client-frame-windows (daemon-editor)))))) 10)
@@ -1194,7 +1194,7 @@ returns true when it would have been. The function is left out again after."
                  (in-daemon (lambda ()
                               (let ((clients (tuatara.command:buffer-clients (tuatara.defaults::buffer-visiting file))))
                                 (is = 1 (length clients))
-                                (false (tuatara.command:client-ended (first clients)) "the folder taken up"))))
+                                (false (tuatara.command:client-ended (first clients)) "the group taken up"))))
                  (type-keys local "C-x C-c")
                  (client-ends runner))))
         (setf tuatara.defaults::*keep-session* was)
@@ -1248,7 +1248,7 @@ returns true when it would have been. The function is left out again after."
   (unwind-protect (funcall function)
     (sb-int:unencapsulate 'tuatara.io::transformed-text 'slow)))
 
-(define-test (daemon quit-waits-for-saves-begun)
+(define-modal-test (daemon quit-waits-for-saves-begun)
   ;; M-x daemon-quit answered s: the daemon ends only once the saves it began are written, never cut short
   (with-test-directory (dir)
     (let ((file (namestring (put-file (merge-pathnames "slow.txt" dir) "slow"))))
@@ -1266,7 +1266,7 @@ returns true when it would have been. The function is left out again after."
                (true (not (eq :late (sb-thread:join-thread thread :timeout 30 :default :late))))
                (is string= "xslow" (file-text file) "written before the daemon ended"))))))))
 
-(define-test (daemon terminated-waits-for-saves)
+(define-modal-test (daemon terminated-waits-for-saves)
   ;; SIGTERM while a save runs: the save ends before the daemon does; one that takes longer than the daemon
   ;; waits is said, by its buffer's name, and the daemon ends all the same
   (with-test-directory (dir)
@@ -1298,13 +1298,13 @@ returns true when it would have been. The function is left out again after."
                       (is eql 1 (first (client-ends runner)))
                       (true (search "cut short: saving.txt"
                                     (tuatara.buffer:buffer-string (tuatara.buffer:find-buffer "*Messages*"))))))
-                  ;; the save cut short in a real daemon goes on here: let it end before the folder goes
+                  ;; the save cut short in a real daemon goes on here: let it end before the directory goes
                   (wait-until (lambda () (null (tuatara.defaults::running-jobs))) 10)))
           (setf tuatara.defaults::*no-one-to-ask-save-seconds* was))))))
 
 (define-test (daemon evidence-waits-for-take-up)
   ;; a file opened safely (evidence) in the kept session is not opened as the daemon starts again: it waits
-  ;; closed in its folder, said by how many, and is opened safely when a client takes the folder up; a plain
+  ;; closed in its group, said by how many, and is opened safely when a client takes the group up; a plain
   ;; file opens again at once
   (with-test-directory (dir)
     (let* ((evidence (namestring (put-file (merge-pathnames "disk.img" dir) "evidence text")))
@@ -1337,10 +1337,10 @@ returns true when it would have been. The function is left out again after."
                  (true (search "1 file opened safely (evidence) waits closed"
                                (tuatara.buffer:buffer-string (tuatara.buffer:find-buffer "*Messages*"))))
                  (multiple-value-bind (local runner) (attach-test-client daemon-name :directory dir)
-                   (true (shows local "evidence text") "opened as the folder is taken up")
+                   (true (shows local "evidence text") "opened as the group is taken up")
                    (true (in-daemon (lambda () (tuatara.io:safe-visit-p (tuatara.defaults::buffer-visiting evidence))))
                          "and safely")
-                   (true (search "1 file of the folder taken up opened safely"
+                   (true (search "1 file of the group taken up opened safely"
                                  (tuatara.buffer:buffer-string (tuatara.buffer:find-buffer "*Messages*"))))
                    (type-keys local "C-x C-c")
                    (client-ends runner))))
@@ -1349,7 +1349,7 @@ returns true when it would have been. The function is left out again after."
           (ignore-errors (delete-file (daemon-session-path name))))))))
 
 (define-test (daemon window-client-takes-up-its-windows)
-  ;; a client in windows taking up the folder of one that had two windows: the second is asked of it, and
+  ;; a client in windows taking up the group of one that had two windows: the second is asked of it, and
   ;; laid out as it was once it comes
   (with-test-directory (dir)
     (let* ((file (namestring (put-file (merge-pathnames "toroa.txt" dir) "toroa text")))
@@ -1472,7 +1472,7 @@ returns true when it would have been. The function is left out again after."
            (true (search "cannot be opened" refused) "~a" refused))
       (sb-posix:unlink path))))
 
-;;; The folders of clients that ended in the buffer list
+;;; The groups of clients that ended in the buffer list
 
 (defun faces-over (local row text)
   "The faces the last frame of LOCAL painted over the first cell of ROW showing TEXT."
@@ -1491,11 +1491,11 @@ returns true when it would have been. The function is left out again after."
   "True when CLIENT is still one of the test daemon's clients."
   (in-daemon (lambda () (and (member client (tuatara.command:editor-clients (daemon-editor))) t))))
 
-(defun call-with-ended-folders (function)
+(defun call-with-ended-groups (function)
   "Call FUNCTION with a daemon's clients: the
 fake screen of a client that stays, with the buffer list showing, and the
 clients that ended, A (two files, alpha and beta) and B (gamma), each a client
-structure; the folder of A ended an hour after B's."
+structure; the group of A ended an hour after B's."
   (with-test-directory (dir)
     (let ((alpha (namestring (put-file (merge-pathnames "alpha.txt" dir) "alpha text")))
           (beta (namestring (put-file (merge-pathnames "beta.txt" dir) "beta text")))
@@ -1525,10 +1525,10 @@ structure; the folder of A ended an hour after B's."
                 (type-keys c "C-x C-c")
                 (client-ends c-runner)))))))))
 
-(define-test (daemon ended-folders-titled-faint-and-ordered)
+(define-test (daemon ended-groups-titled-faint-and-ordered)
   ;; a client that ended has a faint heading beginning Ended and its time; the live ones come first, then
-  ;; the ended, the last to end first, then the folder of every client
-  (call-with-ended-folders
+  ;; the ended, the last to end first, then the group of every client
+  (call-with-ended-groups
    (lambda (c ended-a ended-b)
      (declare (ignore ended-a ended-b))
      (true (shows c "Ended 13:00 — client 1 since") "the heading says when it ended")
@@ -1546,22 +1546,22 @@ structure; the folder of A ended an hour after B's."
   "The keys marked for deletion in *Buffers*; call it in the daemon."
   (tuatara.defaults::list-marked (tuatara.buffer:find-buffer "*Buffers*") :deletion))
 
-(defun goto-folder-heading (client-screen folder)
-  "Put point of the buffer list on the heading of FOLDER, a client, in the daemon."
+(defun goto-group-heading (client-screen group)
+  "Put point of the buffer list on the heading of GROUP, a client, in the daemon."
   (declare (ignore client-screen))
   (in-daemon (lambda ()
                (let ((list (tuatara.buffer:find-buffer "*Buffers*")))
-                 (tuatara.defaults::list-goto-entry list (list :section folder))))))
+                 (tuatara.defaults::list-goto-entry list (list :section group))))))
 
-(define-test (daemon ended-folders-return-takes-up)
-  ;; RET on the heading of a folder that ended takes its buffers into this client and the folder goes
-  (call-with-ended-folders
+(define-test (daemon ended-groups-return-takes-up)
+  ;; RET on the heading of a group that ended takes its buffers into this client and the group goes
+  (call-with-ended-groups
    (lambda (c ended-a ended-b)
      (declare (ignore ended-b))
-     (goto-folder-heading c ended-a)
+     (goto-group-heading c ended-a)
      (type-keys c "RET")
      (true (wait-until (lambda () (not (client-in-daemon-p ended-a))) 10)
-           "the folder is gone")
+           "the group is gone")
      (let ((alpha (in-daemon (lambda () (tuatara.buffer:find-buffer "alpha.txt")))))
        (true alpha)
        (true (in-daemon (lambda ()
@@ -1569,59 +1569,59 @@ structure; the folder of A ended an hour after B's."
                             (and (notany #'tuatara.command:client-ended clients) clients))))
              "alpha is a live client's now"))
      (true (wait-until (lambda () (not (row-showing c "Ended 13:00"))) 10) "the list is made again")
-     (true (row-showing c "Ended 12:00") "the other folder stays"))))
+     (true (row-showing c "Ended 12:00") "the other group stays"))))
 
-(define-test (daemon ended-folders-d-marks-the-folder)
-  ;; d on the heading of a folder that ended marks each of its buffers for deletion, no others
-  (call-with-ended-folders
+(define-test (daemon ended-groups-d-marks-the-group)
+  ;; d on the heading of a group that ended marks each of its buffers for deletion, no others
+  (call-with-ended-groups
    (lambda (c ended-a ended-b)
      (declare (ignore ended-b))
      (flet ((marked ()
               (in-daemon (lambda ()
                            (sort (mapcar #'tuatara.buffer:buffer-name (marked-for-deletion)) #'string<)))))
-       (goto-folder-heading c ended-a)
+       (goto-group-heading c ended-a)
        (type-keys c "d")
        (true (wait-until (lambda () (marked)) 10) "buffers are marked")
-       (is equal '("*lisp-scratch*<2>" "alpha.txt" "beta.txt") (marked) "the folder's buffers, no others")
+       (is equal '("*lisp-scratch*<2>" "alpha.txt" "beta.txt") (marked) "the group's buffers, no others")
        (type-keys c "x")
        (true (wait-until (lambda () (not (in-daemon (lambda () (tuatara.buffer:find-buffer "alpha.txt"))))) 10)
-             "the folder's buffers are killed")
-       (true (in-daemon (lambda () (tuatara.buffer:find-buffer "gamma.txt"))) "the other folder's stays")))))
+             "the group's buffers are killed")
+       (true (in-daemon (lambda () (tuatara.buffer:find-buffer "gamma.txt"))) "the other group's stays")))))
 
-(define-test (daemon ended-folders-evidence-stays-closed-until-take-up)
-  ;; a file waiting closed in a folder that ended is not opened by showing the list, folding or marking
-  ;; the folder, only by RET on its heading, and then safely
-  (call-with-ended-folders
+(define-test (daemon ended-groups-evidence-stays-closed-until-take-up)
+  ;; a file waiting closed in a group that ended is not opened by showing the list, folding or marking
+  ;; the group, only by RET on its heading, and then safely
+  (call-with-ended-groups
    (lambda (c ended-a ended-b)
      (declare (ignore ended-b))
      (with-test-directory (dir)
        (let ((evidence (namestring (put-file (merge-pathnames "disk.img" dir) "evidence text"))))
          (in-daemon (lambda () (push (list ended-a (list :safe 0 evidence)) tuatara.defaults::*evidence-waiting*)))
-         (goto-folder-heading c ended-a)
+         (goto-group-heading c ended-a)
          (type-keys c "TAB")
          (type-keys c "d")
          (true (wait-until (lambda () (in-daemon (lambda () (marked-for-deletion)))) 10)
-               "the folder is marked")
+               "the group is marked")
          (false (in-daemon (lambda () (tuatara.defaults::buffer-visiting evidence))) "closed while the list is used")
-         (goto-folder-heading c ended-a)
+         (goto-group-heading c ended-a)
          (type-keys c "RET")
          (true (wait-until (lambda () (in-daemon (lambda () (tuatara.defaults::buffer-visiting evidence)))) 10)
-               "opened as the folder is taken up")
+               "opened as the group is taken up")
          (true (in-daemon (lambda () (tuatara.io:safe-visit-p (tuatara.defaults::buffer-visiting evidence))))
                "and safely"))))))
 
-(define-test (daemon capital-d-kills-a-clients-folder)
-  ;; D on the heading of a client's folder, ended or live, kills the buffers of that folder after asking
-  (call-with-ended-folders
+(define-test (daemon capital-d-kills-a-clients-group)
+  ;; D on the heading of a client's group, ended or live, kills the buffers of that group after asking
+  (call-with-ended-groups
    (lambda (c ended-a ended-b)
      (declare (ignore ended-a))
      (flet ((buffer-there-p (name) (in-daemon (lambda () (and (tuatara.buffer:find-buffer name) t)))))
-       (goto-folder-heading c ended-b)
+       (goto-group-heading c ended-b)
        (type-keys c "D")
        (true (shows c "Kill the 2 buffers") "asked as for a project")
        (type-keys c "y RET")
-       (true (wait-until (lambda () (not (buffer-there-p "gamma.txt"))) 10) "the folder's buffers are killed")
-       (true (buffer-there-p "alpha.txt") "another folder's stay")
+       (true (wait-until (lambda () (not (buffer-there-p "gamma.txt"))) 10) "the group's buffers are killed")
+       (true (buffer-there-p "alpha.txt") "another group's stay")
        (true (buffer-there-p "delta.txt") "this client's stay")))))
 
 (defun call-keeping-clients (value function)
@@ -1634,7 +1634,7 @@ thread, no client chosen to keep before or after."
       (setf tuatara-user:*client-kept-without-buffers* before
             tuatara.defaults::*client-chosen-to-keep* nil))))
 
-(define-test (daemon clients-kept-without-buffers)
+(define-modal-test (daemon clients-kept-without-buffers)
   ;; which client stays on when its last buffer is closed, as the setting says and as chosen in the buffer list
   (with-test-directory (dir)
     (let ((alpha (namestring (put-file (merge-pathnames "alpha.txt" dir) "alpha text")))
@@ -1651,7 +1651,7 @@ thread, no client chosen to keep before or after."
                         (true (shows one "alpha text"))
                         (true (shows two "beta text"))
                         (funcall check one one-runner two two-runner))))))))
-        ;; said on the list's heading alone, not in a question naming the folder
+        ;; said on the list's heading alone, not in a question naming the group
         (false (search "persistent" (tuatara.defaults::buffer-section-title (tuatara.command:make-client :number 7))))
         ;; the one opened first stays, by default; the other goes
         (is eq :first tuatara-user:*client-kept-without-buffers*)
@@ -1677,7 +1677,7 @@ thread, no client chosen to keep before or after."
                             (type-keys two "C-x k RET")
                             (is eq :late (client-ends one-runner 1))
                             (is eq :late (client-ends two-runner 1))))
-        ;; shown in the buffer list, K moves it to the client whose folder the cursor is in
+        ;; shown in the buffer list, K moves it to the client whose group the cursor is in
         (two-clients :first (lambda (one one-runner two two-runner)
                               (type-keys one "C-x C-b")
                               (true (shows one "(persistent)"))
@@ -1754,7 +1754,7 @@ daemon's client NUMBER shows."
 
 (define-test (daemon kept-client-left-on-its-own-scratch)
   ;; the client that stays, its last buffer of its own killed, is left on a new scratch buffer of its own, no
-  ;; buffer taken from every client's folder or from another client
+  ;; buffer taken from every client's group or from another client
   (with-test-directory (dir)
     (let ((alpha (namestring (put-file (merge-pathnames "alpha.txt" dir) "alpha text")))
           (beta (namestring (put-file (merge-pathnames "beta.txt" dir) "beta text"))))
@@ -1787,7 +1787,7 @@ daemon's client NUMBER shows."
                (is equal '() (buffer-owners "*org-scratch*"))
                (is equal '(2) (buffer-owners "beta.txt") "the other client's stays its alone")))))))))
 
-(define-test (daemon client-ends-with-its-last-buffer)
+(define-modal-test (daemon client-ends-with-its-last-buffer)
   ;; with none kept, a client whose last buffer is killed goes as C-x C-c would send it, the daemon on; one with
   ;; another buffer left stays; one started with no files stays on its scratch buffer until a
   ;; buffer of its own is closed
@@ -1823,7 +1823,7 @@ daemon's client NUMBER shows."
 
 (defun call-with-shared-file (check)
   "Call CHECK with the fake screens of two clients of a test daemon in a
-project's folder, the first started on alpha.txt and beta.txt, the second on
+project's directory, the first started on alpha.txt and beta.txt, the second on
 alpha.txt and gamma.txt, so that both have alpha.txt and show it."
   (with-test-directory (dir)
     (put-file (merge-pathnames ".project" dir) "")

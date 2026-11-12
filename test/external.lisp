@@ -243,7 +243,7 @@ the names it is given to the file RECORD, as xdg-open would open them."
   (is = 1 (tuatara.text:json-integer (tuatara.defaults::copies-output-json (tuatara.text:string-octets (format nil "a line~%{\"k\":1}")))
                                      "k"))
   (is eq nil (tuatara.defaults::copies-output-json (tuatara.text:string-octets "no report")))
-  ;; a program of yours run shut in on copies: it sees them by their own names, never the folder of the files
+  ;; a program of yours run shut in on copies: it sees them by their own names, never the directory of the files
   (with-test-directory (dir)
     (unless (eq :ready (tuatara.io:sandbox-status))
       (skip "no sandbox here"))
@@ -257,7 +257,7 @@ the names it is given to the file RECORD, as xdg-open would open them."
            (program (concatenate 'string (tuatara.io:native dir) "bin/reader")))
       (tuatara.io:ensure-directories program)
       (tuatara.io:replace-file program (format nil "#!/bin/sh
-[ -e '~a' ] && { echo 'the folder is seen' >&2; exit 1; }
+[ -e '~a' ] && { echo 'the directory is seen' >&2; exit 1; }
 cat \"$2\" && echo \" $*\" && echo \"$4 is gone\" >&2 && exit 1
 " (string-right-trim "/" given)))
       (sb-posix:chmod program #o700)
@@ -330,53 +330,53 @@ cat \"$2\" && echo \" $*\" && echo \"$4 is gone\" >&2 && exit 1
                     (is string= "copied" (tuatara.io:file-text copy)))
           (tuatara.io:delete-tree (tuatara.io:parent-path copy)))))))
 
-(define-test (external private-folders-in-use-kept)
-  ;; a folder still in use is never swept as old, however long ago it was last written to;
+(define-test (external private-directories-in-use-kept)
+  ;; a directory still in use is never swept as old, however long ago it was last written to;
   ;; one made to go a day later goes, and one deleted is held no longer
   (with-test-directory (dir)
     (let* ((directory (tuatara.io:slash-ended (tuatara.io:native dir)))
-           (held (tuatara.defaults::new-private-folder directory))
+           (held (tuatara.defaults::new-private-directory directory))
            (two-days-ago (- (sb-posix:time) (* 2 86400))))
-      (flet ((age (folder) (sb-posix:utimes (string-right-trim "/" folder) two-days-ago two-days-ago)))
+      (flet ((age (directory) (sb-posix:utimes (string-right-trim "/" directory) two-days-ago two-days-ago)))
         (unwind-protect
              (progn
                (age held)
-               (tuatara.defaults::delete-private-folder (tuatara.defaults::new-private-folder directory))
+               (tuatara.defaults::delete-private-directory (tuatara.defaults::new-private-directory directory))
                (is eq :directory (tuatara.io:path-kind held :follow nil))
-               (let ((loose (tuatara.defaults::new-private-folder directory :hold nil)))
+               (let ((loose (tuatara.defaults::new-private-directory directory :hold nil)))
                  (age loose)
-                 (let ((another (tuatara.defaults::new-private-folder directory)))
+                 (let ((another (tuatara.defaults::new-private-directory directory)))
                    (false (tuatara.io:path-kind loose :follow nil))
-                   (tuatara.defaults::delete-private-folder another)
+                   (tuatara.defaults::delete-private-directory another)
                    (false (tuatara.io:path-kind another :follow nil))
-                   (false (gethash another tuatara.defaults::*private-folders-held*))))
+                   (false (gethash another tuatara.defaults::*private-directories-held*))))
                ;; kept fresh for other sessions' sweeps
                (age held)
-               (let ((tuatara.defaults::*private-folders-touched* 0))
-                 (tuatara.defaults::keep-private-folders-fresh nil))
+               (let ((tuatara.defaults::*private-directories-touched* 0))
+                 (tuatara.defaults::keep-private-directories-fresh nil))
                (true (> (tuatara.defaults::mtime-universal-time (tuatara.io:stamp-mtime (tuatara.io:path-stamp held)))
                         (- (get-universal-time) 3600))))
           (ignore-errors (tuatara.io:delete-tree held))
-          (remhash held tuatara.defaults::*private-folders-held*))))))
+          (remhash held tuatara.defaults::*private-directories-held*))))))
 
-(defvar *private-folder-readings* '()
-  "The buffers the private folder test reads into.")
+(defvar *private-directory-readings* '()
+  "The buffers the private directory test reads into.")
 
-(define-test (external private-folder-deleted-after-its-job)
-  ;; a buffer READING-BUFFER gives a folder of its own: made for you alone, named while the buffer lives,
+(define-test (external private-directory-deleted-after-its-job)
+  ;; a buffer READING-BUFFER gives a directory of its own: made for you alone, named while the buffer lives,
   ;; deleted when it is killed once its job has ended, and not before
   (let* ((tuatara.command:*editor* (nth-value 1 (run-keys "" :text "")))
          (tuatara.runtime:*stop-wait* 0.05)
          (gate (list nil))
          (job nil)
-         (buffer (tuatara:reading-buffer '*private-folder-readings*
-                                         (lambda (b) (tuatara.buffer:buffer-local b 'private-folder-reading))
+         (buffer (tuatara:reading-buffer '*private-directory-readings*
+                                         (lambda (b) (tuatara.buffer:buffer-local b 'private-directory-reading))
                                          "/nonexistent/read.bin"
-                                         "*private folder test*"
+                                         "*private directory test*"
                                          (format nil "Reading...~%")
                                          'tuatara:special-mode
                                          (lambda (b)
-                                           (setf (tuatara.buffer:buffer-local b 'private-folder-reading)
+                                           (setf (tuatara.buffer:buffer-local b 'private-directory-reading)
                                                  "/nonexistent/read.bin"
                                                  job (tuatara.defaults::%make-count-job :buffer b :what "Buffer" :total 10))
                                            (tuatara.runtime:start-job-thread
@@ -384,22 +384,22 @@ cat \"$2\" && echo \" $*\" && echo \"$4 is gone\" >&2 && exit 1
                                                   (declare (ignore job))
                                                   (loop repeat 1000 until (car gate) do (sleep 0.01)))
                                             :name "tuatara test job"))
-                                         :private-folder "opened/"))
-         (folder (tuatara:buffer-private-folder buffer)))
+                                         :private-directory "opened/"))
+         (directory (tuatara:buffer-private-directory buffer)))
     (unwind-protect
          (progn
-           (true (uiop:string-prefix-p (tuatara.defaults::opened-copies-directory) folder))
-           (is = #o700 (logand #o777 (tuatara.io:stamp-mode (tuatara.io:path-stamp folder))))
-           (tuatara.io:write-new-file (tuatara.io:path-join folder "made") "made")
+           (true (uiop:string-prefix-p (tuatara.defaults::opened-copies-directory) directory))
+           (is = #o700 (logand #o777 (tuatara.io:stamp-mode (tuatara.io:path-stamp directory))))
+           (tuatara.io:write-new-file (tuatara.io:path-join directory "made") "made")
            (tuatara.buffer:kill-buffer buffer)
-           ;; its job still running: the folder kept
-           (is eq :directory (tuatara.io:path-kind folder :follow nil))
+           ;; its job still running: the directory kept
+           (is eq :directory (tuatara.io:path-kind directory :follow nil))
            (setf (car gate) t)
-           (loop repeat 500 while (tuatara.io:path-kind folder :follow nil) do (sleep 0.01))
-           (false (tuatara.io:path-kind folder :follow nil)))
+           (loop repeat 500 while (tuatara.io:path-kind directory :follow nil) do (sleep 0.01))
+           (false (tuatara.io:path-kind directory :follow nil)))
       (setf (car gate) t)
       (when job (tuatara.runtime:forget-job job))
-      (when (tuatara.io:path-kind folder :follow nil) (tuatara.io:delete-tree folder)))))
+      (when (tuatara.io:path-kind directory :follow nil) (tuatara.io:delete-tree directory)))))
 
 (define-test (external tiff-unread-told-by-its-head)
   ;; a TIFF whose directory cannot be read is told by its first octets, never by the error

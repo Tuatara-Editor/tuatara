@@ -4,7 +4,7 @@
 
 (in-package #:tuatara.tests)
 
-(define-test (org folding)
+(define-modal-test (org folding)
   ;; the view as written, no signs, the indented one turned on by hand
   (let ((tuatara-user:*org-startup-indented* nil)
         (tuatara-user:*org-bullets* nil)
@@ -50,7 +50,7 @@
 (defparameter *org-two-folded* (format nil "* One~%body one~%* Two~%body two~%")
   "Two headlines with a line of text each, folded by S-TAB to the headlines alone.")
 
-(define-test (org stale-fold-opens)
+(define-modal-test (org stale-fold-opens)
   ;; a folded heading whose stars are deleted is a heading no more: what it hid is shown again
   (let ((tuatara-user:*org-startup-indented* nil)
         (tuatara-user:*org-bullets* nil)
@@ -68,7 +68,7 @@
       ;; undone, the heading folds again with TAB
       (is equal '("* One..." "* Two..." "" "") (shown "d u TAB")))))
 
-(define-test (org folded-text-edited-seen)
+(define-modal-test (org folded-text-edited-seen)
   (let ((tuatara-user:*org-startup-indented* nil)
         (tuatara-user:*org-bullets* nil)
         (tuatara-user:*org-list-bullets* nil)
@@ -111,7 +111,7 @@
         (is string= (format nil "* OneX~%body one~%* Two~%body two~%") text)
         (is equal '("* OneX..." "* Two...") (subseq lines 0 2))))))
 
-(define-test (org folded-text-kept-at-many-places)
+(define-modal-test (org folded-text-kept-at-many-places)
   (let ((tuatara-user:*org-startup-indented* nil)
         (tuatara-user:*org-bullets* nil)
         (tuatara-user:*org-list-bullets* nil)
@@ -137,7 +137,7 @@
         (is string= (format nil "* Two~%body two~%") text)
         (is equal '("* Two...") (subseq lines 0 1))))))
 
-(define-test (org matches-in-folds)
+(define-modal-test (org matches-in-folds)
   ;; f acts only on what is shown, whatever is searched, % too; r r and r q
   ;; act on matches hidden too, the folds kept; asking at
   ;; each, a match in folded text has its fold opened first
@@ -253,7 +253,7 @@
                    (is equal '("* 1..." "* Two...") lines "~a keeps the folds" keys)
                    (false (tuatara.frontend.fake:fake-frame-showing f "hidden in folds") "~a leaves none alone" keys)))))))
 
-(define-test (org indented-view-and-bullets)
+(define-modal-test (org indented-view-and-bullets)
   ;; the view as written, no signs, the indented one turned on by hand
   (let ((tuatara-user:*org-startup-indented* nil)
         (tuatara-user:*org-bullets* nil)
@@ -296,7 +296,7 @@ window draws them with (set-face :org-level-1 :height 2)."
                              (funcall function))
         (setf (tuatara.display::face-height face) old)))))
 
-(define-test (org headlines-drawn-large)
+(define-modal-test (org headlines-drawn-large)
   (let ((tuatara-user:*org-startup-indented* nil)
         (tuatara-user:*org-bullets* nil)
         (tuatara-user:*org-list-bullets* nil)
@@ -397,7 +397,7 @@ window draws them with (set-face :org-level-1 :height 2)."
          (is equal '("* One" "Text of one.")
              (subseq (org-screen "") 0 2)))))))
 
-(define-test (org structure-editing)
+(define-modal-test (org structure-editing)
   ;; the view as written, no signs, the indented one turned on by hand
   (let ((tuatara-user:*org-startup-indented* nil)
         (tuatara-user:*org-bullets* nil)
@@ -459,7 +459,7 @@ window draws them with (set-face :org-level-1 :height 2)."
     ;; a folded subtree moved stays folded
     (is equal '("* Two" "Text of two." "* One...") (subseq (org-screen "TAB M-j") 0 3))))
 
-(define-test (org checkboxes-and-templates)
+(define-modal-test (org checkboxes-and-templates)
   ;; ticking as such, nothing logged
   (let ((tuatara-user:*org-log-checkboxes* nil))
     (let ((text (format nil "* Tasks [0/2] [0%]~%- [ ] one~%- [ ] two~%  - [ ] sub a~%  - [ ] sub b~%")))
@@ -498,7 +498,7 @@ window draws them with (set-face :org-level-1 :height 2)."
           (declare (ignore f))
           (is string= (format nil "#+begin_src shell~%ls~%#+end_src") (session-text editor)))))))
 
-(define-test (org leaving-org-mode)
+(define-modal-test (org leaving-org-mode)
   ;; the view Org gave the text goes with the mode: no indentation, signs, folds or large headlines in text mode
   (call-with-large-level-one
    (lambda ()
@@ -587,7 +587,7 @@ window draws them with (set-face :org-level-1 :height 2)."
            (f (run-keys "M-x o r g - m o d e RET" :text *org-signs* :width 60 :height 18)))
       (true (org-faces-include f 1 "*" :org-leading-stars)))))
 
-(define-test (org list-items-fold)
+(define-modal-test (org list-items-fold)
   ;; TAB on a list item with something under it folds it, as a headline: folded, its sub-items, all of it
   (let ((text (format nil "- one~%  more of one~%  - sub a~%    under a~%  - sub b~%- two~%"))
         (tuatara-user:*org-startup-indented* nil))
@@ -603,7 +603,7 @@ window draws them with (set-face :org-level-1 :height 2)."
     (let ((tuatara-user:*org-cycle-include-plain-lists* nil))
       (is string= "  more of one" (second (org-screen "TAB" :text text))))))
 
-(define-test (org checkbox-typed)
+(define-modal-test (org checkbox-typed)
   ;; [ typed after a list item's bullet makes a checkbox at once, point after its space; checkboxes shown as written
   (dolist (pairs '(nil t))
     (let ((tuatara-user:*electric-pair-mode* pairs))
@@ -622,7 +622,7 @@ window draws them with (set-face :org-level-1 :height 2)."
       (let ((tuatara-user:*org-complete-checkboxes* nil))
         (is string= (if pairs "- []" "- [") (session-text (nth-value 1 (org-screen "i - SPC [ ESC" :text ""))))))))
 
-(define-test (org checkbox-return)
+(define-modal-test (org checkbox-return)
   ;; cycling as such, nothing logged
   (let ((tuatara-user:*org-log-checkboxes* nil))
     ;; RET in NORMAL state anywhere on a checkbox's line cycles it, [ ] [-] [X], the count above brought up to date
@@ -639,7 +639,7 @@ window draws them with (set-face :org-level-1 :height 2)."
         (let ((tuatara-user:*org-return-cycles-checkboxes* nil))
           (is string= text (after "j RET")))))))
 
-(define-test (org todo-return)
+(define-modal-test (org todo-return)
   ;; RET in NORMAL state on a headline with a keyword: the next keyword, round to the first, never none
   (let ((tuatara-user:*org-log-done* nil)
         (tuatara.defaults::*org-now* (encode-universal-time 0 0 12 28 10 2026)))
@@ -711,7 +711,7 @@ window draws them with (set-face :org-level-1 :height 2)."
       (let ((tuatara-user:*org-return-cycles-todo* nil))
         (is string= (format nil "* TODO Mow the lawn~%") (after "RET" (format nil "* TODO Mow the lawn~%")))))))
 
-(define-test (org todo-rotation-passes-over-cancelled)
+(define-modal-test (org todo-rotation-passes-over-cancelled)
   ;; the standard keywords go TODO, WAIT, DONE and none: C-c C-t, S-<right>, S-<left> and RET pass over CANCELLED
   (let ((tuatara-user:*org-log-done* nil))
     (flet ((after (keys text) (session-text (nth-value 1 (org-screen keys :text text)))))
@@ -738,7 +738,7 @@ window draws them with (set-face :org-level-1 :height 2)."
       (let ((tuatara-user:*org-todo-keywords-not-cycled* nil))
         (is string= (format nil "* CANCELLED Gate~%") (after "C-c C-t C-c C-t C-c C-t" (format nil "* TODO Gate~%")))))))
 
-(define-test (org cancel-task)
+(define-modal-test (org cancel-task)
   ;; C-c C-x C cancels a task: CANCELLED noted with CLOSED: as DONE is; one that repeats asks, s ending it where it is
   (let ((tuatara.defaults::*org-now* (encode-universal-time 0 0 18 1 10 2026))
         (tuatara-user:*org-log-done* :time))
@@ -758,7 +758,7 @@ window draws them with (set-face :org-level-1 :height 2)."
     (let ((errands (format nil "* TODO Errands~%- [ ] call Anna~%")))
       (is string= errands (org-text-after "j C-c C-x C" errands)))))
 
-(define-test (org new-items-and-bullets)
+(define-modal-test (org new-items-and-bullets)
   ;; M-RET: an item of the same kind after the one point is in and all under it, a checkbox carried over
   (is string= (format nil "- [ ] a~%- [ ] ~%- b~%") (org-text-after "M-RET" (format nil "- [ ] a~%- b~%")))
   (is string= (format nil "- a~%  - sub~%- ~%- b~%") (org-text-after "M-RET" (format nil "- a~%  - sub~%- b~%")))
@@ -779,7 +779,7 @@ window draws them with (set-face :org-level-1 :height 2)."
     (is string= text (org-text-after "C-c - C-c - C-c - C-c -" text)))
   (is string= (format nil "* H~%  * a~%  * b~%") (org-text-after "j C-c - C-c -" (format nil "* H~%  - a~%  - b~%"))))
 
-(define-test (org checkbox-tasks)
+(define-modal-test (org checkbox-tasks)
   ;; a list item with a checkbox is a task: ticked with C-c C-t, clocked, noted, each logged in a drawer under it
   (let ((tuatara.defaults::*org-now* (encode-universal-time 0 5 14 2 10 2026))
         (text (format nil "* Errands~%- [ ] call Anna~%- [ ] buy milk~%")))
@@ -827,7 +827,7 @@ window draws them with (set-face :org-level-1 :height 2)."
           '(:clock :closed)
           (sort (mapcar #'first (tuatara.defaults::agenda-entry-logs (second entries))) #'string<)))))
 
-(define-test (org todo-follows-checkboxes)
+(define-modal-test (org todo-follows-checkboxes)
   ;; a TODO headline with a cookie is done once all it counts are, with CLOSED: whatever *org-log-done* says; reopened,
   ;; CLOSED: goes
   ;; with Org's own TODO and DONE alone
@@ -855,7 +855,7 @@ window draws them with (set-face :org-level-1 :height 2)."
       (is string= (format nil "* TODO Goal [0/1]~%** TODO Project [1/2]~%*** DONE a~%*** TODO b~%")
           (org-text-after "j j C-c C-t j C-c C-t S-<left>" project)))))
 
-(define-test (org drawers-fold)
+(define-modal-test (org drawers-fold)
   ;; TAB on a drawer's line folds it and opens it; cycling a headline or an item shows its drawers folded
   (let ((text (format nil "* A~%:LOGBOOK:~%CLOCK: [2026-10-01 Thu 09:00]--[2026-10-01 Thu 10:00] =>  1:00~%:END:~%body~%* B~%- [ ] x~%  :LOGBOOK:~%  - State \"DONE\" [2026-10-02 Fri 14:05]~%  :END:~%  more~%"))
         (tuatara-user:*org-startup-indented* nil) (tuatara-user:*org-bullets* nil))
@@ -871,7 +871,7 @@ window draws them with (set-face :org-level-1 :height 2)."
           '("* A" ":LOGBOOK:" "CLOCK: [2026")
           (mapcar (lambda (l) (subseq l 0 (min 12 (length l)))) (subseq (org-screen "TAB TAB" :text text) 0 3))))))
 
-(define-test (org metadata-folded-on-opening)
+(define-modal-test (org metadata-folded-on-opening)
   ;; an Org file opens with each task's drawers and notes folded to one line, its planning shown;
   ;; TAB on the notes' line opens them
   (let ((text (format nil "* TODO Review [0/1]~%SCHEDULED: <2026-10-28 Wed +1d>~%:PROPERTIES:~%:LAST_REPEAT: [2026-10-25 Sun 14:02]~%:END:~%~
@@ -900,7 +900,7 @@ window draws them with (set-face :org-level-1 :height 2)."
         (is equal '("* Trip" ":FOLD:..." "Packing list") (subseq (org-screen "" :text own) 0 3))
         (is equal '(":FOLD:" "Flights booked" "Hotel paid" ":END:") (subseq (org-screen "j TAB" :text own) 1 5))))))
 
-(define-test (org tab-leaves-planning-and-drawers)
+(define-modal-test (org tab-leaves-planning-and-drawers)
   ;; TAB on a planning line, on a drawer's :END: or on a line inside a drawer leaves the text as it is
   (let ((text (format nil "* DONE Task~%CLOSED: [2026-10-15 Thu 10:00]~%:LOGBOOK:~%- State \"DONE\"       from \"TODO\"       [2026-10-15 Thu 10:00]~%:END:~%:PROPERTIES:~%:ID: x~%:END:~%body~%")))
     (dolist (keys '("j TAB" "j l l l TAB" "C-u 3 j TAB" "C-u 3 j l l TAB" "C-u 4 j TAB" "C-u 6 j TAB" "C-u 7 j TAB"))
@@ -940,7 +940,7 @@ window draws them with (set-face :org-level-1 :height 2)."
       (kill-records b path))
     (true (< 0 lit 30) "~d ranges lit" lit)))
 
-(define-test (org cookies-follow-checkbox-items)
+(define-modal-test (org cookies-follow-checkbox-items)
   (let ((text (format nil "* Tasks [1/2]~%- [X] one~%- [ ] two~%")))
     ;; a new checkbox item counts at once, in the one step to undo
     (is string= (format nil "* Tasks [1/3]~%- [X] one~%- [ ] ~%- [ ] two~%") (org-text-after "j M-RET" text))
@@ -950,7 +950,7 @@ window draws them with (set-face :org-level-1 :height 2)."
     ;; the last box of a headline gone: nothing left to count
     (is string= (format nil "* Tasks [0/0]~%~%") (org-text-after "j C-k" (format nil "* Tasks [0/1]~%- [ ] one~%")))))
 
-(define-test (org cookies-follow-killed-items)
+(define-modal-test (org cookies-follow-killed-items)
   ;; the cookies above the item killed count again, not those where point lands
   (let ((text (format nil "* A [1/2]~%- [X] a~%- [ ] b~%* B [0/0]~%")))
     (is string= (format nil "* A [1/1]~%- [X] a~%* B [0/0]~%") (org-text-after "j j C-k C-k" text))

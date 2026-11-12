@@ -501,7 +501,7 @@ given as (NAME . VALUE), in the order of *DISPLAY-SETTINGS*."
                                                       diff merge (frames 1) wait stop joins far agent notes))
                     (:copier nil))
   "What a client asks of the editor as it attaches, beside what its screen
-is. DIRECTORY is the folder it was started in, an absolute path. TERMINAL is
+is. DIRECTORY is the directory it was started in, an absolute path. TERMINAL is
 the device of its terminal (/dev/pts/3), or NIL. ENVIRONMENT is its variables
 the editor keeps for it, each (NAME . VALUE). FILES is each (PATH LINE COLUMN),
 an absolute path and the line and column to go to, or NIL. SAFE and HEX are
@@ -524,7 +524,7 @@ most eight lines, to be shown in its frame."
 
 (setf (documentation 'make-request 'function) "A REQUEST of a client, as its keywords give it."
       (documentation 'request-p 'function) "True when OBJECT is a REQUEST."
-      (documentation 'request-directory 'function) "The folder the client of REQUEST was started in."
+      (documentation 'request-directory 'function) "The directory the client of REQUEST was started in."
       (documentation 'request-terminal 'function) "The device of the client's terminal, or NIL."
       (documentation 'request-environment 'function) "The client's variables kept for it, each (NAME . VALUE)."
       (documentation 'request-files 'function) "The files the client opens, each (PATH LINE COLUMN)."
@@ -608,7 +608,7 @@ on another machine (REQUEST-FAR) names a terminal or passes its standard
 input."
   (let* ((flags (take-bounded inbox 2 0 127 "a request's flags"))
          (frames (take-bounded inbox 1 1 16 "a count of frames"))
-         (directory (take-path inbox "a folder"))
+         (directory (take-path inbox "a directory"))
          (terminal (let ((device (take-text inbox 256)))
                      (cond ((zerop (length device)) nil)
                            ((and (uiop:string-prefix-p "/dev/" device) (not (find (code-char 0) device))) device)

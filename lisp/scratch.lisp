@@ -72,7 +72,7 @@ when it has none."
 of any kind when KIND is NIL, other than EXCEPT: the one CLIENT has, else a
 new one, as at startup, its name numbered when that name is taken
 \(*lisp-scratch*<2>), of KIND or the kind AUTO-SCRATCH-NAME names (an empty
-*scratch* when that is none). A new one stands in CLIENT's folder and is
+*scratch* when that is none). A new one stands in CLIENT's directory and is
 CLIENT's. The second value is true when it is new."
   (let ((own (find-if (lambda (b)
                         (let ((made-as (tuatara.buffer:buffer-local b :client-scratch)))

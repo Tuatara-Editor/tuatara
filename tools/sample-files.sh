@@ -2,7 +2,7 @@
 # tools/sample-files.sh --- Write small sample files for trying Tuatara by hand.
 # Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
 # Write small sample files for trying Tuatara by hand. Usage: tools/sample-files.sh [DIRECTORY]
-# (default tuatara-sample-files in the system's folder for temporary files).
+# (default tuatara-sample-files in the system's directory for temporary files).
 set -euo pipefail
 dir=${1:-${TMPDIR:-/tmp}/tuatara-sample-files}
 mkdir -p "$dir"

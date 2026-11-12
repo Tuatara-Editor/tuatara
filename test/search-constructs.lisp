@@ -314,7 +314,7 @@ question as PATTERN/REPLACEMENT."
   (session-text (nth-value 1 (run-keys (format nil "r r ~a RET" (key-string (format nil "~a/~a" pattern replacement)))
                                        :text text :width 200))))
 
-(define-test (search-constructs every-row)
+(define-modal-test (search-constructs every-row)
   ;; each example as the handbook gives it: the search finds just these, the replacement writes just this
   (dolist (section *search-constructs*)
     (dolist (row (third section))

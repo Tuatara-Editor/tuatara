@@ -249,7 +249,7 @@ whose state changed, and those whose file changed again."
           (is = 0 (tuatara.display:window-start (second windows)))
           (tuatara.buffer:kill-buffer buffer))))))
 
-(define-test (files-changed-on-disk kept-with-changes-of-its-own)
+(define-modal-test (files-changed-on-disk kept-with-changes-of-its-own)
   ;; a buffer that follows its file but has changes of its own is not read again,
   ;; and the message says why and what to do
   (with-slow-polling
@@ -264,7 +264,7 @@ whose state changed, and those whose file changed again."
           (is string= (format nil "Xl1~%l2~%") (session-text editor))
           (tuatara.buffer:kill-buffer (session-buffer editor)))))))
 
-(define-test (files-changed-on-disk read-again-when-visited)
+(define-modal-test (files-changed-on-disk read-again-when-visited)
   ;; visiting a file whose buffer is open already reads it again when it changed
   ;; on disk and the buffer has no changes of its own; with changes, it is kept
   ;; and that is said
@@ -284,7 +284,7 @@ whose state changed, and those whose file changed again."
           (is string= (format nil "Xl1~%l2~%") (session-text editor))
           (tuatara.buffer:kill-buffer (session-buffer editor)))))))
 
-(define-test (files-changed-on-disk visit-keeps-what-it-must)
+(define-modal-test (files-changed-on-disk visit-keeps-what-it-must)
   ;; visited again with no look of the watcher between, a buffer that must stay as it is does: one with
   ;; changes of its own whose file grew, one M-x follow-file stopped following, one whose file is on a
   ;; network file system (the watcher looks at that); a file deleted is said
@@ -353,7 +353,7 @@ whose state changed, and those whose file changed again."
                (tuatara.buffer:kill-buffer (session-buffer editor)))
           (sb-int:unencapsulate 'tuatara.io::write-text-file 'slow))))))
 
-(define-test (files-changed-on-disk following)
+(define-modal-test (files-changed-on-disk following)
   (with-slow-polling
     (with-test-directory (dir)
       (let ((path (put-file (merge-pathnames "run.log" dir) (format nil "start~%"))))

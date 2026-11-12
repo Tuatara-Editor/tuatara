@@ -11,20 +11,20 @@
   (:import-from #:tuatara.defaults
                 #:*after-save-functions* #:*command-refusal-functions* #:*file-changing-commands* #:*global-keymap*
                 #:*made-text-keymap* #:*rimu-keymap* #:*trust-changed-functions*
-                #:ask-project-trust #:buffer-in-mode #:buffer-private-folder #:check-not-saving #:column-text
-                #:commands-for-buffers #:commands-for-mode #:conflict-look-through #:delete-private-folder
+                #:ask-project-trust #:buffer-in-mode #:buffer-private-directory #:check-not-saving #:column-text
+                #:commands-for-buffers #:commands-for-mode #:conflict-look-through #:delete-private-directory
                 #:diff-files #:diff-mode #:drop-selection #:entry-lines #:entry-member #:show-file-metadata
-                #:folder-holds-evidence-p
+                #:directory-holds-evidence-p
                 #:ssh-askpass-window-p
                 #:follow-directories-for
-                #:forget-abandoned-folders
+                #:forget-abandoned-directories
                 #:fresh-made-buffer
                 #:git-commit-mode #:git-rebase-mode #:goto-shown #:kill-text #:killed-job-buffer-p #:rimu-archive-list
                 #:list-entry-at #:list-folded #:list-section-at #:list-step-entry #:list-toggle-all-folds
-                #:list-toggle-fold #:make-owned-folder #:make-rimu-listing #:marked-directory #:new-private-folder
-                #:open-externally #:paths-changed #:private-cache-directory #:private-folder
+                #:list-toggle-fold #:make-owned-directory #:make-rimu-listing #:marked-directory #:new-private-directory
+                #:open-externally #:paths-changed #:private-cache-directory #:private-directory
                 #:project-look-only-reason #:project-trusted-p #:quit-window #:read-native-path #:read-new-native-path
-                #:read-whole-number #:real-folder #:rename-path-following #:render-made-table-list #:render-pieces
+                #:read-whole-number #:real-directory #:rename-path-following #:render-made-table-list #:render-pieces
                 #:rimu-buffer-name #:rimu-column-allowed-p #:rimu-column-in-background #:rimu-diff #:rimu-directory
                 #:rimu-directory-p #:rimu-duplicates #:rimu-enter #:rimu-entry-at #:rimu-find #:rimu-find-text
                 #:rimu-git #:rimu-goto-file #:rimu-home #:rimu-last-directory #:rimu-list-p #:rimu-make-list
@@ -40,7 +40,7 @@
 through a shell nor on the editor's thread, with what keeps a repository not
 trusted from running anything of its own. It has the status, log, commits,
 branches, history and the rest of the git command, as git users expect them,
-and rimu's git column and its lists of a folder as a commit left it. Other
+and rimu's git column and its lists of a directory as a commit left it. Other
 parts of the editor run git through what is exported here.")
   (:export #:install-git
            ;; running git, for the change gutter, rimu, trust and packages

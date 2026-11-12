@@ -86,7 +86,7 @@ the editor is busy, so that C-g can stop work and keys typed meanwhile are kept.
     (true (search "(+ 1)" (session-text editor)))
     (false (tuatara.frontend.fake:fake-frame-showing f "Made a new"))))
 
-(define-test (scratch evaluation)
+(define-modal-test (scratch evaluation)
   ;; C-x C-e after an expression shows its value
   (multiple-value-bind (f editor) (fresh-start "i ( + SPC 1 SPC 2 ) C-g C-x C-e")
     (declare (ignore editor))
@@ -238,7 +238,7 @@ then type THEN; return the frontend and the editor."
     (true (showing f "=> NIL"))
     (true (search "(sleep 1/2)xy" (session-text editor)))))
 
-(define-test (scratch evaluation-boundaries)
+(define-modal-test (scratch evaluation-boundaries)
   ;; brackets in strings, character names and comments count for nothing
   (true (showing (evaluating "(format nil \"(\")") "=> \"(\""))
   (true (showing (evaluating "(list #\\( #\\))") "=> (#\\( #\\))"))
@@ -249,7 +249,7 @@ then type THEN; return the frontend and the editor."
                         :width 160)))
     (true (showing f "=> G"))))
 
-(define-test (scratch eval-region-buffer-expression)
+(define-modal-test (scratch eval-region-buffer-expression)
   ;; eval-region: the forms selected, one after another; nothing without a selection
   (let ((f (fresh-start (format nil "o ~a C-x h M-x e v a l - r e g i o n RET"
                                 (key-string "(defparameter *seven* 7) (+ *seven* 1)"))

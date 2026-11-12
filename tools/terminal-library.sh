@@ -14,7 +14,7 @@
 # compiles in go in build/terminal/licenses/: simdutf's, Highway's, Wuffs's,
 # uucode's (with those of the Unicode data and the UTF-8 decoder it carries)
 # and Zig's (its standard library and the C++ library it compiles in), each
-# in a folder of its name, licenses.tsv naming each and its licence as an SPDX
+# in a directory of its name, licenses.tsv naming each and its licence as an SPDX
 # expression that joins others by AND; the build stops when one cannot be
 # found.
 # Nothing is fetched or compiled while Tuatara runs.
@@ -102,7 +102,7 @@ from_address uucode LICENSE_unicode "https://raw.githubusercontent.com/jacobsand
   1eda5a3b026870c737b22e8bcd4954338612c790db688242e003f41a4fa95175
 from_address uucode LICENSE_Bjoern_Hoehrmann "https://raw.githubusercontent.com/jacobsandlund/uucode/$uucode_commit/licenses/LICENSE_Bjoern_Hoehrmann" \
   de219cece932aad5a817bf763393d8d149d378a15d2ad5320e3331eac07626dd
-# Zig's own licence: beside its lib folder as ziglang.org gives it, or where a
+# Zig's own licence: beside its lib directory as ziglang.org gives it, or where a
 # distribution puts it
 mkdir -p "$licences/zig"
 zig_licence=""

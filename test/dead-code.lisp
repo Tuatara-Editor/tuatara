@@ -166,11 +166,11 @@ definition."
 
 (defun dead-code-checkable-p ()
   "True when the package repositories are found, so that a name only they use can be told from a dead one."
-  (and (packages-folder) t))
+  (and (sibling-packages-directory) t))
 
 (define-test (definitions dead-code-skipped-without-packages)
   :description "Without the package repositories the dead-code test is skipped, not failed on names only they use."
-  (let ((*packages-folder-candidates* '("/nonexistent/tuatara-packages/")))
+  (let ((*packages-directory-candidates* '("/nonexistent/tuatara-packages/")))
     (false (dead-code-checkable-p))
     (is equal '() (package-repositories))
     (is equal '() (package-source-files))))

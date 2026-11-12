@@ -381,7 +381,7 @@ next free: image1.png, image2.jpeg."
   "A run showing the picture LINK leads to, in the document's media, as wide as
 the width setting or WIDTH (twentieths of a point) says, or as high as HEIGHT
 says, else its own width at 96 pixels an inch but never wider than the text. A
-note when it cannot be shown or is outside the folders an export may take files
+note when it cannot be shown or is outside the directories an export may take files
 from (ORG-EXPORT-FILE-ALLOWED-P), and its name in its place. A picture your own
 template ASKED the note for ({{{logo:path}}}) shows from wherever the note names
 it, as the PDF export's does."
@@ -1090,7 +1090,7 @@ hide left out ([redacted])."
 
 (defun built-in-docx-template ()
   "Tuatara's own look for Word documents as a Word template's parts, each
-(NAME . OCTETS) as DOCX-READ-FOLDER gives a template's: an A4 page, its
+(NAME . OCTETS) as DOCX-READ-DIRECTORY gives a template's: an A4 page, its
 number at the foot, the built-in styles (DOCX-STYLES), the note's title,
 subtitle, author and date where it gives them, its contents unless #+OPTIONS:
 toc:nil, then {{{body}}}. Filled by DOCX-TEMPLATE-PACKAGE as a template of
@@ -1167,8 +1167,8 @@ a third what else to say of it, a list of sentences."
          (*docx-indent* 0))
     (org-latex-take-in text tree directory)
     (let* ((named (org-template-name))
-           (folder (and named (docx-template-folder named directory)))
-           (own (and folder (docx-read-folder folder)))
+           (dir (and named (docx-template-directory named directory)))
+           (own (and dir (docx-read-directory dir)))
            ;; a template of your own, else Tuatara's own look, both filled by DOCX-TEMPLATE-PACKAGE
            (parts (or own (built-in-docx-template))))
       (docx-template-start parts)

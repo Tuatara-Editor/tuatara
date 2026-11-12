@@ -159,7 +159,7 @@ The selection goes with the selected window's buffer."
   "The screen row and column of WINDOW's point, or of its top left corner when
 point was not in its last layout."
   (multiple-value-bind (row column) (tuatara.display:window-point-position window)
-    (values (+ (tuatara.display:window-text-top window) (or row 0))
+    (values (+ (tuatara.display:window-text-top window) (if row (frontend-row window row) 0))
             (+ (tuatara.display:area-left window) (tuatara.display:window-margin window) (or column 0)))))
 
 (defun window-at-cell (column row &optional (editor *editor*))
@@ -186,10 +186,12 @@ of the line when the cell is past its text, the last character of a row a long
 line goes on from, or the end of what the window shows when the cell is below
 it."
   (let* ((rows (tuatara.display:window-rows window))
-         (r (max 0 (nth-value 1 (window-text-cell window column row))))
+         (r (max 0 (layout-row window (nth-value 1 (window-text-cell window column row)))))
          (c (max 0 (nth-value 0 (window-text-cell window column row))))
          ;; on a row drawn large, as many times fewer columns
-         (c (if (< r (length rows)) (floor c (tuatara.display:row-scale (aref rows r))) c)))
+         (c (if (< r (length rows))
+                (floor c (tuatara.display:text-scale (tuatara.display:row-scale (aref rows r))))
+                c)))
     (if (zerop (length rows))
         (tuatara.display:window-start window)
         (let ((shown (aref rows (min r (1- (length rows))))))

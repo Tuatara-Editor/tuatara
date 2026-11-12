@@ -206,7 +206,7 @@ list, has the frontend show pictures. Returns the frontend and the editor."
       (tuatara.display:apply-theme theme)
       (tuatara.terminal-emulator::recolour-terminal-faces))))
 
-(define-test (terminal normal-state-as-text)
+(define-modal-test (terminal normal-state-as-text)
   ;; C-\ stops typing: the screen stands still as text, keys move point there
   (multiple-value-bind (f editor)
       (terminal-session (list "M-x t e r m i n a l RET" (list :until (buffer-holding "$"))
@@ -647,7 +647,7 @@ web address, then ready, and reading what is typed."
           (true (tuatara.io:safe-visit-p buffer)))))))
 
 (define-test (terminal starts-at-home-from-a-safe-visit)
-  ;; from a file opened safely, or a folder of *safe-directories*: the shell starts at home
+  ;; from a file opened safely, or a directory of *safe-directories*: the shell starts at home
   (with-test-directory (dir)
     (let ((file (namestring (merge-pathnames "evidence.txt" dir)))
           (home (tuatara.io:home-directory)))
@@ -664,7 +664,7 @@ web address, then ready, and reading what is typed."
                    (is equal home (tuatara.buffer:buffer-local buffer :directory))
                    (true (tuatara.frontend.fake:fake-frame-showing f "home directory"))))))
         (started (list (list :do (lambda (buffer) (declare (ignore buffer)) (tuatara.defaults::visit-path file :safe t)))))
-        ;; a buffer standing in a folder of *safe-directories*
+        ;; a buffer standing in a directory of *safe-directories*
         (let ((tuatara-user:*safe-directories* (list (namestring dir)))
               (place (tuatara.buffer:make-buffer "*in-the-evidence*")))
           (setf (tuatara.buffer:buffer-local place :directory) (namestring dir))

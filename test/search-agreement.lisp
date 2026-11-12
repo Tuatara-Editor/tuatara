@@ -346,7 +346,7 @@ character on after an empty one going forward."
           (tuatara.defaults::count-line-matches rope (tuatara.defaults::make-pattern-matcher (first case) :regex t) 0 4)
           "how many ~s" (first case)))))
 
-(define-test (search-agreement first-per-line-after-empty)
+(define-modal-test (search-agreement first-per-line-after-empty)
   ;; without g one match on each line, also when the first is an empty one at a line's start
   (let* ((text (format nil "foo bar~%foo bar~%bxx~%"))
          (rope (tuatara.text:string->rope text))

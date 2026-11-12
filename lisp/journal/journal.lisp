@@ -17,7 +17,7 @@
 - nil: journal/ in *FORMATTED-FILE-DIRECTORY* (such as ~/notes/journal/),
   as standard.
 - a directory's name: that directory, such as \"~/journal/\"."
-  :values (or (member nil) folder))
+  :values (or (member nil) directory))
 
 (define-setting *journal-keyword* "journal"
   "The keyword in the formatted name of each journal entry, by which entries

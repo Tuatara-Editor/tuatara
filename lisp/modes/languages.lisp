@@ -64,7 +64,7 @@ they inherit is put in, are not used: NIL, and said."
 (defun read-kind-query (kind name)
   "The text of the rules of KIND (as SYNTAX-DIRECTORY names kinds) called NAME:
 Tuatara's own, syntax/KIND/NAME.scm, else those you added, KIND/NAME.scm in
-the folder of grammars you add; NIL when there are none. Rules you added
+the directory of grammars you add; NIL when there are none. Rules you added
 for one of Tuatara's grammars are said as they are taken."
   (or (read-query (syntax-directory kind) name)
       (let ((text (read-query (merge-pathnames (format nil "~a/" kind) (tuatara.syntax:user-grammar-directory)) name)))
@@ -222,7 +222,7 @@ against one meaning to, as a package runs Lisp with all the rights Tuatara has."
 (defmacro define-language (name doc &key grammar modes (indent 4) more-textobjects injection-names definitions queries)
   "Define language NAME (of code or of text, such as Markdown), documented by
 DOC, parsed with the tree-sitter grammar GRAMMAR (the name of its file, rust
-for rust.so: Tuatara's own, or one you added to the folder of grammars you
+for rust.so: Tuatara's own, or one you added to the directory of grammars you
 add, ~/.local/share/tuatara/grammars/, its rules beside it in rules/,
 indents/ and the rest) and edited in the major modes MODES. Its colouring rules are
 read from syntax/rules/GRAMMAR.scm, and its indentation rules, if it has

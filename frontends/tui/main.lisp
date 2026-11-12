@@ -71,7 +71,7 @@ License, version 3 or later.
             "the C in the mode line counts from 0), as in"
             "tuatara +120:8 main.lisp +3 notes.org"))
     (:flags (("--diff" "OLD NEW"))
-     :text ("open the differences between the two files, or two folders, as"
+     :text ("open the differences between the two files, or two directories, as"
             "M-x diff-files shows them, and exit when you quit; for git, as"
             "git config difftool.tuatara.cmd 'tuatara --diff \"$LOCAL\" \"$REMOTE\"'"))
     (:flags (("--merge" "LOCAL BASE REMOTE MERGED"))
@@ -81,12 +81,12 @@ License, version 3 or later.
             "mergetool.tuatara.cmd 'tuatara --merge \"$LOCAL\" \"$BASE\""
             "\"$REMOTE\" \"$MERGED\"' and mergetool.tuatara.trustExitCode true"))
     (:flags (("--safe") ("-R"))
-     :text ("open the files safely, whatever folder they are in: read only,"
+     :text ("open the files safely, whatever directory they are in: read only,"
             "no mode or hook acting on them, nothing written")
      :why ("Use it to look at a file you do not trust or must not alter: a download,"
-           "the contents of a disk image, evidence. Nothing in the folder acts on the"
+           "the contents of a disk image, evidence. Nothing in the directory acts on the"
            "file and nothing is written, so opening it leaves it as it was. What you"
-           "give up is what the folder's own settings and tools would add, and saving"
+           "give up is what the directory's own settings and tools would add, and saving"
            "changes."))
     (:flags (("--hex"))
      :text ("open the files in the hex view, never first as text")
@@ -142,7 +142,7 @@ License, version 3 or later.
             "it (build.example, me@build.example), a name from ~/.ssh/config"
             "written with a colon after it (build: or build:work); its host"
             "key must be known already; the files named are that machine's,"
-            "a relative name from your home folder there; - is not taken,"
+            "a relative name from your home directory there; - is not taken,"
             "and pictures stay on each side, the clipboard, dropped files and"
             "your agents too unless HOST is trusted with them (M-x"
             "server-list); with --start, the daemon there is started first"
@@ -161,7 +161,7 @@ License, version 3 or later.
             "with --start, start it first when none runs"))
     (:flags (("--receive-file" "PATH"))
      :text ("write standard input, a file dropped on the window of a client"
-            "on another machine, at PATH, from your home folder unless it"
+            "on another machine, at PATH, from your home directory unless it"
             "begins with /, for you alone and under a name nothing has yet;"
             "say where, and exit"))
     (:flags (("--start"))
@@ -188,7 +188,7 @@ License, version 3 or later.
     (:flags (("-Q") ("--no-init"))
      :text ("start without the init file and so without packages, with what"
             "Tuatara keeps between sessions (files visited lately, the"
-            "session, bookmarks) kept apart in a folder that goes with the"
+            "session, bookmarks) kept apart in a directory that goes with the"
             "session, the real one neither read nor changed")
      :why ("Use it when something in the init file or a package gets in the way: a"
            "setting that slows the editor or a package that fails to load. You get the"
@@ -253,39 +253,39 @@ manual page is made from this table too.")
 
 (defparameter *environment-help*
   '((:names ("HOME")
-     :text ("The home folder, where the folders below are when the variables that follow"
+     :text ("The home directory, where the directories below are when the variables that follow"
             "are not set."))
     (:names ("XDG_CONFIG_HOME")
-     :text ("Where the configuration folder, tuatara/, is: the init file, snippets and"
-            "templates; and the desktop's autostart/ folder. Not set: ~/.config.")
-     :why ("Set it to keep the init file and templates in a folder you back up or share"
+     :text ("Where the configuration directory, tuatara/, is: the init file, snippets and"
+            "templates; and the desktop's autostart/ directory. Not set: ~/.config.")
+     :why ("Set it to keep the init file and templates in a directory you back up or share"
            "between machines, or to run a second setup beside your own (a trial, a"
            "test): Tuatara then reads and writes only there. A daemon takes the value"
            "of the call that started it."))
     (:names ("XDG_STATE_HOME")
-     :text ("Where the state folder, tuatara/, is: what Tuatara remembers between sessions"
+     :text ("Where the state directory, tuatara/, is: what Tuatara remembers between sessions"
             "and the auto-saved copies. Not set: ~/.local/state.")
      :why ("Set it to keep what Tuatara remembers on another drive, or apart for a"
            "trial. The auto-saved copies are there too, so choose a drive that is"
            "mounted when you want to recover a file."))
     (:names ("XDG_DATA_HOME")
-     :text ("Where the data folder, tuatara/, is: the grammars you added and the packages"
+     :text ("Where the data directory, tuatara/, is: the grammars you added and the packages"
             "fetched. Not set: ~/.local/share.")
      :why ("Set it to keep fetched packages and added grammars on a drive with room, or"
            "apart for a trial."))
     (:names ("XDG_CACHE_HOME")
-     :text ("Where the cache folder, tuatara/, is: files made again when they are gone, and"
+     :text ("Where the cache directory, tuatara/, is: files made again when they are gone, and"
             "the logs. Not set: ~/.cache.")
      :why ("Set it to a fast or temporary drive, as nothing there is lost for good: the"
            "next start makes again what it needs (compiled packages, previews), and"
            "takes longer for it. The debug log, stderr.log and the daemons' logs are"
-           "there too, so a fresh folder starts them empty."))
+           "there too, so a fresh directory starts them empty."))
     (:names ("XDG_RUNTIME_DIR")
-     :text ("Where a folder named by a setting is kept in memory while it is not there, as"
+     :text ("Where a directory named by a setting is kept in memory while it is not there, as"
             "when its drive is not mounted; and where a daemon's socket is, in tuatara/,"
             "for you alone. Not set: no daemon starts, and no client finds one.")
      :why ("Your login sets it. Set it by hand only where there is none (a container, a"
-           "cron job), to a folder only you can enter, or no daemon will start there."))
+           "cron job), to a directory only you can enter, or no daemon will start there."))
     (:names ("NO_COLOR")
      :text ("When set and not empty, tuatara uses no colours in the terminal, unless the"
             "setting *tui-colours* says how many.")
@@ -306,10 +306,10 @@ manual page is made from this table too.")
            "If the terminal does not show it, the colours come out wrong. A client of"
            "a daemon brings its own value."))
     (:names ("TERMINFO" "TERMINFO_DIRS")
-     :text ("Where the terminal's description is looked for, besides the usual folders.")
-     :why ("Set one when a terminal's description is installed in your home folder and"
+     :text ("Where the terminal's description is looked for, besides the usual directories.")
+     :why ("Set one when a terminal's description is installed in your home directory and"
            "not in the system's; the terminal is otherwise taken for one the usual"
-           "folders describe."))
+           "directories describe."))
     (:names ("WAYLAND_DISPLAY" "DISPLAY")
      :text ("With neither input nor output a terminal, a desktop to show a window on.")
      :why ("The desktop sets them. Set one by hand to open the window on another"
@@ -627,7 +627,7 @@ before the files. After --, every argument is a file's name."
                 ((string= argument "--")
                  (dolist (rest arguments) (push (list :literal rest) named))
                  (return))
-                ;; a file named as an option, as * gives one in a folder holding it: never read as
+                ;; a file named as an option, as * gives one in a directory holding it: never read as
                 ;; one, so that no file there chooses the init file or what is done
                 ((and (or (option-p argument) (option-like-p argument))
                       (tuatara.runtime:ignoring-errors-reported ("examining ~a" argument)
@@ -798,7 +798,7 @@ DIRECTORY."
 
 (defun generate-config ()
   "Write the starter init file as generated-init.lisp in the configuration
-folder, never over a file there; said on the standard output, or why not on
+directory, never over a file there; said on the standard output, or why not on
 the error output. The exit code: 0 when written, 1 when not."
   (let ((path (tuatara.defaults::config-path "generated-init.lisp")))
     (multiple-value-bind (written why) (tuatara.defaults::write-starter-config path)

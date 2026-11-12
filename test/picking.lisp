@@ -15,8 +15,8 @@ the background says how far it has got in the same words everywhere.")
        (tuatara.command::completion-candidates (tuatara.command:editor-completion tuatara.command:*editor*))))
 
 (defmacro with-test-home ((home) &body body)
-  "Run BODY with HOME bound to a home folder of the test's own, in a new
-temporary directory, holding the folders Documents/ and notes/ and the file
+  "Run BODY with HOME bound to a home directory of the test's own, in a new
+temporary directory, holding the directories Documents/ and notes/ and the file
 todo.org: ~ leads there meanwhile, never to your own home, and HOME is as it
 was afterwards (unset when it was)."
   (let ((old (gensym "OLD")) (dir (gensym "DIR")))
@@ -28,7 +28,7 @@ was afterwards (unset when it was)."
          (put-file (merge-pathnames "todo.org" ,home) "* one")
          (unwind-protect
               (progn (sb-posix:setenv "HOME" (string-right-trim "/" (namestring ,home)) 1)
-                     ;; the folder ~ named a moment ago is looked up again
+                     ;; the directory ~ named a moment ago is looked up again
                      (setf tuatara.io::*default-directory-found* nil)
                      ,@body)
            (if ,old (sb-posix:setenv "HOME" ,old 1) (sb-posix:unsetenv "HOME"))
@@ -224,7 +224,7 @@ was afterwards (unset when it was)."
   (setf *held-gathering* (held-gathering (list '("alpha") '("beta"))))
   (tuatara.defaults::read-keywords "New file KEYWORDS: " (list nil *held-gathering*)))
 
-(define-test (picking progress-alike)
+(define-modal-test (picking progress-alike)
   ;; two kinds of question filling in the background say how far they have got alike
   (let ((tuatara-user:*formatted-file-keywords* '("garden")))
     (let ((*held-gathering* nil))
@@ -265,38 +265,38 @@ was afterwards (unset when it was)."
               :width 200 :height 20)
     (values text offered)))
 
-(define-test (picking path-question-starts-at-last-folder)
-  ;; in a home of the test's own: ~ is its folder, and *scratch* stands in it
+(define-test (picking path-question-starts-at-last-directory)
+  ;; in a home of the test's own: ~ is its directory, and *scratch* stands in it
   (with-test-home (home)
     (let ((root (tuatara.io:native home)))
       (ensure-directories-exist (merge-pathnames "a/" home))
       (ensure-directories-exist (merge-pathnames "b/" home))
       (let ((tuatara-user:*last-used-first* t))
-        ;; the folder of the file chosen last, with no file name
+        ;; the directory of the file chosen last, with no file name
         (tuatara.defaults::note-chosen-path (concatenate 'string root "a/notes.txt"))
         (is string= "~/a/" (path-question-shown "C-x C-f"))
-        ;; a folder chosen last is the folder itself, its name ending in / or not, for a file
-        ;; question and for a folder question alike
+        ;; a directory chosen last is the directory itself, its name ending in / or not, for a file
+        ;; question and for a directory question alike
         (tuatara.defaults::note-chosen-path (concatenate 'string root "b") :directory t)
         (is string= "~/b/" (path-question-shown "C-x C-f"))
         (is string= "~/b/" (path-question-shown "C-x d"))
-        ;; a folder no longer there is where it starts still, its list empty: the disk is not
+        ;; a directory no longer there is where it starts still, its list empty: the disk is not
         ;; asked before the question shows
         (tuatara.defaults::note-chosen-path (concatenate 'string root "gone/file.txt"))
         (multiple-value-bind (text offered) (path-question-shown "C-x C-f")
           (is string= "~/gone/" text)
           (is equal '() offered)))
-      ;; with *last-used-first* NIL, the current buffer's folder, the home
+      ;; with *last-used-first* NIL, the current buffer's directory, the home
       (let ((tuatara-user:*last-used-first* nil))
         (tuatara.defaults::note-chosen-path (concatenate 'string root "a/notes.txt"))
         (is string= "~/" (path-question-shown "C-x C-f"))))))
 
 (define-test (picking path-question-remembers-nothing-safe)
   ;; a path opened safely, or in one of *safe-directories*, is never the last path nor a
-  ;; folder's last choice: no later question starts in or offers a folder of evidence
+  ;; directory's last choice: no later question starts in or offers a directory of evidence
   (with-test-home (home)
     (let ((root (tuatara.io:native home)))
-      (dolist (folder '("work/" "evidence/" "kept/")) (ensure-directories-exist (merge-pathnames folder home)))
+      (dolist (directory '("work/" "evidence/" "kept/")) (ensure-directories-exist (merge-pathnames directory home)))
       (put-file (merge-pathnames "evidence/disk.img" home) "x")
       (put-file (merge-pathnames "kept/mail.eml" home) "x")
       (let ((tuatara-user:*last-used-first* t)
@@ -314,7 +314,7 @@ was afterwards (unset when it was)."
           (run-keys (format nil "C-x C-f C-a C-k ~a RET" (key-string (concatenate 'string root "kept/mail.eml")))
                     :width 200 :height 20)
           (is string= work (latest))
-          ;; that folder itself, listed
+          ;; that directory itself, listed
           (run-keys (format nil "C-x d C-a C-k ~a C-j" (key-string (concatenate 'string root "kept/")))
                     :width 200 :height 20)
           (is string= work (latest))
@@ -333,8 +333,8 @@ was afterwards (unset when it was)."
   (dolist (b (copy-list tuatara.buffer:*buffers*))
     (when (tuatara.io:safe-visit-p b) (tuatara.buffer:kill-buffer b))))
 
-(define-test (picking path-question-evidence-folder-listed-safely)
-  ;; a folder listed safely, then asked for again (C-x d, C-x C-f): not remembered, the safe
+(define-test (picking path-question-evidence-directory-listed-safely)
+  ;; a directory listed safely, then asked for again (C-x d, C-x C-f): not remembered, the safe
   ;; list being what shows it
   (with-test-home (home)
     (let* ((root (tuatara.io:native home))
@@ -379,19 +379,19 @@ was afterwards (unset when it was)."
         (kill-safe-lists)))))
 
 (define-test (picking path-question-skips-evidence-remembered-before)
-  ;; paths remembered before a folder became one of *safe-directories* (or by an older
-  ;; session) are passed over: the question starts at the latest other, and the folder's
+  ;; paths remembered before a directory became one of *safe-directories* (or by an older
+  ;; session) are passed over: the question starts at the latest other, and the directory's
   ;; list does not put them first
   (with-test-home (home)
     (let* ((root (tuatara.io:native home))
            (kept (concatenate 'string root "kept/")))
-      (dolist (folder '("work/" "kept/")) (ensure-directories-exist (merge-pathnames folder home)))
+      (dolist (directory '("work/" "kept/")) (ensure-directories-exist (merge-pathnames directory home)))
       (dolist (file '("kept/a.eml" "kept/b.eml")) (put-file (merge-pathnames file home) "x"))
       (let ((tuatara-user:*last-used-first* t))
         (tuatara.defaults::note-chosen-path (concatenate 'string root "work/notes.txt"))
         (tuatara.defaults::note-chosen-path (concatenate 'string kept "b.eml"))
         (is string= "~/kept/" (path-question-shown "C-x C-f"))
-        ;; set for every thread: the folder is read on one of its own
+        ;; set for every thread: the directory is read on one of its own
         (let ((before tuatara-user:*safe-directories*))
           (unwind-protect
                (progn
@@ -424,8 +424,8 @@ was afterwards (unset when it was)."
              (is string= named (first (tuatara.defaults::chosen-paths))))
         (kill-safe-lists)))))
 
-(define-test (picking path-question-slow-folder-listed-once)
-  ;; a folder whose listing does not end (a drive that does not answer) is not where the
+(define-test (picking path-question-slow-directory-listed-once)
+  ;; a directory whose listing does not end (a drive that does not answer) is not where the
   ;; next question starts, nor listed a second time while the first listing goes on
   (with-test-home (home)
     (let* ((root (tuatara.io:native home))
@@ -451,16 +451,16 @@ was afterwards (unset when it was)."
                                               (funcall real expanded chosen)))))
                (tuatara.defaults::note-chosen-path (concatenate 'string stuck "file.txt"))
                (is string= "~/stuck/" (started-with "C-x C-f"))
-               ;; its listing goes on: the next question starts at the buffer's folder, the home
+               ;; its listing goes on: the next question starts at the buffer's directory, the home
                (is string= "~/" (started-with "C-x C-f"))
-               ;; and typing that folder does not list it again
+               ;; and typing that directory does not list it again
                (started-with (format nil "C-x C-f C-a C-k ~a" (key-string stuck)))
                (is = 1 listed))
           (sb-thread:signal-semaphore gate 5)
           (setf tuatara.defaults::*slow-listings* '()))))))
 
 (define-test (picking path-question-shift-tab-goes-home)
-  ;; S-TAB puts ~/ in place of the path typed, listing the home folder (a home of the test's own)
+  ;; S-TAB puts ~/ in place of the path typed, listing the home directory (a home of the test's own)
   (with-test-home (home)
     (multiple-value-bind (text offered) (path-question-shown "C-x C-f x y z S-TAB")
       (is string= "~/" text)
@@ -469,12 +469,12 @@ was afterwards (unset when it was)."
 (define-test (picking path-question-last-chosen-then-by-name)
   (with-test-directory (dir)
     (let ((root (tuatara.io:native dir)))
-      (dolist (folder '("sub10/" "sub9/")) (ensure-directories-exist (merge-pathnames folder dir)))
+      (dolist (directory '("sub10/" "sub9/")) (ensure-directories-exist (merge-pathnames directory dir)))
       (dolist (file '("file10" "file2" "File3" ".hidden")) (put-file (merge-pathnames file dir) "x"))
       (let ((tuatara-user:*last-used-first* t))
         (tuatara.defaults::note-chosen-path (concatenate 'string root "file2"))
         (tuatara.defaults::note-chosen-path (concatenate 'string root "file10"))
-        ;; the one chosen there last on top, once; then the folders and the files, each by name
+        ;; the one chosen there last on top, once; then the directories and the files, each by name
         (is equal '("file10" "sub9/" "sub10/" ".hidden" "file2" "File3")
             (nth-value 1 (path-question-shown (format nil "C-x C-f C-a C-k ~a" (key-string root)))))
         ;; typing narrows as before, the best matches first, those chosen lately before others

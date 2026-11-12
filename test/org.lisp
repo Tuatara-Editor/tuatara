@@ -547,7 +547,7 @@ seconds; the editor draws after it as it does when woken."
       (dotimes (row 10)
         (is equal (org-row-faces plain row) (org-row-faces crlf row) "row ~d" row)))))
 
-(define-test (org big-file-parse-awaited)
+(define-modal-test (org big-file-parse-awaited)
   ;; a structure command on a file past *org-parse-at-once* waits for the parse made in the
   ;; background, the editor reading keys meanwhile, rather than parsing at once in the command
   (let ((text (with-output-to-string (o)
@@ -597,7 +597,7 @@ seconds; the editor draws after it as it does when woken."
     (true (org-faces-include f 1 " 30% *" :org-property-value))
     (true (org-faces-include f 2 "colour:" :error))))
 
-(define-test (org macro-calls-shown-as-their-text)
+(define-modal-test (org macro-calls-shown-as-their-text)
   ;; any macro call with arguments shows as them, as redact and protect do; one without stays as written
   (let ((f (run-keys "M-x o r g - m o d e RET"
                      :text (format nil "Press {{{kbd(C-x C-s)}}} in {{{title}}}.~%| {{{kbd(a)}}} | b |~%| ccc | d |~%")
@@ -608,13 +608,13 @@ seconds; the editor draws after it as it does when woken."
     (is string= (lines "| {{{kbd(a)}}}   | b |" "| ccc | d |")
         (remove #\@ (org-table-after "C-c C-c" (lines "| {{{kbd(a)}}}@ | b |" "| ccc | d |"))))))
 
-(define-test (org hiding-braces-shown-at-point)
+(define-modal-test (org hiding-braces-shown-at-point)
   ;; point in a call: its braces shown, to be edited; the other call's still hidden
   (let ((f (run-keys (format nil "M-x o r g - m o d e RET g g ~{~a~^ ~}" (make-list 9 :initial-element "l"))
                      :text (format nil "Subject {{{R(John Otago)}}} met {{{P(Ann)}}}.~%") :width 80 :height 6)))
     (true (uiop:string-prefix-p "Subject {{{R(John Otago)}}} met Ann." (tuatara.frontend.fake:fake-screen-line f 0)))))
 
-(define-test (org wrapping-in-a-macro)
+(define-modal-test (org wrapping-in-a-macro)
   ;; C-c m: the selection or the word at point wrapped in a macro chosen from a list: R, P, those the note declares
   (flet ((after (keys text)
            (let ((tuatara.export::*org-last-macro* "R"))
@@ -698,7 +698,7 @@ seconds; the editor draws after it as it does when woken."
           (tuatara.modes:set-auto-mode buffer)
           (is eq 'tuatara.defaults::text-mode (type-of (tuatara.modes:buffer-major-mode buffer))))))))
 
-(define-test (org places-kept-while-asking)
+(define-modal-test (org places-kept-while-asking)
   ;; text taken in while a command asks (a job's result, here put in at the top): what the command
   ;; was asked for is found again where it went, the change kept
   (let ((tuatara.defaults::*org-now* (encode-universal-time 0 0 9 2 10 2026))

@@ -467,7 +467,7 @@ opened safely when it did.")
   (:documentation "Make a buffer of what is read from DESCRIPTOR, open, and return the buffer,
 for - among the files the editor is started with: called *stdin*, read only
 and opened safely. The defaults read it in the background; the core's own
-host reads it all first, into a file with no name in the cache folder.")
+host reads it all first, into a file with no name in the cache directory.")
   (:method ((host tuatara.runtime:host) descriptor)
     (multiple-value-bind (scratch size)
         (unwind-protect (tuatara.io:copy-descriptor-to-scratch descriptor)

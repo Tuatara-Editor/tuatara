@@ -28,7 +28,7 @@ the buffer killed afterwards."
   (format nil "#+title: Notes~%* One~%text~%** Two~%more~%*bold* is no heading~%* Three~%")
   "An Org text with three headings, one under another.")
 
-(define-test (outline org-headings)
+(define-modal-test (outline org-headings)
   (let ((text *outline-org*))
     (flet ((at (string) (search string text)))
       ;; each heading as its line after its number, the first selected

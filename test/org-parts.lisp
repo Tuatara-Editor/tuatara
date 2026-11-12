@@ -167,7 +167,7 @@ the carriage returns before newlines left out only where lines end in CR LF."
     (let ((per-100-kb (/ (- (per-key 400000) (per-key 100000)) 3)))
       (true (< per-100-kb 20000) "~:d octets for each key, for each 100 KB more of file" (round per-100-kb)))))
 
-(define-test (org typed-headlines-coloured-at-once)
+(define-modal-test (org typed-headlines-coloured-at-once)
   ;; a headline typed in the middle of a note is coloured as one at once; its star taken away, the line is text again
   (let ((text (with-output-to-string (out)
                 (dotimes (i 40) (format out "* Heading ~d~%Text of ~d.~%" i i)))))

@@ -681,6 +681,18 @@ picture is shown or on its way: its text is not there to put a cursor in."
            (not (tuatara.buffer:buffer-local buffer :image-hidden))
            (tuatara.buffer:buffer-local buffer :picture-view))))
 
+(defun frontend-row (window row)
+  "The row, counted from WINDOW's first row of text, the frontend is told for
+row ROW of WINDOW's last layout: ROW itself where the frontend moves rows
+down under rows drawn large (*ROW-SCALING*), else the screen row it is
+drawn on (TUATARA.DISPLAY:WINDOW-ROW-TOP)."
+  (if tuatara.display:*row-scaling* row (tuatara.display:window-row-top window row)))
+
+(defun layout-row (window row)
+  "The row of WINDOW's last layout shown at ROW, a row the frontend gives
+counted from WINDOW's first row of text (FRONTEND-ROW, the other way)."
+  (if (or tuatara.display:*row-scaling* (minusp row)) row (tuatara.display:window-row-at window row)))
+
 (defun lay-out-window (editor window)
   "Lay WINDOW out with its point visible, its gutter's width worked out
 again: the rows it shows. Point is kept visible in the rows the window has
@@ -740,7 +752,7 @@ each (AT FACE), and SHIFT, how far rows drawn large above move it down."
               text (concatenate 'string text (make-string fill :initial-element #\Space)))))
     (multiple-value-bind (text spans) (ruler-cells text (remove nil spans :key #'third) rulers)
       ;; a row drawn large, from after its gutter, or moved down by those above
-      (let ((scale (tuatara.display:row-scale row)))
+      (let ((scale (tuatara.display:text-scale (tuatara.display:row-scale row))))
         (list left width text spans nil
               (and (or (/= scale 1) (plusp shift)) (list (length gutter) scale shift))
               (tuatara.display:string-columns gutter))))))
@@ -886,6 +898,87 @@ another: a row is made only when something it shows has changed."
                       ;; below rows moved down: left to them
                       (list left width text spans nil (and (plusp shift) (list 0 0 0))))))))))
 
+(defun note-window-pictures (editor window rows)
+  "Note in *FRAME-IMAGES* the pictures WINDOW shows, ROWS its layout, as
+WINDOW-PIECES says, where EDITOR's frontend shows pictures; return the rows
+to draw: ROWS, or none where a picture stands in place of the text or is on
+its way."
+  (let* ((frontend (editor-frontend editor))
+         (buffer (tuatara.display:window-buffer window))
+         (top (tuatara.display:window-text-top window))
+         (left (tuatara.display:area-left window))
+         (text-left (+ left (tuatara.display:window-margin window)))
+         (height (tuatara.display:window-height window))
+         (image (picture-in-place frontend buffer)))
+    (when image
+      (push (list image top left (tuatara.display:window-width window) height
+                  (tuatara.buffer:buffer-local buffer :image-offset))
+            *frame-images*)
+      (setf rows #()))
+    (when (tuatara.frontend:frontend-images-p frontend)
+      (loop with text-width = (tuatara.display:window-text-width window)
+            for (picture row column columns tall) in (tuatara.buffer:buffer-local buffer :pictures)
+            for shown-rows = (min tall (- height row))
+            for shown-columns = (min columns (- text-width column))
+            when (and (>= row 0) (>= column 0) (plusp shown-rows) (plusp shown-columns))
+              do (push (list picture (+ top row) (+ text-left column) shown-columns shown-rows nil) *frame-images*))
+      (let ((place (tuatara.buffer:buffer-local buffer :row-pictures-function)))
+        (when (and place (plusp (length rows)))
+          (loop with drawn = (min (length rows) (tuatara.display:window-rows-drawn window))
+                for (picture row column columns tall skipped) in (funcall place window rows)
+                for row-top = (tuatara.display:window-row-top window row)
+                when (< -1 row drawn)
+                  do (push (if skipped
+                               ;; at its own size, from the rows above the window's start on, cut at its foot
+                               (list picture (+ top row-top) (+ text-left column) columns
+                                     (min tall (- height row-top)) (list skipped 0))
+                               ;; at the foot of its row, which begins higher when it begins below a float
+                               (list picture (+ top row-top (- (tuatara.display:row-scale (aref rows row)) tall))
+                                     (+ text-left column) columns tall nil))
+                           *frame-images*))))
+      ;; a buffer shown as pictures (:picture-view) whose picture is on its way: blank, not its text
+      (when (and (null image)
+                 (not (tuatara.buffer:buffer-local buffer :image-hidden))
+                 (tuatara.buffer:buffer-local buffer :picture-view)
+                 (tuatara.buffer:buffer-local buffer :picture-pending))
+        (setf rows #())))
+    rows))
+
+(defun put-window-rows (window rows cells cursor-ends rulers screen)
+  "Add to SCREEN the pieces of WINDOW's text rows, as WINDOW-PIECES says: each
+of ROWS, its layout, with its gutter's CELLS, the other cursor after its
+line's end from CURSOR-ENDS ((ROW . FACE)) and the columns RULERS marks, those
+past the window's text blank. Where the frontend moves rows down under rows
+drawn large (*ROW-SCALING*) each row is put on its own screen row and told
+how far down it goes; elsewhere a tall row's band is the screen rows below
+it, left blank. The rows past those WINDOW draws (WINDOW-ROWS-DRAWN) are left
+out."
+  (let* ((top (tuatara.display:window-text-top window))
+         (left (tuatara.display:area-left window))
+         (width (tuatara.display:window-width window))
+         (height (tuatara.display:window-height window))
+         (margin (tuatara.display:window-margin window))
+         (shift 0) (s 0)
+         (drawn (min (length rows) (tuatara.display:window-rows-drawn window)))
+         (drawn-rows (begin-drawing-rows window height))
+         (in-place (not tuatara.display:*row-scaling*)))
+    (flet ((put (piece)
+             (push piece (aref screen (+ top s)))
+             (when (tuatara.display:window-divider window)
+               (push (list (+ left width) 1 *window-divider* '((0 1 :vertical-border)) nil) (aref screen (+ top s))))
+             (incf s)))
+      (dotimes (r drawn)
+        (let ((row (aref rows r)))
+          (put (row-piece drawn-rows s row (pop cells) margin left width (cdr (assoc r cursor-ends))
+                          rulers (if in-place 0 shift)))
+          (if in-place
+              (loop repeat (1- (ceiling (tuatara.display:row-scale row)))
+                    while (< s height)
+                    do (put (row-piece drawn-rows s nil nil margin left width nil rulers 0)))
+              (incf shift (1- (tuatara.display:row-scale row))))))
+      (loop while (< s height)
+            do (put (row-piece drawn-rows s nil nil margin left width nil rulers shift))))))
+
 (defun window-pieces (editor window selected screen)
   "Lay WINDOW out with its point visible and add what it shows to SCREEN, a
 vector of the pieces of each screen row (PUT-SCREEN-ROW). It adds its buffer's
@@ -894,6 +987,14 @@ the divider beside a window to its right, and its mode line, in :mode-line
 when it is SELECTED, else in :mode-line-inactive. Point is kept visible in the
 rows the window has under a panel of one row, so that a taller panel, while it
 lasts, only hides rows.
+Pictures among the rows of its text (its :row-pictures-function local, a
+function of WINDOW and its rows, giving (IMAGE ROW COLUMN COLUMNS ROWS) for
+row ROW of them and a column of its text, where a row was left as tall as
+the picture or taller, the picture at its foot, or (IMAGE ROW COLUMN COLUMNS
+ROWS SKIPPED) for one the text goes round, SKIPPED of its rows above ROW not
+shown) are noted too, where the frontend shows pictures.
+Where the frontend draws all rows alike (not *ROW-SCALING*), a row of more
+than one row's height takes as many screen rows, those below it blank.
 A buffer with a picture (its :image local) has it shown in place of its text
 where the frontend shows pictures, unless its :image-hidden local is true, at
 its own size from its :image-offset when it has one. The text rows are left
@@ -936,45 +1037,9 @@ terminal's) are noted too, its text shown as it is."
                     (aref screen header-top)))
             (when (tuatara.display:window-divider window)
               (push (list (+ left width) 1 *window-divider* '((0 1 :vertical-border)) nil) (aref screen header-top)))))
-        (let ((image (picture-in-place (editor-frontend editor) (tuatara.display:window-buffer window))))
-          (when image
-            (push (list image top left width height
-                        (tuatara.buffer:buffer-local (tuatara.display:window-buffer window) :image-offset))
-                  *frame-images*)
-            (setf rows #()))
-          (when (tuatara.frontend:frontend-images-p (editor-frontend editor))
-            (loop with text-width = (tuatara.display:window-text-width window)
-                  for (picture row column columns rows) in (tuatara.buffer:buffer-local (tuatara.display:window-buffer window) :pictures)
-                  for shown-rows = (min rows (- height row))
-                  for shown-columns = (min columns (- text-width column))
-                  when (and (>= row 0) (>= column 0) (plusp shown-rows) (plusp shown-columns))
-                    do (push (list picture (+ top
-                                              row) (+ left
-                                                      (tuatara.display:window-margin window)
-                                                      column) shown-columns shown-rows nil)
-                             *frame-images*)))
-          ;; a buffer shown as pictures (:picture-view) whose picture is on its way: blank, not its text
-          (when (and (null image)
-                     (tuatara.frontend:frontend-images-p (editor-frontend editor))
-                     (not (tuatara.buffer:buffer-local (tuatara.display:window-buffer window) :image-hidden))
-                     (tuatara.buffer:buffer-local (tuatara.display:window-buffer window) :picture-view)
-                     (tuatara.buffer:buffer-local (tuatara.display:window-buffer window) :picture-pending))
-            (setf rows #())))
-        ;; SHIFT: how far the rows drawn large above have moved this one down, in rows; the rows
-        ;; past those the window draws (WINDOW-ROWS-DRAWN) left out
-        ;; (a picture in place of the text leaves no rows)
-        (let ((shift 0) (drawn (min (length rows) (tuatara.display:window-rows-drawn window)))
-              (drawn-rows (begin-drawing-rows window height)))
-         (dotimes (r height)
-          (push (if (< r drawn)
-                    (let ((row (aref rows r)))
-                      (prog1 (row-piece drawn-rows r row (pop cells) margin left width (cdr (assoc r cursor-ends))
-                                        rulers shift)
-                        (incf shift (1- (tuatara.display:row-scale row)))))
-                    (row-piece drawn-rows r nil nil margin left width nil rulers shift))
-                (aref screen (+ top r)))
-          (when (tuatara.display:window-divider window)
-            (push (list (+ left width) 1 *window-divider* '((0 1 :vertical-border)) nil) (aref screen (+ top r))))))
+        ;; a picture in place of the text leaves no rows
+        (setf rows (note-window-pictures editor window rows))
+        (put-window-rows window rows cells cursor-ends rulers screen)
         (multiple-value-bind (line spans)
             (funcall (or (editor-mode-line-function editor) #'default-mode-line) editor window)
           (push (list left (tuatara.display:area-width window) line spans (if selected :mode-line :mode-line-inactive))
@@ -1163,10 +1228,12 @@ drawing is reported without its text."
                (if (and row (< row (tuatara.display:window-rows-drawn selected)))
                    (tuatara.frontend:frontend-set-cursor
                     frontend
-                    (+ (tuatara.display:window-text-top selected) row)
+                    (+ (tuatara.display:window-text-top selected) (frontend-row selected row))
                     (+ (tuatara.display:area-left selected) (tuatara.display:window-margin selected)
                        (cursor-column-past-line selected column
-                                                (tuatara.display:row-scale (aref (tuatara.display:window-rows selected) row))))
+                                                (tuatara.display:text-scale
+                                                 (tuatara.display:row-scale
+                                                  (aref (tuatara.display:window-rows selected) row)))))
                     ;; no cursor over a picture shown in place of the text, nor while one is on its
                     ;; way, nor where the buffer marks point itself (the calendar's day)
                     (let ((buffer (tuatara.display:window-buffer selected)))

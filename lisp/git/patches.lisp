@@ -23,20 +23,20 @@ range (abc123..HEAD)."
 
 (define-command git-format-patch ()
   "Write the commits after a revision asked for as patch files, a commit a
-file, in a folder asked for; the patch menu's switches number them, add a
+file, in a directory asked for; the patch menu's switches number them, add a
 cover letter, or sign them off (those for applying are left out)."
   (with-git-repository (top switches)
     (git-ask-range top
                    (lambda (range)
-                     (let ((folder (read-native-path "Write the patches in: " :writing t)))
-                       (when folder
-                         (let ((folder (tuatara.io:slash-ended folder)))
+                     (let ((directory (read-native-path "Write the patches in: " :writing t)))
+                       (when directory
+                         (let ((directory (tuatara.io:slash-ended directory)))
                            (git-run "Writing patches" top (append (list "format-patch")
                                                                   (git-switches-among switches '("--numbered" "--cover-letter" "--signoff"))
-                                                                  (list "-o" folder range))
+                                                                  (list "-o" directory range))
                                     (lambda (text)
                                       (let ((n (length (tuatara.text:split-words text '(#\Newline)))))
-                                        (format nil "Wrote ~d patch~:[es~;~] in ~a" n (= n 1) (abbreviated-path folder))))))))))))
+                                        (format nil "Wrote ~d patch~:[es~;~] in ~a" n (= n 1) (abbreviated-path directory))))))))))))
 
 (defun git-ask-patch-file (prompt then)
   "Ask with PROMPT for a patch file that is there, then call THEN with its native path."

@@ -185,7 +185,7 @@ sub-heading, then each setting with the first paragraph of its documentation."
 
 (defparameter *kept-file-descriptions*
   '(("bookmarks" . "the bookmarks you set")
-    ("chosen-paths" . "the files and folders you chose in questions, offered again first")
+    ("chosen-paths" . "the files and directories you chose in questions, offered again first")
     ("grammars" . "your answers about which grammars may run")
     ("look-only" . "the projects you looked at only, never trusted to run their own programs")
     ("lsp-trusted" . "the projects whose language servers and tools you trusted")
@@ -207,18 +207,18 @@ sub-heading, then each setting with the first paragraph of its documentation."
     ("grammars/" . "the grammars you added")
     ("auto-save/" . "the auto-saved copies of buffers not saved")
     ("session" . "the files and windows open when you last left, for the next start")
-    ("session-daemon-NAME" . "the session of the daemon NAME: its clients' folders and their windows")
+    ("session-daemon-NAME" . "the session of the daemon NAME: its clients' directories and their windows")
     ("grammar-store/" . "the grammars Tuatara compiled")
     ("packages/" . "the packages fetched, compiled")
     ("" . "everything made again when it is gone: compiled packages, previews, copies of files opened outside"))
   "What each file of the kept-files pin is, by its name (a list's name or a
-path in its folder).")
+path in its directory).")
 
-(defparameter *kept-file-folders*
+(defparameter *kept-file-directories*
   '(("config" . "~/.config/tuatara/") ("state" . "~/.local/state/tuatara/")
     ("data" . "~/.local/share/tuatara/") ("cache" . "~/.cache/tuatara/"))
-  "The folders of the kept-files pin, by the name the pin gives them, with
-where each is when the XDG folders are not set.")
+  "The directories of the kept-files pin, by the name the pin gives them, with
+where each is when the XDG directories are not set.")
 
 (defun kept-file-rows ()
   "The rows of test/api/kept-files.sexp after the line that says the version."
@@ -227,7 +227,7 @@ where each is when the XDG folders are not set.")
     (loop for row = (read in nil in) until (eq row in) collect row)))
 
 (defun kept-file-place (row)
-  "ROW of the pin as two values: the folder it is in, as the pin names it, and
+  "ROW of the pin as two values: the directory it is in, as the pin names it, and
 its name there."
   (if (eq (first row) :state)
       (values "state" (second row))
@@ -240,9 +240,10 @@ rebuilt, each with where it is and what it is."
     (dolist (class '(:kept :remembered :rebuilt))
       (format out ".SS ~a~%" (ecase class (:kept "Kept") (:remembered "Remembered") (:rebuilt "Rebuilt")))
       (dolist (row (kept-file-rows))
-        (multiple-value-bind (folder name) (kept-file-place row)
+        (multiple-value-bind (directory name) (kept-file-place row)
           (when (eq class (if (eq (first row) :state) (third row) (fourth row)))
-            (format out ".TP~%.B ~a~a~%~a" (cdr (assoc folder *kept-file-folders* :test #'string=)) (roff-text name)
+            (format out ".TP~%.B ~a~a~%~a" (cdr (assoc directory *kept-file-directories* :test #'string=))
+                    (roff-text name)
                     (roff-fill (or (cdr (assoc name *kept-file-descriptions* :test #'string=)) "")))))))))
 
 ;;; Putting the pages together

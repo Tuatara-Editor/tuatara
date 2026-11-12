@@ -33,7 +33,7 @@ directory; what a named pipe, a socket or a device is, never opening it.
 (define-setting *rimu-preview-delay* 0.1
   "Seconds point rests on an entry of a rimu list before the preview shows it.
 Moving over many lines quickly then reads none of them. A longer time reads
-fewer files as you move, which helps on a slow disk or a remote folder; a
+fewer files as you move, which helps on a slow disk or a remote directory; a
 shorter one shows the preview at once and reads more.
 - a number of seconds: the time, 0.1 as standard."
   :values (number 0 *))
@@ -83,7 +83,7 @@ car turns true."
 NIL when there is none.")
 
 (defun rimu-safe-on-server-p (buffer)
-  "True when BUFFER, a rimu list, shows a folder on another machine and is
+  "True when BUFFER, a rimu list, shows a directory on another machine and is
 opened safely."
   (and (tuatara.io:safe-visit-p buffer)
        (remote-name-p (tuatara.buffer:buffer-local buffer 'rimu-directory))))
@@ -92,7 +92,7 @@ opened safely."
   "True when BUFFER is a rimu list, not one made for a preview, with its
 preview on. In a list opened safely the preview shows each file as a file
 opened safely is shown: its text with no major mode, a picture or a PDF only
-as the sandbox draws it. A list of a folder on another machine starts with its
+as the sandbox draws it. A list of a directory on another machine starts with its
 preview off, as each file shown has to come from there first
 \(*REMOTE-PREVIEW-SIZE-LIMIT*), and opened safely has none: nothing there is read unasked."
   (and (rimu-list-p buffer)
@@ -102,7 +102,7 @@ preview off, as each file shown has to come from there first
 
 (defmethod list-preview-refusal ((mode rimu-mode) list)
   (and (rimu-safe-on-server-p list)
-       "No preview here: this folder on a server is opened safely, and nothing there is read unasked"))
+       "No preview here: this directory on a server is opened safely, and nothing there is read unasked"))
 
 (defvar *rimu-quick-edit-keymap* (make-keymap :name "rimu quick edit")
   "Keys of a file being quick-edited from a rimu list (\\<rimu-mode>\\[rimu-quick-edit]),
@@ -248,7 +248,7 @@ is taken away."
                (when (and (rimu-preview-own state) preview (live-buffer-p preview)
                           (tuatara.buffer:buffer-local preview 'rimu-preview-pdf)
                           (rimu-preview-buffer-entry state)
-                          ;; a folder as a commit left it: the file as it is now is not opened in its place
+                          ;; a directory as a commit left it: the file as it is now is not opened in its place
                           (not (rimu-source list))
                           ;; its pages can be drawn: else the preview stays as it is, never the file opened
                           (eq (tuatara.io:sandbox-status-now) :ready)
@@ -261,7 +261,7 @@ is taken away."
 
 (defun rimu-preview-show (state buffer own entry)
   "Show BUFFER, the preview of ENTRY, in the preview STATE's window, as
-SIDE-PREVIEW-SHOW does; one made for it has ENTRY's folder as its directory,
+SIDE-PREVIEW-SHOW does; one made for it has ENTRY's directory as its directory,
 where finding a file starts."
   (let ((directory (cdr (rimu-preview-wanted state))))
     (when (and own directory (not (rimu-list-p buffer)))
@@ -316,7 +316,7 @@ DIRECTORY, made for the preview: it has no preview of its own. Returns it."
 of its own, or shown in the buffer visiting it already; the rest at once."
   (destructuring-bind (entry . directory) (rimu-preview-wanted state)
     (let ((kind (rimu-leads-to entry))
-          ;; a folder as a commit left it: its files as they were then
+          ;; a directory as a commit left it: its files as they were then
           (rewound (rimu-source (tuatara.display:window-buffer (rimu-preview-list-window state)))))
       (setf (rimu-preview-shown state) entry)
       (cond ((eq kind :directory)

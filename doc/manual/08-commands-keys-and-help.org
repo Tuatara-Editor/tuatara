@@ -91,10 +91,11 @@ around. Chapter 2 shows counts with moves, and the other chapters name what a
 count does for their commands, such as how many cursors to add or how many
 lines to kill. The count is always taken by the command that follows it.
 
-~.~ (non-modal: ~C-z .~) runs the last command again, with the count it had. It
+~.~ (non-modal: ~C-x z~) runs the last command again, with the count it had. It
 is the quickest way to do the same small thing three times. After ~C-u 4 j~,
 pressing ~.~ goes four more lines down. A command started with ~M-x~ is
-repeated as well, with its count.
+repeated as well, with its count. Without the modal layer, each ~z~ pressed
+after ~C-x z~ repeats once more, until another key is pressed.
 
 Inside a question, ~C-u~ does something else. In the minibuffer it clears what
 you typed, and leaves the question as it is. That is useful when you started

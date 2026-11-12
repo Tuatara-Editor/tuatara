@@ -82,7 +82,7 @@ directory removed afterwards."
                (run-keys (format nil "C-u C-x C-f C-a C-k ~a RET" (key-string a)) :width 100 :height 12)
                (is equal (cons a t) (first (tuatara.defaults::read-recent-files)))
                (kill-buffers-visiting dir)
-               ;; wide enough for the safe mark after a long test folder's path
+               ;; wide enough for the safe mark after a long test directory's path
                (multiple-value-bind (f editor) (run-keys "C-x C-r" :width 200 :height 12)
                  (declare (ignore editor))
                  (true (tuatara.frontend.fake:fake-frame-showing f "a.txt" "safe")))
@@ -100,7 +100,7 @@ directory removed afterwards."
                  (true (tuatara.frontend.fake:fake-frame-showing f "b.txt" "not found"))))
           (kill-buffers-visiting dir))))))
 
-(define-test (recent-files ending-a-safe-visit)
+(define-modal-test (recent-files ending-a-safe-visit)
   (with-fresh-recent-files
     (with-test-directory (dir)
       (let ((csv (namestring (put-file (merge-pathnames "t.csv" dir) (format nil "id,name~%1,dog~%")))))
@@ -233,7 +233,7 @@ directory removed afterwards."
                (run-keys (format nil "C-u C-x C-f C-a C-k ~a RET" (key-string a)) :width 100 :height 12)
                (kill-buffers-visiting dir)
                (is equal (list (cons a t) (cons a nil)) (subseq (tuatara.defaults::read-recent-files) 0 2))
-               ;; wide enough for the safe mark after a long test folder's path
+               ;; wide enough for the safe mark after a long test directory's path
                (multiple-value-bind (f editor) (run-keys "C-x C-r" :width 200 :height 12)
                  (declare (ignore editor))
                  (true (tuatara.frontend.fake:fake-frame-showing f "1/2" "Open recent file:"))
@@ -327,14 +327,14 @@ directory removed afterwards."
       (is equal '("/third/one" "/mine/file") (tuatara.defaults::chosen-paths)))))
 
 (define-test (recent-files unexamined-not-gone)
-  ;; a file in a folder that may not be looked into is not counted gone, and with debug mode on
+  ;; a file in a directory that may not be looked into is not counted gone, and with debug mode on
   ;; why it could not be looked at is in its log; a file not there is gone
   (with-test-directory (dir)
-    (let* ((folder (ensure-directories-exist (merge-pathnames "closed/" dir)))
-           (path (tuatara.io:native (put-file (merge-pathnames "inside.txt" folder) "text")))
+    (let* ((directory (ensure-directories-exist (merge-pathnames "closed/" dir)))
+           (path (tuatara.io:native (put-file (merge-pathnames "inside.txt" directory) "text")))
            (missing (tuatara.io:native (merge-pathnames "missing.txt" dir))))
       (drain-debug-reports)
-      (sb-posix:chmod (namestring folder) 0)
+      (sb-posix:chmod (namestring directory) 0)
       (unwind-protect
            (progn
              (is equal (list missing) (tuatara.defaults::gone-recent-files (list (list path) (list missing))))
@@ -344,5 +344,5 @@ directory removed afterwards."
                                 while report collect (princ-to-string (fourth report)))))
                (true (find-if (lambda (text) (search (format nil "examining ~a failed" path) text)) texts)
                      "~s" texts)))
-        (sb-posix:chmod (namestring folder) #o700)
+        (sb-posix:chmod (namestring directory) #o700)
         (drain-debug-reports)))))

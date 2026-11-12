@@ -244,7 +244,7 @@ takes config NAME VALUE --get as setting NAME."
 
 (defun git-command-refusal (words)
   "Why git is not run with WORDS, typed for \\[git-run-command], in words; NIL
-when it may be. While evidence folders are named (*EVIDENCE-FOLDERS*), three
+when it may be. While evidence directories are named (*EVIDENCE-DIRECTORIES*), three
 rules hold. Only *GIT-LINE-OPTIONS-ALLOWED* may stand as an option before the
 command (-c, --config-env, --exec-path and the like could name a program for
 git to run or point it elsewhere). Only commands built into git are run (an
@@ -257,18 +257,18 @@ filters, programs)."
            (leading (remove-if (lambda (word) (member word *git-line-options-allowed* :test #'string=))
                                (ldiff words rest))))
       (cond (leading
-             (format nil "while evidence folders are named, git is given no option before its command here but ~{~a~^, ~} (not ~a)"
+             (format nil "while evidence directories are named, git is given no option before its command here but ~{~a~^, ~} (not ~a)"
                      *git-line-options-allowed* (first leading)))
             ((and command (not (member command (git-built-in-commands) :test #'string=)))
-             (format nil "while evidence folders are named, only git's own commands run here, not ~a (an alias, or a program of its family)" command))
+             (format nil "while evidence directories are named, only git's own commands run here, not ~a (an alias, or a program of its family)" command))
             ((and (equal command "config") (not (git-config-reading-p (rest rest))))
-             "while evidence folders are named, git config only reads here (--get, --list): a setting it writes could have git run a program")))))
+             "while evidence directories are named, git config only reads here (--get, --list): a setting it writes could have git run a program")))))
 
 (define-command git-run-command ()
   "Run git with the words asked for (log --oneline -5, say; quotes group
 words as in a shell) in the repository at hand, no shell between, and show
 what it printed; for what the menus have no action for. While evidence
-folders are named, only git's own commands, with no setting given on the
+directories are named, only git's own commands, with no setting given on the
 line (GIT-COMMAND-REFUSAL)."
   (with-git-repository (top)
     (multiple-value-bind (words ok) (tuatara.io:command-words (read-string "Run git: "))

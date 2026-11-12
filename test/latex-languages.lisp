@@ -93,7 +93,7 @@ are installed.")
 
 (defun stand-in-kpsewhich (directory present)
   "A kpsewhich in DIRECTORY that finds the hyphenation files named in PRESENT, endings (sv),
-and no other. Returns the folder of its engine's name beside it."
+and no other. Returns the directory of its engine's name beside it."
   (put-program (merge-pathnames "kpsewhich" directory)
                (format nil "#!/bin/sh~%for f in \"$@\"; do~%  case \"$f\" in ~{loadhyph-~a.tex) echo /texmf/hyph/$f;; ~}~
                             esac~%done~%"

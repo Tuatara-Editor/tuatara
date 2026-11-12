@@ -3,7 +3,7 @@
 ;;;;
 ;;;; The toolbox the tests run in has no ssh server, so ssh is played by
 ;;;; test/ssh-stand-in.py: it takes the command lines a client gives ssh,
-;;;; runs the command "there" with a folder of the test's first on its PATH,
+;;;; runs the command "there" with a directory of the test's first on its PATH,
 ;;;; and as the connection that stays forwards the daemon's socket the way sshd
 ;;;; does, one process passing octets for every connection. The daemon runs in
 ;;;; this process, as in test/daemon.lisp.
@@ -15,9 +15,9 @@
   (namestring (asdf:system-relative-pathname :tuatara "test/ssh-stand-in.py")))
 
 (defmacro with-stand-in-ssh ((dir log bin &key (version "10.2p1")) &body body)
-  "Run BODY with DIR bound to a new test folder, the home folder \"there\".
+  "Run BODY with DIR bound to a new test directory, the home directory \"there\".
 LOG is bound to the file the stand-in for ssh writes the command lines it is
-given in; BIN to the folder first on the PATH of the commands it runs there;
+given in; BIN to the directory first on the PATH of the commands it runs there;
 and *SSH-PROGRAM* to the stand-in, saying it is OpenSSH VERSION. The stand-in
 has ssh-agent and ssh-add too, writing to LOG.agent and LOG.add. The ssh
 configuration it reads is ssh_config in DIR, when the test writes one."
@@ -35,7 +35,7 @@ configuration it reads is ssh_config in DIR, when the test writes one."
            ,@body)))))
 
 (defun put-server-tuatara (bin &key report (code 0) error)
-  "Put a tuatara in BIN, the folder of programs \"there\", that writes the
+  "Put a tuatara in BIN, the directory of programs \"there\", that writes the
 arguments it was given to BIN's asked, REPORT on its standard output and
 ERROR on its error output, and exits with CODE."
   (let ((program (merge-pathnames "tuatara" bin)))
@@ -45,7 +45,7 @@ ERROR on its error output, and exits with CODE."
 
 (defun test-report (home name &key (runs t) version gpg-socket gpg-autostart (unlink "yes") agent)
   "What tuatara --daemon-socket says of the test daemon NAME, HOME its home
-folder, as WRITE-DAEMON-REPORT writes it, gpg's agent socket GPG-SOCKET,
+directory, as WRITE-DAEMON-REPORT writes it, gpg's agent socket GPG-SOCKET,
 GPG-AUTOSTART, UNLINK and AGENT as it takes them; with VERSION, as another build
 of that version line would."
   (let ((text (with-output-to-string (out)
@@ -57,10 +57,10 @@ of that version line would."
         (cl-ppcre:regex-replace "(?m)^version .*$" text (format nil "version ~a" version))
         text)))
 
-(defun ssh-folders ()
-  "The private folders clients of daemons on other machines hold now."
+(defun ssh-directories ()
+  "The private directories clients of daemons on other machines hold now."
   (length (tuatara.io:directory-entries
-           (tuatara.defaults::private-directory-in (tuatara.defaults::daemon-folder) "ssh/"))))
+           (tuatara.defaults::private-directory-in (tuatara.defaults::daemon-directory) "ssh/"))))
 
 (defun far-test-client (link options &key window another cell-pixels)
   "A client through LINK, an SSH-LINK, asking for what OPTIONS (READ-OPTIONS)
@@ -90,15 +90,15 @@ daemon asks for; three values as ATTACH-TEST-CLIENT gives them."
     (values value said)))
 
 (define-test (daemon client-on-another-machine)
-  ;; a client reaches the daemon through ssh, opens a file named from the home folder there, types and paints;
+  ;; a client reaches the daemon through ssh, opens a file named from the home directory there, types and paints;
   ;; the daemon is told the client is far and sees ssh's process; C-x C-c ends the client alone with 0, and the
-  ;; connection is closed, its folder deleted
+  ;; connection is closed, its directory deleted
   (when (tuatara.io:find-program "python3")
     (with-stand-in-ssh (dir log bin)
       (put-file (merge-pathnames "kiwi.txt" dir) "far text")
       (with-test-daemon (name thread)
         (put-server-tuatara bin :report (test-report dir name))
-        (let ((before (ssh-folders))
+        (let ((before (ssh-directories))
               (link (tuatara.terminal::open-ssh-link "build.example" name)))
           (true link)
           (when link
@@ -123,8 +123,8 @@ daemon asks for; three values as ATTACH-TEST-CLIENT gives them."
                    (is equal '(0 nil) (client-ends runner))
                    (true (sb-thread:thread-alive-p thread) "the daemon goes on"))
               (tuatara.terminal::close-ssh-link link))
-            (false (tuatara.io:path-kind (tuatara.terminal::ssh-link-folder link)) "the folder is deleted")
-            (is = before (ssh-folders))
+            (false (tuatara.io:path-kind (tuatara.terminal::ssh-link-directory link)) "the directory is deleted")
+            (is = before (ssh-directories))
             (let ((said (uiop:read-file-string log)))
               (dolist (option '("StrictHostKeyChecking=yes" "ForwardAgent=no" "ForwardX11=no" "ClearAllForwardings=yes"
                                 "PermitLocalCommand=no" "RemoteCommand=none" "ControlMaster=yes"))
@@ -310,12 +310,12 @@ processes."
   (when (tuatara.io:find-program "python3")
     (with-stand-in-ssh (dir log bin)
       (with-test-daemon (name)
-        ;; the folder of a client that crashed, its lock let go, is swept as the next one starts
-        (let ((dead (multiple-value-bind (folder lock)
-                        (tuatara.defaults::make-owned-folder "ssh/" :base (tuatara.defaults::daemon-folder))
+        ;; the directory of a client that crashed, its lock let go, is swept as the next one starts
+        (let ((dead (multiple-value-bind (directory lock)
+                        (tuatara.defaults::make-owned-directory "ssh/" :base (tuatara.defaults::daemon-directory))
                       (sb-posix:close lock)
-                      folder))
-              (before (ssh-folders)))
+                      directory))
+              (before (ssh-directories)))
           (flet ((refused (host &key start)
                    (multiple-value-bind (link said)
                        (said-on-error-output (lambda () (tuatara.terminal::open-ssh-link host name :start start)))
@@ -339,8 +339,8 @@ processes."
             (refused "build.example" :start t)
             (is equal (list (format nil "--daemon-socket=~a" name) "--start")
                 (uiop:read-file-lines (merge-pathnames "asked" bin))))
-          (false (tuatara.io:path-kind dead) "a crashed client's folder is swept")
-          (is = (1- before) (ssh-folders) "no folder is left")
+          (false (tuatara.io:path-kind dead) "a crashed client's directory is swept")
+          (is = (1- before) (ssh-directories) "no directory is left")
           ;; each connection made is ended: all but the one to nowhere.invalid
           (let ((lines (uiop:split-string (uiop:read-file-string log) :separator '(#\Newline))))
             (is = (1- (count "ControlMaster=yes" lines :test #'string=)) (count "exit" lines :test #'string=))))))))
@@ -556,7 +556,7 @@ processes."
     (with-stand-in-ssh (dir log bin)
       (put-program (merge-pathnames "tuatara" bin) (format nil "#!/bin/sh~%setsid sleep 8 &~%sleep 30~%"))
       (with-test-daemon (name)
-        (let ((before (ssh-folders)) (started (get-internal-real-time))
+        (let ((before (ssh-directories)) (started (get-internal-real-time))
               (threads (length (sb-thread:list-all-threads))))
           (multiple-value-bind (link said)
               (said-on-error-output (lambda () (let ((tuatara.terminal::*ssh-answer-seconds* 2))
@@ -565,10 +565,10 @@ processes."
             (true (search "did not say where its daemon listens within 2 seconds" said))
             (true (< (- (get-internal-real-time) started) (* 10 internal-time-units-per-second)))
             (true (<= (length (sb-thread:list-all-threads)) threads) "no thread is left reading")
-            (is = before (ssh-folders))))))))
+            (is = before (ssh-directories))))))))
 
 (define-test (daemon another-machine-plain-paths)
-  ;; a socket or home folder that is not a plain path is refused: ssh would expand %u or ~ in it here
+  ;; a socket or home directory that is not a plain path is refused: ssh would expand %u or ~ in it here
   (dolist (path '("/run/user/1000/tuatara/default.socket" "/home/kiwi/" "/a-b_c.d/e"))
     (true (tuatara.defaults::plain-path-p path) "~a" path))
   (dolist (path (list "/run/user/%u/x.socket" "/home/~kiwi/" "/a b" "/a:b" "relative" ""

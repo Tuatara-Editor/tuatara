@@ -61,23 +61,23 @@ for a daemon, the one NAME names when given."
           do (setf text (cl-ppcre:regex-replace-all key text (list value))))
     text))
 
-(defun write-application-entries (folder program &rest arguments)
+(defun write-application-entries (directory program &rest arguments)
   "Write the application entries, Tuatara's and \"Tuatara (client)\", into
-FOLDER (made when it is not there), each starting PROGRAM with ARGUMENTS
+DIRECTORY (made when it is not there), each starting PROGRAM with ARGUMENTS
 first (DESKTOP-ENTRY), over the ones there; the paths written. What
 tools/install-desktop.sh and the packages' scripts have the program do,
-asked by TUATARA_DESKTOP_ENTRIES naming FOLDER in its environment."
-  (let ((folder (tuatara.io:slash-ended folder)))
-    (tuatara.io:ensure-directories folder)
+asked by TUATARA_DESKTOP_ENTRIES naming DIRECTORY in its environment."
+  (let ((directory (tuatara.io:slash-ended directory)))
+    (tuatara.io:ensure-directories directory)
     (loop for kind in '(:application :client)
-          for path = (tuatara.io:path-join folder (cdr (assoc kind *desktop-entry-files*)))
+          for path = (tuatara.io:path-join directory (cdr (assoc kind *desktop-entry-files*)))
           do (tuatara.io:replace-file path (desktop-entry kind :program program :arguments arguments) :mode #o600)
           collect path)))
 
-(defun desktop-entries-refusal (folder arguments &key (self tuatara.io:*saved-program*))
-  "Why the request to write desktop entries into FOLDER for ARGUMENTS is not
+(defun desktop-entries-refusal (directory arguments &key (self tuatara.io:*saved-program*))
+  "Why the request to write desktop entries into DIRECTORY for ARGUMENTS is not
 taken, in words, or NIL when it is. ARGUMENTS are the program they start and
-the words before the entries' own. FOLDER must be named from the root. The
+the words before the entries' own. DIRECTORY must be named from the root. The
 program must be tuatara, or named from the root and be this program SELF (the
 AppImage's path when it runs from one) or the launcher tools/tuatara-tui.sh of
 the checkout SELF was built in. Every other word must be an option (--dark),
@@ -89,8 +89,8 @@ so that no file named on the command line becomes a program the desktop runs."
            (launcher (and self (uiop:string-suffix-p self "/build/tuatara")
                           (concatenate 'string (subseq self 0 (- (length self) (length "build/tuatara")))
                                        "tools/tuatara-tui.sh"))))
-      (cond ((not (and folder (plusp (length folder)) (char= (char folder 0) #\/)))
-             "the folder is not named from the root")
+      (cond ((not (and directory (plusp (length directory)) (char= (char directory 0) #\/)))
+             "the directory is not named from the root")
             ((and program (string/= program "tuatara") (not (uiop:string-prefix-p "/" program)))
              (format nil "~a is not named from the root" program))
             ((not (or (equal program "tuatara")
@@ -101,19 +101,19 @@ so that no file named on the command line becomes a program the desktop runs."
 
 (defun desktop-entries-child (arguments)
   "Write the application entries as the environment asks, TUATARA_DESKTOP_ENTRIES
-naming the folder (WRITE-APPLICATION-ENTRIES), ARGUMENTS the program the
+naming the directory (WRITE-APPLICATION-ENTRIES), ARGUMENTS the program the
 entries start and the words before the entries' own; each path written said
 on the standard output. The exit code: 0 when written, 1 when not, why said
 on the error output. A request not taken (DESKTOP-ENTRIES-REFUSAL) is said on
 the error output and NIL returned: the program starts as it would without it."
-  (let* ((folder (tuatara.io:own-variable "TUATARA_DESKTOP_ENTRIES"))
-         (why (desktop-entries-refusal folder arguments)))
+  (let* ((directory (tuatara.io:own-variable "TUATARA_DESKTOP_ENTRIES"))
+         (why (desktop-entries-refusal directory arguments)))
     (sb-posix:unsetenv "TUATARA_DESKTOP_ENTRIES")
     (if why
         (progn (format *error-output* "tuatara: TUATARA_DESKTOP_ENTRIES left alone: ~a~%" (shown why))
                nil)
         (handler-case
-            (progn (dolist (path (apply #'write-application-entries folder arguments))
+            (progn (dolist (path (apply #'write-application-entries directory arguments))
                      (format t "Wrote ~a~%" path))
                    0)
           (error (condition)
@@ -134,7 +134,7 @@ AppImage's when it runs from one."
 (defun autostart-path (name)
   "Where the autostart entry of the daemon NAME is written: tuatara-daemon.desktop,
 or tuatara-daemon-NAME.desktop for a daemon of another name than the
-default, in the desktop's autostart folder, ~/.config/autostart/ (autostart/
+default, in the desktop's autostart directory, ~/.config/autostart/ (autostart/
 in XDG_CONFIG_HOME when it is set)."
   (namestring (uiop:xdg-config-home (if (string= name tuatara.defaults::*daemon-default-name*)
                                         "autostart/tuatara-daemon.desktop"

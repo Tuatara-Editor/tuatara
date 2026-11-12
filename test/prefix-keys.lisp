@@ -38,8 +38,7 @@ editing off."
                                   (">" indent-selection-or-line)
                                   ("z n" spellcheck-next) ("z p" spellcheck-previous) ("z g" spellcheck-add-word)
                                   ("z f" spellcheck-add-word-to-file) ("r r" replace-regexp)
-                                  ("\"" wrap-selection-with-key) ("(" wrap-selection-with-key)
-                                  ("." repeat))
+                                  ("\"" wrap-selection-with-key) ("(" wrap-selection-with-key))
           do (is equal (command-name command) (global-binding editor (format nil "C-z ~a" keys)) "C-z ~a" keys))
     ;; every key of NORMAL state's tables is there, but for the commands left out
     (loop for (keys command) in (append tuatara.defaults::*tuatara-normal-bindings*
@@ -51,7 +50,7 @@ editing off."
   (let ((editor (nth-value 1 (run-keys ""))))
     ;; one key for a command: C-z w does not exist, M-f is that key
     (loop for keys in '("w" "b" "h" "j" "k" "l" "v" "d" "D" "y" "p" "P" "u" "U" "%" "F" "g g" "g e" "g h" "g l" "g j"
-                        "g Q" "z z" ":" "?" "m v" "o" "O" "i" "a" "I" "A" "c" "RET" "DEL" "<delete>")
+                        "g Q" "z z" "." ":" "?" "m v" "o" "O" "i" "a" "I" "A" "c" "RET" "DEL" "<delete>")
           do (false (global-binding editor (format nil "C-z ~a" keys)) "C-z ~a" keys))
     (is equal "forward-word" (global-binding editor "M-f"))
     (is equal "set-mark-command" (global-binding editor "C-SPC"))
@@ -108,14 +107,14 @@ editing off."
     ("C-n C-f C-f C-f C-f C-f C-f C-f C-f C-f C-f C-f C-f" "m i") ("C-n C-f C-f C-f C-f C-f C-f C-f" "m a")
     ("C-n C-f C-f C-f C-f C-f C-f C-f" "m I") ("C-n C-f C-f C-f C-f C-f C-f C-f" "m A")
     ("" "V") ("" "V" "V") ("" "J") ("" "J" "J") ("C-n C-n" "K") ("C-n C-n" "K" "K") ("C-n" "V" "J" "K")
-    ("" "m w" ".") ("" "M") ("" "M" (:plain "w")) ("" "M" (:plain "w") (:plain "w")) ("" "S") ("C-n C-n" "S")
+    ("" "m w" (:plain "C-x z")) ("" "M") ("" "M" (:plain "w")) ("" "M" (:plain "w") (:plain "w")) ("" "S") ("C-n C-n" "S")
     ("" "m l") ("C-n" "m l" "m u") ("" "m l" "m DEL")
     ("C-SPC C-f C-f C-f" "m U") ("C-SPC C-n" ">") ("" ">") ("C-SPC C-n" "C") ("" "C") ("" "g q")
     ("C-SPC C-n C-n" "g q")
     ("" "m f") ("" "m F") ("" "m t") ("" "m c") ("" "m y") ("" "m e") ("" "m x") ("" "m r")
     ("" "t") ("" "t" "t") ("" "T") ("C-n C-n" "T" "T") ("" "f") ("C-SPC C-e" "f")
     ("" "z n") ("" "z p") ("" "z =") ("" "z g") ("" "z f") ("" "r q") ("" "r r")
-    ("C-SPC C-f C-f C-f" "\"") ("C-SPC C-f C-f C-f" "(") ("" "."))
+    ("C-SPC C-f C-f C-f" "\"") ("C-SPC C-f C-f C-f" "(") ("" (:plain "C-x z")))
   "Cases of (SETUP COMMAND ...): keys typed first, in both modes, and then each COMMAND, the keys of
 NORMAL state with modal editing on, and under C-z with it off. A COMMAND (:PLAIN KEYS) is typed as
 it is in both.")
@@ -168,7 +167,7 @@ the selection, and the last row of the screen."
       (isnt equal (fourth quiet) (fourth (prefix-case-result "" (list keys) nil)) "~a" keys))))
 
 (define-test (prefix-keys go-on-without-the-prefix)
-  ;; after C-z t, t and T add cursors by themselves; after C-z J, J and K go on; . repeats
+  ;; after C-z t, t and T add cursors by themselves; after C-z J, J and K go on; z repeats after C-x z
   (let ((lines (format nil "a~%b~%c~%d~%e~%f~%g~%h~%")))
     (is string= (format nil "Xa~%Xb~%Xc~%d~%e~%f~%g~%h~%") (modal-off-text "C-z t t i X C-g" lines))
     (is string= (format nil "Xa~%Xb~%c~%d~%e~%f~%g~%h~%") (modal-off-text "C-z t i X C-g" lines))
@@ -178,22 +177,21 @@ the selection, and the last row of the screen."
                (session-point (nth-value 1 (run-keys keys :text lines)))))
         (is = 4 (point-after "C-z J J"))
         (is = 0 (point-after "C-n C-n C-z K K"))
-        ;; after C-z ., the dot repeats the command before it again: four lines down
-        (is = 8 (point-after "C-z J C-z . . ."))))
+        ;; after C-x z, the z repeats the command before it again: four lines down
+        (is = 8 (point-after "C-z J C-x z z z"))))
     ;; a key that is not one of them does what it always does, the run over
     (is string= (format nil "a~%b~%Tc~%d~%e~%f~%g~%h~%") (modal-off-text "C-z J J T" lines))
     ;; the keys that go on are the commands' own, in pairs
     (loop for (command . keys) in '(("add-cursor-below" "t" "T") ("add-cursor-above" "t" "T")
                                     ("select-next-line" "J" "K") ("select-previous-line" "J" "K")
-                                    ("spellcheck-next" "n" "p") ("spellcheck-previous" "n" "p")
-                                    ("repeat" "."))
+                                    ("spellcheck-next" "n" "p") ("spellcheck-previous" "n" "p"))
           do (let ((entry (loop for name being the hash-keys of tuatara.command::*repeat-maps* using (hash-value entry)
                                 when (string-equal (symbol-name name) command) return entry)))
                (true entry "~a" command)
                (when entry
                  (is equal keys (cdr entry) "~a" command))))))
 
-(define-test (prefix-keys plain-keys-go-on-only-after-the-prefix)
+(define-modal-test (prefix-keys plain-keys-go-on-only-after-the-prefix)
   ;; in NORMAL state z n is no run of C-z keys: p after it still pastes
   (flet ((text-after (keys) (session-text (nth-value 1 (run-keys keys :text (format nil "ab cd~%ef~%") :width 60)))))
     (is = 11 (length (text-after "m w y p")))
@@ -201,3 +199,20 @@ the selection, and the last row of the screen."
   ;; the plain keys still go on after C-z with modal editing off
   (let ((tuatara.defaults::*modal-editing* nil))
     (is = 4 (session-point (nth-value 1 (run-keys "C-z J J" :text (format nil "a~%b~%c~%d~%")))))))
+
+(define-test (prefix-keys repeat-on-c-x-z)
+  ;; with modal editing off, C-x z runs the last command again and each z after it does too, until
+  ;; another key; C-x z is the only key of repeat
+  (let ((tuatara.defaults::*modal-editing* nil)
+        (lines (format nil "a~%b~%c~%d~%e~%f~%g~%h~%")))
+    (flet ((point-after (keys)
+             (session-point (nth-value 1 (run-keys keys :text lines)))))
+      (is = 6 (point-after "C-n C-n C-x z"))
+      (is = 10 (point-after "C-n C-n C-x z z z"))
+      ;; a count given before repeat's command is kept
+      (is = 12 (point-after "C-u 3 C-n C-x z"))
+      ;; another key ends the run: z then types itself
+      (is string= (format nil "a~%zb~%c~%d~%e~%f~%g~%h~%")
+          (session-text (nth-value 1 (run-keys "C-n C-x z C-p z" :text lines))))))
+  (is equal '("C-x z") (loop for (keys command) in tuatara.defaults::*global-bindings*
+                             when (eq command 'tuatara.defaults::repeat) collect keys)))

@@ -21,7 +21,7 @@ the branch gh-pages of REMOTE, which GitHub Pages serves, at each release.
 7. Buffers and sessions
 8. Commands, keys and help
 9. Files
-10. Folders
+10. Directories
 11. Large files and work in the background
 12. Files you do not trust
 13. Writing code

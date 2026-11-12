@@ -420,7 +420,7 @@ what stopped the walk (NIL at a bracket)."
               (when (eq :own (tuatara.syntax::helper-kind helper)) (pushnew helper started)))
             (true (<= (count :own tuatara.syntax::**helpers** :key #'tuatara.syntax::helper-kind) 4))))))
     (true (>= (length started) 4))
-    ;; the buffers are killed with their folder: so are their programs
+    ;; the buffers are killed with their directory: so are their programs
     (dolist (helper started)
       (false (tuatara.syntax:helper-alive helper))
       (false (loop repeat 200

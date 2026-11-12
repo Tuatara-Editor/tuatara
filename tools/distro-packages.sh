@@ -66,7 +66,7 @@ package_file() { case "$1" in fedora) echo "$rpm_file" ;; ubuntu) echo "$deb_fil
 summary="Text editor for the terminal and the desktop"
 description="Tuatara edits text in the terminal and in a window of its own: Org
 files, code with tree-sitter colours and language servers, CSV files of many
-gigabytes, mail folders and folders of files, with DONKEY's modal keys or
+gigabytes, mail folders and directories of files, with DONKEY's modal keys or
 plain ones."
 # Tuatara's licence, Ghostty's (the terminal library), those of what the
 # terminal library compiles in and each grammar's, a grammar's expression

@@ -80,7 +80,7 @@ another file, to the line point is on."
 (defun org-link-within (link buffer)
   "LINK, a stored link, as it is put in BUFFER: a file link to a
 headline of BUFFER's own file made a link within it (*Title, #id); another
-file link written from BUFFER's folder when the file is in it or under it."
+file link written from BUFFER's directory when the file is in it or under it."
   (let ((file (tuatara.buffer:buffer-file buffer))
         (directory (buffer-directory buffer)))
     (multiple-value-bind (match groups) (cl-ppcre:scan-to-strings "^file:(.+?)(?:::(.*))?$" link)
@@ -103,7 +103,7 @@ values; NIL when none was chosen."
               (org-note-title (concatenate 'string (directory-name *formatted-file-directory*) chosen))))))
 
 (defun read-file-link (buffer)
-  "Ask for a file, as find-file asks, and return a file: link to it from BUFFER's folder."
+  "Ask for a file, as find-file asks, and return a file: link to it from BUFFER's directory."
   (let ((path (read-file-path "File link: ")))
     (and path
          (format nil "file:~a" (org-link-path (tuatara.io:native (tuatara.io:expand-path path :directory (buffer-directory buffer)))

@@ -10,7 +10,7 @@
   "The text of the *Help* buffer if it is shown, else the current buffer's."
   (session-text editor))
 
-(define-test (help describe)
+(define-modal-test (help describe)
   (multiple-value-bind (f editor) (run-keys "C-h k C-x C-f" :text "")
     (declare (ignore f))
     (let ((text (help-text editor)))
@@ -124,7 +124,7 @@
                              :separator '(#\Newline))
           "~s at ~d" doc column))))
 
-(define-test (help char-named-as-shown)
+(define-modal-test (help char-named-as-shown)
   ;; a control character named as the screen shows it, a raw octet's codes in hexadecimal
   (is equal (loop for code in '(0 1 9 27 31 127) collect (format nil "^~c" (code-char (logxor code 64))))
       (loop for code in '(0 1 9 27 31 127) collect (tuatara.defaults::char-shown-as (code-char code))))
@@ -136,7 +136,7 @@
     (true (search "octets       #xe2 #x82 #xac" (described "C-u C-x =")))
     (true (search "is an octet that is not UTF-8, #xff." (described "l C-u C-x =")))))
 
-(define-test (help what-is-at-point)
+(define-modal-test (help what-is-at-point)
   ;; C-x =: the character at point, its codes, and where point is
   (multiple-value-bind (f editor) (run-keys "C-x =" :text "héllo" :width 100)
     (declare (ignore editor))
@@ -168,7 +168,7 @@
           (true (search "mode         rust-mode, the language rust" text))))
       (let ((b (tuatara.buffer:find-buffer "main.rs"))) (when b (tuatara.buffer:kill-buffer b))))))
 
-(define-test (help buffer-is-read-only-and-q-returns)
+(define-modal-test (help buffer-is-read-only-and-q-returns)
   (multiple-value-bind (f editor) (run-keys "i x C-g C-h f u n d o RET i y C-g" :text "")
     (declare (ignore f))
     ;; typing in *Help* is refused with a message; q brings the previous buffer back
@@ -285,7 +285,7 @@
         (true (search "END OF TERMS AND CONDITIONS" text))))))
 
 
-(define-test (help keys-under-a-prefix)
+(define-modal-test (help keys-under-a-prefix)
   ;; C-h after a prefix lists every key under it, a prefix's keys under its name
   (run-keys "C-x C-h" :text "" :width 100 :height 30)
   (let ((text (tuatara.buffer:buffer-string (tuatara.buffer:find-buffer "*Help*"))))
@@ -384,7 +384,7 @@
   (is equal (tuatara.display::face-attribute :link :fg) (tuatara.display::face-attribute :button :fg)))
 
 (define-test (help source-paths-from-the-tree)
-  ;; where a command is defined is named within the source tree, never by the folders the
+  ;; where a command is defined is named within the source tree, never by the directories the
   ;; program was built in, and the license is found or said missing without the tree known
   (let ((words (tuatara.defaults::pieces-text (tuatara.defaults::source-location-pieces 'tuatara.defaults::search-again :function))))
     (true (search "Defined in lisp/search/incremental.lisp" words) "~a" words)
@@ -395,7 +395,7 @@
   (let ((tuatara.runtime:*source-tree* nil))
     (finish (tuatara.defaults::license-file))))
 
-;; a release's program records the folder it was built in, which is gone when it runs
+;; a release's program records the directory it was built in, which is gone when it runs
 (define-test (help source-found-though-built-elsewhere)
   (let* ((top (uiop:ensure-directory-pathname
                (merge-pathnames (format nil "tuatara-source-test-~a" (random 1000000000)) (uiop:temporary-directory))))

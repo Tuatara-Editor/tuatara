@@ -66,19 +66,19 @@ date's; CHOICES, a list's. A key met before keeps its first description."
   (pushnew words (template-import-notes *template-import*) :test #'string=))
 
 (defun template-import-check-free (places)
-  "Signal an error unless each of PLACES, the files and folders an import
+  "Signal an error unless each of PLACES, the files and directories an import
 makes, is free: an import writes over nothing that exists."
   (dolist (place places)
     (when (tuatara.io:path-stamp place)
       (refuse "~a exists already: nothing made" (abbreviated-path place)))))
 
 (defun template-import-media (note name)
-  "The folder the pictures of the note template NOTE of the template NAME are
+  "The directory the pictures of the note template NOTE of the template NAME are
 saved in: NAME-media beside NOTE."
   (concatenate 'string (tuatara.io:native (tuatara.io:parent-path note)) name "-media"))
 
 (defun template-import-write (path contents)
-  "Write CONTENTS, a string (as UTF-8) or octets, as the file PATH (REPLACE-FILE), its folders made first."
+  "Write CONTENTS, a string (as UTF-8) or octets, as the file PATH (REPLACE-FILE), its directories made first."
   (tuatara.io:ensure-directories path)
   (tuatara.io:replace-file path contents))
 

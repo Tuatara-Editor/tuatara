@@ -219,9 +219,9 @@ version)."
      "text centred in its window, and soft wrap at the fill column")
     ("use-package" "the keywords of load-package in the init file")
     ("ibuffer" "the buffer list")
-    ("dired" "how Rimu lists a folder and acts on the entries marked")
+    ("dired" "how Rimu lists a directory and acts on the entries marked")
     ("dired-du, by Tino Calancha; dired-git-info, by Clemens Radermacher; and dired-duplicates, by Harald Judt"
-     "Rimu's sizes of folders, each entry's last commit, and the files"
+     "Rimu's sizes of directories, each entry's last commit, and the files"
                                                                                                                 "that are the same as another")
     ("git-timemachine, by Peter Stiernström" "going back through a file's history, a commit at a time")
     ("doc-view and pdf-tools, by Andreas Politz" "PDFs shown as pictures of their pages")

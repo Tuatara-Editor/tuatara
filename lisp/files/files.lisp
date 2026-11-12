@@ -90,7 +90,7 @@ buffer opened safely keeps showing its text as it is. Then run
 
 (defun saved-out-of-evidence (buffer)
   "When BUFFER, opened safely for being evidence, has just been saved as a
-file outside every evidence folder: it stays opened safely, what it holds
+file outside every evidence directory: it stays opened safely, what it holds
 being the evidence's still, but may be changed now when you may write the
 new file; \\[end-safe-visit] opens it as usual. Said so."
   (when (shiftf (tuatara.buffer:buffer-local buffer :saved-from-evidence) nil)
@@ -143,7 +143,7 @@ before overwriting a file changed on disk since it was read, a write-protected
 file, or another existing file; then save on a thread of its own, waiting up to
 *SAVE-WAIT* seconds for it, after which it carries on in the background. An
 unmodified buffer whose file is as it was is not written again. A new file
-in a folder not there yet has the folder made, after asking. A new file
+in a directory not there yet has the directory made, after asking. A new file
 whose name says encrypted but not by GnuPG (.age) is not written: its text
 would be there to read. Nor is a buffer that work still writes into
 \(*SAVE-REFUSALS*), such as typing at a split's places. Saved as a file
@@ -197,7 +197,7 @@ changed on disk, write-protected, another file's name): the save is refused."
                                        (tuatara.io:native-file-name target)))))
        (message "Attempt to save to a file that you aren't allowed to write"))
       ((and (null existing) (null (tuatara.io:path-stamp (tuatara.io:parent-path target)))
-            (not (save-question quiet #'y-or-n-p* (format nil "The folder ~a is not there; make it?"
+            (not (save-question quiet #'y-or-n-p* (format nil "The directory ~a is not there; make it?"
                                        (escape-controls (abbreviated-path (tuatara.io:parent-path target)))))))
        (message "Not saved"))
       (t
@@ -539,7 +539,7 @@ nothing is written beside it. This holds however it is opened:
 line. \\[end-safe-visit] opens one as usual after all.
 - nil: no directory, as standard.
 - a list of directories' names, '(\"~/Evidence/\") for example."
-  :values (list-of folder))
+  :values (list-of directory))
 
 (define-setting *open-binary-files-safely* t
   "Whether a file that looks binary opens safely, as \\[find-file-safely] opens
@@ -614,7 +614,7 @@ Where a link leads is looked for only when there are directories."
 
 (defun visit-safely-reason (path &optional stamp)
   "Why the file at PATH opens safely although that was not asked for: it is
-evidence (*EVIDENCE-FOLDERS*), it is in one of *SAFE-DIRECTORIES*, or it looks
+evidence (*EVIDENCE-DIRECTORIES*), it is in one of *SAFE-DIRECTORIES*, or it looks
 binary while *OPEN-BINARY-FILES-SAFELY* is true, by its own name, by the
 file a link leads to, or, given its STAMP, by another name it has; NIL for none. When
 *SAFE-DIRECTORIES* cannot be read, every file opens safely, and the reason
@@ -622,7 +622,7 @@ says so."
   (let ((directory (safe-directory-of path)))
     (cond ((evidence-visit-reason path))
           ((and stamp (evidence-inode-p stamp))
-           "it has more than one name, and one may be in an evidence folder (*evidence-folders*)")
+           "it has more than one name, and one may be in an evidence directory (*evidence-directories*)")
           ((eq directory t) "*safe-directories* could not be read")
           (directory (format nil "it is in ~a (*safe-directories*)" directory))
           ((and *open-binary-files-safely* (tuatara.io:binary-head-p (tuatara.io:file-head path)))
@@ -698,15 +698,15 @@ those found changed (see *DIRECTORY-FOLLOWERS*)."
 
 (defun install-files ()
   "Let saves, snapshots, countings of lines and the watcher of files on disk
-tick, what they find show in the mode line, a buffer's private folder be
-deleted when it is killed (FORGET-PRIVATE-FOLDER) and kept fresh while it
-lives (KEEP-PRIVATE-FOLDERS-FRESH), \\[wipe-file] be refused in a buffer opened
-safely, and the evidence folders be marked (INSTALL-EVIDENCE)."
+tick, what they find show in the mode line, a buffer's private directory be
+deleted when it is killed (FORGET-PRIVATE-DIRECTORY) and kept fresh while it
+lives (KEEP-PRIVATE-DIRECTORIES-FRESH), \\[wipe-file] be refused in a buffer opened
+safely, and the evidence directories be marked (INSTALL-EVIDENCE)."
   (pushnew 'wipe-file *file-changing-commands*)
   (pushnew 'files-tick *tick-functions*)
   (pushnew 'follow-directories *tick-functions*)
-  (pushnew 'keep-private-folders-fresh *tick-functions*)
-  (pushnew 'forget-private-folder tuatara.buffer:*kill-buffer-functions*)
+  (pushnew 'keep-private-directories-fresh *tick-functions*)
+  (pushnew 'forget-private-directory tuatara.buffer:*kill-buffer-functions*)
   (pushnew 'files-mode-line *mode-line-functions*)
   (pushnew 'safe-mode-line *mode-line-name-functions*)
   (install-evidence))

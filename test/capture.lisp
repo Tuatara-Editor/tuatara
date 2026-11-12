@@ -26,7 +26,7 @@ templates those in DIRECTORY's capture-templates/ (none unless a test makes them
        (alexandria:write-string-into-file *capture-agenda* ,agenda)
        ,@body)))
 
-(define-test (capture todo-under-its-heading)
+(define-modal-test (capture todo-under-its-heading)
   (with-capture (dir agenda)
     ;; from a note: t, a tag chosen, the task typed, C-c C-c
     (let ((note (namestring (merge-pathnames "note.org" dir))))
@@ -47,7 +47,7 @@ templates those in DIRECTORY's capture-templates/ (none unless a test makes them
         (false (tuatara.buffer:find-buffer "*Capture*"))
         (true (tuatara.frontend.fake:fake-frame-showing f "TODO for the agenda filed under Tasks in agenda.org"))))))
 
-(define-test (capture note-to-a-new-heading-and-thrown-away)
+(define-modal-test (capture note-to-a-new-heading-and-thrown-away)
   (with-capture (dir agenda)
     ;; the inbox heading made at the file's end
     (run-keys "SPC a c n C a l l SPC b a c k C-c C-c" :text "x" :width 100 :height 16)
@@ -59,20 +59,20 @@ templates those in DIRECTORY's capture-templates/ (none unless a test makes them
     (true (tuatara.frontend.fake:fake-frame-showing (run-keys "SPC a c Z" :text "x" :width 100 :height 16)
                                                     "No capture template on that key"))))
 
-(define-test (capture templates-in-files)
+(define-modal-test (capture templates-in-files)
   (with-capture (dir agenda)
-    (let ((folder (merge-pathnames "capture-templates/" dir)))
-      (ensure-directories-exist folder)
+    (let ((directory (merge-pathnames "capture-templates/" dir)))
+      (ensure-directories-exist directory)
       ;; one of yours on t takes the place of Tuatara's; another of a key of its own, under an outline path
       (alexandria:write-string-into-file
        (format nil "# name: My task~%# key: t~%# file: ~a~%# heading: Other~%# --~%* MINE %?~%" agenda)
-       (merge-pathnames "t-mine.org" folder))
+       (merge-pathnames "t-mine.org" directory))
       (alexandria:write-string-into-file
        (format nil "# name: Book to read~%# key: b~%# file: ~a~%# outline: Other / Leave me~%# --~%* %^{Title}%?~%" agenda)
-       (merge-pathnames "b-book.org" folder))
+       (merge-pathnames "b-book.org" directory))
       (alexandria:write-string-into-file (format nil "# name: Nowhere~%# key: w~%# --~%* x~%")
-                                         (merge-pathnames "w-nowhere.org" folder))
-      (alexandria:write-string-into-file (format nil "no head at all~%") (merge-pathnames "loose.org" folder))
+                                         (merge-pathnames "w-nowhere.org" directory))
+      (alexandria:write-string-into-file (format nil "no head at all~%") (merge-pathnames "loose.org" directory))
       (let ((templates (tuatara.defaults::capture-templates)))
         (is equal '("b" "j" "m" "n" "t" "w") (mapcar #'tuatara.defaults::capture-template-key templates))
         (let ((mine (find "t" templates :key #'tuatara.defaults::capture-template-key :test #'string=)))
@@ -120,7 +120,7 @@ templates those in DIRECTORY's capture-templates/ (none unless a test makes them
         (true (search "# name: Mine" (file-text copy))))
       (forget-file-buffers))))
 
-(define-test (capture journal-entry)
+(define-modal-test (capture journal-entry)
   (with-capture (dir agenda)
     (run-keys "SPC a c j W r o t e SPC i t C-c C-c" :text "x" :width 100 :height 16)
     (let ((files (journal-files dir)))
@@ -128,7 +128,7 @@ templates those in DIRECTORY's capture-templates/ (none unless a test makes them
       (true (search (format nil "* 13:39 Wrote it")
                     (file-text (merge-pathnames (concatenate 'string "journal/" (first files)) dir)))))))
 
-(define-test (capture meeting-clocked)
+(define-modal-test (capture meeting-clocked)
   (with-capture (dir agenda)
     ;; asked for the subject and attendees; clocked from when it began, the clock before going on after
     (let ((task (namestring (merge-pathnames "task.org" dir))))
@@ -151,17 +151,17 @@ templates those in DIRECTORY's capture-templates/ (none unless a test makes them
         (true (search "CLOCK: [2026-03-20 Fri 14:09]" working)))
       (true tuatara.defaults::*org-clock*))))
 
-(define-test (capture meeting-planned-on-a-date)
+(define-modal-test (capture meeting-planned-on-a-date)
   (with-capture (dir agenda)
     ;; m plans a meeting: its date asked as C-c C-s asks it, no clock; M, a capital, a template of its own
-    (let ((folder (merge-pathnames "capture-templates/" dir)))
-      (ensure-directories-exist folder)
+    (let ((directory (merge-pathnames "capture-templates/" dir)))
+      (ensure-directories-exist directory)
       (alexandria:write-string-into-file
        (format nil "# name: Meeting planned~%# key: m~%# file: ~a~%# heading: Meetings~%# --~%* Meeting: %^{Subject}~%%^T~%%?~%" agenda)
-       (merge-pathnames "m-planned.org" folder))
+       (merge-pathnames "m-planned.org" directory))
       (alexandria:write-string-into-file
        (format nil "# name: Meeting notes~%# key: M~%# file: ~a~%# heading: Meetings~%# clock-in: t~%# clock-resume: t~%# --~%* Notes: %^{Subject}~%%?~%" agenda)
-       (merge-pathnames "M-notes.org" folder))
+       (merge-pathnames "M-notes.org" directory))
       (let ((f (run-keys "SPC a c m R e v i e w RET 2 0 2 6 - 0 3 - 2 3 SPC 1 0 : 0 0 RET A g e n d a C-c C-c"
                          :text "x"
                          :width 120
@@ -208,7 +208,7 @@ templates those in DIRECTORY's capture-templates/ (none unless a test makes them
   (format nil "* Inbox~%** Call back~%About the case.~%*** Detail~%~%* Commitments and Jobs~%** TODO Old~%Text.~%")
   "An agenda file for the refile tests.")
 
-(define-test (capture refile-within-a-file)
+(define-modal-test (capture refile-within-a-file)
   (with-capture (dir agenda)
     (alexandria:write-string-into-file *refile-agenda* agenda :if-exists :supersede)
     ;; on Call back: C-c C-w, Commitments and Jobs: moved with what is under it, a level the same
@@ -234,7 +234,7 @@ templates those in DIRECTORY's capture-templates/ (none unless a test makes them
       (false (find "agenda.org/Inbox/Call back" names :test #'string=))
       (true (find "agenda.org/Commitments and Jobs/Old" names :test #'string=)))))
 
-(define-test (capture refile-between-files-and-clock)
+(define-modal-test (capture refile-between-files-and-clock)
   (with-capture (dir agenda)
     (alexandria:write-string-into-file *refile-agenda* agenda :if-exists :supersede)
     (let ((note (namestring (merge-pathnames "note.org" dir))))
@@ -252,7 +252,7 @@ templates those in DIRECTORY's capture-templates/ (none unless a test makes them
         (true (search (format nil "** Idea~%:LOGBOOK:~%CLOCK: [2026-03-20 Fri 13:39]--[2026-03-20 Fri 13:49] =>  0:10~%:END:~%Worth doing.") text)
               "~a" text)))))
 
-(define-test (capture refile-from-agenda-and-capture)
+(define-modal-test (capture refile-from-agenda-and-capture)
   (with-capture (dir agenda)
     (alexandria:write-string-into-file (format nil "* Inbox~%** TODO Sort me~%* Commitments and Jobs~%") agenda :if-exists :supersede)
     ;; from the agenda's TODO list, the entry on the line
@@ -270,7 +270,7 @@ templates those in DIRECTORY's capture-templates/ (none unless a test makes them
       (declare (ignore f))
       (is = (search "* Commitments" (session-text editor)) (session-point editor)))))
 
-(define-test (capture resumes-the-right-task)
+(define-modal-test (capture resumes-the-right-task)
   (with-capture (dir agenda)
     ;; the meeting filed above the task clocked: the clock goes back to that task, not the entry above it
     (alexandria:write-string-into-file (format nil "* Meetings~%* Work~%** Task~%") agenda :if-exists :supersede)
@@ -284,7 +284,7 @@ templates those in DIRECTORY's capture-templates/ (none unless a test makes them
     (let ((text (tuatara.buffer:buffer-string (tuatara.io:visit-file agenda))))
       (true (cl-ppcre:scan "\\*\\* Task\\n:LOGBOOK:\\nCLOCK: \\[2026-03-20 Fri 14:09\\]\\n" text) "~a" text))))
 
-(define-test (capture journal-over-midnight-and-escaped-link)
+(define-modal-test (capture journal-over-midnight-and-escaped-link)
   (with-capture (dir agenda)
     ;; begun before midnight, filed after: in the entry of the day it was begun
     (run-keys (list (lambda () (setf tuatara.defaults::*org-now* (encode-universal-time 0 58 23 20 3 2026)))
@@ -324,10 +324,10 @@ templates those in DIRECTORY's capture-templates/ (none unless a test makes them
       (is string= (format nil "* Projects~%** Notes~%first~%** Notes~%second~%*** Item~%* Inbox~%")
           (tuatara.buffer:buffer-string buffer)))))
 
-(define-test (capture empty-question-and-windows-lines)
+(define-modal-test (capture empty-question-and-windows-lines)
   (with-capture (dir agenda)
-    (let ((folder (merge-pathnames "capture-templates/" dir)))
-      (ensure-directories-exist folder)
+    (let ((directory (merge-pathnames "capture-templates/" dir)))
+      (ensure-directories-exist directory)
       ;; a template file whose lines end in carriage returns, asking with no prompt of its own
       (alexandria:write-string-into-file
        (format nil
@@ -335,7 +335,7 @@ templates those in DIRECTORY's capture-templates/ (none unless a test makes them
                (loop for line in (list "# name: Plain" "# key: p" (format nil "# file: ~a" agenda) "# heading: Other"
                                         "# --" "* %^{}%?" "Body")
                      append (list line #\Return)))
-       (merge-pathnames "p-plain.org" folder))
+       (merge-pathnames "p-plain.org" directory))
       (let ((template (find "p"
                             (tuatara.defaults::capture-templates)
                             :key #'tuatara.defaults::capture-template-key
@@ -346,21 +346,22 @@ templates those in DIRECTORY's capture-templates/ (none unless a test makes them
       (run-keys "SPC a c p H e l l o RET C-c C-c" :text "x" :width 200 :height 16)
       (true (search (format nil "** Hello~%Body") (file-text agenda)) "~a" (file-text agenda)))))
 
-(define-test (capture templates-in-the-configuration-folder)
-  ;; no folders named: your templates are those in capture-templates/ of the configuration folder, XDG_CONFIG_HOME's
+(define-test (capture templates-in-the-configuration-directory)
+  ;; no directories named: your templates are those in capture-templates/ of the configuration directory,
+  ;; XDG_CONFIG_HOME's
   (with-test-directory (dir)
-    (let ((folder (merge-pathnames "tuatara/capture-templates/" dir))
+    (let ((directory (merge-pathnames "tuatara/capture-templates/" dir))
           (tuatara-user:*capture-template-directories* nil))
-      (ensure-directories-exist folder)
+      (ensure-directories-exist directory)
       (alexandria:write-string-into-file (format nil
                                                  "# name: Kea seen~%# key: z~%# file: ~~/notes/kea.org~%# --~%* %?~%")
-                                         (merge-pathnames "z-kea.org" folder))
+                                         (merge-pathnames "z-kea.org" directory))
       (with-environment-variable ("XDG_CONFIG_HOME" (namestring dir))
-        (is equal (list (namestring folder)) (tuatara.defaults::capture-template-directories))
+        (is equal (list (namestring directory)) (tuatara.defaults::capture-template-directories))
         (true (find "z" (tuatara.defaults::capture-templates) :key #'tuatara.defaults::capture-template-key
                                                                :test #'string=))))))
 
-(define-test (capture on-the-day-at-point)
+(define-modal-test (capture on-the-day-at-point)
   (with-capture (dir agenda)
     ;; from the calendar, three days on: the day's date under the heading
     (run-keys "M-x c a l e n d a r RET l l l i n D e n t i s t C-c C-c" :text "x" :width 100 :height 30)
@@ -387,8 +388,8 @@ templates those in DIRECTORY's capture-templates/ (none unless a test makes them
     (is equal (list (format nil "* a~%<2026-10-09 Fri>") 2)
         (multiple-value-list (tuatara.defaults::org-capture-on-day-text "* a" 2 day)))))
 
-(define-test (capture into-a-folder-not-there-yet)
-  ;; the agenda file in a folder not there yet: the task filed, the folder made once asked
+(define-modal-test (capture into-a-directory-not-there-yet)
+  ;; the agenda file in a directory not there yet: the task filed, the directory made once asked
   (with-capture (dir agenda)
     (let* ((file (namestring (merge-pathnames "new/tasks.org" dir)))
            (tuatara-user:*org-agenda-files* (list file)))
@@ -400,7 +401,7 @@ templates those in DIRECTORY's capture-templates/ (none unless a test makes them
         (true (search "** Call Ngaio" (file-text file))))
       (let ((b (tuatara.buffer:find-buffer "tasks.org")))
         (when b (tuatara.buffer:buffer-mark-saved b) (tuatara.buffer:kill-buffer b))))
-    ;; a folder of agenda files: agenda.org in it
+    ;; a directory of agenda files: agenda.org in it
     (let ((tuatara-user:*org-agenda-files* (list (namestring dir))))
       (is string= (namestring (merge-pathnames "agenda.org" dir)) (tuatara.defaults::org-agenda-main-file)))
     (let ((tuatara-user:*org-agenda-files* (list (concatenate 'string (namestring dir) "*.org"))))
@@ -446,7 +447,7 @@ templates those in DIRECTORY's capture-templates/ (none unless a test makes them
       (let ((text (file-text agenda)))
         (true (< (search "** TODO Old" text) (search "* Commitments and Jobs" text)) "~a" text)))))
 
-(define-test (capture refile-of-a-heading-gone-while-asking)
+(define-modal-test (capture refile-of-a-heading-gone-while-asking)
   ;; the heading being refiled taken away while its target is asked for: refused, the next heading left
   (with-capture (dir agenda)
     (alexandria:write-string-into-file *refile-agenda* agenda :if-exists :supersede)

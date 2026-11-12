@@ -5,7 +5,7 @@
 ;;;; HOST-... generic functions (src/runtime/host.lisp). The defaults answer as
 ;;;; DEFAULTS-HOST, made from the command loop's EDITOR-HOST and made the host
 ;;;; as soon as they are loaded, so that what they guard (no writing in an
-;;;; evidence folder) is guarded before any editor starts; each answer is a
+;;;; evidence directory) is guarded before any editor starts; each answer is a
 ;;;; method beside the feature it comes from.
 
 (in-package #:tuatara.defaults)

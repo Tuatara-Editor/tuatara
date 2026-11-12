@@ -82,7 +82,7 @@ available unqualified, and the public API of TUATARA is used.")
            #:*org-standard-todo-keywords* #:*org-todo-keywords-not-cycled* #:*org-todo-keyword-faces*
            #:*org-todo-follows-checkboxes* #:*org-cycle-hide-drawers* #:*org-fold-metadata* #:*org-hide-leading-stars*
            #:*org-cycle-include-plain-lists* #:*org-return-follows-link* #:*org-src-languages*
-           #:*code-files-make-folders* #:*org-link-descriptive* #:*org-clock-into-drawer* #:*org-log-done*
+           #:*code-files-make-directories* #:*org-link-descriptive* #:*org-clock-into-drawer* #:*org-log-done*
            #:*org-log-into-drawer* #:*org-log-repeat* #:*org-log-reschedule* #:*org-log-redeadline*
            #:*org-agenda-files* #:*capture-template-directories* #:*org-refile-targets*
            #:*org-deadline-warning-days* #:*org-agenda-log-mode* #:*org-agenda-span*
@@ -112,11 +112,12 @@ available unqualified, and the public API of TUATARA is used.")
            #:*set-mark-command-repeat-pop*
            ;; the sandbox programs decoding files run in
            #:*sandbox* #:*sandbox-seconds* #:*sandbox-memory* #:*sandbox-input-limit* #:*program-output-limit*
-           #:*folder-tree-depth-limit* #:*office-note-size-limit* #:*office-value-length-limit* #:*sandbox-total-memory*
+           #:*directory-tree-depth-limit* #:*office-note-size-limit* #:*office-value-length-limit*
+           #:*sandbox-total-memory*
            #:*sandbox-seccomp* #:*picture-memory* #:*pdf-view-dark-pages* #:*office-view-pages* #:*user-full-name*
            #:*open-externally-program* #:*open-externally-programs* #:*hex-view-binary-files* #:*open-externally-kinds*
            #:*open-externally-ask* #:*rimu-delete-to-trash* #:*latex-engines* #:*latex-main-font* #:*latex-sans-font*
-           #:*latex-mono-font* #:*latex-redaction-commands* #:*export-trusted-folders* #:*logos-directory*
+           #:*latex-mono-font* #:*latex-redaction-commands* #:*export-trusted-directories* #:*logos-directory*
            ;; the cursor, and its look in each of the modal states
            #:*cursor-shape* #:*cursor-colour*
            #:*tuatara-normal-cursor-shape* #:*tuatara-normal-cursor-colour* #:*tuatara-insert-cursor-shape*
@@ -143,6 +144,7 @@ available unqualified, and the public API of TUATARA is used.")
            #:*hl-line-modes* #:*global-cursor-column-mode* #:*cursor-column-modes* #:*global-spellcheck-mode*
            #:*spellcheck-modes* #:*spellcheck-languages* #:*spellcheck-excluded-faces* #:*spellcheck-comment-faces*
            #:*spellcheck-string-faces* #:*global-centred-text-mode* #:*line-numbers-modes*
+           #:*global-inline-pictures-mode* #:*inline-pictures-modes* #:*inline-picture-width* #:*formula-preamble*
            #:*global-invisible-characters-mode* #:*invisible-characters-modes* #:*invisible-characters-when-safe*
            #:*global-text-direction-mode* #:*text-direction-modes* #:*text-direction-when-safe*
            ;; files visited lately
@@ -155,6 +157,6 @@ available unqualified, and the public API of TUATARA is used.")
            ;; the window frontend
            #:*gui-font* #:*gui-renderer* #:*gui-title* #:*gui-padding* #:*window-colours-from-desktop* #:*tui-padding*
            #:*tui-pictures* #:*tui-mouse* #:*tui-colours* #:*follow-desktop-style* #:*open-dropped-files-safely*
-           #:*safe-directories* #:*open-binary-files-safely* #:*evidence-folders*
+           #:*safe-directories* #:*open-binary-files-safely* #:*evidence-directories*
            ;; files on another machine
            #:*remote-seconds* #:*remote-preview-size-limit* #:*client-kept-without-buffers*))

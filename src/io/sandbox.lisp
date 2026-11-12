@@ -26,7 +26,7 @@
 ;;;; could be written, its permissions and times changed.
 ;;;;
 ;;;; A program that needs more is shown more, and only that: LaTeX making a
-;;;; PDF of a document sees the document's folder and TeX's own, read only,
+;;;; PDF of a document sees the document's directory and TeX's own, read only,
 ;;;; and writes in its working directory alone (lisp/export/export.lisp).
 ;;;;
 ;;;; bwrap is found on the PATH when first needed and tried once; the result is
@@ -137,7 +137,7 @@ the editor's own PATH, or *DEFAULT-PROGRAM-PATH* when it has none."
 PATH), or NAME itself when it has a slash and can be run; NIL when there is no
 such program. Only directories named from the root (starting with /) are
 looked in: an empty entry, . or bin/ would mean wherever the editor happens
-to be, which may be a folder of files not to be trusted."
+to be, which may be a directory of files not to be trusted."
   (flet ((runnable (path) (and (handler-case (sb-posix:access path sb-posix:x-ok) (sb-posix:syscall-error () nil))
                                (eq :regular (path-kind path))
                                path)))
@@ -171,7 +171,7 @@ looked for again; PROGRAM is left as it is when it is not found."
   "How to start PROGRAM, by its full path, with ARGUMENTS so that it is
 killed when the editor ends, killed or not (setpriv --pdeathsig KILL), as
 a list of the program to run and its arguments; NIL when setpriv is not in
-the system's own folders of programs (SANDBOX-FIND-PROGRAM)."
+the system's own directories of programs (SANDBOX-FIND-PROGRAM)."
   (let ((setpriv (sandbox-find-program "setpriv")))
     (and setpriv (list* setpriv "--pdeathsig" "KILL" "--" program arguments))))
 
@@ -273,7 +273,7 @@ Tuatara set for itself (*OWN-VARIABLES*)."
 it (PROGRAM-ENVIRONMENT), or NIL when it has none. Working through a daemon,
 that is as the client you work from has it: its display, its terminal's
 variables. Read with it what belongs to where you are working; the editor's
-own folders and settings with OWN-VARIABLE."
+own directories and settings with OWN-VARIABLE."
   (let ((prefix (concatenate 'string name "=")))
     (loop for setting in (program-environment)
           when (uiop:string-prefix-p prefix setting) return (subseq setting (length prefix)))))
@@ -1689,8 +1689,8 @@ program elsewhere, as in the home directory, cannot be run shut in."
 
 (defun system-program (name)
   "The program NAME found: by its full path from the root, as it is; by
-name, only in the system's own folders of programs (SANDBOX-FIND-PROGRAM),
-never in a folder of yours your PATH may name. NIL when there is none, as
+name, only in the system's own directories of programs (SANDBOX-FIND-PROGRAM),
+never in a directory of yours your PATH may name. NIL when there is none, as
 for a path not from the root (./gpg)."
   (if (uiop:string-prefix-p "/" name)
       (find-program name)

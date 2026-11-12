@@ -21,13 +21,13 @@ a description reads the same in any Lisp package."
 (defun check-values-description (description)
   "Signal an error unless DESCRIPTION is a description of a setting's values
 that VALUES-WORDS and VALUE-FITS understand: words (a string); BOOLEAN,
-NUMBER, INTEGER, STRING, FILE, FOLDER or FUNCTION; (MEMBER VALUE ...);
+NUMBER, INTEGER, STRING, FILE, DIRECTORY or FUNCTION; (MEMBER VALUE ...);
 \(INTEGER LOW HIGH) or (NUMBER LOW HIGH), either end a number or * for open;
 \(LIST-OF DESCRIPTION); (OR DESCRIPTION ...)."
   (flet ((bad () (error "~s describes no values a setting takes" description)))
     (let ((kind (values-kind description)))
       (if (atom description)
-          (unless (member kind '(:phrase :boolean :number :integer :string :file :folder :function)) (bad))
+          (unless (member kind '(:phrase :boolean :number :integer :string :file :directory :function)) (bad))
           (case kind
             (:member (unless (rest description) (bad)))
             ((:integer :number)
@@ -49,7 +49,7 @@ and VALUES the values it takes, a description in words for people
   (integer 0 *)          a whole number, 0 or more; * leaves an end open
   (number 0.5 10)        any number in that range; plain number for any
   string                 text
-  file, folder           the name of a file or of a folder
+  file, directory           the name of a file or of a directory
   function               a function, or the name of one
   (list-of DESCRIPTION)  a list, each element as DESCRIPTION says
   (or DESCRIPTION ...)   any of them, as (or (member nil) string)
@@ -87,7 +87,7 @@ end a number or * for none."
       (:boolean "t, nil")
       (:string "text")
       (:file "a file's name")
-      (:folder "a folder's name")
+      (:directory "a directory's name")
       (:function "a function")
       (:member (format nil "~{~s~^, ~}" (rest description)))
       (:integer (if (atom description) "a whole number" (apply #'range-words "a whole number" (rest description))))
@@ -105,7 +105,7 @@ end a number or * for none."
       (:phrase :unknown)
       (:boolean (yes-if (member value '(t nil))))
       (:string (yes-if (stringp value)))
-      ((:file :folder) (yes-if (or (stringp value) (pathnamep value))))
+      ((:file :directory) (yes-if (or (stringp value) (pathnamep value))))
       (:function (yes-if (or (functionp value) (and value (symbolp value)))))
       (:member (yes-if (member value (rest description) :test #'equalp)))
       (:integer (yes-if (and (integerp value) (or (atom description) (apply #'in-range (rest description))))))

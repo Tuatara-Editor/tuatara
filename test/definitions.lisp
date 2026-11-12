@@ -7,12 +7,12 @@
   :description "No function, macro or command is defined twice in one package, where the later would quietly replace the earlier; no two tests have one name; the core asks the host, never a variable holding one function; the octets of a mapped file are read through the text layer alone; no source file names a package of a higher layer.")
 
 (defun source-files (top)
-  "Every Lisp source file under the folder TOP of the repository (\"lisp\", \"src\")."
+  "Every Lisp source file under the directory TOP of the repository (\"lisp\", \"src\")."
   (directory (merge-pathnames (make-pathname :directory (list :relative top :wild-inferiors) :name :wild :type "lisp")
                               (asdf:system-source-directory "tuatara"))))
 
 (defun core-source-files ()
-  "Every Lisp source file of the core: the folders src, lisp and frontends."
+  "Every Lisp source file of the core: the directories src, lisp and frontends."
   (loop for top in '("src" "lisp" "frontends") append (source-files top)))
 
 (defun source-definitions ()
@@ -91,7 +91,7 @@ the package's name and the reader's name in lower case."
   (let ((seen (make-hash-table :test 'equal)) (twice '()) (count 0))
     (dolist (file (directory (merge-pathnames "test/*.lisp" (asdf:system-source-directory "tuatara"))))
       (cl-ppcre:do-register-groups (parent child top)
-                                   ("(?m)^\\(define-test (?:\\(([^\\s()]+) ([^\\s()]+)\\)|([^\\s()]+))"
+                                   ("(?m)^\\(define-(?:modal-)?test (?:\\(([^\\s()]+) ([^\\s()]+)\\)|([^\\s()]+))"
                                     (uiop:read-file-string file))
         (declare (ignore parent))
         (incf count)

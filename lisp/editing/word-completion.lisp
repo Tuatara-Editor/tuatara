@@ -66,7 +66,7 @@ hyphens too where the major mode has them in words (MODE-HYPHEN-IN-WORDS-P)."
 
 (defun word-completion-kind (buffer)
   "What kind of text BUFFER holds as to who may see it: :ENCRYPTED for the
-decrypted text of an encrypted file, :EVIDENCE for a file in an evidence folder,
+decrypted text of an encrypted file, :EVIDENCE for a file in an evidence directory,
 :SAFE for another file opened safely, NIL for any other text."
   (cond ((encrypted-buffer-p buffer) :encrypted)
         ((buffer-evidence buffer) :evidence)

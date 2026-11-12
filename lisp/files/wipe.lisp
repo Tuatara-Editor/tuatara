@@ -50,7 +50,7 @@ found not to hold what it had to."
   (tuatara.runtime:running-percent (wipe-job-done job) (max 1 (wipe-job-total job))))
 
 (defmethod tuatara.runtime:job-take-in ((job wipe-job))
-  "Say what was wiped, and show the lists of their folders again."
+  "Say what was wiped, and show the lists of their directories again."
   (let ((wiped (wipe-job-wiped job)))
     (paths-changed wiped)
     (cond ((wipe-job-refused job) (message "~a" (wipe-job-refused job)))
@@ -118,7 +118,7 @@ in the background, so that it is not found again where the disk writes in
 place. Where it does not, the old blocks stay until reused, and only the
 disk's own encryption keeps them from being read: a copy-on-write file system
 (btrfs, zfs) keeps old copies, and a solid-state drive may, which the question
-says. A link, a folder, and a file with other names are refused."
+says. A link, a directory, and a file with other names are refused."
   (let ((path (shown-file-argument "Wipe file: ")))
     (when (confirm-wipe (list path))
       (start-wiping (list path)))))

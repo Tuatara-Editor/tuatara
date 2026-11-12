@@ -168,7 +168,7 @@ read (TUATARA.DEFAULTS::*PATH-LISTING*), for the editor to list it next."
                     (> (get-internal-real-time) until))
           do (sleep 0.001))))
 
-(define-test (in-text-completion paths)
+(define-modal-test (in-text-completion paths)
   ;; typing a slash in a path lists its directory's entries beside the cursor, none chosen
   (with-test-directory (dir)
     (put-file (merge-pathnames "alpha.txt" dir) "a")
@@ -227,8 +227,8 @@ read (TUATARA.DEFAULTS::*PATH-LISTING*), for the editor to list it next."
         (let ((tuatara-user:*complete-paths-modes* '((fundamental-mode . nil))))
           (false (tuatara.command:editor-popup (nth-value 1 (typed (key-string native) :listed)))))))))
 
-(define-test (in-text-completion paths-folders-first)
-  ;; the list of a folder's entries beside the cursor shows its folders first, then its files
+(define-modal-test (in-text-completion paths-directories-first)
+  ;; the list of a directory's entries beside the cursor shows its directories first, then its files
   (with-test-directory (dir)
     (dolist (name '("b" "-x" "_y"))
       (put-file (merge-pathnames name dir) "a"))
@@ -245,8 +245,8 @@ read (TUATARA.DEFAULTS::*PATH-LISTING*), for the editor to list it next."
           (is equal '("adir/" "zdir/")
               (subseq (map 'list #'tuatara.command:candidate-string (tuatara.command:popup-candidates popup)) 0 2)))))))
 
-(define-test (in-text-completion opening-paths)
-  ;; C-x C-p opens the path at the cursor: a folder in a list of it, a file in its buffer
+(define-modal-test (in-text-completion opening-paths)
+  ;; C-x C-p opens the path at the cursor: a directory in a list of it, a file in its buffer
   (with-test-directory (dir)
     (put-file (merge-pathnames "alpha.txt" dir) "alpha's text")
     (ensure-directories-exist (merge-pathnames "beta/" dir))
@@ -258,7 +258,7 @@ read (TUATARA.DEFAULTS::*PATH-LISTING*), for the editor to list it next."
                            :file (namestring (put-file (merge-pathnames (format nil "z~d.txt" (incf sessions)) dir) ""))
                            :width 160 :height 12)))
              (shown (editor) (tuatara.display:window-buffer (tuatara.command:editor-window editor))))
-        ;; a folder, with its slash or without, listed
+        ;; a directory, with its slash or without, listed
         (dolist (path (list (format nil "~abeta/" native) (format nil "~abeta" native)))
           (let ((b (shown (nth-value 1 (opened path)))))
             (is string= (format nil "~abeta/" native) (tuatara.buffer:buffer-local b :directory))))
@@ -286,7 +286,7 @@ read (TUATARA.DEFAULTS::*PATH-LISTING*), for the editor to list it next."
           (tuatara.buffer:kill-buffer b))
         ;; nothing there, or no path: said, nothing made
         (multiple-value-bind (f editor) (opened (format nil "~anone.txt" native))
-          (true (showing f (format nil "No file or folder: ~anone.txt" native)))
+          (true (showing f (format nil "No file or directory: ~anone.txt" native)))
           (false (probe-file (merge-pathnames "none.txt" dir)))
           (is string= "z8.txt" (tuatara.buffer:buffer-name (shown editor))))
         (true (showing (opened "  " "C-x C-p") "No path at point"))))))

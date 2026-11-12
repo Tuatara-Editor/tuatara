@@ -7,7 +7,7 @@ Keeping track of what is open, and getting it back after you leave.
 
 Chapter 1 explained that a buffer is a piece of text Tuatara holds in memory,
 and that a window is a view of one. After an afternoon of work you may have a
-dozen buffers open: a letter, a shopping list, some notes, a folder listing,
+dozen buffers open: a letter, a shopping list, some notes, a directory listing,
 the help. This chapter is about managing them. It shows the list of all
 buffers, how to get rid of the ones you are done with, how to find a file you
 had open yesterday, and how to leave a place marked so that you can come back
@@ -27,7 +27,7 @@ one you used last is at the top. You use the list when you have lost track
 of what is open, when you want to close several buffers at once, or when you
 want to save several files in one go.
 
-Figure 7.1 shows a list for someone who has a folder of letters under version
+Figure 7.1 shows a list for someone who has a directory of letters under version
 control, a few loose notes, and the log of what the echo area said.
 
 #+caption: Figure 7.1. The buffer list, a line for each buffer.
@@ -63,17 +63,17 @@ much text they hold.
 *** Sections
 
 The list is divided into sections, one for each project. A project is a
-folder that holds a =.git= or a =.project= file, with every file in it and
-every folder below it. In the figure, =letters= is a project because
+directory that holds a =.git= or a =.project= file, with every file in it and
+every directory below it. In the figure, =letters= is a project because
 =~/letters/= is under version control. Buffers that belong to no project are
 in a section called No project. The section of the project you came from is
-first. Each heading says the project's folder name and how many buffers the
+first. Each heading says the project's directory name and how many buffers the
 section holds.
 
 A heading starts with =▾= when its section is open and =▸= when it is folded.
-The setting =*project-root-markers*= holds the file names that make a folder a
-project. If you keep your own projects in folders marked some other way, add
-the name of the marker file there.
+The setting =*project-root-markers*= holds the file names that make a directory
+a project. If you keep your own projects in directories marked some other way,
+add the name of the marker file there.
 
 *** Folding
 
@@ -96,7 +96,7 @@ quick way to say "everything except these".
 
 ~d~ puts a =D= on a buffer instead. It means "kill this one". Nothing is killed
 until you press ~x~, which kills every buffer marked with =D=. It is the same
-two-step as in a folder listing: first mark, then do it. Buffers with unsaved
+two-step as in a directory listing: first mark, then do it. Buffers with unsaved
 changes are asked about first, so a mark does not lose your work.
 
 There are two commands that act on the buffers marked with =>=. ~s~ saves the
@@ -173,8 +173,8 @@ none, numbered when the name is taken (=*org-scratch*<2>=).
 
 #+table: settings *startup-buffer* *auto-scratch-buffers*
 
-A file name typed in a scratch buffer is taken from the folder in
-=*default-directory*=, which is your home folder unless you say otherwise.
+A file name typed in a scratch buffer is taken from the directory in
+=*default-directory*=, which is your home directory unless you say otherwise.
 Saving a scratch buffer with ~C-x C-s~ asks where to put it, as for any new
 file.
 
@@ -186,7 +186,7 @@ has changes you have not saved, Tuatara asks first. Chapter 1 mentioned ~C-x 4
 0~, which does the same and closes the window too.
 
 When you have finished with a whole piece of work, ~C-x p k~ kills every
-buffer of the project the current buffer is in: its files, its folder
+buffer of the project the current buffer is in: its files, its directory
 listings and the buffers standing in them. It says how many have unsaved
 changes and asks about each of those. It is the quick way to tidy up after
 you have finished the letters and want to start on something else. The same
@@ -269,8 +269,8 @@ work as described for the buffer list. In the manager, ~r~ gives the bookmark
 under the cursor another name and ~c~ changes its categories. A bookmark
 whose file has gone is shown faint.
 
-A bookmark on a folder listing keeps the folder and the entry the cursor is
-on, so you can bookmark a folder you visit often.
+A bookmark on a directory listing keeps the directory and the entry the cursor
+is on, so you can bookmark a directory you visit often.
 
 #+begin_try Try it, with some notes
 1. Open =~/notes.txt= and type a few lines, such as =Plumber: Wanaka Plumbing=,
@@ -317,7 +317,7 @@ week.
 
 When you close Tuatara with ~C-x C-c~, everything that was open is gone
 from the screen. The session is the name for what was open: the files and the
-folder listings, and how the windows were split. If you turn on
+directory listings, and how the windows were split. If you turn on
 =*keep-session*=, Tuatara writes the session down as it stops, and
 opens it again the next time it starts without a file named. You see your
 windows as they were, each on its file, at the place where the cursor was.
@@ -332,7 +332,7 @@ Put this line in your init file, the file described in chapter 8:
 The session is also written now and then while Tuatara runs, as often as
 =*keep-session-interval*= seconds when something has changed. If Tuatara
 crashes, you lose at most that long. The file that holds it is in Tuatara's
-state folder and only you can read it. A file you opened with care, because
+state directory and only you can read it. A file you opened with care, because
 you do not trust it, is opened with the same care next time. A file that is
 no longer there is left out.
 
@@ -356,7 +356,7 @@ replaced by that start.
 Saving is your decision. Tuatara never writes your file until you press
 ~C-x C-s~. But it does not leave your unsaved typing exposed to a crash or a
 slip. When a buffer that visits a file has changes you have not saved, Tuatara
-writes them to a copy of their own, in a folder of its own, a few seconds
+writes them to a copy of their own, in a directory of its own, a few seconds
 after you stop typing. If you keep typing without a pause, it still writes
 one every minute. The file you are editing is never touched. When you save,
 or kill the buffer with nothing to save, the copy is deleted.
@@ -386,7 +386,7 @@ file:
 A buffer larger than =*auto-save-size-limit*=
 octets is not copied, because each copy is written whole. Files opened with
 care are never copied. =*auto-save-directory*= says where the copies go, and
-you can point it at a folder on another drive. =*auto-save-idle*= and
+you can point it at a directory on another drive. =*auto-save-idle*= and
 =*auto-save-interval*= set the two waits.
 
 #+begin_try Try it, with a letter

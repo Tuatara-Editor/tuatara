@@ -26,13 +26,13 @@ presentation read as text may have.")
 PowerPoint presentation may take unpacked, together: past it the document is
 refused, as made to exhaust the memory.")
 
-(defun docx-read-folder (folder)
-  "Every file under FOLDER, a Word template unpacked, as (NAME . OCTETS), NAME
-its path from FOLDER with /, sorted; backups left out (FILES-UNDER). Signals
+(defun docx-read-directory (directory)
+  "Every file under DIRECTORY, a Word template unpacked, as (NAME . OCTETS), NAME
+its path from DIRECTORY with /, sorted; backups left out (FILES-UNDER). Signals
 a FILE-SYSTEM-ERROR when its files take more than *DOCX-LARGEST-UNPACKED*
 octets together."
   (let ((left *docx-largest-unpacked*))
-    (sort (loop for (path . relative) in (files-under folder :hidden t)
+    (sort (loop for (path . relative) in (files-under directory :hidden t)
                 for octets = (tuatara.io:file-octets path :limit left)
                 do (decf left (length octets))
                 collect (cons relative octets))
@@ -104,8 +104,8 @@ out, a text box's text as it is, a picture a link to its file under
 *DOCX-READ-MEDIA*.")
 
 (defvar *docx-read-media* nil
-  "Where a Word document read to write in has its pictures saved, a folder's
-name as its links write it (~ for your home folder), or NIL; the pictures
+  "Where a Word document read to write in has its pictures saved, a directory's
+name as its links write it (~ for your home directory), or NIL; the pictures
 linked are gathered in *DOCX-READ-PICTURES*, each (TARGET . FILE).")
 
 (defvar *docx-read-pictures* '()
@@ -202,8 +202,8 @@ PowerPoint presentation)."
 
 (defun docx-target-part (part target)
   "The name of the part TARGET, a relation's target written in PART, stands
-for: from the archive's top when it begins with /, else from PART's folder,
-each .. going a folder up (never above the top)."
+for: from the archive's top when it begins with /, else from PART's directory,
+each .. going a directory up (never above the top)."
   (let ((pieces (if (and (plusp (length target)) (char= (char target 0) #\/))
                     '()
                     (butlast (uiop:split-string part :separator '(#\/))))))
@@ -344,7 +344,7 @@ hidden text as [hidden: TEXT]."
 
 (defun docx-safe-file-name-p (name &key link)
   "True when NAME, the name of a part of a Word document or of a file in it,
-may be written under a folder of ours as it is: a relative path of plain
+may be written under a directory of ours as it is: a relative path of plain
 names, none of them . or .., with no backslash and no control character; with
 LINK, one named in a link of a note, no square bracket either. A document
 given to you may name its parts ../../init.lisp; such a one is never written."
@@ -354,14 +354,14 @@ given to you may name its parts ../../init.lisp; such a one is never written."
        (every (lambda (piece) (and (plusp (length piece)) (not (member piece '("." "..") :test #'string=))))
               (uiop:split-string name :separator '(#\/)))))
 
-(defun import-picture-file (source folder name pictures)
-  "Where the picture SOURCE is saved when a document is imported: FOLDER/NAME,
+(defun import-picture-file (source directory name pictures)
+  "Where the picture SOURCE is saved when a document is imported: DIRECTORY/NAME,
 NAME numbered (TUATARA.IO:NUMBERED-NAME) when another picture among
 PICTURES, each (SOURCE . FILE), has that file already; the file SOURCE was
 given before when it has one."
   (or (cdr (assoc source pictures :test #'equal))
       (loop for n from 1
-            for file = (format nil "~a/~a" folder (tuatara.io:numbered-name name n))
+            for file = (format nil "~a/~a" directory (tuatara.io:numbered-name name n))
             unless (rassoc file pictures :test #'string=) return file)))
 
 (defun docx-read-label (id)
@@ -1062,9 +1062,9 @@ it holds macros, embedded files or links outside it."
        :macros (let ((macros (remove-if-not (lambda (n) (or (search "vba" (string-downcase n)) (search "/macrosheets/" n))) names)))
                  (and (find-if (lambda (n) (or (search "vbaProject" n) (search "/macrosheets/" n))) macros)
                       macros))
-       :embedded (let ((folder (subseq usual 0 (1+ (or (position #\/ usual) -1)))))
-                   (remove-if-not (lambda (n) (or (uiop:string-prefix-p (format nil "~aembeddings/" folder) n)
-                                                  (uiop:string-prefix-p (format nil "~aactiveX/" folder) n)))
+       :embedded (let ((directory (subseq usual 0 (1+ (or (position #\/ usual) -1)))))
+                   (remove-if-not (lambda (n) (or (uiop:string-prefix-p (format nil "~aembeddings/" directory) n)
+                                                  (uiop:string-prefix-p (format nil "~aactiveX/" directory) n)))
                                   names))
        :outside (docx-outside-links names)
        :changes (length (docx-reading-changes *docx-reading*))

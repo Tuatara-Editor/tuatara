@@ -318,7 +318,7 @@ most the seconds given for it to end."
       (setf tuatara.defaults::*character-names* kept
             tuatara.defaults::*character-names-thread* nil))))
 
-(define-test (waits held-key-frames)
+(define-modal-test (waits held-key-frames)
   ;; a key held down: the keys waiting are handled before a frame is drawn, the last one shown
   (flet ((frames (pending)
            (let ((f (tuatara.frontend.fake:make-fake-frontend :width 40 :height 8)))

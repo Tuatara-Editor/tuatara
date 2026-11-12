@@ -1,13 +1,13 @@
-;;;; lisp/git/rewind.lisp --- Going back through git's history: a file, or a folder, as each commit left it.
+;;;; lisp/git/rewind.lisp --- Going back through git's history: a file, or a directory, as each commit left it.
 ;;;; Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
 ;;;;
 ;;;; As Emacs's git-timemachine does for a file: C-x G in a file
 ;;;; shows it as its latest commit left it, read only, in its own mode; p goes
 ;;;; a commit older, n newer, r to a commit chosen from its log, c shows the
-;;;; commit, C-c w copies its hash. In rimu it does that for the folder, in
+;;;; commit, C-c w copies its hash. In rimu it does that for the directory, in
 ;;;; a rimu list of its own (lisp/rimu/git.lisp), and RET on a file goes on
 ;;;; through that file's history from there. C-x G again goes back
-;;;; to the file or the folder as it is now. The mode line says Rewind and
+;;;; to the file or the directory as it is now. The mode line says Rewind and
 ;;;; the commit, lit up.
 
 (in-package #:tuatara.git)
@@ -38,13 +38,13 @@ it, as octets, read from the repository at TOP; no more than
 ;;; Buffers going back
 
 (defvar *git-rewind-keymap* (make-keymap :name "git history, a commit at a time" :parent *made-text-keymap*)
-  "The keys of a file or folder shown as a commit left it (\\[git-rewind]),
+  "The keys of a file or directory shown as a commit left it (\\[git-rewind]),
 before the modal keys and a rimu list's: \\`p' a commit older, \\`n' newer, \\`r'
 one chosen from its log, \\`c' the commit, \\`C-c w' copies its hash, \\`q'
 closes.")
 
 (defun git-rewind-buffer-p (buffer)
-  "True when BUFFER goes through a file's or a folder's history (\\[git-rewind])."
+  "True when BUFFER goes through a file's or a directory's history (\\[git-rewind])."
   (and (tuatara.buffer:buffer-local buffer :git-rewind-revisions) t))
 
 (defun git-rewind-words (buffer index)
@@ -76,7 +76,7 @@ is being read, read only, its keys *GIT-REWIND-KEYMAP*'s. Returns it."
   "Go through the history of PATH (from TOP) in the repository at TOP, in a
 buffer of its own shown at once, in the mode of the file: the file as its
 latest commit left it, or with AT, a commit, as it was then; point at the
-start of LINE (0 the first). LIST is the folder's history it was opened
+start of LINE (0 the first). LIST is the directory's history it was opened
 from, if any."
   (let ((buffer (git-rewind-buffer top (format nil "*git rewind: ~a*" (tuatara.io:native-file-name path))
                                    (mode-for-file (sb-ext:parse-native-namestring (concatenate 'string top path))))))
@@ -84,7 +84,7 @@ from, if any."
           (tuatara.buffer:buffer-local buffer :git-rewind-list) list)
     (start-git-job "Reading the file's history"
                    (lambda (job)
-                     ;; from a folder's commit: the file followed back from there, and the
+                     ;; from a directory's commit: the file followed back from there, and the
                      ;; commits after it that kept its name (following from HEAD a name
                      ;; gone there follows another file)
                      (let* ((newer (and at (git-file-history
@@ -150,7 +150,7 @@ gives no mode takes the one its first line gives (#!/bin/sh)."
 ;;; Going through it
 
 (defun git-rewind-show (buffer index)
-  "Show in BUFFER, a file's or a folder's history, what its commit INDEX (0
+  "Show in BUFFER, a file's or a directory's history, what its commit INDEX (0
 the latest) left, read in the background, point kept on its line; when a
 later move asked for another before it came, that one is shown instead."
   (if (rimu-source buffer)
@@ -175,21 +175,21 @@ so at its ends."
   (let* ((buffer (current-buffer))
          (revisions (tuatara.buffer:buffer-local buffer :git-rewind-revisions))
          (index (+ (tuatara.buffer:buffer-local buffer :git-rewind-wanted) by))
-         (what (if (rimu-source buffer) "folder" "file")))
+         (what (if (rimu-source buffer) "directory" "file")))
     (cond ((< index 0) (message "This is the latest commit of the ~a" what))
           ((>= index (length revisions)) (message "This is the first commit of the ~a" what))
           (t (git-rewind-show buffer index)))))
 
 (define-command git-rewind-older ()
-  "Show the file or folder of this history as the commit before left it."
+  "Show the file or directory of this history as the commit before left it."
   (git-rewind-move 1))
 
 (define-command git-rewind-newer ()
-  "Show the file or folder of this history as the commit after left it."
+  "Show the file or directory of this history as the commit after left it."
   (git-rewind-move -1))
 
 (define-command git-rewind-to ()
-  "Show the file or folder of this history as a commit chosen from its log
+  "Show the file or directory of this history as a commit chosen from its log
 left it, the latest first, by its hash, date, author or subject."
   (let ((index (completing-read-value
                 "Rewind to: "
@@ -206,7 +206,7 @@ left it, the latest first, by its hash, date, author or subject."
     (when (integerp index) (git-rewind-show (current-buffer) index))))
 
 (define-command git-rewind-show-commit ()
-  "Show the commit that left the file or folder of this history as it is
+  "Show the commit that left the file or directory of this history as it is
 shown: what it says and its changes."
   (let ((revision (git-rewind-shown (current-buffer))))
     (if revision
@@ -214,7 +214,7 @@ shown: what it says and its changes."
         (message "No commit shown yet: it is being read"))))
 
 (define-command git-rewind-copy-hash ()
-  "Copy the short hash of the commit that left the file or folder of this
+  "Copy the short hash of the commit that left the file or directory of this
 history as it is shown."
   (let ((short (let ((revision (git-rewind-shown (current-buffer)))) (and revision (git-commit-short revision)))))
     (if short
@@ -222,15 +222,15 @@ history as it is shown."
                (message "Copied ~a" short))
         (message "No commit shown yet: it is being read"))))
 
-(commands-for-buffers 'git-rewind-buffer-p "a file's or folder's history (\\[git-rewind])"
+(commands-for-buffers 'git-rewind-buffer-p "a file's or directory's history (\\[git-rewind])"
                       'git-rewind-older 'git-rewind-newer 'git-rewind-to 'git-rewind-show-commit 'git-rewind-copy-hash)
 
 ;;; Back to now
 
 (defun git-rewind-leave (buffer)
-  "End the history BUFFER shows, and a folder's it was opened from: show the
-file as it is now on the same line, or the folder now in rimu
-\(RIMU-REWIND-LEAVE); a file gone now, the nearest folder above it that is
+  "End the history BUFFER shows, and a directory's it was opened from: show the
+file as it is now on the same line, or the directory now in rimu
+\(RIMU-REWIND-LEAVE); a file gone now, the nearest directory above it that is
 there, said so."
   (if (rimu-source buffer)
       (rimu-rewind-leave buffer)
@@ -258,17 +258,17 @@ there, said so."
   "Go back through git's history a commit at a time, and come back. In a file,
 or on a file's line of a status, the file is shown as its latest commit left
 it, in a buffer of its own in its mode, read only, on the line you were on. In
-a list of a directory (\\[rimu]), the folder is listed as its latest commit
+a list of a directory (\\[rimu]), the directory is listed as its latest commit
 left it, as rimu lists it, in a list of its own. \\<rimu-mode>\\[rimu-open] on
-a folder lists it as that commit left it. On a file it goes through the file's
-history from that commit (\\[quit-window] comes back to the folder).
+a directory lists it as that commit left it. On a file it goes through the file's
+history from that commit (\\[quit-window] comes back to the directory).
 \\[rimu-up] goes up. The preview shows the files as they were then, and what
 changes files or reads them as they are now is refused there. In either,
 \\<*git-rewind-keymap*>\\[git-rewind-older] shows a commit older,
 \\[git-rewind-newer] a commit newer, \\[git-rewind-to] one chosen from its log;
 \\[git-rewind-show-commit] shows the commit, \\[git-rewind-copy-hash] copies
 its hash, and the mode line says which it is, Rewind and its hash lit up. Run
-again there, it goes back to the file or folder as it is now, on the same line
+again there, it goes back to the file or directory as it is now, on the same line
 or entry. A file is followed back across renames; changes not committed are not
 in it, nor is a file that is not text shown."
   (let ((buffer (current-buffer)))
@@ -286,7 +286,7 @@ in it, nor is a file that is not text shown."
                                  (lambda (path)
                                    (if (or (uiop:string-suffix-p path "/")
                                            (eq :directory (tuatara.io:path-kind (concatenate 'string top path))))
-                                       (message "~a is a folder: rewind a file in it, or the folder from its list (\\[rimu])"
+                                       (message "~a is a directory: rewind a file in it, or the directory from its list (\\[rimu])"
                                                 (escape-controls path))
                                        (git-rewind-file top path
                                                         :line (if (tuatara.buffer:buffer-file buffer)

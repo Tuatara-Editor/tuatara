@@ -3,15 +3,15 @@
 
 * Git
 
-Keeping the history of a folder, and working on it with other people.
+Keeping the history of a directory, and working on it with other people.
 
-Git is a program that remembers every version of the files in a folder. You
+Git is a program that remembers every version of the files in a directory. You
 tell it when a piece of work is done, and it keeps that state for good, with a
-sentence from you saying what changed. Later you can look at any earlier
-state, see who changed a line and why, try an idea without risk to the work
-that is finished, and share the folder with someone else without mailing files
-back and forth. It is used most for programs, but it works as well for a
-folder of recipes, a set of letters or a small website.
+sentence from you saying what changed. Later you can look at any earlier state,
+see who changed a line and why, try an idea without risk to the work that is
+finished, and share the directory with someone else without mailing files back
+and forth. It is used most for programs, but it works as well for a directory of
+recipes, a set of letters or a small website.
 
 Tuatara does not replace git. It runs the git on your computer for you and
 shows what git says in buffers you can read and act on. Everything starts from
@@ -20,7 +20,7 @@ first, then the daily round of staging and committing, then looking at
 history, branches, sharing with a remote, and the tools for finding out when
 and why something changed.
 
-The examples use a folder of recipes, =~/recipes=, with a text file for each
+The examples use a directory of recipes, =~/recipes=, with a text file for each
 recipe. You need git installed, and git needs to know your name once. If you
 have never used it, type these two lines in a terminal, with your own name and
 address:
@@ -35,14 +35,14 @@ git config --global user.email "aroha@example.org"
 A few words come up on every page of this chapter. They are git's own, and
 the same in every book about it.
 
-A repository is a folder whose history git keeps. Git stores the history in a
-hidden folder called =.git= inside it. Your files stay ordinary files that any
-program can open.
+A repository is a directory whose history git keeps. Git stores the history in a
+hidden directory called =.git= inside it. Your files stay ordinary files that
+any program can open.
 
-A commit is one saved state of the whole folder, with a message, your name and
-the time. Commits form a chain, each one pointing back to the one before. Every
-commit has a name of its own made of letters and digits, called its hash, such
-as =3f9c2ab=. You rarely type one; you pick the commit from a list.
+A commit is one saved state of the whole directory, with a message, your name
+and the time. Commits form a chain, each one pointing back to the one before.
+Every commit has a name of its own made of letters and digits, called its hash,
+such as =3f9c2ab=. You rarely type one; you pick the commit from a list.
 
 Staging is how you choose what goes into the next commit. Suppose you fixed
 the oven temperature in one recipe and began a new recipe in the same hour.
@@ -79,13 +79,13 @@ chapter takes them one at a time.
 
 ** The status
 
-~C-x g~ shows the state of the repository that the current file or folder is
+~C-x g~ shows the state of the repository that the current file or directory is
 in. It is the place you work with git from. It shows the branch you are on,
 the files that have changed, what is staged, and the latest commits.
 
 The first time you open the status of a project, Tuatara asks whether you
 trust it, because git can run programs that a repository names. Chapter 12
-explains the question and its three answers. For a folder you made yourself,
+explains the question and its three answers. For a directory you made yourself,
 answer ~y~ and then type =yes=.
 
 Figure 15.2 shows the status of the recipes after an afternoon's work.
@@ -104,7 +104,7 @@ Upstream: origin/main (1 ahead, 0 behind)
   modified   bread.txt
 ▾ Recent commits (2)
   3f9c2ab Add the scone recipe
-  81d04e7 Start the recipe folder
+  81d04e7 Start the recipe directory
 ▸ Ignored files
 #+end_example
 
@@ -118,16 +118,16 @@ go on with it or stop it.
 Below are the sections. Each has a heading with a count, and is left out
 when it would be empty.
 
-| Section           | What it holds                                                |
-|-------------------+--------------------------------------------------------------|
-| Unmerged files    | Files with a conflict, while a merge or a rebase has stopped. |
-| Untracked files   | New files that git does not keep yet. A new folder is one line. |
-| Unstaged changes  | Changes to files git keeps, which you have not chosen yet.   |
-| Staged changes    | What the next commit will hold.                              |
-| Stashes           | Work you put aside (see The stash below).                    |
-| Unpushed to ...   | Commits the remote does not have yet.                        |
-| Recent commits    | The latest commits of the branch.                            |
-| Ignored files     | Files git was told to leave alone. Folded until you open it. |
+| Section          | What it holds                                                      |
+|------------------+--------------------------------------------------------------------|
+| Unmerged files   | Files with a conflict, while a merge or a rebase has stopped.      |
+| Untracked files  | New files that git does not keep yet. A new directory is one line. |
+| Unstaged changes | Changes to files git keeps, which you have not chosen yet.         |
+| Staged changes   | What the next commit will hold.                                    |
+| Stashes          | Work you put aside (see The stash below).                          |
+| Unpushed to ...  | Commits the remote does not have yet.                              |
+| Recent commits   | The latest commits of the branch.                                  |
+| Ignored files    | Files git was told to leave alone. Folded until you open it.       |
 
 The status is a list in sections, like the buffer list of chapter 7, and the
 same keys fold it. These are the keys in the order you are likely to need
@@ -188,8 +188,8 @@ full menus always, put this in your init file:
 =*git-slim-actions*= is the list of actions the short menus show, if you
 would sooner add one or two than see them all.
 
-#+begin_try Try it, with a folder of recipes
-1. In a terminal, make the folder and a first recipe:
+#+begin_try Try it, with a directory of recipes
+1. In a terminal, make the directory and a first recipe:
    =mkdir ~/recipes && cd ~/recipes && git init && printf 'Scones\n\n2 cups
    flour\n1 cup milk\n' > scones.txt=.
 2. In Tuatara, open =~/recipes/scones.txt= and press ~C-x g~. Answer the
@@ -285,7 +285,7 @@ up, and nothing is committed.
 1. Open the status of =~/recipes= with ~C-x g~. Move to =scones.txt= and press
    ~s~. The file moves to Staged changes.
 2. Press ~c~, then ~c~. The message buffer opens.
-3. Type =Start the recipe folder=. Press ~C-g~ and then ~C-c C-c~.
+3. Type =Start the recipe directory=. Press ~C-g~ and then ~C-c C-c~.
 4. The status now has a section Recent commits with your commit in it, and the
    first line shows its subject.
 5. Open =scones.txt=, add the line =1 pinch salt= at the end and, a few lines
@@ -433,7 +433,7 @@ as they are. Make a branch called =metric=, do the conversion there one commit
 at a time, and go back to =main= whenever you need to.
 
 Going to a branch is called checking it out. Git then changes the files in
-the folder to that branch's state. If a buffer still shows a file's old text
+the directory to that branch's state. If a buffer still shows a file's old text
 afterwards, ~M-x revert-buffer~ reads the file again (chapter 9).
 
 | Modal | Non-modal | What it does                                                      |
@@ -708,7 +708,7 @@ the commits afterwards, but changes that were never committed are gone.
 ** Pulling and pushing
 
 A remote is a second copy of the repository that you exchange commits with. It
-may be on a hosting service, on a server at work, or in a folder on a shared
+may be on a hosting service, on a server at work, or in a directory on a shared
 drive. A repository you copied from somewhere with =git clone= already has
 one, called =origin=. To give a repository of your own a remote, press ~M a~
 in the status. It asks for a name, and =origin= is the custom for the first,
@@ -751,7 +751,7 @@ The remote menu looks after the remotes themselves: ~M a~ adds one and ~M u~
 gives one a new address. The full menu also renames, removes, and forgets
 branches that the remote has deleted.
 
-#+begin_try Try it, with a folder standing in for a server
+#+begin_try Try it, with a directory standing in for a server
 1. In a terminal, make an empty repository to play the server:
    =git init --bare /tmp/recipes-server.git=.
 2. In the status of =~/recipes=, press ~M a~. Press ~RET~ at the name to take
@@ -840,13 +840,13 @@ buffer (chapter 4) and paste into the real file. The history follows the file
 back through a rename. Changes you have not committed are not part of it,
 since they are in no commit.
 
-Rewind works on folders too. Press ~C-x G~ in a folder listing (chapter 10)
-and the listing shows the folder as its latest commit left it, with files
+Rewind works on directories too. Press ~C-x G~ in a directory listing (chapter
+10) and the listing shows the directory as its latest commit left it, with files
 that have since been deleted. ~p~ and ~n~ step through the commits as before.
-~RET~ on a file there goes through that file's history from that commit, and
-~q~ comes back to the folder. Commands that would change files, such as
-copying or renaming, are refused in such a listing, because the files in it
-are from the past.
+~RET~ on a file there goes through that file's history from that commit, and ~q~
+comes back to the directory. Commands that would change files, such as copying
+or renaming, are refused in such a listing, because the files in it are from the
+past.
 
 #+begin_try Try it, with the recipes
 1. Open =~/recipes/scones.txt=, which by now has several commits. Put the
@@ -867,7 +867,7 @@ are from the past.
 ** Repositories you only look at
 
 Git can be told by a repository to run programs: hooks, filters and other
-helpers named in the repository's own settings. That is fine in a folder of
+helpers named in the repository's own settings. That is fine in a directory of
 your own and unwise in one a stranger sent you. For this reason the status
 asks before it first opens a project, and one of the answers is ~l~, look
 only.
@@ -889,8 +889,8 @@ comes.
 
 *** Worktrees
 
-A worktree is a second folder that shows another branch of the same
-repository. With one, you can have =main= open in one folder and =metric= in
+A worktree is a second directory that shows another branch of the same
+repository. With one, you can have =main= open in one directory and =metric= in
 another at the same time, without checking out back and forth. ~Z~ opens the
 menu: ~Z c~ makes a worktree for a new branch, ~Z g~ shows the status of one,
 and ~Z d~ deletes one.
@@ -916,10 +916,10 @@ runs, anything private. The ignore menu, ~i~, adds a file or a pattern such as
 =*.bak= to the list of what git leaves alone. ~i t~ writes it in the
 =.gitignore= file at the top of the repository, which is shared with everyone
 who has the repository. ~i p~ keeps the rule on your computer only. The full
-menu's ~i s~ writes it in the =.gitignore= of the current folder. Ignored
+menu's ~i s~ writes it in the =.gitignore= of the current directory. Ignored
 files are listed in the last section of the status.
 
-#+table: commands git-ignore-menu git-ignore-shared git-ignore-folder git-ignore-private
+#+table: commands git-ignore-menu git-ignore-shared git-ignore-directory git-ignore-private
 
 *** Notes on commits
 
@@ -948,18 +948,18 @@ menu.
 
 *** Repositories inside repositories
 
-A submodule is another repository kept in a folder of yours at one exact
+A submodule is another repository kept in a directory of yours at one exact
 commit, such as a theme that your website uses and someone else maintains.
 ~o~ opens its menu: ~o a~ adds one, and ~o u~ checks them all out after you
 have cloned a repository that has some.
 
-A subtree also brings another repository into a folder, but copies its files
+A subtree also brings another repository into a directory, but copies its files
 into your own history, so that people who clone yours need nothing extra. ~O~
 opens its menu.
 
-A sparse checkout goes the other way. It shows only some folders of a large
+A sparse checkout goes the other way. It shows only some directories of a large
 repository in your files and leaves the rest in the history. ~>~ opens its
-menu: ~> s~ chooses the folders and ~> d~ brings everything back.
+menu: ~> s~ chooses the directories and ~> d~ brings everything back.
 
 #+table: commands git-submodule-menu git-submodule-add git-submodule-update git-submodule-sync git-submodule-status git-submodule-remove
 

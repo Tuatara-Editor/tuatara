@@ -6,9 +6,9 @@
 ;;;; without the editor (a git checkout, a build writing sources, another
 ;;;; editor), a server that asks to be told (it registers the files it wants
 ;;;; watched, by patterns such as **/*.rs) is told which were made, changed or
-;;;; deleted. The project's folders are found once in the background, those
+;;;; deleted. The project's directories are found once in the background, those
 ;;;; *LSP-WATCH-SKIPPED* names and hidden ones left out, and watched as the
-;;;; editor watches folders; a folder found changed is listed again and
+;;;; editor watches directories; a directory found changed is listed again and
 ;;;; compared with what it held.
 
 (in-package #:tuatara.lsp)
@@ -22,19 +22,19 @@ told.
   :values boolean)
 
 (define-setting *lsp-watch-skipped* '("target" "node_modules" "__pycache__" "_build" "zig-out" "zig-cache" "dist")
-  "The folders of a project whose files are never watched for its language
-servers (hidden folders, whose names begin with a dot, never are): what a
+  "The directories of a project whose files are never watched for its language
+servers (hidden directories, whose names begin with a dot, never are): what a
 build makes.
-- a list of texts: the folders' names, \"target\", \"node_modules\",
+- a list of texts: the directories' names, \"target\", \"node_modules\",
   \"__pycache__\", \"_build\", \"zig-out\", \"zig-cache\" and \"dist\" as standard."
   :values (list-of string))
 
 (defvar *lsp-watched-most* 5000
-  "The most folders of one project watched for its language servers.")
+  "The most directories of one project watched for its language servers.")
 
 (defstruct (watched-tree (:constructor make-watched-tree (root)) (:copier nil))
-  "The folders of the project at ROOT watched for its servers: DIRECTORIES,
-native names ending in /, and STAMPS, by folder, a table of what each holds,
+  "The directories of the project at ROOT watched for its servers: DIRECTORIES,
+native names ending in /, and STAMPS, by directory, a table of what each holds,
 by name, a file's STAMP or :DIRECTORY; READY once they were found."
   root (directories '()) (stamps (make-hash-table :test 'equal)) (ready nil))
 
@@ -51,7 +51,7 @@ the protocol's mask of made (1), changed (2) and deleted (4).")
 
 (defun watcher-patterns (server watchers)
   "WATCHERS, the FileSystemWatchers SERVER registered, as (GLOBS . KINDS):
-a pattern relative to a folder (baseUri) put under it, else matched against
+a pattern relative to a directory (baseUri) put under it, else matched against
 the whole path; those that cannot be read left out."
   (loop for w across (tuatara.text:json-items watchers)
         for glob = (tuatara.text:json-get w "globPattern")
@@ -83,12 +83,12 @@ the whole path; those that cannot be read left out."
                  (remove (tuatara.text:json-get u "id") (gethash server *lsp-watchers*) :key #'car :test #'equal)))
   :null)
 
-;;; The project's folders
+;;; The project's directories
 
-(defun project-folders (root)
-  "The folders under ROOT, ROOT first and those nearer it before those further
+(defun project-directories (root)
+  "The directories under ROOT, ROOT first and those nearer it before those further
 down (WALK-DIRECTORY), as native names ending in /, and what each holds (a
-table by folder, as WATCHED-TREE's STAMPS): hidden ones and those
+table by directory, as WATCHED-TREE's STAMPS): hidden ones and those
 *LSP-WATCH-SKIPPED* names left out, *LSP-WATCHED-MOST* at most. Two values."
   (let ((stamps (make-hash-table :test 'equal)) (found '()))
     (walk-directory root
@@ -106,20 +106,20 @@ table by folder, as WATCHED-TREE's STAMPS): hidden ones and those
     (values (nreverse found) stamps)))
 
 (defun watch-skipped-p (name)
-  "True when the folder called NAME is never watched: hidden, or in *LSP-WATCH-SKIPPED*."
+  "True when the directory called NAME is never watched: hidden, or in *LSP-WATCH-SKIPPED*."
   (or (and (plusp (length name)) (char= (char name 0) #\.))
       (member name *lsp-watch-skipped* :test #'string=)))
 
-(defun folder-contents (directory)
+(defun directory-contents (directory)
   "What DIRECTORY holds, a table by name of each file's STAMP, or :DIRECTORY
-for a folder; NIL when it cannot be read."
+for a directory; NIL when it cannot be read."
   (entries-contents (ignoring-errors-reported ("reading ~a" directory)
                       (tuatara.io:directory-entries directory :stamps t))))
 
 (defun entries-contents (entries)
-  "ENTRIES of a folder, as TUATARA.IO:DIRECTORY-ENTRIES gives them with stamps,
-as FOLDER-CONTENTS gives them: a table by name of each file's STAMP, or
-:DIRECTORY for a folder; NIL for none."
+  "ENTRIES of a directory, as TUATARA.IO:DIRECTORY-ENTRIES gives them with stamps,
+as DIRECTORY-CONTENTS gives them: a table by name of each file's STAMP, or
+:DIRECTORY for a directory; NIL for none."
   (when entries
     (let ((table (make-hash-table :test 'equal)))
       (loop for (name kind nil nil stamp) in entries
@@ -127,26 +127,26 @@ as FOLDER-CONTENTS gives them: a table by name of each file's STAMP, or
       table)))
 
 (defun watch-project (root)
-  "Have the project at ROOT watched for its servers: its folders found in the
+  "Have the project at ROOT watched for its servers: its directories found in the
 background, once."
   (when (and *lsp-watch-files* (not (gethash root *lsp-watched-trees*)))
     (let ((tree (make-watched-tree root)))
       (setf (gethash root *lsp-watched-trees*) tree)
       (tuatara.runtime:make-guarded-thread
        (lambda ()
-         (multiple-value-bind (directories stamps) (project-folders root)
+         (multiple-value-bind (directories stamps) (project-directories root)
            (setf (watched-tree-directories tree) directories
                  (watched-tree-stamps tree) stamps
                  (watched-tree-ready tree) t)))
-       :name "tuatara project folders"))))
+       :name "tuatara project directories"))))
 
 (defvar *lsp-watched-list* (cons nil nil)
-  "The folders watched for language servers, as (TREES . DIRECTORIES), made
+  "The directories watched for language servers, as (TREES . DIRECTORIES), made
 again only when the trees watched change.")
 
 (defun lsp-watched-directories ()
-  "The folders watched for the language servers, the same list while the
-projects watched and their folders are the same."
+  "The directories watched for the language servers, the same list while the
+projects watched and their directories are the same."
   ;; projects no running server watches let go
   (maphash (lambda (root tree)
              (declare (ignore tree))
@@ -166,12 +166,12 @@ projects watched and their folders are the same."
 
 ;;; What changed
 
-(defun folder-changes (tree directory)
+(defun directory-changes (tree directory)
   "What changed in DIRECTORY of TREE since it was last listed, each (PATH
 TYPE), TYPE 1 made, 2 changed, 3 deleted; its table brought up to date, a
-folder made watched (its files made), one gone let go (its files deleted)."
+directory made watched (its files made), one gone let go (its files deleted)."
   (let ((old (gethash directory (watched-tree-stamps tree)))
-        (new (folder-contents directory))
+        (new (directory-contents directory))
         (changes '()))
     (flet ((path (name) (format nil "~a~a" directory name)))
       (when new
@@ -179,7 +179,7 @@ folder made watched (its files made), one gone let go (its files deleted)."
                    (let ((before (and old (gethash name old))))
                      (cond ((eq what :directory)
                             (when (and (null before) (not (watch-skipped-p name)))
-                              (setf changes (append (folder-made tree (format nil "~a/" (path name))) changes))))
+                              (setf changes (append (directory-made tree (format nil "~a/" (path name))) changes))))
                            ((null before) (push (list (path name) 1) changes))
                            ((not (tuatara.io:same-content-p before what)) (push (list (path name) 2) changes)))))
                  new))
@@ -187,47 +187,47 @@ folder made watched (its files made), one gone let go (its files deleted)."
         (maphash (lambda (name what)
                    (unless (and new (gethash name new))
                      (if (eq what :directory)
-                         (let ((folder (format nil "~a/" (path name))))
-                           (setf changes (append (folder-gone tree folder) changes)))
+                         (let ((dir (format nil "~a/" (path name))))
+                           (setf changes (append (directory-gone tree dir) changes)))
                          (push (list (path name) 3) changes))))
                  old))
       (if new
           (setf (gethash directory (watched-tree-stamps tree)) new)
-          (setf changes (append (folder-gone tree directory) changes))))
+          (setf changes (append (directory-gone tree directory) changes))))
     changes))
 
-(defun folder-made (tree folder)
-  "FOLDER, new in TREE: watched, its files made, as FOLDER-CHANGES gives them."
-  (let ((inside (folder-contents folder))
+(defun directory-made (tree directory)
+  "DIRECTORY, new in TREE: watched, its files made, as DIRECTORY-CHANGES gives them."
+  (let ((inside (directory-contents directory))
         (changes '()))
-    (setf (watched-tree-directories tree) (append (watched-tree-directories tree) (list folder))
-          (gethash folder (watched-tree-stamps tree)) inside)
+    (setf (watched-tree-directories tree) (append (watched-tree-directories tree) (list directory))
+          (gethash directory (watched-tree-stamps tree)) inside)
     (when inside
-      (maphash (lambda (name what) (unless (eq what :directory) (push (list (format nil "~a~a" folder name) 1) changes)))
+      (maphash (lambda (name what) (unless (eq what :directory) (push (list (format nil "~a~a" directory name) 1) changes)))
                inside))
     changes))
 
-(defun folder-gone (tree folder)
-  "FOLDER of TREE, and the folders under it, gone: let go, their files deleted, as FOLDER-CHANGES gives them."
+(defun directory-gone (tree directory)
+  "DIRECTORY of TREE, and the directories under it, gone: let go, their files deleted, as DIRECTORY-CHANGES gives them."
   (let ((changes '()))
-    (dolist (d (remove-if-not (lambda (d) (uiop:string-prefix-p folder d)) (watched-tree-directories tree)))
+    (dolist (d (remove-if-not (lambda (d) (uiop:string-prefix-p directory d)) (watched-tree-directories tree)))
       (let ((held (gethash d (watched-tree-stamps tree))))
         (when held
           (maphash (lambda (n w) (unless (eq w :directory) (push (list (format nil "~a~a" d n) 3) changes))) held)))
       (remhash d (watched-tree-stamps tree)))
     (setf (watched-tree-directories tree)
-          (remove-if (lambda (d) (uiop:string-prefix-p folder d)) (watched-tree-directories tree)))
+          (remove-if (lambda (d) (uiop:string-prefix-p directory d)) (watched-tree-directories tree)))
     changes))
 
 (defun lsp-watched-changed (changed)
   "Tell each language server that asked of the files changed on disk in
-CHANGED, the folders the watcher found changed, those its patterns match."
+CHANGED, the directories the watcher found changed, those its patterns match."
   (let ((changes '()))
     (maphash (lambda (root tree)
                (when (watched-tree-ready tree)
                  (dolist (directory changed)
                    (when (and (uiop:string-prefix-p root directory) (gethash directory (watched-tree-stamps tree)))
-                     (setf changes (append (folder-changes tree directory) changes))))))
+                     (setf changes (append (directory-changes tree directory) changes))))))
              *lsp-watched-trees*)
     (when changes
       (maphash (lambda (server registrations)
@@ -244,5 +244,5 @@ CHANGED, the folders the watcher found changed, those its patterns match."
                *lsp-watchers*))))
 
 (defun install-lsp-watching ()
-  "Watch the folders of the projects whose language servers asked to be told of their files changed on disk."
+  "Watch the directories of the projects whose language servers asked to be told of their files changed on disk."
   (follow-directories-for 'lsp-watched-directories 'lsp-watched-changed))

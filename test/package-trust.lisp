@@ -7,7 +7,7 @@
   :description "A package's version that needs a newer Tuatara (;;;; Needs: Tuatara X in its entry's header) is never taken, the newest that fits in its place; one that fails to load gives way to the version before it; the version taken and the one before are all that is kept. Who signed a source's first version (SSH or GPG) is remembered: later versions by that key are taken, others refused until package-trust-again; unsigned sources stay usable; :signers names the only keys taken; http:// and git:// only with :plain t.")
 
 (defvar *trust-gnupg-home* nil
-  "The GnuPG folder TRUST-GIT signs with, when not the tests' own keyring.")
+  "The GnuPG directory TRUST-GIT signs with, when not the tests' own keyring.")
 
 (defun trust-git (dir &rest arguments)
   "Run git with ARGUMENTS in DIR, a test repository, signing with the keys of
@@ -60,7 +60,7 @@ file:// address, everything remembered of it forgotten afterwards."
            (*until-bound* *package-until-bound*)
            (tuatara.packages::*package-signers* '())
            (tuatara.packages::*package-plain-allowed* '())
-           (tuatara.packages::*loaded-package-folders* '()))
+           (tuatara.packages::*loaded-package-directories* '()))
        (unwind-protect (progn ,@body)
          (tuatara.defaults::state-list-drop tuatara.packages::*package-trust* (list ,where))
          (forget-test-packages ,dir)
@@ -93,8 +93,8 @@ decided on."
 
 (defun kept-versions (where)
   "The commits of pkgv from WHERE kept on disk."
-  (remove-if-not (lambda (folder) (tuatara.git:git-hash-p (car (last (pathname-directory folder))) :short t))
-                 (ignore-errors (uiop:subdirectories (tuatara.packages::package-kept-folder where "pkgv")))))
+  (remove-if-not (lambda (directory) (tuatara.git:git-hash-p (car (last (pathname-directory directory))) :short t))
+                 (ignore-errors (uiop:subdirectories (tuatara.packages::package-kept-directory where "pkgv")))))
 
 (define-test (package-trust needs-read-from-the-header)
   (is equal "0.91.0" (tuatara.packages::needed-version-in (format nil ";;;; a.lisp --- A.~%;;;; Needs: Tuatara 0.91.0~%(defpackage x)")))
@@ -203,7 +203,7 @@ decided on."
         (is equal (sort (list (first commits) (second commits)) #'string<) (kept))
         (let ((compiled (directory (merge-pathnames "**/*.fasl" (directory-namestring
                                                                 (tuatara.packages::package-fasl
-                                                                 (merge-pathnames "x" (tuatara.packages::package-kept-folder where "pkgv"))))))))
+                                                                 (merge-pathnames "x" (tuatara.packages::package-kept-directory where "pkgv"))))))))
           (is = 2 (length compiled)))
         (auto-save-session
          (list (list :until (lambda () (trust-version dir "v4" :body (format nil "(defun broken (~%")) t))
@@ -342,8 +342,8 @@ decided on."
     (setf tuatara.packages::*declared-packages* '())))
 
 (defun other-gnupg-key (dir)
-  "Make in DIR a GnuPG folder of its own with a key, Tasman Kaikoura's, that
-the tests' own keyring lacks: the folder and the key's fingerprint."
+  "Make in DIR a GnuPG directory of its own with a key, Tasman Kaikoura's, that
+the tests' own keyring lacks: the directory and the key's fingerprint."
   (let ((home (namestring (ensure-directories-exist (merge-pathnames "other-gnupg/" dir)))))
     (sb-posix:chmod home #o700)
     (uiop:run-program (list "gpg" "--homedir" home "--batch" "--passphrase" "" "--quick-gen-key"
@@ -357,7 +357,7 @@ the tests' own keyring lacks: the folder and the key's fingerprint."
               (tenth (uiop:split-string line :separator ":"))))))
 
 (defun stop-gnupg (home)
-  "Stop the gpg-agent of the GnuPG folder HOME."
+  "Stop the gpg-agent of the GnuPG directory HOME."
   (uiop:run-program (list "gpgconf" "--homedir" home "--kill" "gpg-agent") :ignore-error-status t))
 
 (define-test (package-trust asked-again-with-its-signer)
@@ -567,7 +567,7 @@ the tests' own keyring lacks: the folder and the key's fingerprint."
          (list (list :until (lambda () (tuatara.packages::update-packages (list "pkgv")) t))
                (list :until (lambda () (echo-says "up to date")))))
         (is equal bob-print (second (tuatara.defaults::state-list-find tuatara.packages::*package-trust* where)))
-        ;; the tag was fetched apart: nothing written into the folder kept
+        ;; the tag was fetched apart: nothing written into the directory kept
         (is equal before (alexandria:read-file-into-string fetch-head)))))))
 
 (define-test (package-trust signatures-read-strictly)
@@ -810,7 +810,8 @@ the tests' own keyring lacks: the folder and the key's fingerprint."
           (tuatara.defaults::state-list-put tuatara.packages::*fetched-packages* (list (list key one nil t)))
           (alexandria:write-string-into-file (format nil "(defun broken (~%")
                                              (merge-pathnames "pkgv/pkgv.lisp"
-                                                              (tuatara.packages::package-folder-for where "pkgv" one))
+                                                              (tuatara.packages::package-directory-for
+                                                               where "pkgv" one))
                                              :if-exists :supersede)
           (setf tuatara.packages::*loaded-packages* '())
           (makunbound 'tuatara-user::*package-trust-version*)

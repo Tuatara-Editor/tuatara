@@ -6,7 +6,7 @@
 A shell inside the editor, with its output kept as text you can search and copy.
 
 Sooner or later you want to run a command while you are writing: check what
-is in a folder, rename a batch of files, run a script, look at what a program
+is in a directory, rename a batch of files, run a script, look at what a program
 is doing. You can switch to another window on your desktop and back. Tuatara
 offers another way. =M-x terminal= runs your shell in a buffer, so the shell
 sits next to your text and what it prints can be read, searched and copied
@@ -32,20 +32,21 @@ file. The sections below say which do.
 
 ** Opening a terminal
 
-=M-x terminal= opens one. It starts your shell in the folder of the buffer you
-came from, in a window across the bottom of the screen, about a third of the
-screen high. If you were looking at =~/letters/council.txt=, the shell starts
-in =~/letters/=. Type =ls= and you see your letters.
+=M-x terminal= opens one. It starts your shell in the directory of the buffer
+you came from, in a window across the bottom of the screen, about a third of the
+screen high. If you were looking at =~/letters/council.txt=, the shell starts in
+=~/letters/=. Type =ls= and you see your letters.
 
 Each =M-x terminal= opens another terminal, with a name of its own:
 =*terminal*=, =*terminal*<2>=, and so on. When the program ends, for example
 when you type =exit=, the buffer and its window go with it. Killing the
 buffer with =C-x k= ends the program too, without asking.
 
-A terminal opened from a file you opened safely (chapter 12), or from a folder
-you listed as safe or as evidence, starts in your home folder instead. The
-shell's prompt and its helpers then read nothing from that folder, which could
-hold a hostile =.envrc= or =.git=. The echo area says so when it happens.
+A terminal opened from a file you opened safely (chapter 12), or from a
+directory you listed as safe or as evidence, starts in your home directory
+instead. The shell's prompt and its helpers then read nothing from that
+directory, which could hold a hostile =.envrc= or =.git=. The echo area says so
+when it happens.
 
 Figure 17.1 shows the screen with a letter above and a shell below.
 
@@ -278,7 +279,7 @@ last in any program, the way it does in a desktop terminal.
 2. Put the cursor on the line, press =V= and =y= to copy it. It says =Copied=.
 3. Run =M-x terminal=. Press =C-V=. The command appears at the prompt. It has
    not run.
-4. Press =RET=. The shell lists your home folder.
+4. Press =RET=. The shell lists your home directory.
 #+end_try
 
 ** Links
@@ -325,10 +326,10 @@ are shown as the program asked, rounded to the nearest of 4,096.
 ** The title
 
 Many shells set a title for their window, usually your name, the machine and
-the folder. Tuatara shows it in the terminal's mode line, after =Terminal=.
+the directory. Tuatara shows it in the terminal's mode line, after =Terminal=.
 It is cut at 40 columns. =*terminal-title-limit*= changes that, and =nil= hides
 the title. When you have several terminals open, the title tells you which is
-in which folder.
+in which directory.
 
 #+table: settings *terminal-title-limit*
 

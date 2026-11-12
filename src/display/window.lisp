@@ -374,11 +374,13 @@ one line at a time (WINDOW-LAYOUT-ROWS with END): what the buffer shows
 otherwise may be looked up then, but what is kept for the window as it is
 shown is left as it is.")
 
-(defun window-layout-rows (window start height &key end spares)
+(defun window-layout-rows (window start height &key end spares (floating (window-float-in-force window start)))
   "WINDOW's buffer laid out from START into at most HEIGHT rows as WINDOW shows
 it: its width, its wrapping (at a word's edge and a column when its buffer
-wants), its tab width and its line ends; while the frontend draws rows large
-\(*ROW-SCALING*), its lines as many rows tall as its :line-scale-function says.
+wants), its tab width and its line ends; its lines as many rows tall as its
+LINE-SCALE-FUNCTION says (WINDOW-LINE-SCALE), its rows beside a picture the
+text goes round narrower (WINDOW-FLOAT-FUNCTION), one begun above START too
+\(FLOATING, as WINDOW-FLOAT-IN-FORCE gives it).
 With END, only the rows up to that octet are wanted: none is laid out that
 begins past it, and what the buffer hides or shows otherwise is looked for no
 further. With SPARES, the rows are filled from WINDOW's rows no longer shown
@@ -403,16 +405,71 @@ shown is laid out."
             :prefix (let ((function (tuatara.buffer:buffer-local buffer :line-prefix-function)))
                       (and function
                            (lambda (line-start continuation) (funcall function buffer line-start continuation))))
-            :scale (let ((function (and *row-scaling* (tuatara.buffer:buffer-local buffer :line-scale-function))))
-                     (and function (lambda (line-start) (funcall function buffer line-start)))))))
+            :scale (let ((function (line-scale-function buffer)))
+                     (and function (lambda (line-start) (funcall function buffer line-start window))))
+            :float (let ((function (window-float-function window)))
+                     (and function (lambda (line-start) (funcall function buffer line-start window))))
+            :floating floating)))
+
+(defun window-float-function (window)
+  "The function saying what the text of WINDOW's buffer goes round beside a
+line (its :line-float-function, of the buffer, a line's start and the window,
+giving LAYOUT's FLOAT values: a picture floated left or right), while its
+lines may be taller than a row (LINE-SCALE-FUNCTION); else NIL."
+  (let ((buffer (window-buffer window)))
+    (and (line-scale-function buffer) (tuatara.buffer:buffer-local buffer :line-float-function))))
+
+(defun window-float-in-force (window start)
+  "What WINDOW's text goes round at START that began beside a line above it,
+as LAYOUT's FLOATING takes it, (SIDE COLUMNS ROWS), ROWS the rows' height of
+it left from START; NIL when nothing does. The line it began beside is the
+one its buffer's :float-before-function (of the buffer, START and the window)
+gives, laid out from there. Its start as a second value. Kept while the
+buffer, its point, START and the window's width are as they were."
+  (let* ((buffer (window-buffer window))
+         (function (and (window-float-function window) (tuatara.buffer:buffer-local buffer :float-before-function)))
+         (line (and function (funcall function buffer start window))))
+    (when line
+      (let ((key (list window (tuatara.buffer:buffer-version buffer) (tuatara.buffer:buffer-point buffer) start
+                       (window-text-width window)))
+            (kept (tuatara.buffer:buffer-local buffer 'float-in-force)))
+        (unless (equal key (car kept))
+          (setf kept (cons key
+                           (multiple-value-bind (side columns tall)
+                               (funcall (window-float-function window) buffer line window)
+                             (when side
+                               (let* ((rows (window-layout-rows window line (max 1 (ceiling tall)) :end (1- start)
+                                                                                                    :floating nil))
+                                      (left (- tall (loop for row across rows
+                                                          while (< (row-start row) start)
+                                                          sum (row-scale row)))))
+                                 (and (plusp left) (list side columns left))))))
+                (tuatara.buffer:buffer-local buffer 'float-in-force) kept))
+        (values (cdr kept) (and (cdr kept) line))))))
+
+(defun line-scale-function (buffer)
+  "The function saying how many rows tall BUFFER's lines are drawn (its
+:line-scale-function, of the buffer, a line's start and the window), where
+it may make one taller: the frontend draws rows large (*ROW-SCALING*), or the
+buffer's :tall-lines-function, a function of the buffer, says lines may be
+taller all the same (pictures shown among them); else NIL, every line one row."
+  (let ((function (tuatara.buffer:buffer-local buffer :line-scale-function)))
+    (and function
+         (or *row-scaling*
+             (let ((tall (tuatara.buffer:buffer-local buffer :tall-lines-function)))
+               (and tall (funcall tall buffer))))
+         function)))
 
 (defun window-line-scale (window line-start)
   "How many rows tall WINDOW draws the line of its buffer beginning at
-LINE-START, as the buffer's :line-scale-function says while the frontend
-draws rows large (*ROW-SCALING*); 1 otherwise."
+LINE-START, as the buffer's LINE-SCALE-FUNCTION says: 1 or more, a whole
+number unless the frontend draws rows large (*ROW-SCALING*); 0 for a line
+taking no row (a picture the text goes round, LAYOUT's SCALE); 1 when it has
+none."
   (let* ((buffer (window-buffer window))
-         (function (and *row-scaling* (tuatara.buffer:buffer-local buffer :line-scale-function))))
-    (if function (max 1 (or (funcall function buffer line-start) 1)) 1)))
+         (function (line-scale-function buffer))
+         (scale (if function (or (funcall function buffer line-start window) 1) 1)))
+    (if (eql scale 0) 0 (max 1 scale))))
 
 (defun window-text-width (window)
   "The columns WINDOW's text rows hold: its width less its margin, and no more
@@ -423,9 +480,9 @@ column); one at least."
     (max 1 (if limit (min limit room) room))))
 
 (defun window-scaling-p (window)
-  "True while WINDOW may draw rows large: the frontend does (*ROW-SCALING*)
-and its buffer says how tall (:line-scale-function)."
-  (and *row-scaling* (tuatara.buffer:buffer-local (window-buffer window) :line-scale-function) t))
+  "True while WINDOW may draw rows of more than one row's height: its buffer
+says how tall its lines are (LINE-SCALE-FUNCTION, WINDOW-LINE-SCALE)."
+  (and (line-scale-function (window-buffer window)) t))
 
 (defun line-prefix-columns (buffer line-start)
   "How many columns the prefix BUFFER shows before its line beginning at
@@ -532,7 +589,7 @@ scroll, and how it shows right-to-left text."
           (tuatara.buffer:buffer-local buffer :folds)
           (hidden-bounds buffer)
           (tuatara.buffer:buffer-local buffer :line-prefix-function)
-          (and *row-scaling* (tuatara.buffer:buffer-local buffer :line-scale-function))
+          (line-scale-function buffer)
           (tuatara.buffer:buffer-narrowing buffer))))
 
 (defun row-start-state (window)
@@ -702,7 +759,7 @@ beside them when typing goes there (:HEX-COLUMN :TEXT)."
         ;; on a row drawn large, its column counted in the window's own (LARGE-COLUMN)
         (multiple-value-bind (row column) (point-row-column (window-rows window) (window-point window))
           (if row
-              (values row (large-column column (row-scale (aref (window-rows window) row))))
+              (values row (large-column column (text-scale (row-scale (aref (window-rows window) row)))))
               nil)))))
 
 (defun window-rows-drawn (window)
@@ -715,6 +772,24 @@ are left out (a panel may have taken rows the layout had)."
           do (when (> (+ r shift (row-scale row)) height) (return r))
              (incf shift (1- (row-scale row)))
           finally (return (length rows)))))
+
+(defun window-row-top (window row)
+  "Where row ROW of WINDOW's last layout is drawn, in rows from the window's
+first row of text: ROW, and what each row above it takes beyond one row
+\(ROW-SCALE). A rational where rows are drawn large."
+  (let ((rows (window-rows window)))
+    (+ row (loop for i below (min row (length rows)) sum (1- (row-scale (aref rows i)))))))
+
+(defun window-row-at (window top)
+  "The row of WINDOW's last layout drawn TOP rows below the window's first row
+of text (WINDOW-ROW-TOP): the one whose rows hold it, or past the last row,
+as many rows after it as are left."
+  (let ((rows (window-rows window)) (at 0))
+    (loop for row across rows
+          for r from 0
+          do (when (< top (+ at (row-scale row))) (return-from window-row-at r))
+             (incf at (row-scale row)))
+    (+ (length rows) (floor (- top at)))))
 
 (defun large-column (column scale)
   "The window's column standing for COLUMN of a row drawn SCALE times as
@@ -829,8 +904,8 @@ which is where a window has it drawn."
 (defun keep-point-column-visible (window)
   "Scroll WINDOW sideways, its lines being cut off at the edge, so that the
 character at point shows whole: point's column inside the width, less what
-the line's prefix takes, and as many times fewer columns as the line is
-drawn large."
+the line's prefix and a picture the text goes round beside it take, and as
+many times fewer columns as the line is drawn large."
   (let* ((buffer (window-buffer window))
          (rope (tuatara.buffer:buffer-text buffer))
          (point (replaced-start buffer (window-point window)))
@@ -840,8 +915,14 @@ drawn large."
          (invisible (invisible-characters-of buffer))
          (column (line-screen-column rope line-start point :tab-width tab-width :crlf crlf :invisible invisible))
          (width (window-text-width window))
-         (room (max 1 (- (floor width (window-line-scale window line-start))
-                         (line-prefix-columns buffer line-start)))))
+         (prefix (line-prefix-columns buffer line-start))
+         ;; beside a picture the text goes round, the columns it keeps
+         (floating (window-float-in-force window line-start))
+         (room (max 1 (- (floor width (text-scale (window-line-scale window line-start)))
+                         (case (first floating)
+                           (:left (max prefix (second floating)))
+                           (:right (+ prefix (second floating)))
+                           (t prefix))))))
     (cond ((and (plusp (window-hscroll window)) (< column (1- room)))
            (setf (window-hscroll window) 0))
           ((< column (window-hscroll window))

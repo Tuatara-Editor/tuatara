@@ -88,7 +88,7 @@ when gpg-agent's pinentry asks."
 
 (defun write-gpg-output (path octets &key private)
   "Write OCTETS, what gpg gave, as the file at PATH (never through a link),
-for you alone with PRIVATE; and show it in the lists of its folder."
+for you alone with PRIVATE; and show it in the lists of its directory."
   (tuatara.io:write-text-file (tuatara.text:octets->rope (coerce octets 'tuatara.text:octets)) path
                               :expected :any :follow-links nil :mode (and private (constantly #o600)))
   (paths-changed (list path)))
@@ -175,7 +175,7 @@ function of no arguments, called once it is written."
 
 (defun gpgconf-path ()
   "gpgconf, GnuPG's program that runs its parts: the one beside gpg (*GPG-PROGRAM*), else the one in the system's
-own folders of programs; NIL when there is none."
+own directories of programs; NIL when there is none."
   (let ((gpg (gpg-path)))
     (or (and gpg (tuatara.io:find-program (tuatara.io:path-join (tuatara.io:parent-path gpg) "gpgconf")))
         (tuatara.io:sandbox-find-program "gpgconf"))))

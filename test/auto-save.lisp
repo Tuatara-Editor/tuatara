@@ -4,7 +4,7 @@
 (in-package #:tuatara.tests)
 
 (define-test auto-save
-  :description "Changes not saved are copied after a pause into a folder of their own, for you alone,
+  :description "Changes not saved are copied after a pause into a directory of their own, for you alone,
 never into the file; a save deletes the copy, quitting without one keeps it, the next visit says
 so and M-x recover-file takes it back as one edit; nothing opened safely is copied; a name too
 long is kept beside its copy.")

@@ -1,20 +1,20 @@
-;;;; test/evidence.lisp --- Evidence folders: opened safely, and nothing written in them.
+;;;; test/evidence.lisp --- Evidence directories: opened safely, and nothing written in them.
 ;;;; Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
 
 (in-package #:tuatara.tests)
 
 (define-test evidence
-  :description "Evidence folders: the entries of *evidence-folders* matched by globs, names and patterns, links and mounts followed; every write there refused in one wording; files there opened safely and marked in the mode line; copies out checked and logged; nothing looked at while the setting is empty.")
+  :description "Evidence directories: the entries of *evidence-directories* matched by globs, names and patterns, links and mounts followed; every write there refused in one wording; files there opened safely and marked in the mode line; copies out checked and logged; nothing looked at while the setting is empty.")
 
-(defmacro with-evidence-folders ((value) &body body)
-  "Run BODY with *EVIDENCE-FOLDERS* set to VALUE for every thread, set back after."
+(defmacro with-evidence-directories ((value) &body body)
+  "Run BODY with *EVIDENCE-DIRECTORIES* set to VALUE for every thread, set back after."
   (let ((old (gensym)))
-    `(let ((,old tuatara-user:*evidence-folders*))
-       (unwind-protect (progn (setf tuatara-user:*evidence-folders* ,value) ,@body)
-         (setf tuatara-user:*evidence-folders* ,old)))))
+    `(let ((,old tuatara-user:*evidence-directories*))
+       (unwind-protect (progn (setf tuatara-user:*evidence-directories* ,value) ,@body)
+         (setf tuatara-user:*evidence-directories* ,old)))))
 
 (defun wait-for-evidence-links ()
-  "Wait, ten seconds at most, until the links the entries of *EVIDENCE-FOLDERS*
+  "Wait, ten seconds at most, until the links the entries of *EVIDENCE-DIRECTORIES*
 match have been looked for in the background."
   (loop repeat 1000
         until (let ((rules (tuatara.defaults::evidence-rules)))
@@ -22,15 +22,15 @@ match have been looked for in the background."
         do (sleep 1/100)))
 
 (defun wait-for-evidence-generation (after)
-  "Wait, ten seconds at most, until *EVIDENCE-FOLDERS* has been read anew since
+  "Wait, ten seconds at most, until *EVIDENCE-DIRECTORIES* has been read anew since
 generation AFTER."
   (loop repeat 1000
         until (> (or (tuatara.defaults::evidence-generation) 0) after)
         do (sleep 1/100)))
 
-(defmacro with-case-folder ((root evidence work) &body body)
-  "Run BODY in a test folder ROOT holding cases/2026-0001/evidence/ (EVIDENCE,
-with a.txt and b.pdf in it, and a folder sub/ holding c.txt) and
+(defmacro with-case-directory ((root evidence work) &body body)
+  "Run BODY in a test directory ROOT holding cases/2026-0001/evidence/ (EVIDENCE,
+with a.txt and b.pdf in it, and a directory sub/ holding c.txt) and
 cases/2026-0001/work/ (WORK), each bound to its native name ending in /."
   `(with-test-directory (,root)
      (let* ((,root (namestring ,root))
@@ -43,20 +43,20 @@ cases/2026-0001/work/ (WORK), each bound to its native name ending in /."
        (put-file (concatenate 'string ,evidence "sub/c.txt") "deeper")
        (unwind-protect (progn ,@body)
          (kill-buffers-visiting ,root)
-         ;; the evidence made writable again, so that the test folder can go
-         (setf tuatara-user:*evidence-folders* nil)))))
+         ;; the evidence made writable again, so that the test directory can go
+         (setf tuatara-user:*evidence-directories* nil)))))
 
-(defun evidence-folder-of (path)
-  "The evidence folder PATH is in, or NIL (EVIDENCE-PATH-P)."
+(defun evidence-directory-of (path)
+  "The evidence directory PATH is in, or NIL (EVIDENCE-PATH-P)."
   (values (tuatara.defaults::evidence-path-p path)))
 
 (define-test (evidence matched-by-globs-names-and-patterns)
-  (with-case-folder (root evidence work)
+  (with-case-directory (root evidence work)
     (let ((file (concatenate 'string evidence "a.txt"))
           (deeper (concatenate 'string evidence "sub/c.txt")))
       ;; empty: nothing is evidence, and nothing is looked at
-      (with-evidence-folders ('())
-        (false (evidence-folder-of file))
+      (with-evidence-directories ('())
+        (false (evidence-directory-of file))
         (false (tuatara.io:writing-refused-anywhere-p)))
       (dolist (setting (list (list (concatenate 'string root "cases/*/evidence/"))
                              (list (concatenate 'string root "**/evidence"))
@@ -70,91 +70,91 @@ cases/2026-0001/work/ (WORK), each bound to its native name ending in /."
                              ;; names compared without regard to case
                              (list (concatenate 'string root "CASES/*/Evidence/"))
                              (list (list :name "EVIDENCE"))))
-        (with-evidence-folders (setting)
-          (is string= evidence (evidence-folder-of file) "~s" setting)
-          (is string= evidence (evidence-folder-of deeper) "~s" setting)
-          (is string= evidence (evidence-folder-of evidence) "the folder itself: ~s" setting)
-          (false (evidence-folder-of (concatenate 'string work "notes.org")) "~s" setting)
-          (false (evidence-folder-of (concatenate 'string root "cases/2026-0001/")) "~s" setting)
+        (with-evidence-directories (setting)
+          (is string= evidence (evidence-directory-of file) "~s" setting)
+          (is string= evidence (evidence-directory-of deeper) "~s" setting)
+          (is string= evidence (evidence-directory-of evidence) "the directory itself: ~s" setting)
+          (false (evidence-directory-of (concatenate 'string work "notes.org")) "~s" setting)
+          (false (evidence-directory-of (concatenate 'string root "cases/2026-0001/")) "~s" setting)
           (true (tuatara.io:writing-refused-anywhere-p))))
       ;; the entry that matched is told as written
       (let ((entry (concatenate 'string root "cases/*/evidence/")))
-        (with-evidence-folders (`("/nowhere/*/evidence/" ,entry))
+        (with-evidence-directories (`("/nowhere/*/evidence/" ,entry))
           (is equal entry (nth-value 1 (tuatara.defaults::evidence-path-p file)))))
-      ;; a pattern that matches only part of a name, or a folder outside :within, is no evidence
-      (with-evidence-folders (`((:regex "^[0-9]{4}$" :within ,(concatenate 'string root "cases/") :then "evidence")
+      ;; a pattern that matches only part of a name, or a directory outside :within, is no evidence
+      (with-evidence-directories (`((:regex "^[0-9]{4}$" :within ,(concatenate 'string root "cases/") :then "evidence")
                                 (:name "evidence" :within "/nowhere/")))
-        (false (evidence-folder-of file))))))
+        (false (evidence-directory-of file))))))
 
 (define-test (evidence entries-read-or-said)
   ;; an entry that cannot be read is left out and said; the others still count
-  (with-case-folder (root evidence work)
-    (with-evidence-folders (`("relative/evidence/" (:regex "([" :within "/") (:name "a/b") (:then "x") 42
+  (with-case-directory (root evidence work)
+    (with-evidence-directories (`("relative/evidence/" (:regex "([" :within "/") (:name "a/b") (:then "x") 42
                              ,(concatenate 'string root "cases/*/evidence/")))
       (let ((problems (tuatara.defaults::evidence-problems-words)))
         (is = 5 (length problems))
         (true (every (lambda (words) (search "is left out" words)) problems))
         (true (find-if (lambda (words) (search ":regex \"([\" cannot be used" words)) problems)))
-      (is string= evidence (evidence-folder-of (concatenate 'string evidence "a.txt")))
+      (is string= evidence (evidence-directory-of (concatenate 'string evidence "a.txt")))
       (true (find-if (lambda (line) (search "not read, left out" line)) (tuatara.defaults::evidence-health-lines))))
     ;; check-health: none (off), or each entry with what it matches
-    (with-evidence-folders ('())
-      (is equal '("Evidence folders: none (off)") (tuatara.defaults::evidence-health-lines)))
-    (with-evidence-folders (`(,(concatenate 'string root "cases/*/evidence/")
+    (with-evidence-directories ('())
+      (is equal '("Evidence directories: none (off)") (tuatara.defaults::evidence-health-lines)))
+    (with-evidence-directories (`(,(concatenate 'string root "cases/*/evidence/")
                               ,(concatenate 'string root "nothing/*/here/")))
       (let ((lines (tuatara.defaults::evidence-health-lines)))
         (true (search "2 entries" (first lines)))
-        (true (search "1 folder, " (second lines)))
+        (true (search "1 directory, " (second lines)))
         (true (search "matches nothing" (third lines)))))))
 
 (define-test (evidence links-and-mounts-followed)
-  (with-case-folder (root evidence work)
-    (with-evidence-folders (`(,(concatenate 'string root "cases/*/evidence/")))
+  (with-case-directory (root evidence work)
+    (with-evidence-directories (`(,(concatenate 'string root "cases/*/evidence/")))
       (let ((link (concatenate 'string work "link-to-evidence"))
             (file-link (concatenate 'string work "a-link.txt")))
         (sb-posix:symlink (string-right-trim "/" evidence) link)
         (sb-posix:symlink (concatenate 'string evidence "a.txt") file-link)
-        ;; through a link to the folder, and through .. on the way
-        (is string= evidence (evidence-folder-of (concatenate 'string link "/a.txt")))
-        (is string= evidence (evidence-folder-of (concatenate 'string work "../evidence/a.txt")))
+        ;; through a link to the directory, and through .. on the way
+        (is string= evidence (evidence-directory-of (concatenate 'string link "/a.txt")))
+        (is string= evidence (evidence-directory-of (concatenate 'string work "../evidence/a.txt")))
         ;; a link elsewhere leading to a file of evidence is the link's own place: taking it away is no write there
-        (false (evidence-folder-of file-link))
+        (false (evidence-directory-of file-link))
         (false (tuatara.io:writing-refusal file-link))
         ;; writing through it is: the save goes to where it leads
         (fail (tuatara.io:write-text-file (tuatara.text:string->rope "changed") file-link) 'tuatara.io:writing-refused)
         (is string= "kept as found" (file-text (concatenate 'string evidence "a.txt")))
-        ;; a folder opened is judged by where it really is, whatever path led to it
+        ;; a directory opened is judged by where it really is, whatever path led to it
         (let ((fd (sb-posix:open link (logior sb-posix:o-rdonly sb-posix:o-directory))))
           (unwind-protect (true (tuatara.io:writing-refusal (concatenate 'string work "elsewhere.txt") :dirfd fd))
             (sb-posix:close fd))))
-      ;; the same folder mounted at a second place is evidence there too
+      ;; the same directory mounted at a second place is evidence there too
       (let ((info (concatenate 'string root "mountinfo"))
             (other (namestring (ensure-directories-exist (merge-pathnames "mounted-again/" root)))))
         (put-file info (format nil "1 0 0:900 / / rw - x x rw~%2 1 0:901 / ~a rw - x x rw~%3 1 0:901 / ~a rw - x x rw~%"
                                (string-right-trim "/" (concatenate 'string root "cases"))
                                (string-right-trim "/" other)))
         (let ((tuatara.defaults::*mounts-info-file* info))
-          (with-evidence-folders (`(,(concatenate 'string root "cases/*/evidence/")))
-            (is string= evidence (evidence-folder-of (concatenate 'string other "2026-0001/evidence/a.txt")))
-            (false (evidence-folder-of (concatenate 'string other "2026-0001/work/a.txt")))))))))
+          (with-evidence-directories (`(,(concatenate 'string root "cases/*/evidence/")))
+            (is string= evidence (evidence-directory-of (concatenate 'string other "2026-0001/evidence/a.txt")))
+            (false (evidence-directory-of (concatenate 'string other "2026-0001/work/a.txt")))))))))
 
 (defmacro refused (form)
   "True when FORM signals WRITING-REFUSED saying the evidence rule."
   `(handler-case (progn ,form nil)
      (tuatara.io:writing-refused (e)
-       (and (search "is an evidence folder (*evidence-folders*: " (princ-to-string e)) t))))
+       (and (search "is an evidence directory (*evidence-directories*: " (princ-to-string e)) t))))
 
 (defmacro refused-any (form)
   "True when FORM signals WRITING-REFUSED."
   `(handler-case (progn ,form nil) (tuatara.io:writing-refused () t)))
 
 (define-test (evidence every-write-refused)
-  (with-case-folder (root evidence work)
+  (with-case-directory (root evidence work)
     (let* ((a (concatenate 'string evidence "a.txt"))
            (outside (put-file (concatenate 'string work "out.txt") "outside"))
            (outside (namestring outside))
            (before (directory-listing-of root)))
-      (with-evidence-folders (`(,(concatenate 'string root "cases/*/evidence/")))
+      (with-evidence-directories (`(,(concatenate 'string root "cases/*/evidence/")))
         (true (refused (tuatara.io:write-text-file (tuatara.text:string->rope "x") a)))
         (true (refused (tuatara.io:write-text-file (tuatara.text:string->rope "x")
                                                    (concatenate 'string evidence "new.txt"))))
@@ -181,7 +181,7 @@ cases/2026-0001/work/ (WORK), each bound to its native name ending in /."
         (true (refused (tuatara.io:trash-path a)))
         (true (refused (tuatara.io:open-scratch-file evidence)))
         (true (refused (tuatara.io:create-free-file evidence (lambda (n) (format nil "f~d" n)))))
-        ;; the folder itself, and a folder holding it, are not deleted, moved or renamed
+        ;; the directory itself, and a directory holding it, are not deleted, moved or renamed
         (true (refused (tuatara.io:delete-tree evidence)))
         (true (refused (tuatara.io:delete-tree (concatenate 'string root "cases/"))))
         (true (refused (tuatara.io:rename-path (concatenate 'string root "cases/2026-0001")
@@ -191,7 +191,7 @@ cases/2026-0001/work/ (WORK), each bound to its native name ending in /."
         (true (refused (tuatara.io::mount-arguments '()
                                                     (list (string-right-trim "/" (concatenate 'string root "cases")))
                                                     '())))
-        ;; the editor's own folders are not put there, and a state file's lock is not made there
+        ;; the editor's own directories are not put there, and a state file's lock is not made there
         (let ((tuatara-user:*cache-directory* evidence))
           (true (refused (tuatara.io:cache-directory))))
         (false (tuatara.io:call-with-state-lock (concatenate 'string evidence "recent") (lambda () t)))
@@ -208,7 +208,7 @@ cases/2026-0001/work/ (WORK), each bound to its native name ending in /."
           (remove-if (lambda (p) (search "/work/" p)) (directory-listing-of root))))))
 
 (defun directory-listing-of (root)
-  "Every file and folder under ROOT with its contents, sorted, as strings."
+  "Every file and directory under ROOT with its contents, sorted, as strings."
   (let ((found '()))
     (uiop:collect-sub*directories (pathname root) t t
                                   (lambda (dir)
@@ -221,9 +221,9 @@ cases/2026-0001/work/ (WORK), each bound to its native name ending in /."
     (sort found #'string<)))
 
 (define-test (evidence opened-safely-and-marked)
-  (with-case-folder (root evidence work)
+  (with-case-directory (root evidence work)
     (with-fresh-recent-files
-      (with-evidence-folders (`(,(concatenate 'string root "cases/*/evidence/")))
+      (with-evidence-directories (`(,(concatenate 'string root "cases/*/evidence/")))
         (let ((a (concatenate 'string evidence "a.txt")))
           ;; C-x C-f opens it safely by itself, and says why
           (multiple-value-bind (f editor)
@@ -231,7 +231,7 @@ cases/2026-0001/work/ (WORK), each bound to its native name ending in /."
             (let ((b (tuatara.display:window-buffer (tuatara.command:editor-window editor))))
               (true (tuatara.io:safe-visit-p b))
               (true (tuatara.buffer:buffer-local b :read-only))
-              (true (tuatara.frontend.fake:fake-frame-showing f "a.txt opened safely: it is in the evidence folder"))
+              (true (tuatara.frontend.fake:fake-frame-showing f "a.txt opened safely: it is in the evidence directory"))
               (true (tuatara.frontend.fake:fake-frame-showing f "it stays so, being evidence"))
               ;; Evidence in its own face, before the name
               (multiple-value-bind (screen spans) (tuatara.frontend.fake:fake-frame-with f " Evidence ")
@@ -248,7 +248,7 @@ cases/2026-0001/work/ (WORK), each bound to its native name ending in /."
                  (run-keys (format nil "C-x C-f C-a C-k ~a RET M-x e n d - s a f e - v i s i t RET" (key-string a))
                            :width 700
                            :height 12)
-                 "a.txt stays opened safely: it is in the evidence folder"))
+                 "a.txt stays opened safely: it is in the evidence directory"))
           (kill-buffers-visiting root)
           ;; M-x describe-evidence says yes, and by which entry; no for a file beside it
           (let ((f (run-keys (format nil
@@ -261,34 +261,34 @@ cases/2026-0001/work/ (WORK), each bound to its native name ending in /."
                  (run-keys "M-x d e s c r i b e - e v i d e n c e RET"
                            :file (namestring (put-file (concatenate 'string work "w.txt") "w"))
                                                                          :width 700 :height 12)
-                 "is in no evidence folder"))
+                 "is in no evidence directory"))
           (kill-buffers-visiting root)
-          ;; C-x C-w of a file elsewhere into the evidence folder is refused, said in the one wording
+          ;; C-x C-w of a file elsewhere into the evidence directory is refused, said in the one wording
           (let ((f (run-keys (format nil "C-x C-w C-a C-k ~a RET" (key-string (concatenate 'string evidence "w.txt")))
                              :file (concatenate 'string work "w.txt") :width 700 :height 12)))
-            (true (tuatara.frontend.fake:fake-frame-showing f "is an evidence folder (*evidence-folders*: "))
+            (true (tuatara.frontend.fake:fake-frame-showing f "is an evidence directory (*evidence-directories*: "))
             (false (probe-file (concatenate 'string evidence "w.txt")))))))))
 
 (define-test (evidence setting-changed-after-opening)
-  ;; a file opened before its folder was named evidence gets the rule once it is
-  (with-case-folder (root evidence work)
+  ;; a file opened before its directory was named evidence gets the rule once it is
+  (with-case-directory (root evidence work)
     (let ((a (concatenate 'string evidence "a.txt")))
       (multiple-value-bind (f editor)
           (run-keys (list "i x C-g" :wait
                           (lambda ()
-                            (setf tuatara-user:*evidence-folders*
+                            (setf tuatara-user:*evidence-directories*
                                   (list (concatenate 'string root "cases/*/evidence/"))))
                           :wait "C-x C-s")
                     :file a :width 700 :height 12)
         (let ((b (tuatara.display:window-buffer (tuatara.command:editor-window editor))))
           (true (tuatara.buffer:buffer-local b :read-only))
-          (true (tuatara.frontend.fake:fake-frame-showing f "is in the evidence folder"))
+          (true (tuatara.frontend.fake:fake-frame-showing f "is in the evidence directory"))
           (true (tuatara.frontend.fake:fake-frame-showing f " Evidence "))))
       (is string= "kept as found" (file-text a)))))
 
 (define-test (evidence copied-out-checked-and-logged)
-  (with-case-folder (root evidence work)
-    (with-evidence-folders (`(,(concatenate 'string root "cases/*/evidence/")))
+  (with-case-directory (root evidence work)
+    (with-evidence-directories (`(,(concatenate 'string root "cases/*/evidence/")))
       (let* ((a (concatenate 'string evidence "a.txt"))
              (b (concatenate 'string evidence "b.pdf"))
              (logged nil))
@@ -307,15 +307,15 @@ cases/2026-0001/work/ (WORK), each bound to its native name ending in /."
           (true (search (format nil "SHA-256 of the copy:     ~a" sum) text))
           (true (search "Size: 13 octets" text))
           (true (search "When: " text))
-          (true (search "Evidence folder: " text))
+          (true (search "Evidence directory: " text))
           (is = #o400 (logand #o777 (tuatara.io:stamp-mode (tuatara.io:path-stamp logged)))))
         ;; a copy whose sum differs is an error naming it
         (fail (tuatara.defaults::copy-file-checked a (concatenate 'string work "again.txt") :sum "0000") 'error)
         (false (probe-file (concatenate 'string work "again.txt")) "an untrue copy is taken away")
-        ;; never into an evidence folder
+        ;; never into an evidence directory
         (true (tuatara.defaults::evidence-refusal "copy into" evidence))
         (true (refused (tuatara.defaults::copy-file-checked a (concatenate 'string evidence "sub/a.txt"))))
-        ;; by the command: a folder asked for in the minibuffer
+        ;; by the command: a directory asked for in the minibuffer
         (let ((f (run-keys (list (format nil "C-x C-f C-a C-k ~a RET M-x c o p y - f r o m - e v i d e n c e RET C-a C-k ~a RET"
                                          (key-string b) (key-string (namestring (ensure-directories-exist (concatenate 'string work "out/")))))
                                  :wait)
@@ -328,12 +328,12 @@ cases/2026-0001/work/ (WORK), each bound to its native name ending in /."
                                    "C-x C-f C-a C-k ~a RET M-x c o p y - f r o m - e v i d e n c e RET C-a C-k ~a RET"
                                    (key-string b) (key-string (concatenate 'string evidence "sub/")))
                            :width 700 :height 12)))
-          (true (tuatara.frontend.fake:fake-frame-showing f "is an evidence folder (*evidence-folders*: "))
+          (true (tuatara.frontend.fake:fake-frame-showing f "is an evidence directory (*evidence-directories*: "))
           (false (probe-file (concatenate 'string evidence "sub/b.pdf"))))))))
 
 (define-test (evidence rimu-and-export-refused)
-  (with-case-folder (root evidence work)
-    (with-evidence-folders (`(,(concatenate 'string root "cases/*/evidence/")))
+  (with-case-directory (root evidence work)
+    (with-evidence-directories (`(,(concatenate 'string root "cases/*/evidence/")))
       ;; rimu says so before anything is begun
       (false (tuatara.defaults::rimu-start-operation :delete (list (list (concatenate 'string evidence "a.txt"))) nil))
       (false (tuatara.defaults::rimu-start-operation :copy (list (cons (concatenate 'string work "../evidence/a.txt")
@@ -350,12 +350,12 @@ cases/2026-0001/work/ (WORK), each bound to its native name ending in /."
       (let ((note (namestring (put-file (concatenate 'string work "note.org")
                                         (format nil "#+export_file_name: ../evidence/note~%* Heading~%text~%")))))
         (let ((f (run-keys "M-x o r g - e x p o r t - l a t e x RET" :file note :width 700 :height 12)))
-          (true (tuatara.frontend.fake:fake-frame-showing f "is an evidence folder (*evidence-folders*: ")))
+          (true (tuatara.frontend.fake:fake-frame-showing f "is an evidence directory (*evidence-directories*: ")))
         (false (probe-file (concatenate 'string evidence "note.tex")))))))
 
 (define-test (evidence empty-setting-costs-nothing)
-  ;; with no folder named, nothing is read from the disk and nothing is made for an answer
-  (with-evidence-folders ('())
+  ;; with no directory named, nothing is read from the disk and nothing is made for an answer
+  (with-evidence-directories ('())
     (let ((path "/var/tmp/somewhere/file.txt"))
       (flet ((consed (n)
                (let ((before (sb-ext:get-bytes-consed)))
@@ -370,7 +370,7 @@ cases/2026-0001/work/ (WORK), each bound to its native name ending in /."
               "more than an octet for each question while the setting is empty")))))
 
 (define-test (evidence git-writes-refused-where-a-repository-holds-evidence)
-  ;; git's commands that write working files are refused in a repository holding an evidence folder; reading ones run
+  ;; git's commands that write working files are refused in a repository holding an evidence directory; reading ones run
   (true (tuatara.git::git-writes-work-tree-p '("checkout" "--" "a.txt")))
   (true (tuatara.git::git-writes-work-tree-p '("-c" "x=y" "reset" "--hard")))
   (true (tuatara.git::git-writes-work-tree-p '("stash" "push")))
@@ -389,12 +389,12 @@ cases/2026-0001/work/ (WORK), each bound to its native name ending in /."
       (scratch-repository dir)
       (git-commit-file dir "evidence/kept.txt" "as found" "Evidence")
       (put-file (merge-pathnames "evidence/kept.txt" dir) "changed meanwhile by another program")
-      (with-evidence-folders (`(,evidence))
+      (with-evidence-directories (`(,evidence))
         (dolist (writing '(("checkout" "--" "evidence/kept.txt") ("reset" "--hard") ("stash") ("clean" "-fdx")
                            ("restore" "evidence/kept.txt")))
           (handler-case (progn (tuatara.git:run-git root writing) (false t "~s ran" writing))
             (tuatara.io:writing-refused (e)
-              (true (search "is an evidence folder (*evidence-folders*: " (princ-to-string e)) "~s" writing)
+              (true (search "is an evidence directory (*evidence-directories*: " (princ-to-string e)) "~s" writing)
               (true (uiop:string-prefix-p (format nil "git ~a is not run: " (first writing)) (princ-to-string e))))))
         (is string= "changed meanwhile by another program" (file-text (merge-pathnames "evidence/kept.txt" dir)))
         ;; reading runs
@@ -402,17 +402,17 @@ cases/2026-0001/work/ (WORK), each bound to its native name ending in /."
           (true ok)
           (true (search "evidence/kept.txt" (tuatara.text:octets-string octets)))))
       ;; with the setting empty, as before
-      (with-evidence-folders ('())
+      (with-evidence-directories ('())
         (true (nth-value 1 (tuatara.git:run-git root '("checkout" "--" "evidence/kept.txt"))))
         (is string= "as found" (file-text (merge-pathnames "evidence/kept.txt" dir)))))))
 
 (define-test (evidence never-offered-to-write-in)
-  ;; a question whose answer is written to never starts in an evidence folder nor offers one first; reading ones still may
-  (with-case-folder (root evidence work)
+  ;; a question whose answer is written to never starts in an evidence directory nor offers one first; reading ones still may
+  (with-case-directory (root evidence work)
     (with-fresh-recent-files
-      (with-evidence-folders (`(,(concatenate 'string root "cases/*/evidence/")))
+      (with-evidence-directories (`(,(concatenate 'string root "cases/*/evidence/")))
         (let ((a (concatenate 'string evidence "a.txt")))
-          ;; the folder chosen last is evidence: offered for reading, not for writing
+          ;; the directory chosen last is evidence: offered for reading, not for writing
           (let ((seen '()))
             (run-keys (list (lambda ()
                               (tuatara.defaults::note-chosen-path evidence :directory t)
@@ -438,8 +438,8 @@ cases/2026-0001/work/ (WORK), each bound to its native name ending in /."
                            (tuatara.frontend.fake:fake-frame-with f "Find file: ")))))))))
 
 (define-test (evidence named-through-a-link)
-  ;; an evidence folder that is a link to a drive's folder protects that folder, however the setting names it
-  (with-case-folder (root evidence work)
+  ;; an evidence directory that is a link to a drive's directory protects that directory, however the setting names it
+  (with-case-directory (root evidence work)
     (let* ((stick (namestring (ensure-directories-exist (merge-pathnames "media/STICK/" root))))
            (link (concatenate 'string root "cases/2026-0002/evidence")))
       (ensure-directories-exist (concatenate 'string root "cases/2026-0002/"))
@@ -452,33 +452,34 @@ cases/2026-0001/work/ (WORK), each bound to its native name ending in /."
                                          "^[0-9]{4}-[0-9]{4}$"
                                          :within (concatenate 'string root "cases/")
                                          :then "evidence"))))
-        (with-evidence-folders (setting)
+        (with-evidence-directories (setting)
           (wait-for-evidence-links)
           (true (refused (tuatara.io:write-new-file (concatenate 'string stick "new.txt") "x")) "~s" setting)
           (true (refused (tuatara.io:write-new-file (concatenate 'string link "/new.txt") "x")) "~s" setting)
-          (true (evidence-folder-of (concatenate 'string stick "found.txt")) "~s" setting)
+          (true (evidence-directory-of (concatenate 'string stick "found.txt")) "~s" setting)
           (false (probe-file (concatenate 'string stick "new.txt")) "~s" setting)))
       (sb-posix:unlink link))))
 
 (define-test (evidence whole-names-composed-alike)
-  ;; a pattern matches a folder's whole name, its alternatives in any order; names compared in one Unicode form
-  (with-case-folder (root evidence work)
+  ;; a pattern matches a directory's whole name, its alternatives in any order; names compared in one Unicode form
+  (with-case-directory (root evidence work)
     (let ((file (concatenate 'string evidence "a.txt")))
-      (with-evidence-folders (`((:regex
+      (with-evidence-directories (`((:regex
                                  "2026|2026-0001"
                                  :within ,(concatenate 'string root "cases/")
                                  :then "evidence")))
-        (is string= evidence (evidence-folder-of file)))
-      (with-evidence-folders (`((:regex "2026" :within ,(concatenate 'string root "cases/") :then "evidence")))
-        (false (evidence-folder-of file)))
+        (is string= evidence (evidence-directory-of file)))
+      (with-evidence-directories (`((:regex "2026" :within ,(concatenate 'string root "cases/") :then "evidence")))
+        (false (evidence-directory-of file)))
       (let ((composed (namestring (ensure-directories-exist (merge-pathnames (format nil
                                                                                      "~cvidence/"
                                                                                      (code-char #xe9)) root)))))
-        (with-evidence-folders (`((:name ,(format nil "e~cvidence" (code-char #x301)) :within ,root)))
-          (true (evidence-folder-of (concatenate 'string composed "x.txt"))))))))
+        (with-evidence-directories (`((:name ,(format nil "e~cvidence" (code-char #x301)) :within ,root)))
+          (true (evidence-directory-of (concatenate 'string composed "x.txt"))))))))
 
-(define-test (evidence refused-by-the-folder-held-open)
-  ;; each write asks again by the folder it holds open, so that a folder swapped for a link meanwhile leads nowhere
+(define-test (evidence refused-by-the-directory-held-open)
+  ;; each write asks again by the directory it holds open, so that a directory swapped for a link meanwhile leads
+  ;; nowhere
   (with-test-directory (dir)
     (let* ((root (namestring dir))
            (kept (namestring (put-file (merge-pathnames "kept.txt" dir) "kept")))
@@ -486,7 +487,7 @@ cases/2026-0001/work/ (WORK), each bound to its native name ending in /."
              (make-answering-host 'tuatara.io:host-writing-refusal
                                   (lambda (path &key dirfd fd)
                                     (cond ((null path) t)
-                                          ((or dirfd fd) "refused by the folder held open"))))))
+                                          ((or dirfd fd) "refused by the directory held open"))))))
       (true (handler-case (progn (tuatara.io:write-new-file (concatenate 'string root "n.txt") "x") nil)
               (tuatara.io:writing-refused () t)))
       (true (handler-case (progn (tuatara.io:replace-file kept "x") nil) (tuatara.io:writing-refused () t)))
@@ -504,23 +505,23 @@ cases/2026-0001/work/ (WORK), each bound to its native name ending in /."
       (false (tuatara.io:call-with-state-lock (concatenate 'string root "state") (lambda () t)))
       (is string= "kept" (file-text kept))
       (is equal '("kept.txt") (mapcar #'file-namestring (uiop:directory-files dir))))
-    ;; a relative path is judged from the process's own folder, as the system takes it
+    ;; a relative path is judged from the process's own directory, as the system takes it
     (let ((here (sb-posix:getcwd)))
       (unwind-protect
            (progn (sb-posix:chdir (namestring dir))
-                  (with-evidence-folders ((list (namestring dir)))
+                  (with-evidence-directories ((list (namestring dir)))
                     (true (tuatara.io:writing-refusal "relative.txt"))))
         (sb-posix:chdir here)))))
 
 (define-test (evidence other-names-never-written-in-place)
   ;; a file with another name in evidence, made before, is saved as a file of its own, never through the shared file
-  (with-case-folder (root evidence work)
+  (with-case-directory (root evidence work)
     (let ((a (concatenate 'string evidence "a.txt"))
           (other (concatenate 'string work "a-hard.txt"))
           (third (concatenate 'string work "a-third.txt")))
       (sb-posix:link a other)
       (sb-posix:link a third)
-      (with-evidence-folders (`(,(concatenate 'string root "cases/*/evidence/")))
+      (with-evidence-directories (`(,(concatenate 'string root "cases/*/evidence/")))
         (tuatara.io:write-text-file (tuatara.text:string->rope "changed through another name") other)
         (is string= "kept as found" (file-text a))
         (is string= "changed through another name" (file-text other))
@@ -529,8 +530,8 @@ cases/2026-0001/work/ (WORK), each bound to its native name ending in /."
         (is string= "kept as found" (file-text third))))))
 
 (define-test (evidence mounts-changed-looked-at-again)
-  ;; what is kept of each folder is dropped once the drives mounted change
-  (with-case-folder (root evidence work)
+  ;; what is kept of each directory is dropped once the drives mounted change
+  (with-case-directory (root evidence work)
     (let* ((info (concatenate 'string root "mountinfo"))
            (other (namestring (ensure-directories-exist (merge-pathnames "mounted-again/" root))))
            (file (concatenate 'string
@@ -542,9 +543,9 @@ cases/2026-0001/work/ (WORK), each bound to its native name ending in /."
       ;; for every thread: the drives are looked at in the background
       (setf tuatara.defaults::*mounts-info-file* info tuatara.defaults::*mounts-look-interval* 0)
       (unwind-protect
-           (with-evidence-folders (`(,(concatenate 'string root "cases/*/evidence/")))
+           (with-evidence-directories (`(,(concatenate 'string root "cases/*/evidence/")))
              (wait-for-evidence-links)
-             (false (evidence-folder-of file))
+             (false (evidence-directory-of file))
              (let ((before (tuatara.defaults::evidence-generation)))
                (put-file info
                          (format nil
@@ -553,18 +554,18 @@ cases/2026-0001/work/ (WORK), each bound to its native name ending in /."
                                  (string-right-trim "/" other)))
                (wait-for-evidence-generation before)
                (wait-for-evidence-links))
-             (is string= evidence (evidence-folder-of file)))
+             (is string= evidence (evidence-directory-of file)))
         (setf tuatara.defaults::*mounts-info-file* old-info tuatara.defaults::*mounts-look-interval* old-interval)))))
 
 (define-test (evidence git-writes-nowhere-in-evidence)
-  ;; git's output files, other folders and repositories named, are refused in evidence; hooks off where a repository holds it
+  ;; git's output files, other directories and repositories named, are refused in evidence; hooks off where a repository holds it
   (with-test-directory (dir)
     (let* ((repo (namestring (ensure-directories-exist (merge-pathnames "repo/" dir))))
            (ev (namestring (ensure-directories-exist (merge-pathnames "ev/" dir))))
            (inner (namestring (ensure-directories-exist (merge-pathnames "ev/inner/" dir)))))
       (scratch-repository repo)
       (scratch-repository inner)
-      (with-evidence-folders ((list ev))
+      (with-evidence-directories ((list ev))
         (dolist (arguments `(("format-patch" "-o" ,ev "-1")
                              ("format-patch" ,(format nil "--output-directory=~a" ev) "-1")
                              ("bundle" "create" ,(concatenate 'string ev "b.bundle") "--all")
@@ -585,18 +586,18 @@ cases/2026-0001/work/ (WORK), each bound to its native name ending in /."
               (tuatara.text:octets-string (tuatara.git:run-git holding '("config" "--get" "core.hooksPath")))))))))
 
 (define-test (evidence projects-holding-evidence-untrusted)
-  ;; a project holding an evidence folder runs no program of its own, trusted or not
-  (with-case-folder (root evidence work)
+  ;; a project holding an evidence directory runs no program of its own, trusted or not
+  (with-case-directory (root evidence work)
     (let ((tuatara-user:*lsp-trusted-projects* (list root)))
-      (with-evidence-folders ('())
+      (with-evidence-directories ('())
         (true (tuatara.defaults::project-trusted-p root)))
-      (with-evidence-folders (`(,(concatenate 'string root "cases/*/evidence/")))
+      (with-evidence-directories (`(,(concatenate 'string root "cases/*/evidence/")))
         (false (tuatara.defaults::project-trusted-p root))
         (true (tuatara.defaults::project-trusted-p work))))))
 
-(define-test (evidence holding-told-without-reading-every-folder)
+(define-test (evidence holding-told-without-reading-every-directory)
   ;; whether a project holds evidence is told from the setting: a big tree beside the cases is not read
-  (with-case-folder (root evidence work)
+  (with-case-directory (root evidence work)
     (dotimes (i 40)
       (dotimes (j 60)
         (ensure-directories-exist (format nil "~asrc/m~d/p~d/" root i j))))
@@ -605,25 +606,25 @@ cases/2026-0001/work/ (WORK), each bound to its native name ending in /."
              (let ((start (get-internal-real-time)))
                (funcall function)
                (/ (- (get-internal-real-time) start) internal-time-units-per-second))))
-      (with-evidence-folders (`(,(concatenate 'string root "cases/*/evidence/")))
+      (with-evidence-directories (`(,(concatenate 'string root "cases/*/evidence/")))
         (wait-for-evidence-links)
         (let (answer)
-          (true (< (seconds (lambda () (setf answer (tuatara.defaults::folder-holds-evidence-p root)))) 1/2))
-          (true (search "is an evidence folder" answer)))
-        (false (tuatara.defaults::folder-holds-evidence-p (concatenate 'string root "src/")))
+          (true (< (seconds (lambda () (setf answer (tuatara.defaults::directory-holds-evidence-p root)))) 1/2))
+          (true (search "is an evidence directory" answer)))
+        (false (tuatara.defaults::directory-holds-evidence-p (concatenate 'string root "src/")))
         (let ((tuatara-user:*lsp-trusted-projects* (list root)))
           (true (< (seconds (lambda () (tuatara.defaults::project-trusted-p (concatenate 'string root "src/")))) 1/2)))
         (true (< (seconds (lambda () (tuatara.git:run-git root '("status" "--porcelain")))) 5)))
-      (with-evidence-folders ('("/nowhere/*/evidence/"))
+      (with-evidence-directories ('("/nowhere/*/evidence/"))
         (wait-for-evidence-links)
-        (true (< (seconds (lambda () (tuatara.defaults::folder-holds-evidence-p root))) 1/10))
-        (false (tuatara.defaults::folder-holds-evidence-p root)))
+        (true (< (seconds (lambda () (tuatara.defaults::directory-holds-evidence-p root))) 1/10))
+        (false (tuatara.defaults::directory-holds-evidence-p root)))
       ;; where only reading can tell, a tree too large counts as holding, said so
-      (let ((tuatara.defaults::*evidence-holding-search-folders* 100))
-        (with-evidence-folders ('((:name "evidence")))
+      (let ((tuatara.defaults::*evidence-holding-search-directories* 100))
+        (with-evidence-directories ('((:name "evidence")))
           (wait-for-evidence-links)
-          (true (search "more than 100 folders"
-                        (tuatara.defaults::folder-holds-evidence-p (concatenate 'string root "src/")))))))))
+          (true (search "more than 100 directories"
+                        (tuatara.defaults::directory-holds-evidence-p (concatenate 'string root "src/")))))))))
 
 (define-test (evidence git-words-never-name-evidence)
   ;; any word given to git that leads into evidence is refused, however its option is written
@@ -633,7 +634,7 @@ cases/2026-0001/work/ (WORK), each bound to its native name ending in /."
            (link (concatenate 'string repo "into-ev")))
       (scratch-repository repo)
       (sb-posix:symlink (string-right-trim "/" ev) link)
-      (with-evidence-folders ((list ev))
+      (with-evidence-directories ((list ev))
         (dolist (arguments `(("config" "--fil" ,(concatenate 'string ev "cfg") "a.b" "c")
                              ("config" ,(format nil "-f~acfg" ev) "a.b" "c")
                              ("checkout-index" "-a" ,(format nil "--prefix=~aout/" ev))
@@ -658,11 +659,11 @@ cases/2026-0001/work/ (WORK), each bound to its native name ending in /."
         (true (tuatara.git::git-command-refusal (list "-c" (format nil "alias.zz=!touch ~ax" ev) "zz")))
         (true (tuatara.git::git-command-refusal '("zz")))
         (false (tuatara.git::git-command-refusal '("log" "--oneline" "-5"))))
-      (with-evidence-folders ('())
+      (with-evidence-directories ('())
         (false (tuatara.git::git-command-refusal '("-c" "x.y=z" "zz")))))))
 
-(define-test (evidence folders-written-not-read)
-  ;; a folder you may write in but not list (-wx) takes new files, as before, the setting on or off
+(define-test (evidence directories-written-not-read)
+  ;; a directory you may write in but not list (-wx) takes new files, as before, the setting on or off
   (with-test-directory (dir)
     (let* ((root (namestring dir))
            (blind (namestring (ensure-directories-exist (merge-pathnames "blind/" dir)))))
@@ -670,7 +671,7 @@ cases/2026-0001/work/ (WORK), each bound to its native name ending in /."
       (sb-posix:chmod blind #o300)
       (unwind-protect
            (dolist (setting (list '() (list (concatenate 'string root "elsewhere/*/evidence/"))))
-             (with-evidence-folders (setting)
+             (with-evidence-directories (setting)
                (tuatara.io:write-new-file (concatenate 'string blind "new.txt") "new")
                (tuatara.io:write-text-file (tuatara.text:string->rope "saved") (concatenate 'string blind "saved.txt"))
                (tuatara.io:remove-file (concatenate 'string blind "new.txt"))
@@ -679,36 +680,36 @@ cases/2026-0001/work/ (WORK), each bound to its native name ending in /."
         (sb-posix:chmod blind #o700)))))
 
 (define-test (evidence saved-apart-said-plainly)
-  ;; a file with other names in a folder that may not be written in is refused, saying why
-  (with-case-folder (root evidence work)
+  ;; a file with other names in a directory that may not be written in is refused, saying why
+  (with-case-directory (root evidence work)
     (let* ((shut (namestring (ensure-directories-exist (concatenate 'string work "shut/"))))
            (other (concatenate 'string shut "a.txt")))
       (sb-posix:link (concatenate 'string evidence "a.txt") other)
       (sb-posix:chmod shut #o500)
       (unwind-protect
-           (with-evidence-folders (`(,(concatenate 'string root "cases/*/evidence/")))
+           (with-evidence-directories (`(,(concatenate 'string root "cases/*/evidence/")))
              (handler-case (progn (tuatara.io:write-text-file (tuatara.text:string->rope "x") other) (false t))
                (tuatara.io:file-system-error (e) (true (search "may not be written in" (princ-to-string e)))))
              (is string= "kept as found" (file-text other)))
         (sb-posix:chmod shut #o700)))))
 
 (define-test (evidence links-learnt-as-written-through)
-  ;; an entry that may match anywhere learns the folder a link leads to once the link is written through
-  (with-case-folder (root evidence work)
+  ;; an entry that may match anywhere learns the directory a link leads to once the link is written through
+  (with-case-directory (root evidence work)
     (let* ((stick (namestring (ensure-directories-exist (merge-pathnames "media/STICK2/" root))))
            (link (concatenate 'string work "evidence")))
       (sb-posix:symlink (string-right-trim "/" stick) link)
-      (with-evidence-folders ('((:name "evidence")))
+      (with-evidence-directories ('((:name "evidence")))
         (wait-for-evidence-links)
         (true (refused (tuatara.io:write-new-file (concatenate 'string link "/n.txt") "x")))
         (true (refused (tuatara.io:write-new-file (concatenate 'string stick "n.txt") "x")))
-        (true (find-if (lambda (line) (search "counts as holding an evidence folder" line))
+        (true (find-if (lambda (line) (search "counts as holding an evidence directory" line))
                        (tuatara.defaults::evidence-health-lines))))
       (sb-posix:unlink link))))
 
 (define-test (evidence holding-seen-through-a-second-mount)
   ;; a repository reached through a second mount of the cases holds their evidence: git writes none of it
-  (with-case-folder (root evidence work)
+  (with-case-directory (root evidence work)
     (let* ((info (concatenate 'string root "mountinfo"))
            (other (namestring (ensure-directories-exist (merge-pathnames "other/" root))))
            (repo (namestring (ensure-directories-exist (concatenate 'string other "2026-0001/evidence/"))))
@@ -721,18 +722,18 @@ cases/2026-0001/work/ (WORK), each bound to its native name ending in /."
                              (string-right-trim "/" (concatenate 'string root "cases")) (string-right-trim "/" other)))
       (setf tuatara.defaults::*mounts-info-file* info)
       (unwind-protect
-           (with-evidence-folders (`(,(concatenate 'string root "cases/*/evidence/")))
+           (with-evidence-directories (`(,(concatenate 'string root "cases/*/evidence/")))
              (wait-for-evidence-links)
              (true (tuatara.io:writing-refusal (concatenate 'string repo "evidence/a.txt")))
-             (true (tuatara.defaults::folder-holds-evidence-p repo))
+             (true (tuatara.defaults::directory-holds-evidence-p repo))
              (true (refused-any (tuatara.git:run-git repo '("checkout" "--" "."))))
              (is string= "changed by another program" (file-text (concatenate 'string repo "evidence/a.txt"))))
         (setf tuatara.defaults::*mounts-info-file* old-info)))))
 
 (define-test (evidence answers-dropped-stay-dropped)
   ;; an answer worked out before the kept ones were dropped is not kept after
-  (with-case-folder (root evidence work)
-    (with-evidence-folders (`(,(concatenate 'string root "cases/*/evidence/")))
+  (with-case-directory (root evidence work)
+    (with-evidence-directories (`(,(concatenate 'string root "cases/*/evidence/")))
       (let* ((rules (tuatara.defaults::evidence-rules))
              (table (tuatara.defaults::evidence-rules-holding rules))
              (since (tuatara.defaults::evidence-rules-forgotten rules)))
@@ -744,8 +745,8 @@ cases/2026-0001/work/ (WORK), each bound to its native name ending in /."
 
 (define-test (evidence keeper-ends-when-off)
   ;; with the setting emptied nothing keeps running; a keeper that ended is started again; none while saving
-  (with-case-folder (root evidence work)
-    (with-evidence-folders (`(,(concatenate 'string root "cases/*/evidence/")))
+  (with-case-directory (root evidence work)
+    (with-evidence-directories (`(,(concatenate 'string root "cases/*/evidence/")))
       (tuatara.defaults::evidence-rules)
       (let ((keeper tuatara.defaults::*evidence-keeper*))
         (true (and keeper (sb-thread:thread-alive-p keeper)))
@@ -767,7 +768,7 @@ cases/2026-0001/work/ (WORK), each bound to its native name ending in /."
            (ev (namestring (ensure-directories-exist (merge-pathnames "evidence/" dir)))))
       (scratch-repository dir)
       (git-commit-file dir "evidence/x.txt" "found" "Evidence")
-      (with-evidence-folders ((list ev))
+      (with-evidence-directories ((list ev))
         (true (nth-value 1 (tuatara.git:run-git root '("log" "--oneline" "--" "evidence/x.txt"))))
         (true (refused-any (tuatara.git:run-git root '("log" "--output=evidence/y" "--" "x.txt"))))
         (true (refused-any (tuatara.git:run-git root '("config" "--file" "evidence/cfg" "--" "a.b" "c"))))
@@ -787,7 +788,7 @@ cases/2026-0001/work/ (WORK), each bound to its native name ending in /."
       (scratch-repository repo)
       (scratch-repository seized)
       (let ((before (git-output seized "for-each-ref")))
-        (with-evidence-folders ((list ev))
+        (with-evidence-directories ((list ev))
           (true (refused-any (tuatara.git:run-git repo (list "push" "--" seized "HEAD:refs/heads/pushed"))))
           (true (refused-any (tuatara.git:run-git repo (list "fetch" "--" seized))))
           (true (refused-any (tuatara.git:run-git repo (list "ls-remote" "--" seized))))
@@ -802,8 +803,8 @@ cases/2026-0001/work/ (WORK), each bound to its native name ending in /."
 
 (define-test (evidence no-keeper-while-saving)
   ;; once the program is being saved, no question starts the thread keeping the rules again
-  (with-case-folder (root evidence work)
-    (with-evidence-folders (`(,(concatenate 'string root "cases/*/evidence/")))
+  (with-case-directory (root evidence work)
+    (with-evidence-directories (`(,(concatenate 'string root "cases/*/evidence/")))
       (tuatara.defaults::evidence-rules)
       (unwind-protect
            (progn
@@ -818,9 +819,9 @@ cases/2026-0001/work/ (WORK), each bound to its native name ending in /."
 
 (define-test (evidence saved-as-out-of-evidence)
   ;; a file of evidence saved as a file elsewhere: the buffer visits that file, safely still, writable, no longer marked Evidence
-  (with-case-folder (root evidence work)
+  (with-case-directory (root evidence work)
     (with-fresh-recent-files
-      (with-evidence-folders (`(,(concatenate 'string root "cases/*/evidence/")))
+      (with-evidence-directories (`(,(concatenate 'string root "cases/*/evidence/")))
         (let ((a (concatenate 'string evidence "a.txt"))
               (copy (concatenate 'string work "a-copy.txt")))
           (multiple-value-bind (f editor)
@@ -842,10 +843,10 @@ cases/2026-0001/work/ (WORK), each bound to its native name ending in /."
 
 (define-test (evidence git-refused-in-one-sentence)
   ;; holding evidence never trusts a repository for git: it is looked at only, said at once; a refused write is said in one sentence
-  (with-case-folder (root evidence work)
+  (with-case-directory (root evidence work)
     (scratch-repository root)
     (put-file (concatenate 'string work "notes.txt") "notes")
-    (with-evidence-folders (`(,(concatenate 'string root "cases/*/evidence/")))
+    (with-evidence-directories (`(,(concatenate 'string root "cases/*/evidence/")))
       (wait-for-evidence-links)
       (false (tuatara.defaults::project-trusted-p root))
       (let* ((f (run-keys "C-x g" :file (concatenate 'string work "notes.txt") :width 400 :height 20))
@@ -855,13 +856,13 @@ cases/2026-0001/work/ (WORK), each bound to its native name ending in /."
         ;; the whole line as the status holds it, however wide the window: the frame shows its start
         (true (tuatara.frontend.fake:fake-frame-showing f "Look only: "))
         (true (uiop:string-prefix-p "Look only: " first-line) "~s" first-line)
-        (true (search "is an evidence folder (*evidence-folders*: " first-line) "~s" first-line)
+        (true (search "is an evidence directory (*evidence-directories*: " first-line) "~s" first-line)
         (false (tuatara.frontend.fake:fake-frame-showing-across-rows f "(y, l or n)")))
       (handler-case (progn (tuatara.git:run-git root '("checkout" "--" ".")) (false t))
         (tuatara.io:writing-refused (e)
           (let ((words (princ-to-string e)))
             (true (uiop:string-prefix-p "git checkout is not run: " words) "~a" words)
-            (true (search "is an evidence folder (*evidence-folders*: " words))
+            (true (search "is an evidence directory (*evidence-directories*: " words))
             (false (search "Could not" words))))))))
 
 (define-test (evidence read-directory-path-in-the-api)
@@ -870,9 +871,9 @@ cases/2026-0001/work/ (WORK), each bound to its native name ending in /."
     (is eq :external (nth-value 1 (find-symbol name :tuatara)) "~a" name)))
 
 (define-test (evidence link-to-evidence-opens-safely)
-  ;; a symbolic link outside the evidence folder to a file in it is evidence too
-  (with-case-folder (root evidence work)
-    (with-evidence-folders ((list (concatenate 'string root "cases/*/evidence/")))
+  ;; a symbolic link outside the evidence directory to a file in it is evidence too
+  (with-case-directory (root evidence work)
+    (with-evidence-directories ((list (concatenate 'string root "cases/*/evidence/")))
       (let ((link (concatenate 'string work "link.txt")))
         (sb-posix:symlink (concatenate 'string evidence "a.txt") link)
         (true (tuatara.defaults::visit-safely-reason link))
@@ -886,14 +887,14 @@ cases/2026-0001/work/ (WORK), each bound to its native name ending in /."
   "The access time of the file at PATH, in seconds."
   (sb-posix:stat-atime (sb-posix:stat path)))
 
-(define-test (evidence links-through-folders-and-parent-names)
-  ;; a folder link and .. on the way: the file opened is evidence, and its access time is not changed
-  (with-case-folder (root evidence work)
+(define-test (evidence links-through-directories-and-parent-names)
+  ;; a directory link and .. on the way: the file opened is evidence, and its access time is not changed
+  (with-case-directory (root evidence work)
     (let ((a (concatenate 'string evidence "a.txt")))
       (sb-posix:symlink (string-right-trim "/" (concatenate 'string evidence "sub/")) (concatenate 'string work "dl"))
       (sb-posix:symlink "dl/../a.txt" (concatenate 'string work "dotdot.txt"))
       (sb-posix:utimes a 1000 (- (get-universal-time) 100000))
-      (with-evidence-folders ((list (concatenate 'string root "cases/*/evidence/")))
+      (with-evidence-directories ((list (concatenate 'string root "cases/*/evidence/")))
         (let ((buffer (tuatara.io:visit-file (concatenate 'string work "dotdot.txt"))))
           (unwind-protect
                (progn (true (tuatara.io:safe-visit-p buffer))
@@ -903,11 +904,11 @@ cases/2026-0001/work/ (WORK), each bound to its native name ending in /."
 
 (define-test (evidence link-changed-before-it-is-read)
   ;; a buffer of an ordinary file whose link now leads to evidence: read again, it is opened safely
-  (with-case-folder (root evidence work)
+  (with-case-directory (root evidence work)
     (let ((link (concatenate 'string work "link.txt"))
           (plain (put-file (concatenate 'string work "plain.txt") "plain")))
       (sb-posix:symlink (tuatara.io:native plain) link)
-      (with-evidence-folders ((list (concatenate 'string root "cases/*/evidence/")))
+      (with-evidence-directories ((list (concatenate 'string root "cases/*/evidence/")))
         (let ((buffer (tuatara.io:visit-file link)))
           (unwind-protect
                (progn
@@ -921,7 +922,7 @@ cases/2026-0001/work/ (WORK), each bound to its native name ending in /."
             (tuatara.buffer:kill-buffer buffer)))))))
 
 (define-test (evidence links-looked-at-only-when-wanted)
-  ;; with no evidence folder and no safe directory a link is not followed to decide
+  ;; with no evidence directory and no safe directory a link is not followed to decide
   (with-test-directory (dir)
     (let ((file (put-file (merge-pathnames "p.txt" dir) "x"))
           (calls 0)
@@ -931,16 +932,16 @@ cases/2026-0001/work/ (WORK), each bound to its native name ending in /."
       (dolist (function functions)
         (sb-int:encapsulate function 'counting (lambda (f &rest arguments) (incf calls) (apply f arguments))))
       (unwind-protect
-           (with-evidence-folders ('())
+           (with-evidence-directories ('())
              (false (tuatara.defaults::visit-safely-reason (tuatara.io:native file)))
              (is = 0 calls))
         (dolist (function functions) (sb-int:unencapsulate function 'counting))
         (setf tuatara-user:*safe-directories* old)))))
 
 (define-test (evidence hard-link-to-evidence)
-  ;; another name outside the folder of an evidence file is evidence: opened safely, access time kept;
-  ;; an ordinary file with two names is opened as usual once the evidence folders are gone through
-  (with-case-folder (root evidence work)
+  ;; another name outside the directory of an evidence file is evidence: opened safely, access time kept;
+  ;; an ordinary file with two names is opened as usual once the evidence directories are gone through
+  (with-case-directory (root evidence work)
     (let* ((a (concatenate 'string evidence "a.txt"))
            (hard (concatenate 'string work "hard.txt"))
            (plain (put-file (concatenate 'string work "plain.txt") "plain"))
@@ -948,7 +949,7 @@ cases/2026-0001/work/ (WORK), each bound to its native name ending in /."
       (sb-posix:link a hard)
       (sb-posix:link (tuatara.io:native plain) twin)
       (sb-posix:utimes a 1000 (- (get-universal-time) 100000))
-      (with-evidence-folders ((list (concatenate 'string root "cases/*/evidence/")))
+      (with-evidence-directories ((list (concatenate 'string root "cases/*/evidence/")))
         (dolist (waited '(nil t))
           (when waited
             (loop repeat 1000
@@ -991,20 +992,20 @@ cases/2026-0001/work/ (WORK), each bound to its native name ending in /."
       (false (probe-file copy) "the untrue copy is taken away"))))
 
 (define-test (evidence link-to-evidence-is-evidence)
-  ;; a link to a file of evidence, or to an evidence folder, is evidence wherever it is asked;
+  ;; a link to a file of evidence, or to an evidence directory, is evidence wherever it is asked;
   ;; another name made by a hard link may be, and stays opened safely
-  (with-case-folder (root evidence work)
+  (with-case-directory (root evidence work)
     (let ((link (concatenate 'string work "link.txt"))
-          (folder-link (concatenate 'string work "dl"))
+          (directory-link (concatenate 'string work "dl"))
           (hard (concatenate 'string work "hard.txt")))
       (sb-posix:symlink (concatenate 'string evidence "a.txt") link)
-      (sb-posix:symlink (string-right-trim "/" (concatenate 'string evidence "sub/")) folder-link)
+      (sb-posix:symlink (string-right-trim "/" (concatenate 'string evidence "sub/")) directory-link)
       (sb-posix:link (concatenate 'string evidence "a.txt") hard)
-      (with-evidence-folders ((list (concatenate 'string root "cases/*/evidence/")))
+      (with-evidence-directories ((list (concatenate 'string root "cases/*/evidence/")))
         ;; judged by its own place where it is taken away, by what it leads to where that is read
-        (false (evidence-folder-of link))
+        (false (evidence-directory-of link))
         (is string= evidence (values (tuatara.defaults::evidence-path-p link :follow t)))
-        (is string= evidence (values (tuatara.defaults::evidence-path-p folder-link :follow t)))
+        (is string= evidence (values (tuatara.defaults::evidence-path-p directory-link :follow t)))
         (let ((f (run-keys (format nil "C-x C-f C-a C-k ~a RET M-x d e s c r i b e - e v i d e n c e RET"
                                    (key-string link))
                            :width 700 :height 12)))
@@ -1014,7 +1015,7 @@ cases/2026-0001/work/ (WORK), each bound to its native name ending in /."
         (true (tuatara.frontend.fake:fake-frame-showing
                (run-keys (format nil "C-x C-f C-a C-k ~a RET M-x e n d - s a f e - v i s i t RET" (key-string link))
                          :width 700 :height 12)
-               "link.txt stays opened safely: it is in the evidence folder"))
+               "link.txt stays opened safely: it is in the evidence directory"))
         (kill-buffers-visiting root)
         (let ((f (run-keys (format nil "C-x C-f C-a C-k ~a RET M-x d e s c r i b e - e v i d e n c e RET ~
                                         M-x e n d - s a f e - v i s i t RET"
@@ -1031,13 +1032,13 @@ cases/2026-0001/work/ (WORK), each bound to its native name ending in /."
 
 (define-test (evidence safe-visit-ended-for-the-file-read)
   ;; end-safe-visit judges the file the buffer read, not where its link leads by then
-  (with-case-folder (root evidence work)
+  (with-case-directory (root evidence work)
     (let ((link (concatenate 'string work "l.txt"))
           (other (concatenate 'string work "r.txt"))
           (plain (tuatara.io:native (put-file (concatenate 'string work "other.txt") "elsewhere"))))
       (sb-posix:symlink (concatenate 'string evidence "a.txt") link)
       (sb-posix:symlink plain other)
-      (with-evidence-folders ((list (concatenate 'string root "cases/*/evidence/")))
+      (with-evidence-directories ((list (concatenate 'string root "cases/*/evidence/")))
         ;; the refusal is looked for in *Messages*: the watcher's word on the changed link may paint over it
         (flet ((refused (file why)
                  (let ((b (find (pathname file)
@@ -1056,7 +1057,7 @@ cases/2026-0001/work/ (WORK), each bound to its native name ending in /."
                             (incf tuatara.defaults::*evidence-generation*))
                           "M-x e n d - s a f e - v i s i t RET")
                     :width 700 :height 12)
-          (refused link "it is in the evidence folder")
+          (refused link "it is in the evidence directory")
           ;; opened safely as an ordinary file, its link then led into evidence
           (run-keys (list (format nil "C-u C-x C-f C-a C-k ~a RET" (key-string other))
                           (lambda () (retarget-link other (concatenate 'string evidence "a.txt")))
@@ -1067,13 +1068,13 @@ cases/2026-0001/work/ (WORK), each bound to its native name ending in /."
 
 (define-test (evidence copied-out-by-the-file-opened)
   ;; a link led out of evidence between the check and the copy: nothing copied, nothing logged as evidence
-  (with-case-folder (root evidence work)
+  (with-case-directory (root evidence work)
     (let ((link (concatenate 'string work "l.txt"))
           (plain (tuatara.io:native (put-file (concatenate 'string work "other.txt") "elsewhere")))
           (out (namestring (ensure-directories-exist (concatenate 'string work "out/"))))
           (logged nil))
       (sb-posix:symlink (concatenate 'string evidence "a.txt") link)
-      (with-evidence-folders ((list (concatenate 'string root "cases/*/evidence/")))
+      (with-evidence-directories ((list (concatenate 'string root "cases/*/evidence/")))
         (sb-int:encapsulate 'tuatara.defaults::copy-file-checked 'retarget
                             (lambda (f &rest arguments) (retarget-link link plain) (apply f arguments)))
         (unwind-protect
@@ -1096,27 +1097,27 @@ moves it only now and then (relatime)."
   (uiop:run-program (list "touch" "-h" "-a" "-d" "@946684800" path)))
 
 (define-test (evidence no-link-in-evidence-read)
-  ;; telling whether a path is evidence never reads a link in an evidence folder: that changes its access time
-  (with-case-folder (root evidence work)
+  ;; telling whether a path is evidence never reads a link in an evidence directory: that changes its access time
+  (with-case-directory (root evidence work)
     (let ((inner (concatenate 'string evidence "inner"))
-          (folder-link (concatenate 'string evidence "subl"))
+          (directory-link (concatenate 'string evidence "subl"))
           (link (concatenate 'string work "l.txt"))
           (control (concatenate 'string work "control")))
       (sb-posix:symlink (concatenate 'string evidence "a.txt") inner)
-      (sb-posix:symlink (concatenate 'string evidence "sub") folder-link)
+      (sb-posix:symlink (concatenate 'string evidence "sub") directory-link)
       (sb-posix:symlink inner link)
       (sb-posix:symlink link control)
-      (with-evidence-folders ((list (concatenate 'string root "cases/*/evidence/")))
+      (with-evidence-directories ((list (concatenate 'string root "cases/*/evidence/")))
         (wait-for-evidence-links)
         (put-link-access-time-back control)
         (sb-posix:readlink control)
         (if (= 946684800 (link-access-time control))
             (skip "this file system does not move a link's access time when it is read" (true nil))
             (progn
-              (dolist (path (list inner folder-link)) (put-link-access-time-back path))
+              (dolist (path (list inner directory-link)) (put-link-access-time-back path))
               (is string= evidence (values (tuatara.defaults::evidence-path-p link :follow t)))
               (is string= evidence
-                  (values (tuatara.defaults::evidence-path-p (concatenate 'string folder-link "/c.txt"))))
-              (true (tuatara.defaults::evidence-writing-refusal (concatenate 'string folder-link "/new.txt")))
+                  (values (tuatara.defaults::evidence-path-p (concatenate 'string directory-link "/c.txt"))))
+              (true (tuatara.defaults::evidence-writing-refusal (concatenate 'string directory-link "/new.txt")))
               (is = 946684800 (link-access-time inner))
-              (is = 946684800 (link-access-time folder-link))))))))
+              (is = 946684800 (link-access-time directory-link))))))))

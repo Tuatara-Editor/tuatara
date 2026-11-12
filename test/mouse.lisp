@@ -40,7 +40,7 @@ selected in another program."
   "Point after RUN-EVENTS with ITEMS on *MOUSE-TEXT*."
   (session-point (nth-value 1 (run-events items))))
 
-(define-test (mouse clicking)
+(define-modal-test (mouse clicking)
   ;; the character under the mouse; past a line's text, its end; below the text, the end
   (is = 6 (mouse-point '(:down-mouse-1 6 0)))
   (is = 23 (mouse-point '(:down-mouse-1 30 1)))
@@ -87,7 +87,7 @@ selected in another program."
     (is = 1 (selected-index editor))
     (is = 9 (session-point editor))))
 
-(define-test (mouse dragging)
+(define-modal-test (mouse dragging)
   ;; down at one place, dragged to another: what lies between selected, point at the mouse
   (let ((editor (nth-value 1 (run-events '((:down-mouse-1 2 0) (:drag-mouse-1 4 0) (:drag-mouse-1 5 1))))))
     (is equal '(2 17) (session-region editor))
@@ -182,7 +182,7 @@ selected in another program."
   (is = 16 (session-hex-point (nth-value 1 (run-events '("M-x h e x - m o d e RET" (:down-mouse-1 2 1))
                                                        :text *hex-sample* :width 80)))))
 
-(define-test (mouse wheel)
+(define-modal-test (mouse wheel)
   ;; the window under the mouse scrolls; the selected one stays as it was
   (let* ((editor (nth-value 1 (run-events '("C-x 2" (:wheel-down 3 7)) :text *twenty-lines* :height 12)))
          (windows (tuatara.command:editor-windows editor)))
@@ -200,7 +200,7 @@ selected in another program."
   (is = 21 (tuatara.display:window-start
             (tuatara.command:editor-window (nth-value 1 (run-events '("<wheel-down>") :text *twenty-lines*))))))
 
-(define-test (mouse not-repeated)
+(define-modal-test (mouse not-repeated)
   ;; . repeats the command before the click
   (is = 16 (mouse-point "l" '(:down-mouse-1 3 1) ".")))
 

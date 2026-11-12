@@ -417,9 +417,9 @@
 
   ;;; Snippets (a key and TAB, or C-c y: text with fields to fill in)
 
-  ;; Folders of your snippets, a folder a mode (org-mode/, prog-mode/,
+  ;; Directories of your snippets, a directory a mode (org-mode/, prog-mode/,
   ;; fundamental-mode/) and a file a snippet. Not set: nil: snippets/ in the
-  ;; configuration folder, ~/.config/tuatara/snippets/.
+  ;; configuration directory, ~/.config/tuatara/snippets/.
   ;; (setf *snippet-directories*
   ;;       (list "~/.config/tuatara/snippets/" "~/notes/snippets/"))
 
@@ -473,18 +473,18 @@
   ;; lists every key. Not set: nil: as many as the frame has room for.
   ;; (setf *key-hint-rows* 20)
 
-  ;; Path questions (C-x C-f and the rest) start in the folder of the path
+  ;; Path questions (C-x C-f and the rest) start in the directory of the path
   ;; chosen last and list the entry chosen there last first, the others by
-  ;; name; nil: they start in the current buffer's folder, listed by name
+  ;; name; nil: they start in the current buffer's directory, listed by name
   ;; alone. Not set: t.
   ;; (setf *last-used-first* nil)
 
   ;; Typing a slash in a path in the text (/etc/, ~/notes/, ./src/) lists
-  ;; what that folder holds beside the cursor; TAB puts one in. Not set: t;
+  ;; what that directory holds beside the cursor; TAB puts one in. Not set: t;
   ;; nil: no list.
   ;; (setf *complete-paths* nil)
 
-  ;; The list of a path's folder by major mode, before the global setting.
+  ;; The list of a path's directory by major mode, before the global setting.
   ;; (setf *complete-paths-modes* '((org-mode . nil) (prog-mode . t)))
 
   ;; Completing a word from the words in the buffers (M-/ puts them in one
@@ -672,7 +672,7 @@
   ;; Files dropped on the window open safely, as C-u C-x C-f. Not set: nil.
   ;; (setf *open-dropped-files-safely* t)
 
-  ;; Files in these folders always open safely. Not set: none.
+  ;; Files in these directories always open safely. Not set: none.
   ;; (setf *safe-directories* '("~/Downloads/"))
 
   ;; Files with NUL octets (programs, pictures) open as usual. Not set: t: safely.
@@ -726,7 +726,7 @@
   ;; The buffer selected shown while choosing one (C-x b). Not set: nil.
   ;; (setf *preview-buffers* t)
 
-  ;; Files, folders and windows as they were, when starting without files. Not
+  ;; Files, directories and windows as they were, when starting without files. Not
   ;; set: nil.
   ;; (setf *keep-session* t)
 
@@ -828,7 +828,7 @@
 
   ;;; Searching files as you type (M-s g, C-x n g)
 
-  ;; Folders kept read in memory and current: C-x n o, C-x n g and M-s g there
+  ;; Directories kept read in memory and current: C-x n o, C-x n g and M-s g there
   ;; answer at once. Not set: none.
   ;; (setf *indexed-directories* (list *formatted-file-directory*))
 
@@ -850,7 +850,7 @@
   ;; ".project").
   ;; (setf *project-root-markers* '(".git" ".project" "Cargo.toml"))
 
-  ;; The mode line's sign for kept folders: a Nerd Font glyph. Not set: "U"; nil:
+  ;; The mode line's sign for kept directories: a Nerd Font glyph. Not set: "U"; nil:
   ;; none.
   ;; (setf *indexing-indicator* "")
 
@@ -894,7 +894,7 @@
   ;; searches them.
   ;; In a header, {title} {date} {keywords} {identifier} are the file's own.
 
-  ;; The folder of your notes. Not set: ~/.
+  ;; The directory of your notes. Not set: ~/.
   ;; (setf *formatted-file-directory* "~/notes/")
 
   ;; The keywords offered. Not set: none.
@@ -999,6 +999,21 @@
   ;; Org files open as written, not indented. Not set: t: as org-indent-mode.
   ;; (setf *org-startup-indented* nil)
 
+  ;; Org notes open with the pictures they link to drawn among their lines, as
+  ;; C-x T p does in one. Not set: none.
+  ;; (setf *inline-pictures-modes* '((org-mode . t)))
+
+  ;; Linked pictures drawn among the lines in every buffer. Not set: nil.
+  ;; (setf *global-inline-pictures-mode* t)
+
+  ;; Those pictures, where nothing gives their width, 600 pixels wide. Not set:
+  ;; t: their own width.
+  ;; (setf *inline-picture-width* 600)
+
+  ;; Formulas shown as pictures drawn with the braket package too. Not set:
+  ;; amsmath and amssymb.
+  ;; (setf *formula-preamble* (format nil "\\usepackage{amsmath}~%\\usepackage{amssymb}~%\\usepackage{braket}"))
+
   ;; A headline level's colour, bold or not (levels 1 to 8)
   ;; (set-face :org-level-1 :fg "#99c7ff" :bold t)
 
@@ -1071,9 +1086,9 @@
   ;; already.
   ;; (push '("desktop" . "ini") *org-src-languages*)
 
-  ;; C-c C-v t makes missing folders for every block. Not set: nil: :mkdirp yes
+  ;; C-c C-v t makes missing directories for every block. Not set: nil: :mkdirp yes
   ;; ones.
-  ;; (setf *code-files-make-folders* t)
+  ;; (setf *code-files-make-directories* t)
 
   ;; #+BEGIN: hello :who "you" made with C-c C-c or C-c C-x C-u.
   ;; (define-dblock-writer "hello" (params)
@@ -1118,7 +1133,7 @@
   ;; The deadline a task had logged when it changes. Not set: nil.
   ;; (setf *org-log-redeadline* :time)
 
-  ;; The files the agenda reads, and where capture puts tasks; folders and * ?
+  ;; The files the agenda reads, and where capture puts tasks; directories and * ?
   ;; patterns too. Not set: '("~/org/agenda.org").
   ;; (setf *org-agenda-files* '("~/notes/*.org"))
 
@@ -1202,7 +1217,7 @@
 
   ;; Your capture templates are there, a file each; M-x org-capture-template-copy
   ;; copies one of Tuatara's (t TODO, n note, j journal, m meeting). Not set:
-  ;; nil: capture-templates/ in the configuration folder,
+  ;; nil: capture-templates/ in the configuration directory,
   ;; ~/.config/tuatara/capture-templates/.
   ;; (setf *capture-template-directories* (list "~/notes/capture/"))
 
@@ -1244,13 +1259,13 @@
   ;; "redact").
   ;; (setf *latex-redaction-commands* '("R" "D" "anon"))
 
-  ;; Besides a note's own folder and your note templates' folder, where its export
+  ;; Besides a note's own directory and your note templates' directory, where its export
   ;; may take #+SETUPFILE files and pictures from. Not set: none.
-  ;; (setf *export-trusted-folders* '("~/notes/latex/" "~/notes/pictures/"))
+  ;; (setf *export-trusted-directories* '("~/notes/latex/" "~/notes/pictures/"))
 
-  ;; The folder of the pictures your templates ask a note for: #+logo: a name
+  ;; The directory of the pictures your templates ask a note for: #+logo: a name
   ;; alone (logo.png) is the file of that name there, and a picture a template
-  ;; asks for comes from it or the note's own folder, never from elsewhere.
+  ;; asks for comes from it or the note's own directory, never from elsewhere.
   ;; Not set: logos/ in the configuration directory (~/.config/tuatara/logos/).
   ;; (setf *logos-directory* "~/notes/logos/")
   )
@@ -1351,7 +1366,7 @@
   ;; t.
   ;; (setf *lsp-watch-files* nil)
 
-  ;; build/ folders not watched either (target, node_modules ...)
+  ;; build/ directories not watched either (target, node_modules ...)
   ;; (push "build" *lsp-watch-skipped*)
 
   ;;; Git (C-x g)
@@ -1446,9 +1461,9 @@
   ;; drive when the system's is not: its cache (compiled packages, previews,
   ;; pages drawn, the logs), what it remembers between sessions (recent files,
   ;; places, the session, auto-saved text) and the packages it fetches. Make
-  ;; each folder yourself (mkdir -m 700); while one is not there, its drive
+  ;; each directory yourself (mkdir -m 700); while one is not there, its drive
   ;; not mounted, Tuatara keeps those things in memory and says so. Move what
-  ;; is in the standard folders there first. Not set: ~/.cache/tuatara/,
+  ;; is in the standard directories there first. Not set: ~/.cache/tuatara/,
   ;; ~/.local/state/tuatara/ and ~/.local/share/tuatara/packages/.
   ;; (setf *cache-directory* "/run/media/you/Data/tuatara/cache/"
   ;;       *state-directory* "/run/media/you/Data/tuatara/state/"
@@ -1555,13 +1570,13 @@
   ;; key IDs alone. Not set: :ask each time.
   ;; (setf *metadata-look-up-key-owners* t)
 
-  ;;; Evidence folders
+  ;;; Evidence directories
 
-  ;; Evidence folders: their files always open safely, and nothing is ever
-  ;; written in them. * is any one folder, ** any folders; (:name ...) a
-  ;; folder's name, (:regex ...) case folders with :then the evidence in each.
+  ;; Evidence directories: their files always open safely, and nothing is ever
+  ;; written in them. * is any one directory, ** any directories; (:name ...) a
+  ;; directory's name, (:regex ...) case directories with :then the evidence in each.
   ;; Not set: none, nothing checked.
-  ;; (setf *evidence-folders* '("~/cases/*/evidence/"
+  ;; (setf *evidence-directories* '("~/cases/*/evidence/"
   ;;                            (:regex "^[0-9]{4}-[0-9]{4}$" :within "~/cases/" :then "evidence")))
 
   ;;; Clients of a daemon
@@ -1586,7 +1601,7 @@
 ;;;; FILES AND DATA: Rimu, CSV files
 ;;;; ================================================================
 
-;;; Rimu: lists of folders
+;;; Rimu: lists of directories
 
 (load-package "rimu"
   :config
@@ -1609,7 +1624,7 @@
   ;; The latest changed first. Not set: :name; s in a list.
   ;; (setf *rimu-sort* :time)
 
-  ;; Folders among the rest. Not set: t: first.
+  ;; Directories among the rest. Not set: t: first.
   ;; (setf *rimu-directories-first* nil)
 
   ;; Names with these endings dimmed. Not set: compiled files, backups ...
@@ -1628,23 +1643,23 @@
   ;; Each entry's last commit after its name. Not set: nil; G in a list.
   ;; (setf *rimu-git-info* t)
 
-  ;; Each entry's size, a folder's with all under it. Not set: nil; S in a list.
+  ;; Each entry's size, a directory's with all under it. Not set: nil; S in a list.
   ;; (setf *rimu-directory-sizes* t)
 
   ;; D and x delete for good, asked twice. Not set: t: to the trash.
   ;; (setf *rimu-delete-to-trash* nil)
 
-  ;; Lists read again only with r. Not set: t: when their folder changes.
+  ;; Lists read again only with r. Not set: t: when their directory changes.
   ;; (setf *rimu-follow-changes* nil)
 
-  ;; A bookmark to a folder, or a list going out of a project, lists it in a new
+  ;; A bookmark to a directory, or a list going out of a project, lists it in a new
   ;; list. Not set: t: in the list of its project used last (of no project for a
-  ;; folder in none), moved there, when there is one.
+  ;; directory in none), moved there, when there is one.
   ;; (setf *rimu-reuse-lists* nil)
 
-  ;; Copying, moving and deleting folders go down through 400 folders one
+  ;; Copying, moving and deleting directories go down through 400 directories one
   ;; inside another; deeper is refused. Not set: 200.
-  ;; (setf *folder-tree-depth-limit* 400)
+  ;; (setf *directory-tree-depth-limit* 400)
   )
 
 ;;; CSV files
@@ -1675,12 +1690,12 @@
 ;;; Packages
 
 ;; Where packages come from: a name for a git repository anyone hosts, or for a
-;; folder of your disk, for load-package's :source, each kept in
+;; directory of your disk, for load-package's :source, each kept in
 ;; *package-sources*. Not set: none.
 ;; (package-source "mine" "https://example.org/my-packages.git")
 
 ;; A package from a source: fetched in the background the first time (the
-;; repository's newest tag by date), its folder example alone, kept for the next
+;; repository's newest tag by date), its directory example alone, kept for the next
 ;; start; asked about before it is compiled and loaded. M-x package-manager
 ;; lists them, M-x package-update fetches them again, and M-x
 ;; package-remove-unused deletes what is kept of sources nothing names now.
@@ -1714,9 +1729,9 @@
 
 ;; A version of your choosing: a tag, branch or commit as written, or "latest"
 ;; for the newest commit. :file names its first file when it is not
-;; example.lisp or load.lisp, :folder its folder when that is not example/. Not
+;; example.lisp or load.lisp, :directory its directory when that is not example/. Not
 ;; set: the newest tag.
-;; (load-package "example" :source "mine" :version "v1.2.0" :folder "lisp"
+;; (load-package "example" :source "mine" :version "v1.2.0" :directory "lisp"
 ;;               :file "start.lisp")
 
 ;; Only versions signed by these keys taken from a source, from the first: an
@@ -1732,7 +1747,7 @@
 ;; inside your organisation): refused unless its load-package says :plain t.
 ;; (load-package "example" :source "http://git.example.org/example.git" :plain t)
 
-;; A package from a folder of your disk, without naming a source first.
+;; A package from a directory of your disk, without naming a source first.
 ;; (load-package "mine" :source "~/src/mine/")
 
 ;; Never asked before a package is compiled and loaded. Not set: t: asked, y,

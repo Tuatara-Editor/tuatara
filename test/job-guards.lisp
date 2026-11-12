@@ -46,7 +46,7 @@ ARGUMENTS are RUN-KEYS's."
 (defparameter *select-three* "C-SPC C-n C-n C-n"
   "Keys selecting the first three lines, from the top.")
 
-(define-test (job-guards guarding-sorted-lines)
+(define-modal-test (job-guards guarding-sorted-lines)
   (with-held-sorts ()
     ;; typed inside the lines being sorted, answered no: nothing typed, the sort goes on to its result
     (with-questions (prompts nil)
@@ -97,7 +97,7 @@ ARGUMENTS are RUN-KEYS's."
         (is = 1 (length prompts) "~s" prompts)
         (is string= (lines-text "a" "b" "c" "end") (session-text editor))))))
 
-(define-test (job-guards filtered-lines-carry-edits)
+(define-modal-test (job-guards filtered-lines-carry-edits)
   ;; flush-lines, a job over lines, carries an edit inside its lines onto its result: nothing asked
   (let ((text (lines-text "keep" "drop" "keep too" "end"))
         (tuatara.defaults::*sort-wait* 0)
@@ -110,7 +110,7 @@ ARGUMENTS are RUN-KEYS's."
         (false (tuatara.frontend.fake:fake-frame-showing f "Filtering works on this text ("))
         (is string= (lines-text "keep" "xkeep too" "end") (session-text editor))))))
 
-(define-test (job-guards guarding-undo)
+(define-modal-test (job-guards guarding-undo)
   (with-held-sorts ()
     ;; undoing a change inside the lines being sorted asks too
     (with-questions (prompts nil)
@@ -156,7 +156,7 @@ ARGUMENTS are RUN-KEYS's."
         (true (tuatara.frontend.fake:fake-frame-showing f "The lines changed while sorting them; nothing was changed"))
         (is string= (lines-text "c" "xb" "a" "end") (session-text editor))))))
 
-(define-test (job-guards guarding-dynamic-blocks)
+(define-modal-test (job-guards guarding-dynamic-blocks)
   (tuatara-user:define-dblock-writer "held" (params)
     (declare (ignore params))
     (loop repeat 1000 until *held-go* do (tuatara.defaults::dblock-progress 1/2) (sleep 0.01))
@@ -197,7 +197,7 @@ ARGUMENTS are RUN-KEYS's."
         (is equal '() prompts)
         (is string= (format nil "top~%#+BEGIN: held~%made~%#+END:~%xend~%") (session-text editor))))))
 
-(define-test (job-guards edits-carried-or-harmless)
+(define-modal-test (job-guards edits-carried-or-harmless)
   ;; a replacement running carries an edit inside its scope onto its result: nothing asked
   (let ((tuatara.defaults::*rewrite-piece-hook* (lambda () (sleep 0.3))))
     (with-background ()

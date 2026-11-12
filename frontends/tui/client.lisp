@@ -11,7 +11,7 @@
 (in-package #:tuatara.terminal)
 
 (defun daemon-log-name (name)
-  "The name of the daemon NAME's log in the cache folder."
+  "The name of the daemon NAME's log in the cache directory."
   (format nil "daemon-~a.log" name))
 
 (defun daemon-log-path (name)
@@ -24,7 +24,7 @@
     "NO_COLOR" "TUATARA_HEAP_MB")
   "The environment variables a daemon is started with, of those of the
 program starting it, besides TUATARA.IO:*RESTRICTED-VARIABLES*, a * at the
-end standing for any ending: your shell, where your files, folders and
+end standing for any ending: your shell, where your files, directories and
 programs are, and the desktop and the agents it reaches; the AppImage it
 may run from sets its own.
 None of what one command line is run with (git's variables, a terminal's)
@@ -93,8 +93,8 @@ no one asked (END-DAEMON-ON-TERMINATE). The exit code: 0 once it has stopped,
                      (return-from run-daemon 1)))))
     (let ((log (daemon-output name)))
       (sb-posix:dup2 log 2)
-      ;; it holds no folder busy
-      (tuatara.runtime:ignoring-errors-reported ("going to the home folder")
+      ;; it holds no directory busy
+      (tuatara.runtime:ignoring-errors-reported ("going to the home directory")
         (sb-posix:chdir (tuatara.io:native (user-homedir-pathname))))
       (tuatara.defaults::set-collection-policy)
       (when config
@@ -117,7 +117,7 @@ runs, for a client on another machine. It also says what gpg and sshd here do
 and where sshd brought the client's agent for this connection
 \(WRITE-DAEMON-REPORT), with START having started the daemon first when it did
 not run. A client of a daemon on this machine asked ssh to run tuatara
---daemon-socket here. The exit code is 0 once said, 1 when the daemons' folder
+--daemon-socket here. The exit code is 0 once said, 1 when the daemons' directory
 is not safe or a daemon could not be started, why said on the error output."
   (handler-case
       (let* ((socket (tuatara.defaults::daemon-path name "socket"))
@@ -161,15 +161,15 @@ as (NAME . VALUE)."
 (defun client-request (options terminal &key link)
   "What a client started with OPTIONS (READ-OPTIONS) asks of its daemon, a
 TUATARA.FRONTEND:REQUEST: its files and the paths to compare or merge named
-from where it was started, the folder it was started in, its environment,
+from where it was started, the directory it was started in, its environment,
 TERMINAL, the device of its terminal or NIL, and whether it stops the daemon.
 A client of a daemon on another machine, reached through LINK (an SSH-LINK),
-is far: its folder is the home folder there, its files named from it, it
+is far: its directory is the home directory there, its files named from it, it
 names no terminal, and it passes on where its agent is brought there and
 what its connection said, to be shown in its frame."
   (let ((directory (if link (ssh-link-home link) (tuatara.io:native (uiop:getcwd)))))
     (flet ((named (name)
-             ;; ~ there is the home folder there
+             ;; ~ there is the home directory there
              (let ((name (if (and link (uiop:string-prefix-p "~/" name)) (subseq name 2) name)))
                (tuatara.io:native (tuatara.io:expand-path name :directory directory :tilde (not link))))))
       (tuatara.frontend:make-request

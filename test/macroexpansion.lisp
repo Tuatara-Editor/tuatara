@@ -28,7 +28,7 @@ in *Pp Macroexpand Output*; with C-u the expansion goes in after the call.")
            (is equal '(0 10) (at 10)))
       (tuatara.buffer:kill-buffer b))))
 
-(define-test (macroexpansion from-the-keys)
+(define-modal-test (macroexpansion from-the-keys)
   (flet ((expanded (keys)
            (let ((old (tuatara.buffer:find-buffer "*Pp Macroexpand Output*")))
              (when old (tuatara.buffer:kill-buffer old)))
@@ -65,7 +65,7 @@ in *Pp Macroexpand Output*; with C-u the expansion goes in after the call.")
                      "Not expanded: it holds a macrolet"))
       (false (probe-file marker)))))
 
-(define-test (macroexpansion circular)
+(define-modal-test (macroexpansion circular)
   ;; an expansion that holds itself is written with labels, the printing ends
   (unwind-protect
        (progn
@@ -77,7 +77,7 @@ in *Pp Macroexpand Output*; with C-u the expansion goes in after the call.")
     (let ((symbol (find-symbol "MACROEXPAND-TEST-CIRCULAR" :tuatara-user)))
       (when symbol (fmakunbound symbol) (unintern symbol :tuatara-user)))))
 
-(define-test (macroexpansion only-the-call-is-read)
+(define-modal-test (macroexpansion only-the-call-is-read)
   ;; the call is read once, #. refused, and anything after it is refused rather than evaluated
   (let ((marker (format nil "~amacroexpand-~d" (namestring *test-state-directory*) (random 1000000)))
         (package (find-package :tuatara-user)))

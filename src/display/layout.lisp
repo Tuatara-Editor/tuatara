@@ -34,7 +34,9 @@ hex view), :VISUAL for one whose characters are in the order they are read,
 right-to-left text among them, rather than stored. END-COLUMN, when not NIL,
 is the column where the end of the row's line is shown left of its text.
 PAD-FROM below PAD-TO are the indices of STRING of the blanks that set a line
-written from right to left against the right edge."
+written from right to left against the right edge. FLOAT-START, when not NIL,
+is the start of the line above beside which something the text goes round
+begins at this row, that line taking no row of its own."
   (string (make-array 0 :element-type 'character :adjustable t :fill-pointer 0) :type string)
   (faces (make-array 0 :adjustable t :fill-pointer 0))
   (char-bytes (make-array 0 :element-type 'fixnum :adjustable t :fill-pointer 0))
@@ -52,7 +54,8 @@ written from right to left against the right edge."
   (pad-to 0 :type fixnum)
   (extend nil)
   (scale 1 :type rational)
-  (set-in '() :type list))
+  (set-in '() :type list)
+  (float-start nil :type (or null fixnum)))
 
 (setf (documentation 'row-p 'function) "True when OBJECT is a ROW."
       (documentation 'row-string 'function) "The text to print for ROW."
@@ -85,7 +88,15 @@ covering its newline that extend; NIL for none."
 buffer is, each (FROM . TO) of indices into its string; highlights leave them
 alone."
       (documentation 'row-scale 'function) "How many rows' height ROW is drawn in, its letters as
-many times as wide: 1, or more for a line drawn large (5/4, 3/2, 2).")
+many times as wide: 1, or more for a line drawn large (5/4, 3/2, 2)."
+      (documentation 'row-float-start 'function) "The start of the line above ROW, taking no row of its
+own, beside which something the text goes round begins at ROW; or NIL.")
+
+(defun text-scale (scale)
+  "How many times as large the characters of a row SCALE rows tall are drawn:
+SCALE where the frontend draws rows large (*ROW-SCALING*); else 1, a row of
+more than one row's height then holding its characters at their size."
+  (if *row-scaling* scale 1))
 
 (defun make-row (start &optional (room 0) spares)
   "Return an empty row starting at byte START, with room for ROOM characters
@@ -110,7 +121,8 @@ pointer of rows no longer shown, when it has any, emptied (its room kept)."
               (row-pad-to row) 0
               (row-extend row) nil
               (row-scale row) 1
-              (row-set-in row) '())
+              (row-set-in row) '()
+              (row-float-start row) nil)
         row)
       (%make-row start 0 :room room)))
 
@@ -655,8 +667,44 @@ Complexity: O(the row's characters × levels)."
 than ROPE's end; else ROPE's end."
   (if text-end (min text-end (tuatara.text:rope-octet-length rope)) (tuatara.text:rope-octet-length rope)))
 
+(defun reorder-line-rows (bidi rows from rope line-start total direction limit edge)
+  "Put ROWS from index FROM, rows of the line of ROPE beginning at LINE-START,
+in the order they are read (REORDER-ROW), each by its paragraph as
+DIRECTION says (ROW-PARAGRAPH), with BIDI, a BIDI-CACHE; TOTAL is where the
+text shown ends, LIMIT the columns of a row, and EDGE true when the rows
+are not scrolled sideways."
+  (loop for k from from below (length rows)
+        do (let ((shown (aref rows k)))
+             (reorder-row bidi shown (row-paragraph bidi rope shown line-start total direction) limit edge))))
+
+(defun row-add-prefix (row text face continuation full-limit)
+  "Put TEXT, a line's prefix (LAYOUT's PREFIX), at the start of ROW in FACE,
+columns that stand for no character. On a row that continues its line
+\(CONTINUATION), it is cut to half of FULL-LIMIT, the row's columns, so that
+the text keeps at least half."
+  (when (and text continuation (> (length text) (max 2 (floor full-limit 2))))
+    (setf text (subseq text 0 (floor full-limit 2))))
+  (when (and text (plusp (length text)))
+    (loop for c across text
+          do (vector-push-extend c (row-string row))
+             (vector-push-extend face (row-faces row))
+             (vector-push-extend -1 (row-char-bytes row))
+             (vector-push-extend -1 (row-bytes row)))
+    (incf (row-columns row) (length text))))
+
+(defun row-add-second-column (row char byte)
+  "Add CHAR, U+FE0F at BYTE, to ROW as the second column of the picture
+\(emoji) before it, that column standing for the character before."
+  (let ((bytes (row-bytes row)))
+    (vector-push-extend char (row-string row))
+    (vector-push-extend nil (row-faces row))
+    (vector-push-extend byte (row-char-bytes row))
+    (vector-push-extend (if (plusp (length bytes)) (aref bytes (1- (length bytes))) byte) bytes)
+    (incf (row-columns row))))
+
 (defun layout (rope start width height &key (wrap nil) wrap-column word-wrap (tab-width 8) (hscroll 0) highlights crlf hidden
-                                             prefix scale until invisible spares text-end direction bidi)
+                                             prefix scale float floating until invisible spares text-end direction
+                                             bidi)
   "Lay out ROPE from byte START into at most HEIGHT rows of WIDTH columns.
 WRAP true wraps long lines at the column, WRAP-COLUMN when given (no further
 than WIDTH). With WORD-WRAP, lines wrap at a word's edge: a row ends after the
@@ -678,9 +726,20 @@ continues it. It returns text shown at the row's start and its face (an
 indentation that is no text). These are columns that stand for no character.
 For a row that continues the line, the prefix is cut to half of WIDTH.
 SCALE, when given, is a function of a line's start giving how many rows'
-height its rows are drawn in (ROW-SCALE), a rational of 1 or more. Such a row
-holds as many times fewer columns, and HEIGHT is then the rows' heights added
-up, not their number.
+height its rows are drawn in (ROW-SCALE), a rational of 1 or more. Where the
+frontend draws rows large, such a row holds as many times fewer columns
+\(TEXT-SCALE). HEIGHT is then the rows' heights added up, not their number.
+A second value, true, has the line begin below anything the text goes round,
+its first row as much taller as that reaches further down. A line SCALE
+gives 0 takes no row when it shows nothing and another line follows: the next
+line's row begins where its row would have, ROW-FLOAT-START naming it when
+something the text goes round begins beside it.
+FLOAT, when given, is a function of a line's start giving what the text goes
+round from that line (a picture floated aside): :LEFT or :RIGHT, the columns
+it keeps from the text on that side, and the rows' height it takes. The rows
+that height reaches are narrower, blank up to those columns after the prefix,
+or ending that many short of the edge. FLOATING, a list of those three, is
+one in force from START, with the height left of it there.
 Where lines wrap, a row of a long line also begins every *WRAP-STRETCH* octets
 \(NEXT-WRAP-ANCHOR).
 UNTIL, an octet, ends the layout before a row that would begin past it.
@@ -724,14 +783,20 @@ O(WIDTH × HEIGHT), and for each row scrolled sideways O(*SCREEN-COLUMN-REACH*
           (before 0)
           (anchor nil)
           (line-scale 1)
+          ;; the line's first row is left out when it shows nothing; it begins below what is floated
+          (leave-out nil) (clear nil) (float-start nil)
           (used 0)
+          ;; what the text goes round: its side, the columns it keeps, and the height its rows end at
+          (float-side (first floating))
+          (float-columns (or (second floating) 0)) (float-until (or (third floating) 0))
           (full-limit (if (and wrap wrap-column) (max 1 (min width wrap-column)) width))
           ;; with DIRECTION: whether the line holds right-to-left text so far, the first of its rows
           ;; not yet put in the order it is read, and the paragraph the last row was put in order by
           (right-to-left nil)
           (strong nil)
           (waiting 0))
-      (declare (type fixnum position total full-limit before waiting) (type rational line-scale used))
+      (declare (type fixnum position total full-limit before waiting float-columns)
+               (type rational line-scale used float-until))
       ;; a window beginning inside a line, where lines wrap, begins with a row that continues it
       (when (/= start line-start)
         (setf continuation (and wrap t) before -1
@@ -742,20 +807,31 @@ O(WIDTH × HEIGHT), and for each row scrolled sideways O(*SCREEN-COLUMN-REACH*
                                        (right-to-left-between-p rope anchor start))))))
       (loop while (and (< used height) (<= position total) (or (null until) (<= position until)))
             do (unless (and continuation (plusp (length rows)))
-                 (setf line-scale
-                       (if (and scale
-                                (not (and cut
-                                          (>= position
-                                              total)))) (max 1
-                                                             (or (funcall scale
-                                                                          (tuatara.text:rope-line-start rope position))
-                                                                 1)) 1)))
+                 (multiple-value-bind (asked below)
+                     (and scale (not (and cut (>= position total)))
+                          (funcall scale (tuatara.text:rope-line-start rope position)))
+                   (setf leave-out (eql asked 0)
+                         clear below
+                         line-scale (max 1 (or asked 1)))))
+               ;; something the text goes round, beginning beside this line
+               (when (and float (not continuation) (or (plusp (length rows)) (= position line-start))
+                          (not (and cut (>= position total))))
+                 (multiple-value-bind (side columns tall) (funcall float position)
+                   (when side
+                     (setf float-side side float-columns columns float-until (+ used tall)
+                           float-start (and leave-out position)))))
+               (unless (< used float-until) (setf float-side nil))
+               ;; a line that begins below what is floated: its first row as much taller
+               (when (and clear float-side)
+                 (incf line-scale (- float-until used))
+                 (setf float-side nil))
                ;; a large row fits, or nothing more is laid out (but a first row, made to fit)
                (let ((room (- height used)))
                  (when (> line-scale room)
                    (if (plusp (length rows)) (return) (setf line-scale room))))
                (let ((row (make-row position width spares))
-                     (limit (max 1 (floor full-limit line-scale)))
+                     (limit (max 1 (floor (min full-limit (if (eq float-side :right) (- width float-columns) width))
+                                          (text-scale line-scale))))
                      (skipped 0)         ; columns consumed before the hscroll offset (truncate mode)
                      (wrapped nil)
                      (finished nil)
@@ -768,16 +844,11 @@ O(WIDTH × HEIGHT), and for each row scrolled sideways O(*SCREEN-COLUMN-REACH*
                  (setf anchor (and wrap (next-wrap-anchor rope line-start position)))
                  (when (and prefix (not (and cut (>= line-start total))))
                    (multiple-value-bind (text face) (funcall prefix line-start continuation)
-                     ;; the rows after a line's first keep at least half the row for the text
-                     (when (and text continuation (> (length text) (max 2 (floor full-limit 2))))
-                       (setf text (subseq text 0 (floor full-limit 2))))
-                     (when (and text (plusp (length text)))
-                       (loop for c across text
-                             do (vector-push-extend c (row-string row))
-                                (vector-push-extend face (row-faces row))
-                                (vector-push-extend -1 (row-char-bytes row))
-                                (vector-push-extend -1 (row-bytes row)))
-                       (incf (row-columns row) (length text)))))
+                     (row-add-prefix row text face continuation full-limit)))
+                 ;; blank beside what the text goes round on the left
+                 (when (eq float-side :left)
+                   (dotimes (i (- (ceiling float-columns (text-scale line-scale)) (row-columns row)))
+                     (row-add row #\Space -1 1)))
                  (loop
                    ;; the columns scrolled off, walked over at once as far as the next fold
                    (when (< skipped hscroll)
@@ -904,15 +975,7 @@ O(WIDTH × HEIGHT), and for each row scrolled sideways O(*SCREEN-COLUMN-REACH*
                                                              finished t)))
                                               (return)))))
                                     ((and (= columns 1) (zerop own))
-                                     ;; U+FE0F: the picture's second column, standing for the character before
-                                     (let ((bytes (row-bytes row)))
-                                       (vector-push-extend char (row-string row))
-                                       (vector-push-extend nil (row-faces row))
-                                       (vector-push-extend byte (row-char-bytes row))
-                                       (vector-push-extend (if (plusp (length bytes))
-                                                               (aref bytes (1- (length bytes)))
-                                                               byte) bytes)
-                                       (incf (row-columns row))))
+                                     (row-add-second-column row char byte))
                                     ((zerop columns)
                                      ;; the rest of a cluster scrolled off the left is not shown
                                      (let ((bytes (row-char-bytes row)))
@@ -926,24 +989,34 @@ O(WIDTH × HEIGHT), and for each row scrolled sideways O(*SCREEN-COLUMN-REACH*
                                                break-chars (length (row-string row))
                                                break-columns (row-columns row)))))))))))
                  (setf (row-scale row) line-scale)
-                 (vector-push-extend row rows)
-                 ;; a line whose rows so far hold no letter: its direction from its first one, wherever it is
-                 (when (and (eq direction :auto) (not right-to-left) (not strong) (or wrapped (row-truncated-p row)))
-                   (setf strong t
-                         right-to-left (eq :r (first-strong-direction
-                                               rope line-start (min total (+ line-start *screen-column-reach*))))))
-                 ;; the line's rows, those before its first right-to-left character too, in the order they are read
-                 (when (and direction (or right-to-left (eq direction :right-to-left)))
-                   (let ((cache (or bidi (setf bidi (make-bidi-cache)))))
-                     (loop for k from waiting below (length rows)
-                           do (let ((shown (aref rows k)))
-                                (reorder-row cache shown (row-paragraph cache rope shown line-start total direction)
-                                             limit (zerop hscroll)))))
-                   (setf waiting (length rows)))
-                 (incf used line-scale)
-                 (setf position (row-end row)
-                       continuation wrapped)
-                 (when finished (return))))
+                 (if (and leave-out (not continuation) (not wrapped) (not finished) (< (row-end row) total)
+                          (notany (lambda (byte) (>= byte 0)) (row-char-bytes row)))
+                     ;; a line showing nothing that takes no row: the next line's row begins in its place
+                     (progn
+                       (when spares (vector-push-extend row spares))
+                       (setf position (row-end row) line-start position before 0 right-to-left nil strong nil
+                             waiting (length rows) leave-out nil))
+                     (progn
+                       (setf (row-float-start row) (shiftf float-start nil))
+                       (vector-push-extend row rows)
+                       ;; a line whose rows so far hold no letter: its direction from its first one, wherever
+                       ;; it is
+                       (when (and (eq direction :auto) (not right-to-left) (not strong)
+                                  (or wrapped (row-truncated-p row)))
+                         (setf strong t
+                               right-to-left (eq :r (first-strong-direction
+                                                     rope line-start
+                                                     (min total (+ line-start *screen-column-reach*))))))
+                       ;; the line's rows, those before its first right-to-left character too, in the order
+                       ;; they are read
+                       (when (and direction (or right-to-left (eq direction :right-to-left)))
+                         (setf bidi (or bidi (make-bidi-cache)))
+                         (reorder-line-rows bidi rows waiting rope line-start total direction limit (zerop hscroll))
+                         (setf waiting (length rows)))
+                       (incf used line-scale)
+                       (setf position (row-end row)
+                             continuation wrapped)
+                       (when finished (return))))))
       (when bidi (forget-unused-paragraphs bidi rope))
       (let ((result (coerce rows 'simple-vector)))
         (when highlights (apply-highlights result highlights))

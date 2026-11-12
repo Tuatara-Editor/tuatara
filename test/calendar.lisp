@@ -105,7 +105,7 @@ calendar."
                      (< (get-internal-real-time) until))
           do (sleep 0.01))))
 
-(define-test (calendar calendar-moving)
+(define-modal-test (calendar calendar-moving)
   (flet ((at (keys) (nth-value 2 (calendar-keys keys))))
     (is = (calendar-day 2026 10 3) (at ""))
     (is = (calendar-day 2026 10 4) (at "C-f"))

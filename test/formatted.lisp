@@ -88,7 +88,7 @@ file sets them."
           (is string= (format nil "---~%title:      \"Hello, \\\"World\\\"\"~%date:       2026-09-27T21:34:46~a~%tags:       [\"garden\", \"project\"]~%identifier: \"20260927T213446\"~%---~2%" offset)
               (header :markdown)))))))
 
-(define-test (formatted find-file-formatted)
+(define-modal-test (formatted find-file-formatted)
   (with-formatted-directory (dir)
     (unwind-protect
          (let ((path (namestring (merge-pathnames "my findings.org" dir))))
@@ -133,7 +133,7 @@ file sets them."
              (false (probe-file (merge-pathnames "secret.org.gpg" dir)))))
       (kill-buffers-visiting dir))))
 
-(define-test (formatted empty-lines-for-new-files)
+(define-modal-test (formatted empty-lines-for-new-files)
   ;; SPC f offers an empty line first, selected: a new file in the directory
   ;; typed, its title, the end of its name (free text, org the default) and
   ;; keywords asked; at the keywords, an empty line first too: none, or no more
@@ -208,7 +208,22 @@ file sets them."
       (tuatara.command:lookup-key tuatara.defaults::*tuatara-leader-keymap*
                                   (tuatara.frontend:parse-key-sequence "d n"))))
 
-(define-test (formatted find-and-make-files)
+(define-modal-test (formatted into-directories-not-there-yet)
+  (with-formatted-directory (dir)
+    (unwind-protect
+         (let ((path (namestring (merge-pathnames "new/deeper/secret.org.gpg" dir))))
+           ;; a new file two directories down from the nearest one there is editable, and says saving makes them
+           (multiple-value-bind (f editor)
+               (run-keys (format nil "SPC f ~a RET C-a C-k ~a RET RET" (key-string path) (key-string "Case notes"))
+                         :width 100 :height 20)
+             (let ((buffer (tuatara.display:window-buffer (tuatara.command:editor-window editor))))
+               (is string= "--case-notes.org.gpg" (subseq (tuatara.buffer:buffer-name buffer) 15))
+               (false (tuatara.buffer:buffer-read-only-p buffer))
+               (true (fake-frame-showing* f "saving asks to make it"))
+               (false (probe-file (merge-pathnames "new/" dir))))))
+      (kill-buffers-visiting dir))))
+
+(define-modal-test (formatted find-and-make-files)
   (with-formatted-directory (dir)
     (unwind-protect
      (let ((tuatara.defaults::*formatted-file-subdirectory-history* '()))
@@ -263,7 +278,7 @@ file sets them."
                (true (search "title:      Shopping list" (tuatara.buffer:buffer-string buffer)))))))
       (kill-buffers-visiting dir))))
 
-(define-test (formatted searching-files)
+(define-modal-test (formatted searching-files)
   (with-formatted-directory (dir)
     (unwind-protect
          (progn
@@ -408,7 +423,7 @@ file sets them."
                (is string= "b.txt" (tuatara.buffer:buffer-name (tuatara.display:window-buffer (tuatara.command:editor-window editor))))))
         (kill-buffers-visiting dir)))))
 
-(define-test (formatted back-a-buffer)
+(define-modal-test (formatted back-a-buffer)
   (multiple-value-bind (f editor) (run-keys "C-x b z z b 1 RET SPC b")
     (declare (ignore f))
     (is string= "*scratch*"
@@ -476,7 +491,7 @@ file sets them."
       (let ((tuatara.frontend.tui::*clipboard-programs* nil))
         (false (tuatara.frontend:frontend-clipboard tui))))))
 
-(define-test (formatted the-list-of-files)
+(define-modal-test (formatted the-list-of-files)
   ;; every part of a name, a signature included, as Denote writes them
   (is equal '("20260503T131940" "5=2" "garden-plan" ("home" "project"))
       (multiple-value-list (tuatara.defaults::name-parts "20260503T131940==5=2--garden-plan__home_project.org")))
@@ -555,7 +570,7 @@ file sets them."
            (true (tuatara.defaults::wait-for-gathering gathering 5)))
       (tuatara.defaults::stop-gathering gathering))))
 
-(define-test (formatted read-as-you-type)
+(define-modal-test (formatted read-as-you-type)
   ;; what a thread finds is taken as it is found, and it stops when told
   (let ((gathering (tuatara.defaults::start-gathering
                     "tuatara test gathering"
@@ -608,7 +623,7 @@ file sets them."
              (false (gathering-threads-alive "tuatara reading files to search"))))
       (kill-buffers-visiting dir))))
 
-(define-test (formatted kept-read)
+(define-modal-test (formatted kept-read)
   (with-formatted-directory (dir)
     (unwind-protect
          (let ((root (tuatara.defaults::directory-name dir)))
@@ -679,7 +694,7 @@ file sets them."
       (setf tuatara.defaults::*directory-indexes* '())
       (kill-buffers-visiting dir))))
 
-(define-test (formatted previews-while-choosing)
+(define-modal-test (formatted previews-while-choosing)
   (with-formatted-directory (dir)
     (unwind-protect
          (let ((note (merge-pathnames "20250101T100000--older-note__project.org" dir))
@@ -763,7 +778,7 @@ file sets them."
                  (tuatara.buffer:kill-buffer other)))))
       (kill-buffers-visiting dir))))
 
-(define-test (formatted encrypted-never-read)
+(define-modal-test (formatted encrypted-never-read)
   (flet ((octets (&rest parts)
            (coerce (loop for part in parts
                          append (if (stringp part) (map 'list #'char-code part) (list part)))
@@ -894,7 +909,7 @@ file sets them."
     ;; a drawing written as text is text
     (true (tuatara.defaults::read-text-file (namestring (merge-pathnames "drawing.svg" dir))))))
 
-(define-test (formatted indexing-shown)
+(define-modal-test (formatted indexing-shown)
   (with-test-directory (dir)
     (put-file (merge-pathnames "note.txt" dir) (format nil "text~%"))
     (let ((index (tuatara.defaults::make-directory-index (tuatara.defaults::directory-name dir))))
@@ -1075,8 +1090,8 @@ file sets them."
   (with-test-directory (dir)
     (let* ((root (tuatara.defaults::directory-name dir))
            (index (tuatara.defaults::make-directory-index root)))
-      (dolist (folder '("build/deep/" "src/out/" "src/lib/out/" "src/keep/"))
-        (ensure-directories-exist (merge-pathnames folder dir)))
+      (dolist (directory '("build/deep/" "src/out/" "src/lib/out/" "src/keep/"))
+        (ensure-directories-exist (merge-pathnames directory dir)))
       (put-file (merge-pathnames ".gitignore" dir) (format nil "build/~%"))
       (put-file (merge-pathnames "src/.gitignore" dir) (format nil "/out/~%"))
       (dolist (file '("build/a.txt" "build/deep/b.txt" "src/out/c.txt" "src/lib/out/d.txt" "src/keep/e.txt" "top.txt"))
@@ -1088,8 +1103,8 @@ file sets them."
                                      (tuatara.defaults::directory-index-files index))
                              :test #'string= :key (lambda (n) (or n "")))
                      #'string<))
-             (walked-p (folder)
-               (and (gethash (concatenate 'string root folder) (tuatara.defaults::directory-index-tree index)) t)))
+             (walked-p (directory)
+               (and (gethash (concatenate 'string root directory) (tuatara.defaults::directory-index-tree index)) t)))
         ;; build/ anywhere and src/out/ alone (anchored): src/lib/out/ is kept
         (is equal '("d" "e" "top") (remove nil (files)))
         (false (walked-p "build/"))
@@ -1099,7 +1114,7 @@ file sets them."
         (false (member (concatenate 'string root "build/")
                  (tuatara.defaults::directory-index-directories index)
                  :test #'string=))
-        ;; a folder made in an ignored one stays out; the rule taken away, the folder comes in
+        ;; a directory made in an ignored one stays out; the rule taken away, the directory comes in
         (ensure-directories-exist (merge-pathnames "build/new/" dir))
         (index-now index (tuatara.defaults::read-directory-index index (list (concatenate 'string root "build/")) (* 1024 1024) 64))
         (false (walked-p "build/new/"))
@@ -1168,7 +1183,7 @@ file sets them."
       ;; a small file read whole
       (is = 5 (length (tuatara.defaults::read-text-file (file "small.txt" 5)))))))
 
-(define-test (formatted chosen-files-visited-as-usual)
+(define-modal-test (formatted chosen-files-visited-as-usual)
   ;; a line chosen in a search of files, and SPC f on a name that is there, open the
   ;; file as C-x C-f does: why it opened safely said, a binary one in the hex view
   (with-formatted-directory (dir)
@@ -1208,7 +1223,7 @@ file sets them."
                  (is eq setting (and (tuatara.display:hex-view-p buffer) t)))
             (tuatara.buffer:kill-buffer buffer)))))))
 
-(define-test (formatted gigantic-files-not-read)
+(define-modal-test (formatted gigantic-files-not-read)
   (with-test-directory (dir)
     (put-file (merge-pathnames "a-small.txt" dir) (format nil "small needle~%"))
     (put-file (merge-pathnames "b-large.txt" dir) (make-string 50000 :initial-element #\x))
@@ -1246,7 +1261,7 @@ file sets them."
         (true (tuatara.frontend.fake:fake-frame-showing f "a-small.txt:1: small needle"))
         (true (tuatara.frontend.fake:fake-frame-showing f "d-log.txt:2500: line 2500 with a needle"))))))
 
-(define-test (formatted search-list-steady)
+(define-modal-test (formatted search-list-steady)
   ;; typing on: the lines found before stay listed until the new search gives its own,
   ;; never an empty list between keys (the list and a preview emptied and filled again)
   (with-formatted-directory (dir)
@@ -1270,7 +1285,7 @@ file sets them."
                (false (and first-found (find 0 (subseq counts first-found)))))))
       (kill-buffers-visiting dir))))
 
-(define-test (formatted panel-keeps-its-height)
+(define-modal-test (formatted panel-keeps-its-height)
   ;; typing narrows the list from many to one: the panel keeps its height, the window above stays put
   (with-formatted-directory (dir)
     (unwind-protect
@@ -1302,11 +1317,11 @@ file sets them."
       (unwind-protect
            (progn
              (sb-posix:setenv "XDG_CONFIG_HOME" (namestring dir) 1)
-             (let ((folder (merge-pathnames "tuatara/note-templates/" dir)))
-               (ensure-directories-exist folder)
+             (let ((directory (merge-pathnames "tuatara/note-templates/" dir)))
+               (ensure-directories-exist directory)
                (alexandria:write-string-into-file (format nil "#+issue_date: %date%~%#+author: %author%~%* Summary~%")
-                                                  (merge-pathnames "report.org" folder))
-               (alexandria:write-string-into-file "x" (merge-pathnames "report.org~" folder)))
+                                                  (merge-pathnames "report.org" directory))
+               (alexandria:write-string-into-file "x" (merge-pathnames "report.org~" directory)))
              (let* ((tuatara.defaults::*note-templates-directory* nil)
                     (templates (tuatara.defaults::formatted-templates)))
                (is equal '("blank" "report") (mapcar #'first templates))
@@ -1320,14 +1335,14 @@ file sets them."
                    (tuatara.defaults::formatted-template-text (first (tuatara.defaults::formatted-templates))))))
         (if old (sb-posix:setenv "XDG_CONFIG_HOME" old 1) (sb-posix:unsetenv "XDG_CONFIG_HOME"))))))
 
-(define-test (formatted insert-formatted-note-template)
+(define-modal-test (formatted insert-formatted-note-template)
   ;; C-x i: a template's text read into the buffer at point, never its file opened; any file too; asked over text
   (with-test-directory (dir)
-    (let* ((folder (merge-pathnames "templates/" dir))
-           (template (merge-pathnames "report.org" folder))
+    (let* ((directory (merge-pathnames "templates/" dir))
+           (template (merge-pathnames "report.org" directory))
            (other (namestring (merge-pathnames "plain.txt" dir)))
-           (tuatara.defaults::*note-templates-directory* (namestring folder)))
-      (ensure-directories-exist folder)
+           (tuatara.defaults::*note-templates-directory* (namestring directory)))
+      (ensure-directories-exist directory)
       (alexandria:write-string-into-file (format nil "#+author: %author%~%* Summary~%") template)
       (alexandria:write-string-into-file (format nil "As it is: %date%~%") other)
       ;; an empty buffer: the template's text, its fields filled; the buffer no file, the template untouched

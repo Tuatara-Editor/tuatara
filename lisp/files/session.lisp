@@ -2,7 +2,7 @@
 ;;;; Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
 ;;;;
 ;;;; With *KEEP-SESSION* true, the editor writes what it shows to the file
-;;;; session in its state folder (for you alone): the buffers visiting files
+;;;; session in its state directory (for you alone): the buffers visiting files
 ;;;; and the lists of directories, each with where point was, and how the
 ;;;; windows are split, each window's buffer, point and first line, and which
 ;;;; is selected. It is written as the editor stops, and now and then while
@@ -36,11 +36,11 @@ slow, as on a drive that sleeps.
   :values (number 0 *))
 
 (defvar *session-name* "session"
-  "The name of the file in the state folder the session is kept in: session,
+  "The name of the file in the state directory the session is kept in: session,
 or session-daemon-NAME for the daemon NAME, whose session is its own.")
 
 (defun session-path ()
-  "The file the session is kept in: *SESSION-NAME* in the state folder."
+  "The file the session is kept in: *SESSION-NAME* in the state directory."
   (tuatara.io:path-join (tuatara.io:native (tuatara.io:state-directory)) *session-name*))
 
 ;;; What is kept
@@ -104,20 +104,20 @@ session written keeps no more sections than these, or *MOST-FRAMES*.")
 (defvar *client-layouts* '()
   "The layouts of the frames of the clients that ended, with *KEEP-SESSION*,
 each (CLIENT . SECTIONS), SECTIONS the lines of each frame's section
-\(FRAME-LAYOUT-LINES): kept in the session with the client's folder, and
+\(FRAME-LAYOUT-LINES): kept in the session with the client's directory, and
 taken up with it by a client that attaches with no files
-\(TAKE-UP-ENDED-FOLDER).")
+\(TAKE-UP-ENDED-GROUP).")
 
 (defvar *evidence-waiting* '()
   "The files opened safely (evidence) that the session of an editor running
 in the background lists and that were left closed as it started, each
-\(OWNER . ENTRIES): OWNER a client that ended, whose folder they wait in, or
+\(OWNER . ENTRIES): OWNER a client that ended, whose group they wait in, or
 :EVERYONE for those no client had; ENTRIES as the session writes them. They
-are opened, safely, when a client takes the folder up (TAKE-UP-ENDED-FOLDER),
+are opened, safely, when a client takes the group up (TAKE-UP-ENDED-GROUP),
 and kept in the session until then.")
 
 (defun waiting-evidence (owner)
-  "The entries of the files opened safely that wait closed in the folder of
+  "The entries of the files opened safely that wait closed in the group of
 OWNER, a client or :EVERYONE (*EVIDENCE-WAITING*), but for those opened since."
   (remove-if #'session-entry-buffer (cdr (assoc owner *evidence-waiting*))))
 
@@ -140,11 +140,11 @@ no frame shows and no client has, then a section for each frame of the
 editor's own (no client's), the one worked in first, then the sections read
 that no frame was opened for (*SESSION-SECTIONS-KEPT*). Then, in an editor
 running in the background, a section for each client that has buffers kept:
-a client line (its number, when it began and ended, its folder), the buffers
+a client line (its number, when it began and ended, its directory), the buffers
 of its own its frames do not show, and a frame section for each of its
 frames, or for those it had as it ended (*CLIENT-LAYOUTS*). The files opened
 safely that wait closed (*EVIDENCE-WAITING*) are kept with the buffers of
-their folder."
+their group."
   (let* ((lines (list "tuatara session 1"))
          ;; the buffers, the one used longest ago first (those never shown before them), so that they come
          ;; back in the same order
@@ -379,11 +379,11 @@ first).")
 *KEEP-SESSION* the session's, its files and frames' windows opened again, of
 *MOST-FRAMES* frames at most, the sections of those past them kept as they
 were (*SESSION-SECTIONS-KEPT*); else STARTUP-BUFFER's. An editor running in
-the background opens its clients' folders again instead, as ended
-\(OPEN-ENDED-FOLDERS), and starts with STARTUP-BUFFER's."
+the background opens its clients' groups again instead, as ended
+\(OPEN-ENDED-GROUPS), and starts with STARTUP-BUFFER's."
   (or (and *keep-session*
            (if (editor-idle-frontend *editor*)
-               (progn (open-ended-folders *editor*) nil)
+               (progn (open-ended-groups *editor*) nil)
                (open-session-frames)))
       (startup-buffer)))
 
@@ -510,21 +510,21 @@ behind them instead (SESSION-BUFFERS-BEHIND)."
 
 ;;; The clients of an editor running in the background
 
-(defun open-ended-folders (editor)
+(defun open-ended-groups (editor)
   "Open again the session of EDITOR, running in the background, kept in a
 file of its own. That means the buffers no client had, and for each client a
-folder of its own, as one that ended, with its buffers and those its frames
+group of its own, as one that ended, with its buffers and those its frames
 showed. Its frames' layouts are kept (*CLIENT-LAYOUTS*) for a client that
-attaches with no files to take up (TAKE-UP-ENDED-FOLDER). The files opened
-safely (evidence) are not opened: they wait closed in their folder
+attaches with no files to take up (TAKE-UP-ENDED-GROUP). The files opened
+safely (evidence) are not opened: they wait closed in their group
 \(*EVIDENCE-WAITING*), said by how many in *Messages* and the daemon's log.
 The clients are numbered from 1 again, in the order they began."
   (setf *session-opened* t)
   (multiple-value-bind (buffers tree others sections clients) (read-session)
     (declare (ignore tree others sections))
-    (let ((missing 0) (folders 0) (waiting 0))
+    (let ((missing 0) (groups 0) (waiting 0))
       (flet ((open-or-wait (entries owner)
-               ;; the buffers opened; the evidence left closed, waiting in OWNER's folder
+               ;; the buffers opened; the evidence left closed, waiting in OWNER's group
                (let ((opened '()) (evidence '()))
                  (dolist (entry (remove-duplicates entries :test (lambda (a b) (and (eq (first a) (first b))
                                                                                    (equal (third a) (third b))))))
@@ -550,18 +550,18 @@ The clients are numbered from 1 again, in the order they began."
                      (join-client buffer client))
                    (setf (client-ended client) (getf kept :ended))
                    (when layouts (push (cons client layouts) *client-layouts*))
-                   (incf folders))))
-      (message "Session opened again: ~d folder~:p of clients that ended~[~:;, ~:*~d file~:p no longer there~]"
-               folders missing)
+                   (incf groups))))
+      (message "Session opened again: ~d group~:p of clients that ended~[~:;, ~:*~d file~:p no longer there~]"
+               groups missing)
       (when (plusp waiting)
-        (say-in-daemon-log "~d file~:p opened safely (evidence) wait~:[~;s~] closed in the folders of the session, ~
-                            opened only as a client takes a folder up"
+        (say-in-daemon-log "~d file~:p opened safely (evidence) wait~:[~;s~] closed in the groups of the session, ~
+                            opened only as a client takes a group up"
                            waiting (= waiting 1))))))
 
 (defun keep-client-layout (client)
   "Client end function (*CLIENT-END-FUNCTIONS*): with *KEEP-SESSION*, keep the
 layouts of the frames of CLIENT, one of an editor running in the background,
-as it ends (*CLIENT-LAYOUTS*), for the session to keep with its folder and a
+as it ends (*CLIENT-LAYOUTS*), for the session to keep with its group and a
 client that attaches with no files to take up."
   (let ((editor (or *editor* (running-editor))))
     (when (and *keep-session* editor (remote-client-p client))
@@ -586,19 +586,19 @@ same second, when A began after B."
   (or (> (client-ended a) (client-ended b))
       (and (= (client-ended a) (client-ended b)) (> (client-number a) (client-number b)))))
 
-(defun take-up-ended-folder (editor client &optional folder)
-  "Have CLIENT, of EDITOR, take up FOLDER, the client of a folder that ended.
-With *KEEP-SESSION*, when CLIENT has just attached with no files and FOLDER
-is not given, it takes up the folder of the client that ended last whose
+(defun take-up-ended-group (editor client &optional group)
+  "Have CLIENT, of EDITOR, take up GROUP, the client of a group that ended.
+With *KEEP-SESSION*, when CLIENT has just attached with no files and GROUP
+is not given, it takes up the group of the client that ended last whose
 frames' layouts are kept (*CLIENT-LAYOUTS*) or whose files opened safely wait
 closed (*EVIDENCE-WAITING*). Those files are opened, safely, and said by how
-many. Its buffers become CLIENT's, its folder goes, and CLIENT's frame, and a
+many. Its buffers become CLIENT's, its group goes, and CLIENT's frame, and a
 frame more for each other it had, up to *MOST-FRAMES*, are laid out as its
 were, each window showing its buffer where that is still open. A client in
 windows of its own is asked for those windows, laid out as they come
 \(OPEN-FRAME). True when one was taken up."
-  (let ((ended (or (and folder (client-ended folder) (not (eq folder client)) folder)
-                   (and (null folder) *keep-session*
+  (let ((ended (or (and group (client-ended group) (not (eq group client)) group)
+                   (and (null group) *keep-session*
                         (first (sort (remove-if-not #'client-ended
                                                     (remove-duplicates
                                                      (append (mapcar #'car *client-layouts*)
@@ -621,7 +621,7 @@ windows of its own is asked for those windows, laid out as they come
               (join-client buffer client)
               (incf opened))))
         (when evidence
-          (message "~d file~:p of the folder taken up opened safely (evidence)~[~:;, ~:*~d no longer there~]"
+          (message "~d file~:p of the group taken up opened safely (evidence)~[~:;, ~:*~d no longer there~]"
                    opened (- (length evidence) opened)))
         (flet ((lay-out (lines)
                  ;; a function of a frame laying it out as LINES, its section of the session, had it

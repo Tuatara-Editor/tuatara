@@ -29,23 +29,23 @@ link to the next, \\[man-next-section] and \\[man-previous-section] from one sec
 (defparameter *man-directories*
   '("/etc/man_db.conf" "/etc/manpath.config" "/var/cache/man" "/usr/local/share/man" "/usr/local/man" "/opt/man")
   "What man is shown besides the system's programs and /usr, read only: its
-configuration, the databases that index the pages, and the folders of pages
+configuration, the databases that index the pages, and the directories of pages
 some systems keep outside /usr.")
 
 (defparameter *man-seconds* 20
   "The seconds man may run to format a page or list the pages before it is stopped.")
 
-(defun own-pages-folder ()
-  "The folder of pages installed for oneself (~/.local/share/man), or NIL when
-there is none: the only folder of the home man is shown."
-  (let ((folder (concatenate 'string (tuatara.io:home-directory) ".local/share/man")))
-    (and (eq :directory (tuatara.io:path-kind folder)) folder)))
+(defun own-pages-directory ()
+  "The directory of pages installed for oneself (~/.local/share/man), or NIL when
+there is none: the only directory of the home man is shown."
+  (let ((directory (concatenate 'string (tuatara.io:home-directory) ".local/share/man")))
+    (and (eq :directory (tuatara.io:path-kind directory)) directory)))
 
 (defun man-environment (width)
   "The environment man is run with, WIDTH columns wide: the formatting kept as
-the page is written, bold and underline, no pager, and the folder of one's own
+the page is written, bold and underline, no pager, and the directory of one's own
 pages searched besides the system's."
-  (let ((own (own-pages-folder)))
+  (let ((own (own-pages-directory)))
     (append (list (list "MANWIDTH" (princ-to-string width)) (list "MAN_KEEP_FORMATTING" "1")
                   (list "MANPAGER" "cat") (list "PAGER" "cat"))
             (and own (list (list "MANPATH" (concatenate 'string own ":")))))))
@@ -66,7 +66,7 @@ An error saying why when man is missing, was stopped, or failed (a page it has
 not got)."
   (unless (man-program)
     (tuatara.io:program-missing "man" :why (outside-program-install-words :man)))
-  (let ((own (own-pages-folder)))
+  (let ((own (own-pages-directory)))
     (multiple-value-bind (output outcome said)
         (apply (if file
                    (lambda (&rest keys)

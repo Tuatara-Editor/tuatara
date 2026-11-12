@@ -689,13 +689,13 @@ was. Links clicked on are not noted."
       (template-import-note (format nil "it fetches from elsewhere when a report opens, which whoever keeps it can see: ~{~a~^, ~} (take them out in Word if they should not be)"
                                     (mapcar #'org-safe-line (reverse targets)))))))
 
-(defun docx-import (path name &key (folder (concatenate 'string (docx-templates-directory) name "/"))
+(defun docx-import (path name &key (directory (concatenate 'string (docx-templates-directory) name "/"))
                                    (tex (concatenate 'string (latex-templates-directory) name ".tex"))
                                    note)
   "Make of the Word document at PATH the template NAME, its Word half in
-FOLDER and its LaTeX half TEX, and its note template NOTE (NAME.org in
+DIRECTORY and its LaTeX half TEX, and its note template NOTE (NAME.org in
 NOTE-TEMPLATES-DIRECTORY, unless given), as this file's header says, its
-pictures in the folder NAME-media beside NOTE. Returns the note template's
+pictures in the directory NAME-media beside NOTE. Returns the note template's
 path, and as a second value what to say of it, a list of sentences. Signals
 an error when it cannot be read; writes over nothing that exists."
   (let* ((*docx-reading* (docx-reading-of path))
@@ -703,14 +703,14 @@ an error when it cannot be read; writes over nothing that exists."
          (note (or note (concatenate 'string (note-templates-directory) name ".org")))
          (media (template-import-media note name)))
     (docx-reading-setup)
-    (template-import-check-free (list folder tex note media))
-    ;; a folder's own entry, which zip -r makes, holds nothing to write
+    (template-import-check-free (list directory tex note media))
+    ;; a directory's own entry, which zip -r makes, holds nothing to write
     (setf (docx-reading-entries *docx-reading*)
           (remove-if (lambda (e)
                        (let ((name (getf e :name)))
                          (and (uiop:string-suffix-p name "/") (docx-safe-file-name-p (string-right-trim "/" name)))))
                      (docx-reading-entries *docx-reading*)))
-    ;; a part named to land outside the template's folder (../../init.lisp): nothing made at all
+    ;; a part named to land outside the template's directory (../../init.lisp): nothing made at all
     (let ((unsafe (find-if-not #'docx-safe-file-name-p
                                (docx-reading-entries *docx-reading*)
                                :key (lambda (e) (getf e :name)))))
@@ -798,7 +798,7 @@ an error when it cannot be read; writes over nothing that exists."
                     (push (cons (intern (format nil "~:[~;FIRST-~]~:@(~a~)" (string= type "first") element) :keyword) part) headers)))))
             ;; written: the Word half, the LaTeX half, the pictures and the note
             (dolist (part parts)
-              (template-import-write (concatenate 'string folder (car part)) (cdr part)))
+              (template-import-write (concatenate 'string directory (car part)) (cdr part)))
             (template-import-write tex (docx-import-latex name front (nreverse headers) section (template-import-fields *template-import*) contents))
             (let* ((*docx-read-media* (abbreviated-path media))
                    (*docx-read-pictures* '())

@@ -85,21 +85,22 @@
     (is equal '("-c" "x") (getf (options "--" "-c" "x") :files))
     (true (getf (options "-c") :error))
     (true (getf (options "--generate-config") :generate-config)))
-  ;; a file named as an option, as * gives one in a folder holding it, is never read as one
-  (let ((folder (merge-pathnames (format nil "tuatara-options-~d/" (sb-posix:getpid)) (uiop:temporary-directory))))
+  ;; a file named as an option, as * gives one in a directory holding it, is never read as one
+  (let ((directory (merge-pathnames (format nil "tuatara-options-~d/" (sb-posix:getpid)) (uiop:temporary-directory))))
     (unwind-protect
          (progn
-           (ensure-directories-exist folder)
+           (ensure-directories-exist directory)
            (dolist (name '("-c" "evidence.txt"))
-             (with-open-file (out (merge-pathnames name folder) :direction :output) (write-string "x" out)))
-           (let ((read (tuatara.terminal::read-options '("-c" "evidence.txt") :directory (namestring folder))))
+             (with-open-file (out (merge-pathnames name directory) :direction :output) (write-string "x" out)))
+           (let ((read (tuatara.terminal::read-options '("-c" "evidence.txt") :directory (namestring directory))))
              (true (search "-c is a file here too" (getf read :error)))
              (false (getf read :config)))
            ;; written with ./ or after --, it is a file to edit
-           (is equal '("./-c") (getf (tuatara.terminal::read-options '("./-c") :directory (namestring folder)) :files))
-           (is equal '("-c") (getf (tuatara.terminal::read-options '("--" "-c") :directory (namestring folder)) :files)))
-      (uiop:delete-directory-tree folder :validate t :if-does-not-exist :ignore)))
-  ;; an init file named with characters a pattern would take, or a folder: said as not there
+           (is equal '("./-c") (getf (tuatara.terminal::read-options '("./-c") :directory (namestring directory))
+                                     :files))
+           (is equal '("-c") (getf (tuatara.terminal::read-options '("--" "-c") :directory (namestring directory)) :files)))
+      (uiop:delete-directory-tree directory :validate t :if-does-not-exist :ignore)))
+  ;; an init file named with characters a pattern would take, or a directory: said as not there
   (let ((said (make-string-output-stream)))
     (let ((*error-output* said))
       (is = 2 (tuatara.terminal:main '("-c" "/nonexistent/init[*].lisp")))
@@ -111,7 +112,7 @@
       (is = 2 (tuatara.terminal:main '("-c" "/nonexistent/tuatara-init.lisp"))))
     (true (search "no init file at /nonexistent/tuatara-init.lisp" (get-output-stream-string said))))
   ;; --generate-config writes the starter as generated-init.lisp, never over a file there,
-  ;; in a configuration folder of the test's own
+  ;; in a configuration directory of the test's own
   (let ((home (merge-pathnames (format nil "tuatara-config-~d/" (sb-posix:getpid)) (uiop:temporary-directory)))
         (was (uiop:getenv "XDG_CONFIG_HOME")))
     (unwind-protect

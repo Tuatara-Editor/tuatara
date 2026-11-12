@@ -11,7 +11,7 @@
 
 (defun user-program-path (name)
   "The full path of the program NAME, a setting's value, or NIL when it is
-not there: a path (one with a /, ~ for your home folder) taken as it is, else
+not there: a path (one with a /, ~ for your home directory) taken as it is, else
 a name looked for where the sandbox finds programs (SANDBOX-FIND-PROGRAM)."
   (if (find #\/ name)
       (let ((path (tuatara.io:native (tuatara.io:expand-path name))))
@@ -27,7 +27,7 @@ format (ELF) program with the AppImage type 2 mark."
          (= (aref head 8) 65) (= (aref head 9) 73) (= (aref head 10) 2))))
 
 (defun unpacked-appimage (program cancel)
-  "The folder, ending in /, where the AppImage PROGRAM is unpacked, unpacking
+  "The directory, ending in /, where the AppImage PROGRAM is unpacked, unpacking
 it the first time: run with --appimage-extract, outside the sandbox, as it is
 your own program, into appimages/NAME/ in the cache, NAME its file's, once for
 each version of it, the older ones deleted. CANCEL, a cons, a job's, is
@@ -35,20 +35,20 @@ heeded once it is done."
   (let* ((stamp (tuatara.io:path-stamp program))
          (root (private-cache-directory
                 (format nil "appimages/~a/" (attachment-file-name (tuatara.io:native-file-name program) "program"))))
-         (folder (tuatara.io:path-join root (format nil "~d-~d/" (tuatara.io:stamp-size stamp) (tuatara.io:stamp-mtime stamp))))
-         (unpacked (concatenate 'string folder "squashfs-root/")))
+         (directory (tuatara.io:path-join root (format nil "~d-~d/" (tuatara.io:stamp-size stamp) (tuatara.io:stamp-mtime stamp))))
+         (unpacked (concatenate 'string directory "squashfs-root/")))
     (unless (eq :regular (tuatara.io:path-kind (concatenate 'string unpacked "AppRun")))
       (dolist (old (ignoring-errors-reported ("listing ~a" root) (tuatara.io:directory-entries root)))
         (ignoring-errors-reported ("deleting ~a~a" root (first old))
           (tuatara.io:delete-tree (tuatara.io:path-join root (first old)))))
-      (tuatara.io:ensure-private-directory folder)
+      (tuatara.io:ensure-private-directory directory)
       (let ((ended-well (nth-value 1 (tuatara.io:program-output (list program "--appimage-extract")
-                                                                :capture nil :seconds 600 :directory folder))))
+                                                                :capture nil :seconds 600 :directory directory))))
         (when (car cancel)
-          (ignoring-errors-reported ("deleting ~a" folder) (tuatara.io:delete-tree folder))
+          (ignoring-errors-reported ("deleting ~a" directory) (tuatara.io:delete-tree directory))
           (tuatara.runtime:job-check-stop))
         (unless (and ended-well (eq :regular (tuatara.io:path-kind (concatenate 'string unpacked "AppRun"))))
-          (ignoring-errors-reported ("deleting ~a" folder) (tuatara.io:delete-tree folder))
+          (ignoring-errors-reported ("deleting ~a" directory) (tuatara.io:delete-tree directory))
           (refuse "~a could not be unpacked" (abbreviated-path program)))))
     unpacked))
 
@@ -56,8 +56,8 @@ heeded once it is done."
   "The program at PROGRAM, a full path (USER-PROGRAM-PATH), made ready to run
 shut in, as two values: the path to run, and what the sandbox is shown of it,
 read only, as SANDBOX-RUN's DIRECTORIES take it. An AppImage runs from its
-unpacked folder (UNPACKED-APPIMAGE, CANCEL heeded), that folder shown; a
-program outside the system's own folders of programs has that file alone
+unpacked directory (UNPACKED-APPIMAGE, CANCEL heeded), that directory shown; a
+program outside the system's own directories of programs has that file alone
 shown; one in them, nothing."
   (cond ((appimage-p program)
          (let ((unpacked (unpacked-appimage program cancel)))
@@ -86,7 +86,7 @@ and N, with PATH's ending when it is a short one of letters and digits
 
 (defun copies-original-names (text names)
   "TEXT with each copy's name in it, as the program run on the copies saw it,
-written as its file's own path, ~ for your home folder; NAMES is the table of
+written as its file's own path, ~ for your home directory; NAMES is the table of
 copies RUN-ON-COPIES gives back."
   (cl-ppcre:regex-replace-all
    *copy-name-scanner* text
@@ -113,8 +113,8 @@ AppImage may print a line of its own before; NIL when there is none."
   "Run PROGRAM, a full path (USER-PROGRAM-PATH), shut in on private copies of
 files, as SANDBOX-RUN runs a program (KEYS are its own), and delete the
 copies once it is done. GROUPS are the files, each (KIND . PATHS): each is
-copied into a new folder of its own in sandbox-copies/ in the cache
-\(NEW-PRIVATE-FOLDER), named by KIND and its place in PATHS from 1
+copied into a new directory of its own in sandbox-copies/ in the cache
+\(NEW-PRIVATE-DIRECTORY), named by KIND and its place in PATHS from 1
 \(COPY-FILE-NAME), and the program sees them in *COPIES-PLACE*, read only.
 ARGUMENTS is a function given one argument for each group, the list of its
 copies' names as the program sees them, returning the program's arguments. PROGRAM is made
@@ -127,7 +127,7 @@ file's path (COPIES-ORIGINAL-NAMES). Call it from a job's thread, CANCEL
 being the job's."
   (multiple-value-bind (run shown) (shut-in-program program cancel)
     (tuatara.runtime:job-check-stop)
-    (let ((folder (new-private-folder (private-cache-directory "sandbox-copies/")))
+    (let ((directory (new-private-directory (private-cache-directory "sandbox-copies/")))
           (names (make-hash-table :test 'equal)))
       (unwind-protect
            (let ((seen (loop for (kind . paths) in groups
@@ -135,7 +135,7 @@ being the job's."
                                            for n from 1
                                            for name = (copy-file-name kind n path)
                                            for copy = (concatenate 'string *copies-place* name)
-                                           do (unless (tuatara.io:copy-regular-file path (concatenate 'string folder name)
+                                           do (unless (tuatara.io:copy-regular-file path (concatenate 'string directory name)
                                                                                     :cancel cancel)
                                                 (tuatara.runtime:job-check-stop)
                                                 (refuse "~a could not be copied for ~a" (abbreviated-path path)
@@ -147,12 +147,12 @@ being the job's."
              (multiple-value-bind (output outcome said)
                  (apply #'tuatara.io:sandbox-run run (apply arguments seen)
                         :directories
-                        (append (list (cons (string-right-trim "/" folder) (string-right-trim "/" *copies-place*)))
+                        (append (list (cons (string-right-trim "/" directory) (string-right-trim "/" *copies-place*)))
                                 shown directories)
                         :memory memory :cancel cancel
                         (alexandria:remove-from-plist keys :directories :memory :cancel))
                (values output outcome said names)))
-        (delete-private-folder folder)))))
+        (delete-private-directory directory)))))
 
 (defun run-on-copies-failure (label outcome said names seconds-setting)
   "Why a program run on copies (RUN-ON-COPIES) gave nothing to show, as a

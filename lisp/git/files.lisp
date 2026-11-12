@@ -123,7 +123,7 @@ the files and from git, after asking; the deletion is staged."
 
 (define-command git-rename-file ()
   "Rename the file you are in, or the one on point's line of a status, to a
-path asked for within the repository (into a folder there, when it names
+path asked for within the repository (into a directory there, when it names
 one); the rename is staged, and the buffers visiting the file follow it."
   (with-git-repository (top)
     (call-with-git-file top "No file here"

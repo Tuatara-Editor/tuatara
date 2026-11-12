@@ -6,17 +6,17 @@
 Looking at a file without letting anything in it happen.
 
 Most files you open come from you. Some do not: an attachment from an email you
-were not expecting, a folder a client sent, a download, a disk someone handed
+were not expecting, a directory a client sent, a download, a disk someone handed
 you. You want to read these, and you do not want to find out what they do. This
 chapter is about reading a file without running or changing anything. It starts
-with the safe way to open one file. It goes on to folders whose files are always
-opened that way, to the programs that decode pictures and PDFs behind a wall,
-and to git repositories you only look at. The opposite problem, a file you
+with the safe way to open one file. It goes on to directories whose files are
+always opened that way, to the programs that decode pictures and PDFs behind a
+wall, and to git repositories you only look at. The opposite problem, a file you
 trust that nobody else should read, is in chapter 9: you keep it encrypted.
 
 Be modest about what this gives you. The safeguards stop Tuatara itself from
 acting on a file and from changing it. They do not make a file harmless to the
-rest of your computer. If you copy a program out of a folder and run it in a
+rest of your computer. If you copy a program out of a directory and run it in a
 terminal, no safeguard of an editor helps you. Each section below says what it
 covers and what it leaves out.
 
@@ -31,8 +31,8 @@ lot of ways for the file to take part.
 
 Opening a file safely turns that work off. The file is shown as plain text and
 it is read-only. No major mode and no hook runs on it. Version control is not
-looked up. No auto-save copy is made (chapter 7), and the folder is left as it
-was. The access time of a file of your own is left as it was too. The system
+looked up. No auto-save copy is made (chapter 7), and the directory is left as
+it was. The access time of a file of your own is left as it was too. The system
 lets only a file's owner read it without setting its access time, so reading
 another person's file still sets it. Mount such a drive read-only if that
 matters. The mode line says =Safe= just before the buffer's name.
@@ -52,8 +52,8 @@ There are four ways to open a file safely.
 - ~tuatara --safe FILE~ from a terminal, or ~-R~ for short, opens every file
   named on the line that way. A file piped in with ~ls | tuatara -~ is a safe
   buffer too.
-- The setting =*safe-directories*= lists folders whose files always open safely,
-  however you open them. An example is ="~/Downloads/"=.
+- The setting =*safe-directories*= lists directories whose files always open
+  safely, however you open them. An example is ="~/Downloads/"=.
 - A file that looks like a program's data and not text opens safely by itself.
   The test is a null byte in its first 64 KB. Compiled programs, most archives
   and disk images have one, and so does text in UTF-16. A file with no null byte
@@ -87,7 +87,7 @@ A safe buffer is for looking. A Lisp file opened safely has no Lisp mode, so
 ~C-x C-e~ and ~C-M-x~ are not defined there, and ~M-x~ does not offer
 ~eval-region~ or ~eval-buffer~. If you turn on ~M-x lisp-mode~ yourself, those
 keys refuse, even after ~C-x C-q~, and the echo area says that the buffer is
-opened safely and that nothing was evaluated. A list of a folder in rimu
+opened safely and that nothing was evaluated. A list of a directory in rimu
 (chapter 10) opened safely refuses to pack, unpack, wipe, rename, move or delete
 the file on the line.
 
@@ -134,23 +134,23 @@ read for them, safe or not.
 
 #+table: faces :completion-safe
 
-** Evidence folders
+** Evidence directories
 
 Sometimes one safe look is not enough. If you work with files that may be
-evidence, such as a case folder from a client, nothing of yours must ever be
+evidence, such as a case directory from a client, nothing of yours must ever be
 written among them. A stray backup file, an auto-save copy or a changed access
-time can be a problem later. An evidence folder is a folder that you tell
+time can be a problem later. An evidence directory is a directory that you tell
 Tuatara about, and from then on it does two things. Every file in it opens
 safely, however it is opened. And nothing is written in it or below it by
 anything Tuatara does.
 
-The setting is =*evidence-folders*= and it is empty as it comes, so no folder is
-evidence until you say so. Put it in your init file (chapter 20). A good plan is
-one folder for each case, with the evidence in one and your own work in another
-beside it:
+The setting is =*evidence-directories*= and it is empty as it comes, so no
+directory is evidence until you say so. Put it in your init file (chapter 20). A
+good plan is one directory for each case, with the evidence in one and your own
+work in another beside it:
 
-#+caption: Figure 12.1. A case folder. The evidence and your work sit side by side.
-#+name: fig-case-folder
+#+caption: Figure 12.1. A case directory. The evidence and your work sit side by side.
+#+name: fig-case-directory
 #+begin_example
 ~/cases/
 ├── 2026-0001/
@@ -164,102 +164,104 @@ beside it:
     └── work/
 #+end_example
 
-Never put your work folder inside the evidence folder. Everything below an
-evidence folder is evidence, so a note kept there could not be saved.
+Never put your work directory inside the evidence directory. Everything below an
+evidence directory is evidence, so a note kept there could not be saved.
 
-*** Naming the folders
+*** Naming the directories
 
 The setting is a list. Each entry is written in one of three ways, and the list
 may mix them.
 
-| Entry                                         | What it names                        |
-|-----------------------------------------------+--------------------------------------|
-| ="~/cases/*/evidence/"=                       | A path. =*= stands for the name of any one folder, =**= for any folders at all, none too. |
-| =(:name "evidence" :within "~/cases/")=       | Every folder called =evidence= inside =~/cases/=. Without =:within=, anywhere. |
-| =(:regex "^[0-9]{4}-[0-9]{4}$" :within "~/cases/" :then "evidence")= | In every folder of =~/cases/= whose whole name matches, the folder named by =:then=. Without =:then=, the matching folder itself. |
+| Entry                                                                | What it names                                                                                                                              |
+|----------------------------------------------------------------------+--------------------------------------------------------------------------------------------------------------------------------------------|
+| ="~/cases/*/evidence/"=                                              | A path. =*= stands for the name of any one directory, =**= for any directories at all, none too.                                           |
+| =(:name "evidence" :within "~/cases/")=                              | Every directory called =evidence= inside =~/cases/=. Without =:within=, anywhere.                                                          |
+| =(:regex "^[0-9]{4}-[0-9]{4}$" :within "~/cases/" :then "evidence")= | In every directory of =~/cases/= whose whole name matches, the directory named by =:then=. Without =:then=, the matching directory itself. |
 
 For the layout in Figure 12.1, the first entry is enough:
 
 #+begin_src lisp
-(setf *evidence-folders* '("~/cases/*/evidence/"))
+(setf *evidence-directories* '("~/cases/*/evidence/"))
 #+end_src
 
 Capital letters do not count in the comparison. A file is evidence by where it
-really is, with every link followed. A link in your work folder that leads into
-evidence does not make a loophole: the file behind the link is evidence. An
-entry that cannot be read is left out and reported in =*Messages*= and by
-~M-x check-health~. The other entries still count. Give =:name= and =:regex=
-entries a =:within=. Without it, Tuatara cannot tell from the setting alone
-which repositories hold evidence and has to search for it.
+really is, with every link followed. A link in your work directory that leads
+into evidence does not make a loophole: the file behind the link is evidence. An
+entry that cannot be read is left out and reported in =*Messages*= and by ~M-x
+check-health~. The other entries still count. Give =:name= and =:regex= entries
+a =:within=. Without it, Tuatara cannot tell from the setting alone which
+repositories hold evidence and has to search for it.
 
 *** What happens to a file of evidence
 
-A file in an evidence folder is opened safely whatever way you open it, whether
-by ~C-x C-f~, from a folder list, from a link, or on the command line. The mode
-line adds the word =Evidence= before =Safe=, lit in the colour of errors, so
-that you see at once where you are. ~M-x end-safe-visit~ refuses.
+A file in an evidence directory is opened safely whatever way you open it,
+whether by ~C-x C-f~, from a directory list, from a link, or on the command
+line. The mode line adds the word =Evidence= before =Safe=, lit in the colour of
+errors, so that you see at once where you are. ~M-x end-safe-visit~ refuses.
 
 Nothing is written there. This covers saving, ~C-x C-w~, an export to PDF or
 Word, and Tuatara's own backup, auto-save and lock files. It also covers making,
-renaming, moving or deleting anything in the folder or below it. A refusal says
-what could not be done, and ends with the folder and the entry of
-=*evidence-folders*= that made it evidence. A question that asks where to write,
-such as ~C-x C-w~ or where to export to, does not start in an evidence folder.
-It starts in the last folder you chose that is not one, or in your home folder.
+renaming, moving or deleting anything in the directory or below it. A refusal
+says what could not be done, and ends with the directory and the entry of
+=*evidence-directories*= that made it evidence. A question that asks where to
+write, such as ~C-x C-w~ or where to export to, does not start in an evidence
+directory. It starts in the last directory you chose that is not one, or in your
+home directory.
 
-A terminal that you open from a file of evidence starts in your home folder.
-Then the shell's prompt and helpers do not read what the folder holds, such as a
-=.git= folder or an =.envrc= file.
+A terminal that you open from a file of evidence starts in your home directory.
+Then the shell's prompt and helpers do not read what the directory holds, such
+as a =.git= directory or an =.envrc= file.
 
 *** Asking, and copying out
 
-~M-x describe-evidence~ tells you whether the file or folder here is evidence.
-It looks at the entry on the line of a folder list, at a path written at the
-cursor, or at the file of the buffer. It names the entry of the setting that
-made it so. A link is evidence when what it leads to is. For a file with
-another name that may be in an evidence folder, it says maybe. With the setting
-empty, it says that no folder is named.
+~M-x describe-evidence~ tells you whether the file or directory here is
+evidence. It looks at the entry on the line of a directory list, at a path
+written at the cursor, or at the file of the buffer. It names the entry of the
+setting that made it so. A link is evidence when what it leads to is. For a file
+with another name that may be in an evidence directory, it says maybe. With the
+setting empty, it says that no directory is named.
 
-To work on a file, copy it out. ~M-x copy-from-evidence~ asks for a folder,
+To work on a file, copy it out. ~M-x copy-from-evidence~ asks for a directory,
 which must exist and may not be evidence, and copies the files marked in a
-folder list, or the one on the line, or the file at the cursor, or the file of
-the buffer. It works in the background. Whether a file is evidence is decided
+directory list, or the one on the line, or the file at the cursor, or the file
+of the buffer. It works in the background. Whether a file is evidence is decided
 again by the file it opens to copy, so a link changed in the meantime to lead
 out of evidence copies nothing. Each copy is checked against its original by its
 SHA-256 sum (a number worked out from the contents, so that a single changed
 byte shows). A copy that differs is taken away. Nothing is written over a file
 that is already there. Next to the copies is a log,
 =copied-from-evidence-DATE-TIME.log=, readable by you alone. It says for each
-file what it was, where it came from, its size, both sums and the time. A folder
-is not copied: mark the files in it.
+file what it was, where it came from, its size, both sums and the time. A
+directory is not copied: mark the files in it.
 
-Saving a file of evidence under a new name in your work folder with ~C-x C-w~ is
-also a copy. The buffer then visits the copy. It is still opened safely, because
-the text is the evidence's, but the word =Evidence= is gone and you can edit it.
-Use ~M-x end-safe-visit~ when you decide it is safe to open as usual.
+Saving a file of evidence under a new name in your work directory with ~C-x C-w~
+is also a copy. The buffer then visits the copy. It is still opened safely,
+because the text is the evidence's, but the word =Evidence= is gone and you can
+edit it. Use ~M-x end-safe-visit~ when you decide it is safe to open as usual.
 
 *** What the guard does not cover
 
 The guard is Tuatara's own. Be clear about its edges.
 
 - A file with several names (a hard link) may have another name in an evidence
-  folder. While evidence folders are named, Tuatara does not write such a file
-  in place. It saves a new file and says so, and the other names keep what they
-  held. Their link count and change time do change. If saving a new file is not
-  possible, the save is refused. Such a file opens safely, ~M-x end-safe-visit~
-  refuses, and ~M-x describe-evidence~ says maybe, but the mode line does not
-  show =Evidence=.
+  directory. While evidence directories are named, Tuatara does not write such a
+  file in place. It saves a new file and says so, and the other names keep what
+  they held. Their link count and change time do change. If saving a new file is
+  not possible, the save is refused. Such a file opens safely, ~M-x
+  end-safe-visit~ refuses, and ~M-x describe-evidence~ says maybe, but the mode
+  line does not show =Evidence=.
 - The access time of a file that is not yours cannot be kept (see Opening one
-  file safely). Git itself sets the access time of folders it reads, so
-  ~C-x g~ in a repository of evidence can change those. Mount evidence read-only
-  if access times must stay. To tell whether a path is evidence, Tuatara
-  follows its links one at a time and stops at the first evidence folder, so it
-  never reads a link inside one, which would change that link's access time. A
-  folder list of evidence does read the links it shows.
-- A folder list shows a preview of the file on the line. For a picture or a PDF
-  in an evidence folder, that decodes a copy in the sandbox (next section).
-- Tuatara looks at where a folder really is just before it writes. A link or a
-  drive changed in that moment is not seen until the next look.
+  file safely). Git itself sets the access time of directories it reads, so ~C-x
+  g~ in a repository of evidence can change those. Mount evidence read-only if
+  access times must stay. To tell whether a path is evidence, Tuatara follows
+  its links one at a time and stops at the first evidence directory, so it never
+  reads a link inside one, which would change that link's access time. A
+  directory list of evidence does read the links it shows.
+- A directory list shows a preview of the file on the line. For a picture or a
+  PDF in an evidence directory, that decodes a copy in the sandbox (next
+  section).
+- Tuatara looks at where a directory really is just before it writes. A link or
+  a drive changed in that moment is not seen until the next look.
 - Programs you run yourself write wherever they like. ~M-x compile~ and a shell
   in a terminal are not guarded.
 - A file opened in a background daemon (chapter 18) stays open there for as long
@@ -270,12 +272,12 @@ The guard is Tuatara's own. Be clear about its edges.
 A second guard is the system's own. Make the evidence read-only for everyone
 with =chmod -R a-w evidence/=. Tuatara's guard does not replace it.
 
-#+begin_try Try it, with a folder of case files
+#+begin_try Try it, with a directory of case files
 1. In a terminal, make a case:
    =mkdir -p ~/cases/2026-0001/evidence ~/cases/2026-0001/work/more= and
    =printf 'The report, as it was given.\n' > ~/cases/2026-0001/evidence/report.txt=.
 2. Open your init file with ~C-x C-f ~/.config/tuatara/init.lisp RET~ and add
-   =(setf *evidence-folders* '("~/cases/*/evidence/"))=. Save, and start Tuatara
+   =(setf *evidence-directories* '("~/cases/*/evidence/"))=. Save, and start Tuatara
    again.
 3. Open =~/cases/2026-0001/evidence/report.txt= with ~C-x C-f~, not the safe
    way. The mode line shows =Evidence= and =Safe=.
@@ -286,7 +288,7 @@ with =chmod -R a-w evidence/=. Tuatara's guard does not replace it.
 6. Press ~C-x C-w~ and type =~/cases/2026-0001/work/report.txt= and ~RET~. The
    copy is written. The buffer is now the copy: =Evidence= is gone.
 7. Open the original again, and press ~M-x copy-from-evidence~. Give
-   =~/cases/2026-0001/work/more/= as the folder. Look in it with ~C-x d~ for the
+   =~/cases/2026-0001/work/more/= as the directory. Look in it with ~C-x d~ for the
    copy and the log.
 #+end_try
 
@@ -294,7 +296,7 @@ with =chmod -R a-w evidence/=. Tuatara's guard does not replace it.
 
 #+table: commands describe-evidence copy-from-evidence
 
-#+table: settings *evidence-folders*
+#+table: settings *evidence-directories*
 
 #+table: faces :mode-line-evidence
 
@@ -344,16 +346,17 @@ own program. That command asks first, as long as =*open-externally-ask*= is
 true.
 
 Several programs use the same room. Code formatters (chapter 13) run inside it
-with the project folder visible read-only, and no network. LaTeX that makes a
-PDF sees the document's folder, the TeX installation and your own fonts, all
-read-only, and writes only in its own working folder.
+with the project directory visible read-only, and no network. LaTeX that makes a
+PDF sees the document's directory, the TeX installation and your own fonts, all
+read-only, and writes only in its own working directory; so do biber, bibtex and
+makeindex when they make the document's bibliography and index.
 Language grammars run in it too, where a sandbox exists. Without a sandbox, the
 setting =*syntax-helper-unconfined*= decides whether the grammars of projects
 you trust run on their own without one.
 
 Press ~M-x check-health~ to see whether =bwrap= was found and which version.
 Tuatara looks for it on the PATH, so a =bwrap= installed somewhere of your own
-is found when its folder is on the PATH. If it was not found, or if you set
+is found when its directory is on the PATH. If it was not found, or if you set
 =*sandbox*= to =nil=, Tuatara does not decode: pictures and PDFs are shown as
 bytes and text. Your files are not at risk for that reason. Exports to PDF
 still work, and say that LaTeX ran without a wall.
@@ -413,20 +416,20 @@ In a look-only repository the git status works and shows branches, commits and
 changes. Git reads the working files and a private copy of the repository's
 settings and index. The repository's own settings, hooks and filters never reach
 git, and nothing in the repository is written, not even its index. Git does set
-the access time of the folders it reads. The mode line of every git buffer says
-=Look only= in the colour of warnings, and the first line of the status says
-why. Commands that would change the repository are refused.
+the access time of the directories it reads. The mode line of every git buffer
+says =Look only= in the colour of warnings, and the first line of the status
+says why. Commands that would change the repository are refused.
 
 ~M-x trust-project~ asks again, whatever you answered before. Use it to move a
 project from look-only to trusted once you have read what is in it, or the other
 way. A project can also be trusted in your init file. The setting
-=*lsp-trusted-projects*= lists folders whose projects run their own programs
-without asking. A link from a trusted folder to another does not give the other
-any trust: a project is known by where it really is.
+=*lsp-trusted-projects*= lists directories whose projects run their own programs
+without asking. A link from a trusted directory to another does not give the
+other any trust: a project is known by where it really is.
 
-A repository that is, is inside, or holds an evidence folder is never trusted,
-and it is never asked about. It is look-only for as long as the evidence is
-there, even if it is in =*lsp-trusted-projects*=.
+A repository that is, is inside, or holds an evidence directory is never
+trusted, and it is never asked about. It is look-only for as long as the
+evidence is there, even if it is in =*lsp-trusted-projects*=.
 
 What this does not cover: it is a decision about Tuatara's own work. If you open
 a terminal inside the repository and run its build script, you have trusted it.

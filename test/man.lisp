@@ -159,7 +159,7 @@ faces, its references links; reading what man prints; asking for pages.")
       (true (tuatara.frontend.fake:fake-frame-showing f "No manual entry")))))
 
 (defun man-test-page-file (name text)
-  "Write TEXT in the file NAME in a folder of its own for a test, and return its path and the folder."
+  "Write TEXT in the file NAME in a directory of its own for a test, and return its path and the directory."
   (let* ((dir (ensure-directories-exist (merge-pathnames (format nil "tuatara-man-~a/" name)
                                                          (uiop:temporary-directory))))
          (path (namestring (merge-pathnames (format nil "~a.1" name) dir))))
@@ -230,16 +230,16 @@ faces, its references links; reading what man prints; asking for pages.")
       (uiop:delete-directory-tree (uiop:pathname-directory-pathname page) :validate t :if-does-not-exist :ignore))))
 
 (define-test (man own-pages)
-  ;; the folder of pages installed for oneself, in the home, is searched, and only that folder of it
+  ;; the directory of pages installed for oneself, in the home, is searched, and only that directory of it
   (when (man-test-ready-p)
     (let* ((home (ensure-directories-exist (merge-pathnames "tuatara-man-home/" (uiop:xdg-cache-home))))
-           (folder (ensure-directories-exist (merge-pathnames ".local/share/man/man1/" home))))
+           (directory (ensure-directories-exist (merge-pathnames ".local/share/man/man1/" home))))
       (alexandria:write-string-into-file
        (format nil ".TH OWNPAGE 1 \"2026\" \"x\" \"y\"~%.SH NAME~%ownpage \\- a page of mine~%")
-       (merge-pathnames "ownpage.1" folder) :if-exists :supersede)
+       (merge-pathnames "ownpage.1" directory) :if-exists :supersede)
       (unwind-protect
            (with-functions-replaced ((tuatara.io:home-directory (lambda () (namestring home))))
-             (is string= (namestring (merge-pathnames ".local/share/man" home)) (tuatara.defaults::own-pages-folder))
+             (is string= (namestring (merge-pathnames ".local/share/man" home)) (tuatara.defaults::own-pages-directory))
              (let ((text (tuatara.text:lenient-string (tuatara.defaults::man-run (list "--" "ownpage")))))
                (true (search "a page of mine" (tuatara.defaults::man-formatting text)))))
         (uiop:delete-directory-tree home :validate t :if-does-not-exist :ignore)))))

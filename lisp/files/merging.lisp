@@ -5,7 +5,7 @@
 ;;;; merge into shows the merge of the local, base and remote files with the
 ;;;; conflicts marked, to be resolved as any marked conflicts are
 ;;;; (lisp/editing/conflicts.lisp) and saved. merge-file runs in the sandbox
-;;;; (TUATARA.IO:SANDBOX-RUN), seeing only the folders of the three, read only.
+;;;; (TUATARA.IO:SANDBOX-RUN), seeing only the directories of the three, read only.
 
 (in-package #:tuatara.defaults)
 
@@ -14,7 +14,7 @@
 ancestor BASE (a file, or /dev/null for none), as an octet vector: the lines
 changed in one only taken as changed, those changed in both ways between
 <<<<<<<, |||||||, ======= and >>>>>>> lines. merge-file, shut in, sees only
-the folders of the three, read only. Stopped when CANCEL's car turns true; an
+the directories of the three, read only. Stopped when CANCEL's car turns true; an
 error saying why when it cannot be done."
   (multiple-value-bind (output outcome said)
       (tuatara.io:sandbox-run "git" (list "merge-file" "-p" "--diff3" "-L" "local" "-L" "base" "-L" "remote"

@@ -71,26 +71,26 @@ of no arguments; returns the job."
   "Wait, five seconds at most, for JOB to end."
   (loop repeat 500 while (tuatara.runtime:job-running-p job) do (sleep 0.01)))
 
-(define-test (frames keys-run-in-their-frame)
+(define-modal-test (frames keys-run-in-their-frame)
   ;; each key runs in the frame it was typed in: its buffer, its window, its question
   (with-frames (editor (first second)) '((1 "C-x b k i w i C-j i k i w i") (0 "i t u i"))
     (is equal '("kiwi" "kiwi") (frame-buffer-text second))
     (is equal '("*scratch*" "tui") (frame-buffer-text first))
     (is eq first (tuatara.command::editor-frame editor))))
 
-(define-test (frames repeat-keys-of-their-frame)
+(define-modal-test (frames repeat-keys-of-their-frame)
   ;; a key repeating the command just run repeats it only in the frame it ran in: typed in
   ;; another frame, it does what it does there, and the first frame can still repeat
   (with-frames (editor (first second)) '((1 "C-x b k i w i C-j i") (0 "i C-x ( a C-x ) C-x e") (1 "e") (0 "e"))
     (is equal '("kiwi" "e") (frame-buffer-text second))
     (is equal '("*scratch*" "aaa") (frame-buffer-text first))))
 
-(define-test (frames last-command-of-their-frame)
+(define-modal-test (frames last-command-of-their-frame)
   ;; a kill following a kill in another frame starts a kill of its own, never joined to that one
   (with-frames (editor (first second) :text "kea") '((1 "C-x b k i w i C-j i t u i C-a") (0 "C-k") (1 "C-k"))
     (is equal '("tui" "kea") (mapcar #'princ-to-string (subseq (tuatara.command:editor-kill-ring editor) 0 2)))))
 
-(define-test (frames keys-recorded-in-their-frame)
+(define-modal-test (frames keys-recorded-in-their-frame)
   ;; keys recorded in one frame are its own: those typed in another meanwhile are not taken
   (with-frames (editor (first second)) '((0 "i C-x (") (1 "C-x b k i w i C-j i x y") (0 "a C-x ) C-x e"))
     (is equal '("kiwi" "xy") (frame-buffer-text second))
@@ -101,7 +101,7 @@ of no arguments; returns the job."
 in INDEX's turn."
   (list index (lambda () (funcall function (tuatara.command:editor-frames tuatara.command:*editor*)))))
 
-(define-test (frames keys-run-in-their-frame-while-another-asks)
+(define-modal-test (frames keys-run-in-their-frame-while-another-asks)
   ;; a key of one frame typed while a question is open in another runs at once, in its own frame,
   ;; the question staying open with its text
   (let ((seen nil))
@@ -234,7 +234,7 @@ in INDEX's turn."
     (is equal (list first) (tuatara.command::editor-frames editor))
     (false (tuatara.command::frame-deleted first))))
 
-(define-test (frames keys-run-in-their-frame-while-a-question-takes-in-work)
+(define-modal-test (frames keys-run-in-their-frame-while-a-question-takes-in-work)
   ;; a question whose candidates come from the background (finding a file) reads keys as wakes
   ;; come; a key typed in another frame meanwhile runs there at once, the question keeping its own
   ;; frame and text, its frame the one worked in again after
@@ -255,7 +255,7 @@ in INDEX's turn."
       (false (tuatara.command::frame-minibuffer-active second))
       (is eq first (tuatara.command::editor-frame editor)))))
 
-(define-test (frames recorded-keys-hold-no-frame)
+(define-modal-test (frames recorded-keys-hold-no-frame)
   ;; keys recorded in a frame are kept without it, and play in another frame
   (with-frames (editor (first second)) '((1 "C-x b k i w i C-j i C-x ( a b C-x )") (0 "i C-x e"))
     (true (plusp (length tuatara.defaults::*last-recorded-keys*)))
@@ -379,7 +379,7 @@ first frontend."
   "The name of the buffer FRAME's selected window shows."
   (tuatara.buffer:buffer-name (tuatara.display:window-buffer (tuatara.command:frame-window frame))))
 
-(define-test (frames make-frame-opens-another)
+(define-modal-test (frames make-frame-opens-another)
   ;; C-x 5 2 opens a frame showing the current buffer, brought before the others and worked in:
   ;; what is typed then goes there, into the same buffer
   (multiple-value-bind (editor frontends) (run-window-keys '("C-x 5 2 i k e a"))
@@ -632,7 +632,7 @@ second frame waiting its turn on it."
     (is = 1 (length (tuatara.command:editor-frames editor)))
     (is equal "kiwi" (frame-shows (tuatara.command:editor-frame editor)))))
 
-(define-test (frames close-button-closes-its-frame)
+(define-modal-test (frames close-button-closes-its-frame)
   ;; a frame's close button closes that frame only, the editor going on in the others; the last
   ;; one's quits, as C-x C-c does
   (let ((closed nil) (running nil))
@@ -766,7 +766,7 @@ second frame waiting its turn on it."
         (setf tuatara-user:*debug-on-error* was)))))
 
 (define-test (frames find-file-in-another)
-  ;; C-x 5 f, C-x 5 b and C-x 5 d open a file, a buffer and a folder in a new frame, worked in;
+  ;; C-x 5 f, C-x 5 b and C-x 5 d open a file, a buffer and a directory in a new frame, worked in;
   ;; the frame they were asked in shows what it showed
   (with-test-directory (dir)
     (let ((path (put-file (merge-pathnames "kea.txt" dir) "kea")))
@@ -798,7 +798,7 @@ second frame waiting its turn on it."
 
 ;;; A question open in one frame while the others work
 
-(define-test (frames another-frame-asks-inside-a-question)
+(define-modal-test (frames another-frame-asks-inside-a-question)
   ;; a frame works and asks while a question is open in another: C-g there ends only its own
   ;; question, and the first question's answer, given after, still works, finding what the other made
   (let ((during nil) (after-quit nil))
@@ -863,7 +863,7 @@ second frame waiting its turn on it."
     (is equal "kiwi" (frame-shows first))
     (false (tuatara.command::frame-minibuffer-active first))))
 
-(define-test (frames closed-frame-question-given-up)
+(define-modal-test (frames closed-frame-question-given-up)
   ;; a frame closed by what runs in another while it asks has its question given up; the frame
   ;; left is worked in after
   (let ((seen nil))
@@ -877,7 +877,7 @@ second frame waiting its turn on it."
       (is equal (list (list second) second) seen)
       (is equal '("kiwi" "z") (frame-buffer-text second)))))
 
-(define-test (frames window-closed-while-its-question-waits)
+(define-modal-test (frames window-closed-while-its-question-waits)
   ;; a frame's window closed while its question waits for another frame's closes it at once; its
   ;; question is given up as soon as the other's ends
   (let ((seen nil))
@@ -917,7 +917,7 @@ second frame waiting its turn on it."
     (false (tuatara.command::frame-minibuffer-active first))
     (is equal '("kiwi" "") (frame-buffer-text second))))
 
-(define-test (frames questions-open-at-once-bounded)
+(define-modal-test (frames questions-open-at-once-bounded)
   ;; past the most questions open at once, what is done in another frame waits, the frame saying
   ;; so, and runs once a question has ended (the first question about a buffer of its own)
   (let ((tuatara.command::*frames-question-depth* 2) (waiting nil))

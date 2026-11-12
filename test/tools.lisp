@@ -57,10 +57,10 @@ or is not installed here; what it says as a second value."
   ;; both application entries, Tuatara's and the client's, written where asked, each valid, the client's
   ;; starting a client that falls back to an editor of its own
   (with-test-directory (directory)
-    (let* ((folder (namestring (merge-pathnames "applications/" directory)))
-           (paths (tuatara.terminal::write-application-entries folder "/opt/tuatara 1/tuatara" "--light")))
-      (is equal (list (concatenate 'string folder "tuatara.desktop")
-                      (concatenate 'string folder "tuatara-client.desktop"))
+    (let* ((dir (namestring (merge-pathnames "applications/" directory)))
+           (paths (tuatara.terminal::write-application-entries dir "/opt/tuatara 1/tuatara" "--light")))
+      (is equal (list (concatenate 'string dir "tuatara.desktop")
+                      (concatenate 'string dir "tuatara-client.desktop"))
           paths)
       (dolist (path paths)
         (multiple-value-bind (valid said) (desktop-entry-valid-p path)
@@ -68,7 +68,7 @@ or is not installed here; what it says as a second value."
       (let ((client (file-text (second paths))))
         (true (search (format nil "~%Name=Tuatara (client)~%") client))
         (true (search (format nil "~%Exec=\"/opt/tuatara 1/tuatara\" --light --gui --client --fallback %F~%") client)))
-      ;; asked by the environment, as the scripts ask: the folder there, the program and its words as arguments
+      ;; asked by the environment, as the scripts ask: the directory there, the program and its words as arguments
       (let ((again (namestring (merge-pathnames "again/" directory))))
         (sb-posix:setenv "TUATARA_DESKTOP_ENTRIES" again 1)
         (let ((out (with-output-to-string (*standard-output*)
@@ -79,30 +79,30 @@ or is not installed here; what it says as a second value."
             (file-text (concatenate 'string again "tuatara-client.desktop")))))))
 
 (define-test (tools desktop-entries-request-checked)
-  ;; the request to write desktop entries is taken only for this program and option words, into a folder
+  ;; the request to write desktop entries is taken only for this program and option words, into a directory
   ;; named from the root: a file named on the command line with the variable left set never becomes a
   ;; program the desktop runs, and the program starts as it would
   (with-test-directory (directory)
-    (let* ((folder (namestring (merge-pathnames "applications/" directory)))
+    (let* ((dir (namestring (merge-pathnames "applications/" directory)))
            (evidence (namestring (put-file (merge-pathnames "attachment.exe" directory) "MZ"))))
-      (flet ((asked (folder &rest arguments)
-               (sb-posix:setenv "TUATARA_DESKTOP_ENTRIES" folder 1)
+      (flet ((asked (dir &rest arguments)
+               (sb-posix:setenv "TUATARA_DESKTOP_ENTRIES" dir 1)
                (let* ((code :none)
                       (said (with-output-to-string (*error-output*)
                               (let ((*standard-output* (make-broadcast-stream)))
                                 (setf code (tuatara.terminal::desktop-entries-child arguments))))))
                  (false (sb-posix:getenv "TUATARA_DESKTOP_ENTRIES") "the request goes, taken or not")
                  (values code said))))
-        (dolist (refused (list (list folder evidence) (list "applications/" "tuatara")
-                               (list folder "tuatara" evidence) (list folder "tuatara" "--dark" "~/x.exe")
-                               (list folder)))
+        (dolist (refused (list (list dir evidence) (list "applications/" "tuatara")
+                               (list dir "tuatara" evidence) (list dir "tuatara" "--dark" "~/x.exe")
+                               (list dir)))
           (multiple-value-bind (code said) (apply #'asked refused)
             (false code "~s taken" refused)
             (true (search "TUATARA_DESKTOP_ENTRIES left alone" said))
-            (false (probe-file (concatenate 'string folder "tuatara.desktop")))))
-        (is eql 0 (asked folder "tuatara" "--dark"))
+            (false (probe-file (concatenate 'string dir "tuatara.desktop")))))
+        (is eql 0 (asked dir "tuatara" "--dark"))
         (true (search (format nil "~%Exec=tuatara --dark --gui %F~%")
-                      (file-text (concatenate 'string folder "tuatara.desktop"))))))
+                      (file-text (concatenate 'string dir "tuatara.desktop"))))))
     ;; this program (the AppImage's path when it runs from one), or the launcher of the checkout it was
     ;; built in
     (let ((self (namestring (merge-pathnames "checkout/build/tuatara" directory)))
@@ -136,10 +136,10 @@ or is not installed here; what it says as a second value."
 (define-test (tools autostart-generated)
   ;; tuatara --generate-autostart writes the daemon's autostart entry and says where; never over a file
   ;; there, a link neither; --daemon=NAME writes the named daemon's
-  (let* ((folder (namestring (uiop:xdg-config-home "autostart/")))
-         (path (concatenate 'string folder "tuatara-daemon.desktop"))
-         (named (concatenate 'string folder "tuatara-daemon-work.desktop")))
-    (true (search "/config/" folder) "the tests' own configuration folder")
+  (let* ((directory (namestring (uiop:xdg-config-home "autostart/")))
+         (path (concatenate 'string directory "tuatara-daemon.desktop"))
+         (named (concatenate 'string directory "tuatara-daemon-work.desktop")))
+    (true (search "/config/" directory) "the tests' own configuration directory")
     (unwind-protect
          (progn
            (let ((out (with-output-to-string (*standard-output*)
@@ -165,7 +165,7 @@ or is not installed here; what it says as a second value."
              (true (search (format nil "~%Name=Tuatara daemon (work)~%") text)))
            ;; a link where the entry goes is not written through
            (delete-file named)
-           (let ((target (concatenate 'string folder "target")))
+           (let ((target (concatenate 'string directory "target")))
              (tuatara.io:make-symbolic-link target named)
              (is = 1 (tuatara.terminal:main '("--generate-autostart" "--daemon=work")))
              (false (probe-file target) "nothing written through the link")))
@@ -324,9 +324,9 @@ generate_parser \"$1\" \"$cli\" 2>&1; echo \"went on\"" (tools-script "grammar-b
       (true (search "exit 127" said)))
     (is string= (format nil "ran~%exit 0~%") (inside "inside env A=1 echo ran"))))
 
-(define-test (tools release-names-no-home-folder)
-  ;; the release's program is built from a copy in a folder of its own, and refused
-  ;; when it names this machine's home folder or user, which the check finds
+(define-test (tools release-names-no-home-directory)
+  ;; the release's program is built from a copy in a directory of its own, and refused
+  ;; when it names this machine's home directory or user, which the check finds
   (let ((release (uiop:read-file-string (tools-script "release.sh"))))
     (true (search "git archive HEAD" release))
     (true (search "work=\"$(mktemp -d /tmp/tuatara-release-build.XXXXXX)\"" release))
@@ -388,7 +388,7 @@ printed, the error output after the output."
 (define-test (tools licence-names-read-from-the-text)
   ;; each licence a file holds is named, two in one file both; a label agrees
   ;; with the files only when it names what they hold, all of it, a GNU
-  ;; licence whatever it says of later versions; a LICENSES/ folder may hold
+  ;; licence whatever it says of later versions; a LICENSES/ directory may hold
   ;; more than the label names
   (with-test-directory (directory)
     (let ((handed (write-test-file directory "handed/LICENSE"
@@ -552,7 +552,7 @@ syntax/grammars.tsv: its exit status, and its output and error output."
 (defun archive-check-tree (directory)
   "In DIRECTORY, a copy of the archive script with a list of two made-up
 libraries and a Quicklisp holding their archives; returns the script's path
-and the Quicklisp folder."
+and the Quicklisp directory."
   (let* ((tools (merge-pathnames "tools/" directory))
          (quicklisp (merge-pathnames "ql/" directory))
          (archives (merge-pathnames "dists/quicklisp/archives/" quicklisp)))
@@ -687,7 +687,7 @@ and the Quicklisp folder."
                     :directory directory :output :string :error-output :output :ignore-error-status t))
 
 (defun write-test-file (directory name text)
-  "Write TEXT to NAME under DIRECTORY, its folders made."
+  "Write TEXT to NAME under DIRECTORY, its directories made."
   (let ((path (merge-pathnames name directory)))
     (ensure-directories-exist path)
     (with-open-file (o path :direction :output :if-exists :supersede) (write-string text o))
@@ -966,7 +966,7 @@ grep -q 'int parser' src/parser.c && echo parser-back" repo cli)
 
 (define-test (tools fuzzed-grammars-shut-in)
   ;; what fuzzing runs of a grammar's code reads its sources and writes only
-  ;; its scratch folder, with no environment of the caller's
+  ;; its scratch directory, with no environment of the caller's
   (with-test-directory (directory)
     (let ((out (grammar-build-output
                 (format nil "mkdir -p '~a/sources' '~:*~a/scratch'
@@ -980,7 +980,7 @@ touch y && echo wrote-scratch; echo \"secret=${SECRET:-none}\"'"
 
 (define-test (tools generated-parser-taken-through-no-link)
   ;; what generating a parser leaves in the copy is taken back only as plain
-  ;; files within it: a link the program made, to a folder or a file of the
+  ;; files within it: a link the program made, to a directory or a file of the
   ;; host, brings nothing back
   (with-test-directory (directory)
     (let* ((repo (uiop:native-namestring (merge-pathnames "g/" directory)))
@@ -1049,7 +1049,7 @@ grep -qs host_secret src/parser.c && echo took-host || echo took-nothing" repo c
 
 (define-test (tools library-sources-fetched)
   ;; one source package for the libraries of each package, at the version
-  ;; bundled, its files checked against its .dsc, a folder no longer wanted
+  ;; bundled, its files checked against its .dsc, a directory no longer wanted
   ;; removed; a version not the one bundled, or a file that is not the one the
   ;; .dsc names, stops it
   (with-test-directory (directory)

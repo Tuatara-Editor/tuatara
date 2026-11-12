@@ -48,7 +48,7 @@ the buffer shown at the end."
         for line = (tuatara.frontend.fake:fake-screen-line frontend row)
         when (search "*scratch*" line) return line))
 
-(define-test (toggles mode-line-tuatara)
+(define-modal-test (toggles mode-line-tuatara)
   ;; C-x T t: the modal state alone in the mode line, [N]; again, after TUATARA
   (let ((tuatara-user:*mode-line-tuatara* t))
     (let ((f (run-keys "C-x T t" :width 60 :height 8)))
@@ -228,7 +228,7 @@ others, to every character from START below END."
                          (and (<= from i) (< i to) (if (listp faces) (member face faces) (eq face faces)))))
                      spans)))
 
-(define-test (toggles invisible-characters-shown)
+(define-modal-test (toggles invisible-characters-shown)
   ;; laid out with INVISIBLE, a character that draws nothing is its code, in its own face, in that many columns
   (let* ((text (format nil "a~cb~c~cc" (code-char #xFEFF) (code-char #x200B) (code-char #xE0041)))
          (on (aref (tuatara.display:layout (tuatara.text:string->rope text) 0 40 1 :invisible t) 0))
@@ -265,7 +265,7 @@ others, to every character from START below END."
       (false (search "<FEFF>" (tuatara.frontend.fake:fake-screen-line f 0)))
       (false (search "Invisible" (mode-line-row f))))))
 
-(define-test (toggles invisible-characters-when-safe)
+(define-modal-test (toggles invisible-characters-when-safe)
   ;; a file opened safely shows them unless it chose otherwise, or the setting says not to
   (with-test-directory (dir)
     (let ((file (namestring (merge-pathnames "evidence.txt" dir))))

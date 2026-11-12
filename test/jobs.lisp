@@ -17,7 +17,7 @@ the jobs and drops those marked.")
                                   when (member :job-waiting (if (listp face) face (list face)))
                                     collect (list start end)))))
 
-(define-test (jobs one-after-another)
+(define-modal-test (jobs one-after-another)
   (let ((tuatara.defaults::*rewrite-piece-hook* (lambda () (sleep 0.2))))
     (with-background ()
       ;; a second replacement waits for the first, and works on its result
@@ -40,7 +40,7 @@ the jobs and drops those marked.")
         (true (tuatara.frontend.fake:fake-frame-showing f "Queued, first in line: Sorting"))
         (is string= (format nil "a2~%b9~%c9~%") (session-text editor))))))
 
-(define-test (jobs mode-line-of-its-buffer)
+(define-modal-test (jobs mode-line-of-its-buffer)
   (let ((tuatara.defaults::*rewrite-piece-hook* (lambda () (sleep 0.3))))
     (with-background ()
       ;; a job says nothing in the mode line of another buffer
@@ -69,7 +69,7 @@ the jobs and drops those marked.")
   (true (tuatara.frontend.fake:fake-frame-showing (run-keys "C-x j" :width 80) "No jobs in the background"))
   (true (tuatara.frontend.fake:fake-frame-showing (run-keys "C-x J" :width 80) "Nothing is running in this buffer")))
 
-(define-test (jobs list-and-drop)
+(define-modal-test (jobs list-and-drop)
   ;; a list left by an earlier test would keep its point
   (let ((list (tuatara.buffer:find-buffer "*Jobs*"))) (when list (tuatara.buffer:kill-buffer list)))
   (let ((tuatara.defaults::*rewrite-piece-hook* (lambda () (sleep 0.3))))

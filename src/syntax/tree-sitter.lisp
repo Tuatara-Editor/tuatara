@@ -184,14 +184,14 @@ and nothing elsewhere."
     (and stat (= (logand (sb-posix:stat-mode stat) sb-posix:s-ifmt) sb-posix:s-ifreg))))
 
 (defun user-grammar-file (name)
-  "The file NAME.so in the folder of grammars you add (USER-GRAMMAR-DIRECTORY)
+  "The file NAME.so in the directory of grammars you add (USER-GRAMMAR-DIRECTORY)
 when it is a grammar you added: a plain file there, not a link, and Tuatara
 has no grammar of that name; else NIL."
   (let ((path (merge-pathnames (format nil "~a.so" name) (user-grammar-directory))))
     (and (grammar-name-p name) (regular-file-p path) (not (own-grammar-p name)) path)))
 
 (defun user-grammar-p (name)
-  "True when NAME names a grammar you added: in the folder you add them to, or
+  "True when NAME names a grammar you added: in the directory you add them to, or
 kept from it (USER-GRAMMAR-STORE), Tuatara having none of that name. Such a
 grammar is loaded only as HOST-USER-GRAMMAR-ALLOWED-P allows."
   (and (grammar-name-p name)

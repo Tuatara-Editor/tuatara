@@ -26,7 +26,7 @@ before it and the machine's after it each there and neither starting with -
 
 (defun plain-path-p (path &key relative)
   "True when PATH is from the root, or with RELATIVE may be from a home
-folder instead, and holds only ASCII letters, digits, /, ., _ and -, no part
+directory instead, and holds only ASCII letters, digits, /, ., _ and -, no part
 of it .. and none starting with -: nothing ssh or a shell reads as a token
 to expand (%u, ~), a separator (:), a space or an option."
   (and (stringp path) (plusp (length path))
@@ -72,13 +72,13 @@ when given, in place of ForwardAgent=no."
 have, besides TUATARA.IO:*RESTRICTED-VARIABLES*: your terminal, the agent
 holding your keys and the program asking for a passphrase on the desktop,
 and your Kerberos ticket, so that you log in to the other machine as you
-would yourself. Its PATH is the system's own folders of programs, and
+would yourself. Its PATH is the system's own directories of programs, and
 nothing else reaches it.")
 
 (defun ssh-environment (&rest settings)
   "The environment ssh, and the programs beside it, run with, as NAME=VALUE
 strings: the variables of *SSH-VARIABLES* programs started here have
-\(TUATARA.IO:RESTRICTED-ENVIRONMENT), and PATH the system's own folders of
+\(TUATARA.IO:RESTRICTED-ENVIRONMENT), and PATH the system's own directories of
 programs (TUATARA.IO:*SANDBOX-PATH*); each of SETTINGS, NAME=VALUE strings,
 in place of the variable of its name."
   (apply #'tuatara.io:restricted-environment *ssh-variables* (format nil "PATH=~a" tuatara.io:*sandbox-path*)
@@ -170,7 +170,7 @@ DESTINATIONS GPG CLIPBOARD FILES ADDED [PROGRAM])."
 DESTINATIONS GPG CLIPBOARD FILES ADDED [PROGRAM]), or NIL for a line that makes
 no sense. HOST is a machine as ssh takes it (HOST-REFUSAL). AGENT, GPG and
 CLIPBOARD are true for yes. DESTINATIONS is the machines a key of the agent may
-be used for from there, a list. FILES is the folder there dropped files go to,
+be used for from there, a list. FILES is the directory there dropped files go to,
 or NIL. ADDED is the day it was trusted, as 2026-11-05. PROGRAM, when the line
 has it and it is not -, is the tuatara to run there, a plain path
 \(PLAIN-PATH-P), as it goes to the shell there. Every one of these fields must
@@ -197,7 +197,7 @@ be understood, or the line gives nothing; fields after them are passed over
 (define-state-list *trusted-servers* "ssh-servers" 'parse-server-line 'server-line '*servers-kept*
   :header (format nil "# The machines whose daemons are trusted with more than keys and the screen, the latest~%~
                        # first: the machine as ssh takes it; the ssh agent forwarded; the machines its keys~%~
-                       # may be used for from there; gpg-agent forwarded; the clipboard shared; the folder~%~
+                       # may be used for from there; gpg-agent forwarded; the clipboard shared; the directory~%~
                        # there dropped files go to; the day it was trusted; the tuatara to run there, when~%~
                        # another than the one on its PATH. Changed by M-x server-list.~%")
   :path-of #'first :fields 8 :trust t :line-key (field-line-key 7 0))
@@ -206,7 +206,7 @@ be understood, or the line gives nothing; fields after them are passed over
   "What the machine HOST, as given to tuatara --client=, is trusted with, as a
 plist. :AGENT is the ssh agent forwarded. :DESTINATIONS is the machines its keys
 may be used for from there. :GPG is gpg-agent forwarded. :CLIPBOARD is the
-clipboard shared. :FILES is the folder there files dropped on the window go to,
+clipboard shared. :FILES is the directory there files dropped on the window go to,
 or NIL. :PROGRAM is the tuatara to run there, or NIL for the one on its PATH.
 NIL for a machine not on the list, which is given nothing."
   (let ((entry (state-list-find *trusted-servers* host)))
@@ -232,7 +232,7 @@ given. \\<servers-mode>\\[server-trust] trusts another; on the line's
 server, or those marked, \\[server-toggle-agent] turns forwarding the ssh agent on or off,
 \\[server-agent-destinations] names the machines its keys may be used for from there,
 \\[server-toggle-gpg] turns forwarding gpg-agent on or off, \\[server-toggle-clipboard] sharing the
-clipboard, \\[server-toggle-files] sending dropped files to a folder there; each asks before
+clipboard, \\[server-toggle-files] sending dropped files to a directory there; each asks before
 it gives anything. \\[server-tuatara-program] names the tuatara to run there.
 \\[server-bring-language-server] and \\[server-remove-language-server] take a language server there
 and away again. \\[list-mark-for-deletion] marks a server to forget, \\[list-execute] forgets those
@@ -252,7 +252,7 @@ marked, \\[list-delete-marked] the marked ones or the one on the line, after ask
   "The columns of the list of trusted servers, as TABLE-HEADING-PIECES takes
 them: the mark, the machine, whether the ssh agent is forwarded and the
 machines its keys may be used for from there, whether gpg-agent is
-forwarded and the clipboard shared, the folder dropped files go to, and the
+forwarded and the clipboard shared, the directory dropped files go to, and the
 day it was trusted.")
 
 (defun servers-show (buffer &optional (point 2))
@@ -286,7 +286,7 @@ day it was trusted.")
 \(tuatara --client=HOST) may give more than the keys typed and the size of
 the screen, each with what it is given: the ssh agent, with the machines its
 keys may be used for from there; gpg-agent; the clipboard; files dropped on
-the window, sent to a folder there. A machine not listed is given nothing.
+the window, sent to a directory there. A machine not listed is given nothing.
 There \\<servers-mode>\\[server-trust] trusts another, \\[server-toggle-agent], \\[server-toggle-gpg],
 \\[server-toggle-clipboard] and \\[server-toggle-files] turn each on or off, after asking, and
 \\[list-delete-marked] forgets one."
@@ -360,21 +360,21 @@ Asked before it is turned on."
 
 (define-command server-toggle-files ()
   "Send the files dropped on a window showing the daemon of the server on
-the line, or those marked, to a folder there, asked for (from the home
-folder there unless it begins with /), or no longer: on, a file dropped is
+the line, or those marked, to a directory there, asked for (from the home
+directory there unless it begins with /), or no longer: on, a file dropped is
 copied there, its size checked first, and nothing of it run."
   (change-servers "dropped files"
                   (lambda (host entry) (declare (ignore host entry)) nil)
                   (lambda (entry)
                     (setf (nth 5 entry)
                           (and (not (nth 5 entry))
-                               (let ((folder (string-trim " " (read-string (format nil "Files dropped go on ~a to the ~
-                                                                                         folder: " (first entry))
+                               (let ((directory (string-trim " " (read-string (format nil "Files dropped go on ~a to ~
+                                                                                         the directory: " (first entry))
                                                                            :initial "Dropped"))))
-                                 (if (plain-path-p folder :relative t)
-                                     folder
-                                     (refuse "~a: a folder is letters, digits, /, ., _ and -, no part .. or ~
-                                              starting with -" folder)))))
+                                 (if (plain-path-p directory :relative t)
+                                     directory
+                                     (refuse "~a: a directory is letters, digits, /, ., _ and -, no part .. or ~
+                                              starting with -" directory)))))
                     entry)))
 
 (define-command server-agent-destinations ()
@@ -447,9 +447,9 @@ shell on that machine."
 nothing asked (BatchMode), nothing forwarded and no shared connection, SECONDS
 at most: as RUN-BOUNDED, its exit code, what it wrote and what it said, the
 first *PROGRAM-SAID-LIMIT* octets of each, never to be shown raw. Refused
-when ssh is not in the system's folders of programs."
+when ssh is not in the system's directories of programs."
   (let ((program (or (tuatara.io:system-program *ssh-program*)
-                     (refuse "ssh is not installed in the system's folders of programs"))))
+                     (refuse "ssh is not installed in the system's directories of programs"))))
     (run-bounded program (append '("-T" "-o" "BatchMode=yes" "-o" "ControlMaster=no" "-o" "ControlPath=none")
                                  (ssh-option-arguments) (list "--" host) arguments)
                  :input input :seconds seconds)))

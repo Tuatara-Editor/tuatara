@@ -14,15 +14,15 @@
   "The init file to load, or NIL for the default ~/.config/tuatara/init.lisp (XDG_CONFIG_HOME respected).")
 
 (defun config-path (name)
-  "The path of NAME, a file or a folder ending in /, in Tuatara's
-configuration folder, ~/.config/tuatara/ (tuatara/ in XDG_CONFIG_HOME when it
+  "The path of NAME, a file or a directory ending in /, in Tuatara's
+configuration directory, ~/.config/tuatara/ (tuatara/ in XDG_CONFIG_HOME when it
 is set), as text: (config-path \"snippets/\"). Worked out when asked, so
 that it follows the environment the editor runs in."
   (namestring (uiop:xdg-config-home (concatenate 'string "tuatara/" name))))
 
 (defun config-file ()
   "The init file path: *CONFIG-FILE* or init.lisp in the configuration
-folder (CONFIG-PATH)."
+directory (CONFIG-PATH)."
   (or *config-file* (pathname (config-path "init.lisp"))))
 
 ;;; Settings read as they were meant
@@ -202,20 +202,20 @@ text that could not be read on.")
 
 (defun start-bare ()
   "Have the editor start without the init file, so without packages, and with a
-state folder of its own, new and empty, in bare-state/ in the cache folder. This
-session holds the folder (MAKE-OWNED-FOLDER), and it is deleted when the editor
+state directory of its own, new and empty, in bare-state/ in the cache directory. This
+session holds the directory (MAKE-OWNED-DIRECTORY), and it is deleted when the editor
 ends, once the last of what is kept has been written (FINISH-STATE-WRITES). What
 the editor keeps between sessions (the files visited lately, the session,
 auto-saved text, bookmarks) is neither read nor written, so that nothing of the
-real state is changed or lost. The folders of earlier bare starts, left behind
-by sessions that ended, are deleted (FORGET-ABANDONED-FOLDERS). The
-configuration folder (snippets, templates) is read as always. Call it before the
+real state is changed or lost. The directories of earlier bare starts, left behind
+by sessions that ended, are deleted (FORGET-ABANDONED-DIRECTORIES). The
+configuration directory (snippets, templates) is read as always. Call it before the
 editor starts."
-  (forget-abandoned-folders "bare-state/")
-  (multiple-value-bind (folder lock) (make-owned-folder "bare-state/")
-    (setf *config-file* (merge-pathnames "no-init-file.lisp" folder)
-          tuatara-user:*state-directory* folder
-          *bare-state-folder* (cons folder lock))))
+  (forget-abandoned-directories "bare-state/")
+  (multiple-value-bind (directory lock) (make-owned-directory "bare-state/")
+    (setf *config-file* (merge-pathnames "no-init-file.lisp" directory)
+          tuatara-user:*state-directory* directory
+          *bare-state-directory* (cons directory lock))))
 
 (defun say-started-bare ()
   "Say that the editor started without its init file and packages, with state of its own."

@@ -193,7 +193,7 @@ or :HUNG, so that each of several sessions in a test says how it ended."
           (session-point (nth-value 1 (narrowing-keys (list "C-n C-SPC C-n C-n C-x x n C-x x w M-< C-s n e e d l e RET")
                                                  :text text :width 60)))))))
 
-(define-test (narrowing replace-all-leaves-outside-alone)
+(define-modal-test (narrowing replace-all-leaves-outside-alone)
   (let ((text (format nil "foo~%foo two~%foo three~%foo~%")))
     (multiple-value-bind (f editor) (narrowing-keys (list "C-n C-SPC C-n C-n C-x x n" "M-< M-% f o o RET b a r RET !")
                                               :text text :width 80)
@@ -204,7 +204,7 @@ or :HUNG, so that each of several sessions in a test says how it ended."
         (session-text (nth-value 1 (narrowing-keys (list "C-n C-SPC C-n C-n C-x x n" "M-< r r % f o o / b a z RET")
                                              :text text :width 80))))))
 
-(define-test (narrowing jobs-keep-the-reach-they-began-with)
+(define-modal-test (narrowing jobs-keep-the-reach-they-began-with)
   ;; a replacement in the background begun while narrowed changes only the part shown; one begun
   ;; before narrowing reaches the whole text still, point kept inside when it is taken in
   (let ((text (format nil "foo~%foo two~%foo three~%foo~%"))
@@ -242,7 +242,7 @@ or :HUNG, so that each of several sessions in a test says how it ended."
                            :width 120)))
     (true (tuatara.frontend.fake:fake-frame-showing f "The part shown has 2 lines"))))
 
-(define-test (narrowing edits-at-the-edges-move-them)
+(define-modal-test (narrowing edits-at-the-edges-move-them)
   ;; typed at either edge it goes inside; the part shown grows and shrinks with what is edited
   (let ((editor (nth-value 1
                            (narrowing-keys (list *narrow-to-two-and-three* "M-< i A C-g M-> i Z C-g")
@@ -274,7 +274,7 @@ or :HUNG, so that each of several sessions in a test says how it ended."
   (let ((f (narrowing-keys (list *narrow-to-two-and-three* "M-> C-d") :text *narrowing-text* :width 120)))
     (true (tuatara.frontend.fake:fake-frame-showing-across-rows f "outside the part of *scratch* shown"))))
 
-(define-test (narrowing undo-across-narrow-and-widen)
+(define-modal-test (narrowing undo-across-narrow-and-widen)
   ;; a change made before narrowing, outside, is undone as any other; point stays inside
   (multiple-value-bind (f editor)
       (narrowing-keys (list "M-> i e n d C-g M-<" *narrow-to-two-and-three* "u") :text *narrowing-text* :width 60)
@@ -295,7 +295,7 @@ or :HUNG, so that each of several sessions in a test says how it ended."
                                            :width 60))))
     (is string= (format nil "one~%Xtwo~%three~%four~%five~%") (session-text editor))))
 
-(define-test (narrowing saving-writes-the-whole-file)
+(define-modal-test (narrowing saving-writes-the-whole-file)
   (with-test-directory (dir)
     (let ((path (put-file (merge-pathnames "kept.txt" dir) *narrowing-text*)))
       (multiple-value-bind (f editor)
@@ -631,7 +631,7 @@ or :HUNG, so that each of several sessions in a test says how it ended."
     (is string= *narrowing-text* (session-text editor))
     (true (tuatara.frontend.fake:fake-frame-showing-across-rows f "outside the part of *scratch* shown"))))
 
-(define-test (narrowing whole-part-edits-keep-it-narrowed)
+(define-modal-test (narrowing whole-part-edits-keep-it-narrowed)
   ;; the part shown edited whole stays narrowed, an empty one too; reading the file again widens
   (let ((editor (nth-value 1 (narrowing-keys (list (lambda () (let ((b (tuatara.command:current-buffer)))
                                                           (tuatara.buffer:narrow-buffer b 0 (tuatara.buffer:buffer-size b))))

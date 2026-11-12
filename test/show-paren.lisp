@@ -63,7 +63,7 @@ comments count for nothing; M-x show-paren-mode switches it.")
         '((20 21 :paren-match) (18 19 :paren-match))
         (ranges 'tuatara.defaults::c-mode "int f() { return a[0]; }" 21))))
 
-(define-test (show-paren highlighted)
+(define-modal-test (show-paren highlighted)
   (flet ((typed (text) (fresh-start (format nil "o ~a" (key-string text)) :width 80)))
     ;; a closing bracket before point: it and its partner
     (let* ((f (typed "(a (b) c)"))
@@ -158,7 +158,7 @@ comments count for nothing; M-x show-paren-mode switches it.")
     (is string= "int foo()...{" (line-of (format nil "int foo()~%               {~%  int blah;~%}") 25))
     (is string= "{" (line-of "{" 0))))
 
-(define-test (show-paren typing-a-closing-bracket)
+(define-modal-test (show-paren typing-a-closing-bracket)
   ;; its partner out of sight above the window: its line said, as blink-matching-open
   (let ((f (fresh-start (format nil "o ~a RET ~{~a~} ~a" (key-string "(defun far-away ()")
                                 (loop repeat 30 collect "x RET ") ")")

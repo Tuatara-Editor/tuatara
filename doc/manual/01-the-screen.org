@@ -282,24 +282,24 @@ editor you are in runs as a daemon.
 
 *** Commands for frames and the window's font
 
-| Modal | Non-modal                        | Command                        | What it does           |
-|-------+----------------------------------+--------------------------------+------------------------|
-| none  | ~C-x 5 2~                        | =make-frame=                   | Opens another frame showing this buffer. |
+| Modal | Non-modal                        | Command                        | What it does                                                                   |
+|-------+----------------------------------+--------------------------------+--------------------------------------------------------------------------------|
+| none  | ~C-x 5 2~                        | =make-frame=                   | Opens another frame showing this buffer.                                       |
 | none  | ~C-x 5 0~                        | =delete-frame=                 | Closes this frame. The buffers stay. The last frame cannot be closed this way. |
-| none  | ~C-x 5 1~                        | =delete-other-frames=          | Closes all frames but this one. |
-| none  | ~C-x 5 o~                        | =other-frame=                  | Goes to the next frame. A number goes that many on, a negative one goes back. |
-| none  | ~C-x 5 f~                        | =find-file-other-frame=        | Opens a file in another frame. |
-| none  | ~C-x 5 b~                        | =switch-to-buffer-other-frame= | Shows a buffer in another frame. |
-| none  | ~C-x 5 d~                        | =rimu-other-frame=             | Lists a folder in another frame. |
-| none  | ~C-x C-+~, ~C-x C-=~             | =text-scale-adjust=            | Makes the font a step larger. After it, ~+~, ~=~, ~-~ and ~0~ alone go on. |
-| none  | ~C-x C--~                        | =text-scale-adjust=            | Makes the font a step smaller. |
-| none  | ~C-x C-0~                        | =text-scale-adjust=            | Goes back to the size the window started with. |
-| none  | ~M-x text-scale-increase~        | =text-scale-increase=          | Makes the font a step larger. |
-| none  | ~M-x text-scale-decrease~        | =text-scale-decrease=          | Makes the font a step smaller. |
-| none  | ~C-<wheel-up>~, ~C-<wheel-down>~ | =mouse-wheel-text-scale=       | Larger or smaller as the wheel turns with Control held. |
-| none  | ~M-x set-frame-font~             | =set-frame-font=               | Asks for a font family. It lasts until you quit. |
-| none  | ~<f11>~                          | =toggle-frame-fullscreen=      | Fills the screen, or goes back. |
-| none  | ~M-<f10>~                        | =toggle-frame-maximized=       | Makes the window as large as the screen allows, or goes back. |
+| none  | ~C-x 5 1~                        | =delete-other-frames=          | Closes all frames but this one.                                                |
+| none  | ~C-x 5 o~                        | =other-frame=                  | Goes to the next frame. A number goes that many on, a negative one goes back.  |
+| none  | ~C-x 5 f~                        | =find-file-other-frame=        | Opens a file in another frame.                                                 |
+| none  | ~C-x 5 b~                        | =switch-to-buffer-other-frame= | Shows a buffer in another frame.                                               |
+| none  | ~C-x 5 d~                        | =rimu-other-frame=             | Lists a directory in another frame.                                            |
+| none  | ~C-x C-+~, ~C-x C-=~             | =text-scale-adjust=            | Makes the font a step larger. After it, ~+~, ~=~, ~-~ and ~0~ alone go on.     |
+| none  | ~C-x C--~                        | =text-scale-adjust=            | Makes the font a step smaller.                                                 |
+| none  | ~C-x C-0~                        | =text-scale-adjust=            | Goes back to the size the window started with.                                 |
+| none  | ~M-x text-scale-increase~        | =text-scale-increase=          | Makes the font a step larger.                                                  |
+| none  | ~M-x text-scale-decrease~        | =text-scale-decrease=          | Makes the font a step smaller.                                                 |
+| none  | ~C-<wheel-up>~, ~C-<wheel-down>~ | =mouse-wheel-text-scale=       | Larger or smaller as the wheel turns with Control held.                        |
+| none  | ~M-x set-frame-font~             | =set-frame-font=               | Asks for a font family. It lasts until you quit.                               |
+| none  | ~<f11>~                          | =toggle-frame-fullscreen=      | Fills the screen, or goes back.                                                |
+| none  | ~M-<f10>~                        | =toggle-frame-maximized=       | Makes the window as large as the screen allows, or goes back.                  |
 
 Font steps are 1.2 times each, from 0.4 to 15 times the starting size. In a
 terminal the font belongs to the terminal, and these commands say so.
@@ -343,7 +343,7 @@ Read left to right, the parts are these.
 6. The line and the column of the cursor.
 7. The name of the buffer's major mode, when it has one.
 8. Anything more the buffer has to say, such as CRLF or Page 3 of 10.
-9. The folder the buffer lives in, at the right end.
+9. The directory the buffer lives in, at the right end.
 
 Only the parts that apply are shown, and a mode line that is too narrow cuts
 the buffer's name in the middle, with a mark for what is left out.
@@ -367,17 +367,17 @@ nothing is going on and bright, in the warning colour, while its work goes on.
 They never move, so nothing after them jumps when one lights up. A sign stays
 lit for half a second after its work ends, so that a short job can be seen.
 
-| Sign | Setting                  | What it says                                |
-|------+--------------------------+---------------------------------------------|
+| Sign | Setting                  | What it says                                                                                                                                                                          |
+|------+--------------------------+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | P    | =*processing-indicator*= | Processing. A job is running for this buffer, or waits its turn. Jobs are things done in the background, such as a search through a large file, a sort or a save. ~C-x j~ lists them. |
-| U    | =*indexing-indicator*=   | Update. A folder you asked Tuatara to keep read in memory is being read. |
-| S    | =*searching-indicator*=  | Search. A search runs over such a folder. |
-| D    | =*daemon-indicator*=     | Daemon. This editor runs in the background as a daemon. |
+| U    | =*indexing-indicator*=   | Update. A directory you asked Tuatara to keep read in memory is being read.                                                                                                           |
+| S    | =*searching-indicator*=  | Search. A search runs over such a directory.                                                                                                                                          |
+| D    | =*daemon-indicator*=     | Daemon. This editor runs in the background as a daemon.                                                                                                                               |
 
-U and S only appear when =*indexed-directories*= names some folder, and P and D
-always appear. Set any of the four settings to =nil= to hide that sign, or to
-another piece of text, such as ="indexing"= or an icon from a font that has
-one, to show that instead.
+U and S only appear when =*indexed-directories*= names some directory, and P and
+D always appear. Set any of the four settings to =nil= to hide that sign, or to
+another piece of text, such as ="indexing"= or an icon from a font that has one,
+to show that instead.
 
 *** Saved or not
 
@@ -394,12 +394,12 @@ Next comes the marker for the buffer's state.
 Just before the buffer's name, Tuatara may add a word that is lit up in a
 colour of its own.
 
-| Word        | Meaning                                                         |
-|-------------+-----------------------------------------------------------------|
-| Safe        | The file was opened safely. Tuatara shows its text and leaves the file untouched. |
-| Evidence    | The file is in a folder listed in =*evidence-folders*=. It is never written to. |
-| Narrow      | The buffer shows only a part of its text (~C-x x n~, ~C-x x s~). ~C-x x w~ shows all of it again. |
-| Look only   | The buffer belongs to a git repository opened for looking at only. Commands that would change it are refused. |
+| Word      | Meaning                                                                                                       |
+|-----------+---------------------------------------------------------------------------------------------------------------|
+| Safe      | The file was opened safely. Tuatara shows its text and leaves the file untouched.                             |
+| Evidence  | The file is in a directory listed in =*evidence-directories*=. It is never written to.                        |
+| Narrow    | The buffer shows only a part of its text (~C-x x n~, ~C-x x s~). ~C-x x w~ shows all of it again.             |
+| Look only | The buffer belongs to a git repository opened for looking at only. Commands that would change it are refused. |
 
 *** The name, the line and the column
 
@@ -424,36 +424,36 @@ starts recording). While recorded keys play over and over for more than a
 second, =Played 1,200/10,000= says how many plays are done. The words below
 follow the mode name, each when it applies.
 
-| Shows                     | Meaning                                              |
-|---------------------------+------------------------------------------------------|
-| CRLF or CR                | The file's lines end the way Windows (CRLF) or old Macintosh files (CR) end them. Plain files with the usual ending show nothing. |
-| Following                 | The buffer follows its file as it grows, like =tail -f= (=follow-file=). |
-| Counting lines 40%        | Tuatara is counting the lines of a large file. |
-| Saving 50%                | A save is under way. Another buffer's save shows with its name. |
-| Changed on disk           | Another program changed the file after you read it. |
-| Deleted on disk           | The file was removed. |
-| Stale, read-only          | The file was rewritten on disk while it was shown, so the buffer is read-only. =revert-buffer= reads it again. |
-| incomplete                | A file from another machine stopped arriving before it was all there. |
-| Wrap, Centred             | The buffer wraps long lines (~C-x T l~) or shows its text in a column in the middle (~C-x T o~). |
-| Rewind a1b2c3d            | The buffer shows a file as an older git commit had it (~C-x G~). The commit's date and its place in the history follow. |
-| Conflicts 3               | The buffer holds git conflict markers, and says how many. |
-| Hex 0x00000010 digits     | The buffer shows the file's bytes. =digits= or =text= says which side the cursor is on. |
-| Page 3 of 10              | A PDF's page, the number of pages and its zoom. |
-| Sandboxed                 | What you see was made by a program shut in a sandbox. |
-| Quick edit                | A file opened from a folder list to be edited there. |
-| Filtered by kiwi: 12 of 1,000 records | A search filter hides some lines of the file. |
-| ✘2 ⚠1                    | A language server found 2 errors and 1 warning. |
-| Debug                     | Debug mode is on. |
-| SV<                       | An input method is on, here the one for Swedish. |
-| [0:22] (Task)             | The Org clock is running on a task. |
-| by time, by name          | How a folder list is sorted. |
+| Shows                                 | Meaning                                                                                                                           |
+|---------------------------------------+-----------------------------------------------------------------------------------------------------------------------------------|
+| CRLF or CR                            | The file's lines end the way Windows (CRLF) or old Macintosh files (CR) end them. Plain files with the usual ending show nothing. |
+| Following                             | The buffer follows its file as it grows, like =tail -f= (=follow-file=).                                                          |
+| Counting lines 40%                    | Tuatara is counting the lines of a large file.                                                                                    |
+| Saving 50%                            | A save is under way. Another buffer's save shows with its name.                                                                   |
+| Changed on disk                       | Another program changed the file after you read it.                                                                               |
+| Deleted on disk                       | The file was removed.                                                                                                             |
+| Stale, read-only                      | The file was rewritten on disk while it was shown, so the buffer is read-only. =revert-buffer= reads it again.                    |
+| incomplete                            | A file from another machine stopped arriving before it was all there.                                                             |
+| Wrap, Centred                         | The buffer wraps long lines (~C-x T l~) or shows its text in a column in the middle (~C-x T o~).                                  |
+| Rewind a1b2c3d                        | The buffer shows a file as an older git commit had it (~C-x G~). The commit's date and its place in the history follow.           |
+| Conflicts 3                           | The buffer holds git conflict markers, and says how many.                                                                         |
+| Hex 0x00000010 digits                 | The buffer shows the file's bytes. =digits= or =text= says which side the cursor is on.                                           |
+| Page 3 of 10                          | A PDF's page, the number of pages and its zoom.                                                                                   |
+| Sandboxed                             | What you see was made by a program shut in a sandbox.                                                                             |
+| Quick edit                            | A file opened from a directory list to be edited there.                                                                           |
+| Filtered by kiwi: 12 of 1,000 records | A search filter hides some lines of the file.                                                                                     |
+| ✘2 ⚠1                                 | A language server found 2 errors and 1 warning.                                                                                   |
+| Debug                                 | Debug mode is on.                                                                                                                 |
+| SV<                                   | An input method is on, here the one for Swedish.                                                                                  |
+| [0:22] (Task)                         | The Org clock is running on a task.                                                                                               |
+| by time, by name                      | How a directory list is sorted.                                                                                                   |
 
-*** The folder
+*** The directory
 
-The last part is the folder the buffer lives in, written with =~= for your home
-folder: =~/letters/=. A buffer with no file, such as a scratch buffer, shows the
-folder named by =*default-directory*=. Files on another machine show their
-=/ssh:pinetree:= path.
+The last part is the directory the buffer lives in, written with =~= for your
+home directory: =~/letters/=. A buffer with no file, such as a scratch buffer,
+shows the directory named by =*default-directory*=. Files on another machine
+show their =/ssh:pinetree:= path.
 
 #+begin_try Try it, with a letter
 1. Press ~C-x C-f~, type =~/letter.txt= and press ~RET~. Look at the mode line:
@@ -482,17 +482,17 @@ Clicking a window's mode line with the mouse selects that window.
 
 *** Settings
 
-| Setting                   | Default  | What it changes                     |
-|---------------------------+----------+-------------------------------------|
-| =*mode-line-tuatara*=     | =t=      | Writes TUATARA before the modal state. |
-| =*modal-editing*=         | =t=      | Modal editing on. With =nil= the mode line has no state and every key types. |
-| =*mode-line-name-limit*=  | =nil=    | The most columns the buffer's name may take, or =nil= for as many as fit. |
-| =*processing-indicator*=  | ="P"=    | The sign for jobs. =nil= hides it. |
-| =*indexing-indicator*=    | ="U"=    | The sign for folders being read. |
-| =*searching-indicator*=   | ="S"=    | The sign for searches over those folders. |
-| =*daemon-indicator*=      | ="D"=    | The sign for a daemon. |
-| =*default-directory*=     | ="~/"=   | The folder of a buffer with no file. =nil= is the folder Tuatara started in. |
-| =*terminal-title-limit*=  | =40=     | The most columns of the title a program in a terminal buffer gave itself, shown in the mode line. |
+| Setting                  | Default | What it changes                                                                                   |
+|--------------------------+---------+---------------------------------------------------------------------------------------------------|
+| =*mode-line-tuatara*=    | =t=     | Writes TUATARA before the modal state.                                                            |
+| =*modal-editing*=        | =t=     | Modal editing on. With =nil= the mode line has no state and every key types.                      |
+| =*mode-line-name-limit*= | =nil=   | The most columns the buffer's name may take, or =nil= for as many as fit.                         |
+| =*processing-indicator*= | ="P"=   | The sign for jobs. =nil= hides it.                                                                |
+| =*indexing-indicator*=   | ="U"=   | The sign for directories being read.                                                              |
+| =*searching-indicator*=  | ="S"=   | The sign for searches over those directories.                                                     |
+| =*daemon-indicator*=     | ="D"=   | The sign for a daemon.                                                                            |
+| =*default-directory*=    | ="~/"=  | The directory of a buffer with no file. =nil= is the directory Tuatara started in.                |
+| =*terminal-title-limit*= | =40=    | The most columns of the title a program in a terminal buffer gave itself, shown in the mode line. |
 
 *** Faces
 
@@ -500,19 +500,19 @@ A face is a name for a way of drawing text: a colour, bold, and so on. The
 theme in force, ao-dark as standard, gives each face its look. Change one in
 your init file, for example =(set-face :mode-line-sign :fg "#e0a33a")=.
 
-| Face                    | Default  | What it paints                       |
-|-------------------------+----------+--------------------------------------|
-| =:mode-line=            | theme    | The mode line of the selected window. |
-| =:mode-line-inactive=   | theme    | The mode lines of the other windows. |
-| =:mode-line-directory=  | theme    | The folder at the right end. |
-| =:mode-line-sign=       | theme    | A sign while its work goes on. |
-| =:mode-line-sign-idle=  | theme    | A sign while nothing happens. Worked out from the mode line's colours unless you set it. |
-| =:mode-line-narrowed=   | theme    | The word Narrow. |
-| =:mode-line-evidence=   | theme    | The word Evidence. |
-| =:mode-line-look-only=  | theme    | The words Look only. |
-| =:mode-line-rewind=     | theme    | Rewind and the commit's short name. |
-| =:mode-line-recording=  | theme    | Rec and Played. |
-| =:org-mode-line-clock=  | theme    | The running Org clock. |
+| Face                   | Default | What it paints                                                                           |
+|------------------------+---------+------------------------------------------------------------------------------------------|
+| =:mode-line=           | theme   | The mode line of the selected window.                                                    |
+| =:mode-line-inactive=  | theme   | The mode lines of the other windows.                                                     |
+| =:mode-line-directory= | theme   | The directory at the right end.                                                          |
+| =:mode-line-sign=      | theme   | A sign while its work goes on.                                                           |
+| =:mode-line-sign-idle= | theme   | A sign while nothing happens. Worked out from the mode line's colours unless you set it. |
+| =:mode-line-narrowed=  | theme   | The word Narrow.                                                                         |
+| =:mode-line-evidence=  | theme   | The word Evidence.                                                                       |
+| =:mode-line-look-only= | theme   | The words Look only.                                                                     |
+| =:mode-line-rewind=    | theme   | Rewind and the commit's short name.                                                      |
+| =:mode-line-recording= | theme   | Rec and Played.                                                                          |
+| =:org-mode-line-clock= | theme   | The running Org clock.                                                                   |
 
 ** The echo area and the messages log
 
@@ -611,11 +611,11 @@ replaces it and ~RET~ takes it.
 
 *** Settings
 
-| Setting                | Default  | What it changes                        |
-|------------------------+----------+----------------------------------------|
-| =*show-completion-count*= | =t=   | Shows the place of the selected choice and how many there are before the prompt. |
-| =*prompt-above-candidates*= | =t= | Shows the prompt above the list of choices. =nil= puts it on the last row, under them. |
-| =*last-used-first*=    | =t=      | Questions for a file or folder start where you chose last and list that entry first. |
+| Setting                     | Default | What it changes                                                                         |
+|-----------------------------+---------+-----------------------------------------------------------------------------------------|
+| =*show-completion-count*=   | =t=     | Shows the place of the selected choice and how many there are before the prompt.        |
+| =*prompt-above-candidates*= | =t=     | Shows the prompt above the list of choices. =nil= puts it on the last row, under them.  |
+| =*last-used-first*=         | =t=     | Questions for a file or directory start where you chose last and list that entry first. |
 
 *** Faces
 
@@ -648,22 +648,22 @@ The selected choice is drawn reversed. ~C-n~ or ~<down>~ select the next one and
 ~C-p~ or ~<up>~ the one before. Above the first one is the line you typed, when
 what you typed can be taken as it is. ~TAB~ puts the selected choice into the
 answer. For a file name it replaces the part after the last slash, and for a
-folder it goes into the folder, so that you can walk down a path with ~TAB~.
-~RET~ gives the selected choice, and ~C-j~ gives what you typed.
+directory it goes into the directory, so that you can walk down a path with
+~TAB~. ~RET~ gives the selected choice, and ~C-j~ gives what you typed.
 
 At most 10 rows are used for the panel, the prompt row included. When there
 are more choices, ~M-t~ makes the panel as tall as the frame allows, and
 again as usual. A choice may
 have a note beside it, such as the keys of a command, the mode of a buffer or
 the permissions of a file. A title with a line beside it begins a group, such
-as the folder that the files under it are in.
+as the directory that the files under it are in.
 
-#+begin_try Try it, with a folder of notes
+#+begin_try Try it, with a directory of notes
 1. Press ~C-x C-f~. Tuatara starts where you chose last and lists what is there.
-2. Type =~/= and look at the panel. Each choice is a file or a folder.
+2. Type =~/= and look at the panel. Each choice is a file or a directory.
 3. Type a few letters of a file's name. The list shrinks.
 4. Press ~C-n~ twice and ~C-p~ once. The marked line moves.
-5. Press ~TAB~. The name is put into the answer. If it was a folder, its
+5. Press ~TAB~. The name is put into the answer. If it was a directory, its
    contents are listed.
 6. Press ~M-t~. The panel grows. Press it again to shrink it.
 7. Press ~C-g~ to give up.

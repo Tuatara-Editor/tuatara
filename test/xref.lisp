@@ -70,7 +70,7 @@ back and C-M-, goes forward again.")
   (true (showing (fresh-start (format nil "o ~a C-g M-." (key-string "(no-such-name-anywhere")) :width 120)
                  "No definitions found for: no-such-name-anywhere")))
 
-(define-test (xref evaluated-in-a-buffer)
+(define-modal-test (xref evaluated-in-a-buffer)
   ;; a definition evaluated in *lisp-scratch* is found there
   (unwind-protect
        (multiple-value-bind (f editor)

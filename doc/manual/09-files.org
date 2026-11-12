@@ -17,7 +17,7 @@ machine, and files you keep encrypted so that nobody else can read them. It
 ends with the ways of opening a file from outside Tuatara: with another
 program, and from the command line.
 
-The folders that hold files are the subject of chapter 10, and very large
+The directories that hold files are the subject of chapter 10, and very large
 files of chapter 11. Files from a source you do not trust are in chapter 12.
 The list of recent files, bookmarks and auto-save are in chapter 7.
 
@@ -28,13 +28,13 @@ brings you back.
 ** Opening a file
 
 ~C-x C-f~ asks for a file name at the bottom of the screen. The question has a
-folder filled in, and a list of what is in it. Type to narrow the list, and
-press ~RET~ to open what you have chosen. If the name is a folder, you go into
-it and the list shows what it holds. The question starts in the folder of the
-last file or folder you chose, so when you work on one project you seldom type
-more than the end of a name. ~S-TAB~ puts your home folder, =~/=, in place of
-what is typed, and lists it. Typing =~/= after a folder does the same, starting
-the path again from home.
+directory filled in, and a list of what is in it. Type to narrow the list, and
+press ~RET~ to open what you have chosen. If the name is a directory, you go
+into it and the list shows what it holds. The question starts in the directory
+of the last file or directory you chose, so when you work on one project you
+seldom type more than the end of a name. ~S-TAB~ puts your home directory, =~/=,
+in place of what is typed, and lists it. Typing =~/= after a directory does the
+same, starting the path again from home.
 
 Beside each file the list shows its permissions, its size and when it last
 changed. Where a file is one you opened safely before, the list marks it, and
@@ -56,7 +56,7 @@ chapter 11.
 ~C-x 4 f~ opens the file in another window and goes there, so you can read two
 files side by side. ~C-x 5 f~ opens it in another frame, a window of its own,
 which chapter 1 described. ~C-x C-p~ opens the file whose name is written in
-the text, such as =~/letters/council.txt= in a note. A folder written there
+the text, such as =~/letters/council.txt= in a note. A directory written there
 opens as a list of its files.
 
 When Tuatara runs in a window of its own, you can also drag files from your
@@ -65,19 +65,20 @@ on. If you want these opened safely, which is the careful way described in
 chapter 12, set =*open-dropped-files-safely*=. With ~C-u~ before ~C-x C-f~ a
 file opens safely too. ~M-x find-file-safely~ does the same.
 
-=*last-used-first*= is =t=. The questions that ask for a file or a folder then
-start in the folder you chose from last time, whichever of them it was, and
-list first what you chose there. If you opened =~/letters/council.txt=, the
-next ~C-x C-f~ starts in =~/letters/=, with =council.txt= at the top. Folders
-come before files either way. A file opened safely is never remembered. To
-start in the folder of the buffer you are in, as many editors do:
+=*last-used-first*= is =t=. The questions that ask for a file or a directory
+then start in the directory you chose from last time, whichever of them it was,
+and list first what you chose there. If you opened =~/letters/council.txt=, the
+next ~C-x C-f~ starts in =~/letters/=, with =council.txt= at the top.
+Directories come before files either way. A file opened safely is never
+remembered. To start in the directory of the buffer you are in, as many editors
+do:
 
 #+begin_example
 (setf *last-used-first* nil)
 #+end_example
 
 ~M-x show-file-name~ says in the echo area which file the buffer you are in
-shows, with its folder. You use it when two files have the same name and you
+shows, with its directory. You use it when two files have the same name and you
 want to be sure which one this is.
 
 ~C-x C-f~ and the other ways above take the file name as you type it. A name
@@ -108,11 +109,11 @@ you answer. It helps when you have several files with names like
 =letter-2.txt= and =letter-3.txt=. It is off until you turn it on.
 
 #+begin_try Try it, with a letter
-1. Press ~C-x C-f~. The question shows a folder. Type =~/letters/= and the
-   list shows what is in the folder, or nothing if it is not there yet.
+1. Press ~C-x C-f~. The question shows a directory. Type =~/letters/= and the
+   list shows what is in the directory, or nothing if it is not there yet.
 2. Type =council.txt= and press ~RET~. The buffer is empty and the echo area
    says it is a new file. If =~/letters/= does not exist yet, it says that its
-   folder is not there and that saving asks to make it.
+   directory is not there and that saving asks to make it.
 3. Press ~i~, type =Dear Mr Taupo,= and press ~C-g~. The mode line shows =[*]=,
    which means changes not saved.
 4. Leave the buffer as it is. You will save it in the next section.
@@ -124,11 +125,11 @@ You do not make a file by a separate command. You open one with a name that is
 not there. The buffer is empty and nothing exists on disk until you save. That
 suits a letter or a note: open the name, type, save, or throw the buffer away.
 
-If the folder you named does not exist either, the echo area says so when you
-open the file, and saving asks =The folder ... is not there; make it?= with a
-single key. ~y~ makes the folder and saves. ~n~ stops and writes nothing. You
-can name a file three folders deep in one go this way. If Tuatara cannot make
-the folder, because you may not write where it would go, the buffer is
+If the directory you named does not exist either, the echo area says so when you
+open the file, and saving asks =The directory ... is not there; make it?= with a
+single key. ~y~ makes the directory and saves. ~n~ stops and writes nothing. You
+can name a file three directories deep in one go this way. If Tuatara cannot
+make the directory, because you may not write where it would go, the buffer is
 read-only and the message says why.
 
 A name that says a file is encrypted but is not encrypted by GnuPG, for
@@ -136,7 +137,7 @@ instance one ending =.age=, is refused when you save it, because the text
 would be there to read. Names that end =.gpg= are encrypted every time they
 are saved. 
 The file gets the permissions your account normally gives a new file. A
-folder listing, chapter 10, can show a file's permissions.
+directory listing, chapter 10, can show a file's permissions.
 
 ** Saving
 
@@ -199,14 +200,14 @@ percentage. You can keep typing. Leaving Tuatara waits for saves still running.
 ** Save as, and a new name
 
 ~C-x C-w~ writes the buffer to another file. The question works like the one
-for ~C-x C-f~, and starts in the folder of the file you are in, with the name
+for ~C-x C-f~, and starts in the directory of the file you are in, with the name
 to change. After the save, the buffer is the new file. The old file stays as
 it was, which makes ~C-x C-w~ the way to copy a file: open it, press ~C-x C-w~,
 and give the copy a name.
 
 ~M-x rename-visited-file~ gives the file itself a new name, and the buffer
 follows it. The question offers the old name to edit. A name alone keeps the
-file in its folder. A path, such as =~/letters/sent/council.txt=, moves it
+file in its directory. A path, such as =~/letters/sent/council.txt=, moves it
 there, provided that is on the same drive. Use this when you named a file in a
 hurry. The file on another machine is the exception: this command leaves
 that file where it is.
@@ -216,12 +217,12 @@ that file where it is.
    not there yet, the echo area asks whether to make it: press ~y~. It then
    says =Wrote ~/letters/council.txt=, and the mode line shows =[-]=.
 2. Press ~C-x C-s~ again. It says =(No changes need to be saved)=.
-3. Press ~C-x C-w~. The prompt offers the folder. Type
+3. Press ~C-x C-w~. The prompt offers the directory. Type
    =~/letters/thanks.txt=, which takes its place, and press ~RET~. The buffer
    is =thanks.txt= now, and =council.txt= is as you saved it.
 4. Run =M-x rename-visited-file=. The old name is offered. Change it to
    =thanks-to-aroha.txt= and press ~RET~. The echo area says it was renamed,
-   and =thanks.txt= is gone from the folder.
+   and =thanks.txt= is gone from the directory.
 5. Press ~C-x C-b~. The buffer list shows the new name and its path.
 #+end_try
 
@@ -243,7 +244,7 @@ or a negative number makes it editable.
 If you turn read-only off in a file you may not write, the save still asks
 =File ... is write-protected; try to save anyway?= and the system may refuse.
 
-A file opened safely is read-only too, and so are files in evidence folders.
+A file opened safely is read-only too, and so are files in evidence directories.
 Those are the subject of chapter 12.
 
 #+table: commands read-only-mode end-safe-visit
@@ -383,13 +384,14 @@ same in both editors.
 #+end_example
 
 The identifier is the year, month and day, a =T=, then the hour, minute and
-second, so a folder of such names sorts by age by itself. Two dashes follow,
+second, so a directory of such names sorts by age by itself. Two dashes follow,
 then the title in small letters with hyphens between the words. Two
 underscores begin the keywords, which are joined by single underscores. The
 file's extension ends the name: =.org=, =.txt= or =.md=.
 
-You keep all such files under one folder, set by =*formatted-file-directory*=.
-It is your home folder until you set it. A good place is a folder of notes:
+You keep all such files under one directory, set by
+=*formatted-file-directory*=. It is your home directory until you set it. A good
+place is a directory of notes:
 
 #+begin_example
 (setf *formatted-file-directory* "~/notes/")
@@ -397,13 +399,13 @@ It is your home folder until you set it. A good place is a folder of notes:
 
 *** Making and finding
 
-~C-x n n~ makes a new file. It asks for a title, a subfolder, some keywords and
-the kind of file, in that order. The keywords you used before are offered.
+~C-x n n~ makes a new file. It asks for a title, a subdirectory, some keywords
+and the kind of file, in that order. The keywords you used before are offered.
 Press ~RET~ with nothing typed to skip a question. The new buffer is named from
-what you answered, and begins with a header for its kind, holding the title,
-the date, the keywords and the identifier. Nothing is written until you save
-with ~C-x C-s~. The date and identifier are those of the moment you asked, not
-of the moment you saved.
+what you answered, and begins with a header for its kind, holding the title, the
+date, the keywords and the identifier. Nothing is written until you save with
+~C-x C-s~. The date and identifier are those of the moment you asked, not of the
+moment you saved.
 
 ~C-x n o~ opens one of your files by any part of its name. The list is grouped
 by kind, newest first, and shows each name as its date, its title and its
@@ -413,7 +415,7 @@ preview of =*preview-formatted-files*= works here as it does for ~C-x C-f~.
 
 ~C-x n f~ is ~C-x C-f~ for such files. It opens a file by its path, and if the
 name you type is not there, it makes a new file with a formatted name in the
-folder you typed. It asks for the title and the keywords, and for the end of
+directory you typed. It asks for the title and the keywords, and for the end of
 the name, which you can have filled in by =*formatted-file-extension*=.
 
 *** Renaming
@@ -426,12 +428,12 @@ name, and the list of recent files is updated.
 
 ~C-x n k~ changes only the keywords. It keeps the titles and asks once for new
 keywords, which it gives to the file, or to every marked file when you use it
-in a folder listing. Use it to put a whole month of letters under =done=.
+in a directory listing. Use it to put a whole month of letters under =done=.
 
 #+begin_try Try it, with some notes
 1. Add =(setf *formatted-file-directory* "~/notes/")= to your init file and run
-   it, or restart Tuatara. Make the folder in a terminal with =mkdir ~/notes=.
-2. Press ~C-x n n~. Answer the title with =Pikelets for Sunday=, the folder
+   it, or restart Tuatara. Make the directory in a terminal with =mkdir ~/notes=.
+2. Press ~C-x n n~. Answer the title with =Pikelets for Sunday=, the directory
    with ~RET~, the keywords with =recipe, house= and ~RET~ twice, and the kind
    with ~RET~ for Org.
 3. The buffer is named like
@@ -542,10 +544,11 @@ machine. Here Tuatara runs on your computer, and only the files are elsewhere.
         both go through ssh, with your own keys
 #+end_example
 
-Typing =/ssh:pinetree:/etc/= offers the names in that folder, as for a folder on
-your own computer. =/ssh:pinetree:= alone is your home folder there. A file
-from a server opens as a local file does: a picture is drawn, and a PDF shows
-its pages. Any other file that is not text opens as octets, in the hex view.
+Typing =/ssh:pinetree:/etc/= offers the names in that directory, as for a
+directory on your own computer. =/ssh:pinetree:= alone is your home directory
+there. A file from a server opens as a local file does: a picture is drawn, and
+a PDF shows its pages. Any other file that is not text opens as octets, in the
+hex view.
 
 *** Saving
 
@@ -617,28 +620,28 @@ the prompt. In a terminal, the paste of the terminal works too. The password is
 not put in the kill ring. ~C-g~ gives the question up, and the connection fails
 with a message that the question was not answered. Nothing is left running.
 
-*** Folders and previews on a server
+*** Directories and previews on a server
 
 ~C-x C-f /ssh:pinetree:/srv/notes/ RET~, or ~C-x d~ with that name, lists the
-folder as one is listed on your computer. Chapter 10 describes the list. What
+directory as one is listed on your computer. Chapter 10 describes the list. What
 would read many files, or keep watching them, is left out on a server: there is
-no git column and no folder size, and the list is read again after each change
-you make, not as files change.
+no git column and no directory size, and the list is read again after each
+change you make, not as files change.
 
 A preview shows each file beside the list as you move. On a server each file
 must come to your computer first, so the preview starts off. ~P~ in the list
 turns it on, and moving to another file stops the transfer under way. A file
 larger than =*remote-preview-size-limit*= is not fetched, and the preview says
-it is too large. The standard is 20 million octets. ~RET~ still opens it.
-Files in evidence folders are not read for a preview, and a list opened safely
-has no preview.
+it is too large. The standard is 20 million octets. ~RET~ still opens it. Files
+in evidence directories are not read for a preview, and a list opened safely has
+no preview.
 
 A server keeps no trash. A file deleted there is deleted for good, and the list
 says so in its question.
 
-Evidence folders may be on a server as well. An entry of =*evidence-folders*=
-may name a folder there, and files in it open safely and are never saved.
-Chapter 12 describes it.
+Evidence directories may be on a server as well. An entry of
+=*evidence-directories*= may name a directory there, and files in it open safely
+and are never saved. Chapter 12 describes it.
 
 #+begin_try Try it, with notes on a server called pinetree
 These steps need a machine you can reach with ssh. Use your own name for
@@ -646,7 +649,7 @@ These steps need a machine you can reach with ssh. Use your own name for
 
 1. In a terminal, run =ssh pinetree= once, so you know the login works. Leave
    it again with =exit=.
-2. In Tuatara, press ~C-x C-f~ and type =/ssh:pinetree:=. Your home folder there
+2. In Tuatara, press ~C-x C-f~ and type =/ssh:pinetree:=. Your home directory there
    is offered. Add =notes.txt= and press ~RET~. The buffer is empty.
 3. Press ~i~, type =Sheep: 41 counted on Friday= and press ~C-g~. Press
    ~C-x C-s~. The echo area says =Wrote /ssh:pinetree:notes.txt=.
@@ -655,7 +658,7 @@ These steps need a machine you can reach with ssh. Use your own name for
    echo area says the file changed on the server since it was read and was not
    written. Your buffer is unchanged.
 5. Run ~M-x revert-buffer~. The line =Gate fixed= is there.
-6. Press ~C-x d~ and type =/ssh:pinetree:=, then ~RET~. Your home folder opens
+6. Press ~C-x d~ and type =/ssh:pinetree:=, then ~RET~. Your home directory opens
    as a list. Move to =notes.txt= and press ~P~ to see it beside the list.
 7. If you wish, press ~C-x k~ on the buffer. The private copy on your computer
    is deleted, and the file on pinetree is as you saved it.
@@ -689,6 +692,12 @@ every passphrase it keeps, so the next file you open asks again. It does not
 close buffers you already have open: kill those too, if you want their text gone
 from memory.
 
+When gpg will not encrypt to a key, the save fails and the echo area says why:
+the key has expired, is revoked, or is not among your keys. A key you trust
+that gpg does not yet count as valid is common on a second machine, after the
+key was brought over: the message names =gpg --check-trustdb=, which counts the
+trust again, and =gpg --edit-key KEY trust=, which sets it.
+
 *** The passphrase prompt
 
 Who asks for the passphrase is the setting =*gpg-passphrase-from*=. As it comes
@@ -704,23 +713,24 @@ says what that risks. =*gpg-loopback-warning*= is true as it comes. Turn it off
 only when you know the risks by heart.
 
 Which gpg runs is not left to chance. Tuatara runs the program found in the
-system's own folders (=/usr/local/bin=, =/usr/bin=, =/bin=), never one that a
-folder on your =PATH= might hold. =*gpg-program*= names a different one, by a
-full path from the root. Before each run Tuatara also checks that the folder gpg
-takes its keys and options from (=~/.gnupg=, or the folder =GNUPGHOME= names) is
-yours, is not a link, and cannot be written by others. If the check fails, gpg
-is not run, and the message says which folder is wrong and why.
+system's own directories (=/usr/local/bin=, =/usr/bin=, =/bin=), never one that
+a directory on your =PATH= might hold. =*gpg-program*= names a different one, by
+a full path from the root. Before each run Tuatara also checks that the
+directory gpg takes its keys and options from (=~/.gnupg=, or the directory
+=GNUPGHOME= names) is yours, is not a link, and cannot be written by others. If
+the check fails, gpg is not run, and the message says which directory is wrong
+and why.
 
 *** Encrypting and decrypting
 
 ~M-x gpg-encrypt-file~ encrypts the file shown, or the one on the line of a
-folder list, into =FILE.gpg=. It asks whom to encrypt to in the minibuffer: your
-keys, or a passphrase, with commas between several. It then offers to wipe the
-original. Say no if you are not sure, since a wiped file cannot be recovered and
-a solid state disk may keep old copies anyway. ~M-x wipe-file~ does that wipe by
-itself. ~M-x gpg-decrypt-file~ writes a decrypted copy to a file you name, after
-warning you that its text is then on disk. To read an encrypted file, open the
-=.gpg= file instead.
+directory list, into =FILE.gpg=. It asks whom to encrypt to in the minibuffer:
+your keys, or a passphrase, with commas between several. It then offers to wipe
+the original. Say no if you are not sure, since a wiped file cannot be recovered
+and a solid state disk may keep old copies anyway. ~M-x wipe-file~ does that
+wipe by itself. ~M-x gpg-decrypt-file~ writes a decrypted copy to a file you
+name, after warning you that its text is then on disk. To read an encrypted
+file, open the =.gpg= file instead.
 
 You can also encrypt part of a buffer. Select some text and use
 ~M-x gpg-encrypt-region~. The text becomes a block that starts with
@@ -755,7 +765,7 @@ fingerprint, names and expiry. ~M-x gpg-import-keys~ and
 ~M-x gpg-import-keys-region~ add keys from a file or from selected text.
 ~M-x gpg-keys-export~ writes the public part of marked keys to a file, and
 ~M-x gpg-keys-insert~ puts it at the cursor in the buffer the list was opened
-from. The folder list (chapter 10) has keys for the same jobs on files.
+from. The directory list (chapter 10) has keys for the same jobs on files.
 
 #+begin_try Try it, with an encrypted note
 1. In a terminal, make a note:
@@ -787,10 +797,10 @@ from. The folder list (chapter 10) has keys for the same jobs on files.
 Tuatara shows text, and also pictures, PDFs and some office documents. There is
 work it does not do, such as printing, filling in a PDF form, or playing a
 video. For that you can hand the file to the program your desktop uses for that
-kind of file. ~O~ does it in a folder listing, in a picture and in a PDF's view,
-and ~M-x open-externally~ does it for the file of the buffer you are in. Tuatara
-runs =xdg-open=, the command desktops provide for this, so the file opens in
-what you would get by double-clicking it.
+kind of file. ~O~ does it in a directory listing, in a picture and in a PDF's
+view, and ~M-x open-externally~ does it for the file of the buffer you are in.
+Tuatara runs =xdg-open=, the command desktops provide for this, so the file
+opens in what you would get by double-clicking it.
 
 The other program is not shut in as Tuatara's own readers are. It can read
 everything you can. So Tuatara asks first, unless you turn off

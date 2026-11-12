@@ -27,7 +27,7 @@ look for them in a LaTeX file, as hidden text to be found nowhere else.
 the text it hides, and the name of the call (redact). In Org, the calls of
 redact and protect, by their short names R and P too, of the kinds its
 export hides (ORG-HIDDEN-KINDS: redact unless redact:nil, protect with
-protect:t, in #+OPTIONS: or a setup file's, DIRECTORY the note's folder); in
+protect:t, in #+OPTIONS: or a setup file's, DIRECTORY the note's directory); in
 LaTeX, those of *LATEX-REDACTION-COMMANDS*."
   (let ((found '()))
     (ecase kind
@@ -234,20 +234,20 @@ hidden is given away by John Otago or by Otago written elsewhere. The enhanced
 export and \\[export-latex-compile-pdf] look first, and ask before making the PDF."
   (check-buffer-redactions (current-buffer)))
 
-(defparameter *export-kept-folders*
+(defparameter *export-kept-directories*
   '(latex-templates-directory docx-templates-directory note-templates-directory logos-directory)
-  "Functions giving the folders of yours an export never writes in unasked, beside
-*EXPORT-TRUSTED-FOLDERS*.")
+  "Functions giving the directories of yours an export never writes in unasked, beside
+*EXPORT-TRUSTED-DIRECTORIES*.")
 
 (defun export-target-allowed-p (buffer types &key text)
   "True when exporting BUFFER's Org note, or TEXT, the part of it exported,
 may write its files of TYPES (endings, pdf or docx): when its
-#+EXPORT_FILE_NAME puts them outside the note's own folder and the folders
-in it (links followed), or in your templates, logos or trusted folders
-\(*EXPORT-KEPT-FOLDERS*, *EXPORT-TRUSTED-FOLDERS*), only when you say to go
+#+EXPORT_FILE_NAME puts them outside the note's own directory and the directories
+in it (links followed), or in your templates, logos or trusted directories
+\(*EXPORT-KEPT-DIRECTORIES*, *EXPORT-TRUSTED-DIRECTORIES*), only when you say to go
 on. A note opened from an encrypted file is exported only when you say so:
-what the export writes is not encrypted. Never into an evidence folder
-\(*EVIDENCE-FOLDERS*): NIL then, and as a second value the words saying why
+what the export writes is not encrypted. Never into an evidence directory
+\(*EVIDENCE-DIRECTORIES*): NIL then, and as a second value the words saying why
 \(EVIDENCE-REFUSAL)."
   (unless (or (not (tuatara.io:buffer-plaintext-p buffer))
               (yes-or-no-p* (format nil "~a is encrypted, but its export and what is made for it are not; export it all the same?"
@@ -257,12 +257,12 @@ what the export writes is not encrypted. Never into an evidence folder
          (named (and (eq (export-kind buffer) :org)
                      (ignoring-errors-reported ("naming the export of ~a" file)
                        (org-export-file-name (or text (tuatara.buffer:buffer-string buffer)) file))))
-         (kept (append (mapcar #'funcall *export-kept-folders*) *export-trusted-folders*))
-         ;; links followed: a folder in the note's that is a link to elsewhere is elsewhere
+         (kept (append (mapcar #'funcall *export-kept-directories*) *export-trusted-directories*))
+         ;; links followed: a directory in the note's that is a link to elsewhere is elsewhere
          (outside (and named (notevery (lambda (type)
                                          (let ((path (replaced-type named type)))
                                            (and (org-path-beside-p path (tuatara.io:parent-path file))
-                                                (not (path-in-folders-p path kept)))))
+                                                (not (path-in-directories-p path kept)))))
                                        types)))
          (existing (and outside
                         (find-if (lambda (path) (tuatara.io:path-stamp path))
@@ -272,9 +272,9 @@ what the export writes is not encrypted. Never into an evidence folder
       (return-from export-target-allowed-p (values nil refusal)))
     (or (not outside)
         (yes-or-no-p* (if existing
-                          (format nil "#+EXPORT_FILE_NAME writes over ~a, outside the note's folder or in one of your own; go on?"
+                          (format nil "#+EXPORT_FILE_NAME writes over ~a, outside the note's directory or in one of your own; go on?"
                                   (abbreviated-path existing))
-                          (format nil "#+EXPORT_FILE_NAME writes ~a, outside the note's folder or in one of your own; go on?"
+                          (format nil "#+EXPORT_FILE_NAME writes ~a, outside the note's directory or in one of your own; go on?"
                                   (abbreviated-path (replaced-type named (first types)))))))))
 
 (defun redactions-allow-export-p (buffer &optional (text (tuatara.buffer:buffer-string buffer)))

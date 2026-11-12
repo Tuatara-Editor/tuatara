@@ -61,7 +61,7 @@ PLACE-BUFFERS call, made after the defaults."
     (is = 1 (length (tuatara.command:editor-windows editor)))
     (true (search "Not enough room" (tuatara.frontend.fake:fake-screen-line f 7)))))
 
-(define-test (windows split-right)
+(define-modal-test (windows split-right)
   (multiple-value-bind (f editor) (run-keys "C-x 3" :text *twenty-lines* :width 40 :height 8)
     (is equal '((0 0 20 7) (20 0 20 7)) (window-boxes editor))
     ;; the left window's last column is the divider; the mode lines share the row
@@ -76,7 +76,7 @@ PLACE-BUFFERS call, made after the defaults."
         (aref (tuatara.frontend.fake:fake-spans f) 6))
     (is string= " TUATARA[N] PD [-] * TUATARA[N] PD [-] *" (tuatara.frontend.fake:fake-screen-line f 6))))
 
-(define-test (windows own-point)
+(define-modal-test (windows own-point)
   ;; the upper window moves; the lower one keeps its point, line and mode line
   (multiple-value-bind (f editor) (run-keys "C-x 2 j j l" :text *twenty-lines* :width 40 :height 12)
     (declare (ignore editor))
@@ -97,7 +97,7 @@ PLACE-BUFFERS call, made after the defaults."
     (is string= "XXline 1" (tuatara.frontend.fake:fake-screen-line f 6))
     (true (search "L3 C0" (tuatara.frontend.fake:fake-screen-line f 10)))))
 
-(define-test (windows other-window)
+(define-modal-test (windows other-window)
   (multiple-value-bind (f editor) (run-keys "C-x 2 C-x 2" :width 40 :height 20)
     (declare (ignore f))
     (is equal '((0 0 40 5) (0 5 40 5) (0 10 40 9)) (window-boxes editor)))
@@ -109,7 +109,7 @@ PLACE-BUFFERS call, made after the defaults."
         (declare (ignore f))
         (is = index (selected-index editor) "~a" keys)))))
 
-(define-test (windows delete)
+(define-modal-test (windows delete)
   (dolist (keys '("C-x 2 C-x 0" "C-x 2 C-x 3 C-x 1" "C-x 2 C-x 3 F" "C-x 3 C-x o SPC k K" "C-x 2 SPC w o" "C-x 2 SPC w q"))
     (multiple-value-bind (f editor) (run-keys keys :text *twenty-lines* :width 40 :height 12)
       (declare (ignore f))
@@ -123,7 +123,7 @@ PLACE-BUFFERS call, made after the defaults."
     (is = 1 (length (tuatara.command:editor-windows editor)))
     (true (search "only window" (tuatara.frontend.fake:fake-screen-line f 7)))))
 
-(define-test (windows directions)
+(define-modal-test (windows directions)
   (dolist (case '(("C-x 3 C-M-l" 1) ("C-x 3 C-M-l C-M-h" 0) ("C-x 2 C-M-j" 1) ("C-x 2 C-M-j C-M-k" 0)
                   ("C-x 3 SPC L" 1) ("C-x 3 SPC L SPC H" 0) ("C-x 2 SPC J" 1) ("C-x 2 SPC J SPC K" 0)))
     (destructuring-bind (keys index) case
@@ -140,7 +140,7 @@ PLACE-BUFFERS call, made after the defaults."
     (declare (ignore editor))
     (true (search "No window to the left" (tuatara.frontend.fake:fake-screen-line f 7)))))
 
-(define-test (windows swapping-windows)
+(define-modal-test (windows swapping-windows)
   ;; the left window shows other, the right *scratch*: SPC w l moves other right, and you with it
   (multiple-value-bind (f editor) (run-keys "C-x 3 C-x b o t h e r C-j SPC w l" :width 40 :height 8)
     (declare (ignore f))
@@ -181,7 +181,7 @@ PLACE-BUFFERS call, made after the defaults."
           (let ((left (tuatara.buffer:find-buffer "zzk")))
             (when left (tuatara.buffer:kill-buffer left))))))))
 
-(define-test (windows rotate)
+(define-modal-test (windows rotate)
   (let ((setup "C-x 2 C-x 2 C-x b z z 1 RET C-x o C-x b z z 2 RET C-x o C-x b z z 3 RET"))
     (multiple-value-bind (f editor) (run-keys setup :width 40 :height 20)
       (declare (ignore f))
@@ -234,7 +234,7 @@ PLACE-BUFFERS call, made after the defaults."
         (declare (ignore f))
         (is string= words (tuatara.command:editor-message editor) "~a" keys)))))
 
-(define-test (windows sizes)
+(define-modal-test (windows sizes)
   (dolist (case '(("C-x 2 C-x ^" ((0 0 40 7) (0 7 40 4)))
                   ;; the lower window has no more than its four rows to give
                   ("C-x 2 C-u 3 C-x ^" ((0 0 40 7) (0 7 40 4)))
@@ -338,7 +338,7 @@ PLACE-BUFFERS call, made after the defaults."
   (fail (tuatara-user:place-buffers :help :here :size -1))
   (fail (tuatara-user:place-buffers 42 :here)))
 
-(define-test (windows killing-buffers)
+(define-modal-test (windows killing-buffers)
   ;; both windows show other: killing it shows in each the buffer it showed before
   (multiple-value-bind (f editor) (run-keys "C-x 3 C-x b o t h e r C-j C-x o C-x b o t h e r RET C-x k"
                                             :width 40 :height 8)
@@ -396,7 +396,7 @@ PLACE-BUFFERS call, made after the defaults."
     (is string= "line 2"
         (tuatara.frontend.fake:fake-screen-line (run-keys "C-u 3 C-v C-u 2 M-v" :text text :width 80 :height 30) 0))))
 
-(define-test (windows history)
+(define-modal-test (windows history)
   ;; a buffer shown again in a window comes back from the same line, not from its top
   (multiple-value-bind (f editor) (run-keys "C-u 1 4 j z z C-x b o t h e r C-j C-x b * s c r a t c h * RET"
                                             :text *twenty-lines* :width 40 :height 8)
@@ -448,7 +448,7 @@ PLACE-BUFFERS call, made after the defaults."
   (is equal '((:ctrl #\\) (:ctrl #\]) (:ctrl #\^) (:ctrl #\_))
       (loop for code from 28 to 31 collect (tuatara.frontend:key-spec (tuatara.frontend.tui::char-key code)))))
 
-(define-test (windows repeating-sizes)
+(define-modal-test (windows repeating-sizes)
   ;; after C-x {, { alone narrows again, and again
   (dolist (case '(("C-x 3 C-x { { {" ((0 0 17 11) (17 0 23 11)))
                   ("C-x 3 C-x { . ." ((0 0 17 11) (17 0 23 11)))
@@ -467,13 +467,13 @@ PLACE-BUFFERS call, made after the defaults."
     (declare (ignore editor))
     (true (tuatara.frontend.fake:fake-frame-showing f "Repeat with {, }, ^, v"))))
 
-(define-test (windows repeat-again)
+(define-modal-test (windows repeat-again)
   ;; . repeats the last command as often as it is pressed
   (multiple-value-bind (f editor) (run-keys "j . . ." :text *twenty-lines*)
     (declare (ignore f))
     (is = (length (format nil "~{line ~a~%~}" '(1 2 3 4))) (session-point editor))))
 
-(define-test (windows one-window-from-a-support-buffer)
+(define-modal-test (windows one-window-from-a-support-buffer)
   ;; F in a support buffer, as in NORMAL state: its window alone on the screen
   (multiple-value-bind (f editor) (run-keys "C-x 2 C-h e F" :text *twenty-lines* :width 40 :height 20)
     (declare (ignore f))

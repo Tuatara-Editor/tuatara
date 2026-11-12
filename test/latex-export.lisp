@@ -133,10 +133,11 @@ item text
         for at = (search part text :start2 start)
         while at count t do (setf start (1+ at))))
 
-(defun stand-in-latex (directory name &key fail)
+(defun stand-in-latex (directory name &key fail also)
   "A program NAME in DIRECTORY that does as a LaTeX program does for an export:
 writes the file's PDF and log into its -output-directory, or with FAIL a log
-with an error and no PDF, ending 1. Returns its full name."
+with an error and no PDF, ending 1. ALSO, shell lines it runs first, with $out
+the output directory and $stem the file's name. Returns its full name."
   (let ((pdf (namestring (merge-pathnames "stand-in.pdf" directory))))
     (unless (probe-file pdf)
       (alexandria:write-byte-vector-into-file (pdf-octets '("Exported page one" "Exported page two")) pdf))
@@ -146,14 +147,15 @@ with an error and no PDF, ending 1. Returns its full name."
 for a in \"$@\"; do case \"$a\" in -output-directory=*) out=\"${a#-output-directory=}\";; *.tex) tex=\"$a\";; esac; done
 stem=$(basename \"$tex\" .tex)
 echo \"~a ran\" >> '~a'
-~:[cp '~a' \"$out/$stem.pdf\"; echo 'Output written' > \"$out/$stem.log\"; exit 0~;~*n=$(grep -n nonsense \"$tex\" | head -1 | cut -d: -f1); printf './%s.tex:%s: Undefined control sequence.\\nl.%s Some \\\\nonsense\\n' \"$stem\" \"${n:-1}\" \"${n:-1}\" > \"$out/$stem.log\"; exit 1~]
+~@[~a~%~]~:[cp '~a' \"$out/$stem.pdf\"; echo 'Output written' > \"$out/$stem.log\"; exit 0~;~*n=$(grep -n nonsense \"$tex\" | head -1 | cut -d: -f1); printf './%s.tex:%s: Undefined control sequence.\\nl.%s Some \\\\nonsense\\n' \"$stem\" \"${n:-1}\" \"${n:-1}\" > \"$out/$stem.log\"; exit 1~]
 "
-             name (namestring (merge-pathnames "ran.txt" directory)) fail pdf))))
+             name (namestring (merge-pathnames "ran.txt" directory)) also fail pdf))))
 
 (defun export-session (file steps &key (width 120) (height 30) cell-pixels)
   "Visit FILE in an editor session and take STEPS in turn, each keys to type
 or a function to call, the next once the exports in the background have
-ended and the PDFs' views are drawn. Returns the frontend and the editor."
+ended and the PDFs' views are drawn and done with their other work. Returns
+the frontend and the editor."
   (let ((f (tuatara.frontend.fake:make-fake-frontend :width width :height height :cell-pixels cell-pixels)))
     ;; M-x lists the commands used lately first: none, as for RUN-KEYS
     (setf tuatara.defaults::*command-history* '())
@@ -164,7 +166,8 @@ ended and the PDFs' views are drawn. Returns the frontend and the editor."
                                        (and view
                                             (or (tuatara.defaults::pdf-view-job view)
                                                 (tuatara.defaults::pdf-view-text-job view)))))
-                         tuatara.defaults::*pdf-views*)))
+                         tuatara.defaults::*pdf-views*)
+                   (some #'tuatara.defaults::pdf-view-task-p tuatara.runtime:*jobs*)))
              (take (steps start)
                (cond ((and (busy) (< (- (get-internal-real-time) start) (* 30 internal-time-units-per-second)))
                       (sleep 0.02)
@@ -296,7 +299,7 @@ is not offered by M-x either; NIL when it runs there."
             (true view)
             (true (tuatara.frontend.fake:fake-frame-showing f "Page 1 of 3"))))))))
 
-(define-test (latex-export not-exported)
+(define-modal-test (latex-export not-exported)
   (with-test-directory (dir)
     (let ((tuatara-user:*latex-engines* (list (stand-in-latex dir "xelatex"))))
       ;; a file that is neither Org nor LaTeX
@@ -324,7 +327,7 @@ is not offered by M-x either; NIL when it runs there."
           (true (search "x" (alexandria:read-file-into-string file) :start2 20))
           (true (probe-file (merge-pathnames "paper.pdf" dir))))))))
 
-(define-test (latex-export tex-live-folders)
+(define-test (latex-export tex-live-directories)
   (with-test-directory (dir)
     ;; a release of TeX Live the PATH does not have: the newest one with the program is used
     (let* ((root (namestring (merge-pathnames "texlive/" dir)))
@@ -415,7 +418,7 @@ is not offered by M-x either; NIL when it runs there."
                                            (tuatara.defaults::org-latex-document (format nil "Text~%")
                                                                                  :file file
                                                                                  :enhanced t)))
-               ;; by path: from the note's folder, or ~
+               ;; by path: from the note's directory, or ~
                (ensure-directories-exist (merge-pathnames "templates/" dir))
                (alexandria:write-string-into-file "FORENSIC {{{reference}}} {{{body}}}"
                                                   (merge-pathnames "templates/forensic.tex" dir))
@@ -709,7 +712,7 @@ is not offered by M-x either; NIL when it runs there."
       ;; the export as Org makes it: a drawing is a link, as Org has it
       (false (search "latex/pictures/" (tuatara.defaults::org-latex-document text :file file))))))
 
-(define-test (latex-export part-alone)
+(define-modal-test (latex-export part-alone)
   (with-test-directory (dir)
     (let ((file (merge-pathnames "notes.org" dir))
           (tuatara-user:*latex-engines* (list "no-such-latex-program")))
@@ -871,7 +874,7 @@ is not offered by M-x either; NIL when it runs there."
     (true (find-if (lambda (n) (search "Line 3, an :EXPORT: drawer: colour is no setting" n)) notes))
     (true (find-if (lambda (n) (search "widths does not apply to list" n)) notes))))
 
-(define-test (latex-export export-drawer-written)
+(define-modal-test (latex-export export-drawer-written)
   ;; M-x org-insert-export-drawer: the settings for what point is on, and Org's own exports told to leave it out
   (flet ((after (keys text)
            (multiple-value-bind (f editor)
@@ -972,12 +975,12 @@ is not offered by M-x either; NIL when it runs there."
         (false (search "Bo Raglan"
                        (docx-text (alexandria:read-file-into-byte-vector (merge-pathnames "survey.docx" dir)))))))))
 
-(defun write-docx-template (folder document &key (header nil) title-page size)
-  "Write a Word template, unpacked, into FOLDER: DOCUMENT its word/document.xml
+(defun write-docx-template (directory document &key (header nil) title-page size)
+  "Write a Word template, unpacked, into DIRECTORY: DOCUMENT its word/document.xml
 body (paragraphs and tables), HEADER, when given, a header's paragraphs, SIZE
 its text's size in half points, when given."
   (flet ((put (name text)
-           (let ((path (uiop:parse-native-namestring (concatenate 'string (namestring folder) name))))
+           (let ((path (uiop:parse-native-namestring (concatenate 'string (namestring directory) name))))
              (ensure-directories-exist path)
              (alexandria:write-string-into-file text path :if-exists :supersede))))
     (let ((ns "xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\" xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\""))
@@ -1396,9 +1399,9 @@ its text's size in half points, when given."
     (false (search "John" all))
     (true (search "Interview [redacted]" all) "~a" (subseq all 0 (min 3000 (length all))))))
 
-(define-test (latex-export export-file-name-elsewhere)
+(define-modal-test (latex-export export-file-name-elsewhere)
   ;; #+EXPORT_FILE_NAME keeps the export's own ending, and writing over a file outside the note's
-  ;; folder is asked first: no leaves it as it was, yes writes it
+  ;; directory is asked first: no leaves it as it was, yes writes it
   (is string= "/tmp/x.tex"
       (tuatara.defaults::org-export-file-name (format nil "#+export_file_name: /tmp/x.conf~%") "/tmp/n.org"))
   (with-test-directory (dir)
@@ -1413,7 +1416,7 @@ its text's size in half points, when given."
         (is string= "the real report" (alexandria:read-file-into-string other)))
       (export-session file (list (export-command "org-export-docx") "y e s RET"))
       (false (string= "the real report" (alexandria:read-file-into-string other :external-format :latin-1))))
-    ;; a new file outside the folder is asked about too; inside a folder of the note's, not
+    ;; a new file outside the directory is asked about too; inside a directory of the note's, not
     (let ((file (merge-pathnames "notes/new.org" dir)) (made (merge-pathnames "elsewhere/new.docx" dir)))
       (ensure-directories-exist made)
       (alexandria:write-string-into-file (format nil "#+export_file_name: ../elsewhere/new~%Text.~%") file)
@@ -1435,9 +1438,9 @@ its text's size in half points, when given."
                                :width (width-for dir))))
         (true (tuatara.frontend.fake:fake-frame-showing f "writes "))
         (false (probe-file made))))
-    ;; in a folder of the note's that is one of your own (templates, logos, trusted): asked
+    ;; in a directory of the note's that is one of your own (templates, logos, trusted): asked
     (let* ((file (merge-pathnames "notes/mine.org" dir)) (made (merge-pathnames "notes/setup/mine.docx" dir))
-           (tuatara-user:*export-trusted-folders* (list (namestring (merge-pathnames "notes/setup/" dir)))))
+           (tuatara-user:*export-trusted-directories* (list (namestring (merge-pathnames "notes/setup/" dir)))))
       (ensure-directories-exist made)
       (alexandria:write-string-into-file (format nil "#+export_file_name: setup/mine~%Text.~%") file)
       (let ((f (export-session file (list (export-command "org-export-docx") "n o RET") :width 300)))
@@ -1532,35 +1535,35 @@ its text's size in half points, when given."
                                                      :enhanced t)))
     (true (search "A. Writer" latex))))
 
-(define-test (latex-export files-from-the-note-folder)
-  ;; setup files and pictures come from the note's folder and those in it, or from
-  ;; *export-trusted-folders*; one elsewhere, a link leading out too, is left out and said
+(define-test (latex-export files-from-the-note-directory)
+  ;; setup files and pictures come from the note's directory and those in it, or from
+  ;; *export-trusted-directories*; one elsewhere, a link leading out too, is left out and said
   (with-test-directory (dir)
-    (let ((note-folder (merge-pathnames "survey/" dir))
+    (let ((note-directory (merge-pathnames "survey/" dir))
           (outside (merge-pathnames "private/" dir)))
-      (ensure-directories-exist (merge-pathnames "sub/" note-folder))
+      (ensure-directories-exist (merge-pathnames "sub/" note-directory))
       (ensure-directories-exist outside)
-      (dolist (folder (list (merge-pathnames "sub/" note-folder) outside))
+      (dolist (directory (list (merge-pathnames "sub/" note-directory) outside))
         (alexandria:write-string-into-file (format nil
                                                    "#+latex_header: \\usepackage{~amark}~%"
-                                                   (if (eq folder outside) "outside" "inside"))
-                                           (merge-pathnames "setup.org" folder))
+                                                   (if (eq directory outside) "outside" "inside"))
+                                           (merge-pathnames "setup.org" directory))
         (alexandria:write-byte-vector-into-file (coerce (png-octets 2 2) '(vector (unsigned-byte 8)))
-                                                (merge-pathnames "pic.png" folder)))
+                                                (merge-pathnames "pic.png" directory)))
       (sb-posix:symlink (namestring (merge-pathnames "pic.png" outside))
-                        (namestring (merge-pathnames "link.png" note-folder)))
-      (sb-posix:symlink (namestring outside) (namestring (merge-pathnames "linked" note-folder)))
-      ;; a .. or a folder that is a link, leading out, is not in the note's folder (clock tables and archives ask so too)
-      (let ((case (namestring note-folder)))
+                        (namestring (merge-pathnames "link.png" note-directory)))
+      (sb-posix:symlink (namestring outside) (namestring (merge-pathnames "linked" note-directory)))
+      ;; a .. or a directory that is a link, leading out, is not in the note's directory (clock tables and archives ask so too)
+      (let ((case (namestring note-directory)))
         (true (tuatara.defaults::org-path-beside-p (concatenate 'string case "sub/setup.org") case))
         (true (tuatara.defaults::org-path-beside-p (concatenate 'string case "sub/not-there.org") case))
         (false (tuatara.defaults::org-path-beside-p (concatenate 'string case "../private/setup.org") case))
         (false (tuatara.defaults::org-path-beside-p (concatenate 'string case "sub/../../private/setup.org") case))
         (false (tuatara.defaults::org-path-beside-p (concatenate 'string case "linked/setup.org") case))
         (false (tuatara.defaults::org-path-beside-p (concatenate 'string case "linked/not-there.org") case)))
-      (let ((file (namestring (merge-pathnames "note.org" note-folder)))
+      (let ((file (namestring (merge-pathnames "note.org" note-directory)))
             (text (format nil "#+setupfile: sub/setup.org~%#+setupfile: ../private/setup.org~%~%[[file:sub/pic.png]]~%~%[[file:../private/pic.png]]~%~%[[file:link.png]]~%")))
-        (let ((tuatara-user:*export-trusted-folders* '()))
+        (let ((tuatara-user:*export-trusted-directories* '()))
           (multiple-value-bind (latex named lines missing notes) (tuatara.defaults::org-latex-document text :file file)
             (declare (ignore named lines missing))
             (true (search "insidemark" latex))
@@ -1570,22 +1573,22 @@ its text's size in half points, when given."
             (false (cl-ppcre:scan "includegraphics\\[[^]]*\\]\\{[^}]*link\\.png\\}" latex))
             (true (search "\\fbox{\\texttt{link.png}}" latex))
             (is = 1 (count-matches "\\includegraphics" latex))
-            (is = 3 (count-if (lambda (n) (search "outside the note's folder" n)) notes) "~s" notes))
+            (is = 3 (count-if (lambda (n) (search "outside the note's directory" n)) notes) "~s" notes))
           (multiple-value-bind (octets named notes) (tuatara.defaults::org-docx-document text :file file)
             (declare (ignore named))
             (is = 1 (count-if (lambda (e) (search "media/" (getf e :name)))
                               (tuatara.defaults::zip-entries (coerce octets '(simple-array (unsigned-byte 8) (*))))))
-            (is = 3 (count-if (lambda (n) (search "outside the note's folder" n)) notes) "~s" notes)))
-        ;; a folder trusted: taken in from there too
-        (let ((tuatara-user:*export-trusted-folders* (list (namestring outside))))
+            (is = 3 (count-if (lambda (n) (search "outside the note's directory" n)) notes) "~s" notes)))
+        ;; a directory trusted: taken in from there too
+        (let ((tuatara-user:*export-trusted-directories* (list (namestring outside))))
           (multiple-value-bind (latex named lines missing notes) (tuatara.defaults::org-latex-document text :file file)
             (declare (ignore named lines missing))
             (true (search "outsidemark" latex))
             (true (search "private/pic.png}" latex))
-            (false (find-if (lambda (n) (search "outside the note's folder" n)) notes))))))))
+            (false (find-if (lambda (n) (search "outside the note's directory" n)) notes))))))))
 
-(define-test (latex-export templates-from-the-note-folder)
-  ;; a template named by its path is taken from the note's folder, not from elsewhere
+(define-test (latex-export templates-from-the-note-directory)
+  ;; a template named by its path is taken from the note's directory, not from elsewhere
   (with-test-directory (dir)
     (let ((notes (namestring (merge-pathnames "notes/" dir)))
           (inside (merge-pathnames "notes/mine.tex" dir))
@@ -1596,8 +1599,18 @@ its text's size in half points, when given."
       (alexandria:write-string-into-file "outside template" outside)
       (is string= "inside template" (tuatara.defaults::latex-template-for "./mine" notes))
       (fail (tuatara.defaults::latex-template-for "../elsewhere/theirs" notes))
-      (let ((tuatara-user:*export-trusted-folders* (list (namestring (merge-pathnames "elsewhere/" dir)))))
-        (is string= "outside template" (tuatara.defaults::latex-template-for "../elsewhere/theirs" notes))))))
+      (let ((tuatara-user:*export-trusted-directories* (list (namestring (merge-pathnames "elsewhere/" dir)))))
+        (is string= "outside template" (tuatara.defaults::latex-template-for "../elsewhere/theirs" notes)))
+      ;; your own templates' directory, named by its full path, and a link out of the note's directory
+      (let ((own (concatenate 'string (tuatara.defaults::latex-templates-directory) "tuatara-test-own.tex")))
+        (ensure-directories-exist own)
+        (unwind-protect
+             (progn
+               (alexandria:write-string-into-file "own template" own :if-exists :supersede)
+               (is string= "own template" (tuatara.defaults::latex-template-for own notes)))
+          (delete-file own)))
+      (sb-posix:symlink (namestring outside) (namestring (merge-pathnames "notes/link.tex" dir)))
+      (fail (tuatara.defaults::latex-template-for "./link" notes)))))
 
 (define-test (latex-export unconfined-asked-first)
   ;; with no sandbox, the export asks before LaTeX runs with your rights: n runs nothing, y runs it and says so
@@ -1620,16 +1633,16 @@ its text's size in half points, when given."
         (false (tuatara.frontend.fake:fake-frame-showing f "would run without the sandbox"))))))
 
 (define-test (latex-export engine-shut-in)
-  ;; LaTeX's own Lua, run by lualatex for a document, reads only the document's folder and TeX's own,
+  ;; LaTeX's own Lua, run by lualatex for a document, reads only the document's directory and TeX's own,
   ;; writes nowhere in it, and the PDF is made all the same; without a sandbox it runs as before, and that is said
   (let ((tuatara-user:*latex-engines* '("lualatex")))
     (when (and (tuatara.export::latex-engines-found) (eq :ready (tuatara.io:sandbox-status)))
       (with-test-directory (dir)
-        (let* ((folder (merge-pathnames "survey/" dir))
+        (let* ((directory (merge-pathnames "survey/" dir))
                (home (merge-pathnames "home/" dir))
                (private (namestring (merge-pathnames ".bashrc" home)))
-               (tex (namestring (merge-pathnames "probe.tex" folder))))
-          (ensure-directories-exist folder)
+               (tex (namestring (merge-pathnames "probe.tex" directory))))
+          (ensure-directories-exist directory)
           (ensure-directories-exist home)
           (alexandria:write-string-into-file "private words" private)
           (alexandria:write-string-into-file
@@ -1646,7 +1659,7 @@ if g then texio.write_nl('PROBE-TEXT:' .. g:read('*l')) g:close() end
 \\IfFileExists{~a}{\\typeout{PROBE-TEX-READ:true}}{\\typeout{PROBE-TEX-READ:false}}
 Shut in.
 \\end{document}
-" (namestring folder) private private)
+" (namestring directory) private private)
            tex)
           (flet ((said ()
                    (alexandria:read-file-into-string
@@ -1654,8 +1667,8 @@ Shut in.
             (let ((f (export-session tex (export-command "export-latex-compile-pdf") :width 200)))
               (true (tuatara.frontend.fake:fake-frame-showing f "probe.pdf (lualatex)"))
               (false (tuatara.frontend.fake:fake-frame-showing f "without the sandbox")))
-            (true (probe-file (merge-pathnames "probe.pdf" folder)))
-            (false (probe-file (merge-pathnames "written.txt" folder)))
+            (true (probe-file (merge-pathnames "probe.pdf" directory)))
+            (false (probe-file (merge-pathnames "written.txt" directory)))
             (let ((log (said)))
               (true (search "PROBE-WRITE:false" log) "~a" log)
               (true (search "PROBE-READ:false" log) "~a" log)
@@ -1663,16 +1676,16 @@ Shut in.
               (false (search "private words" log)))
             ;; no sandbox here: asked first; refused, nothing is run; said yes to, made, said, and the
             ;; file outside read, as LaTeX alone allows
-            (delete-file (merge-pathnames "probe.pdf" folder))
+            (delete-file (merge-pathnames "probe.pdf" directory))
             (let ((tuatara-user:*sandbox* nil))
               (let ((f (export-session tex (list (export-command "export-latex-compile-pdf") "n RET") :width 200)))
                 (true (tuatara.frontend.fake:fake-frame-showing f "LaTeX would run without the sandbox (turned off"))
                 (true (tuatara.frontend.fake:fake-frame-showing f "Not exported: LaTeX runs only shut in the sandbox unless you say yes")))
-              (false (probe-file (merge-pathnames "probe.pdf" folder)))
+              (false (probe-file (merge-pathnames "probe.pdf" directory)))
               (let ((f (export-session tex (list (export-command "export-latex-compile-pdf") "y RET") :width 200)))
                 (true (tuatara.frontend.fake:fake-frame-showing f "LaTeX ran without the sandbox (turned off"))))
-            (true (probe-file (merge-pathnames "probe.pdf" folder)))
-            (false (probe-file (merge-pathnames "written.txt" folder)))
+            (true (probe-file (merge-pathnames "probe.pdf" directory)))
+            (false (probe-file (merge-pathnames "written.txt" directory)))
             (true (search "PROBE-TEXT:private words" (said)))
             (is eq :ready (tuatara.io:sandbox-status))))))))
 
@@ -1683,14 +1696,14 @@ Shut in.
   "A PNG picture of one pixel, for the tests.")
 
 (define-test (latex-export pictures-from-elsewhere)
-  ;; a picture the document includes from a folder it does not see: shown to LaTeX, that file alone, read
+  ;; a picture the document includes from a directory it does not see: shown to LaTeX, that file alone, read
   ;; only, once its contents say it is a picture; a file named as one that is not, never
   (with-test-directory (dir)
     (let* ((elsewhere (ensure-directories-exist (merge-pathnames "Pictures/Misc/" dir)))
            (logo (namestring (merge-pathnames "logo.png" elsewhere)))
            (fake (namestring (merge-pathnames "secret.png" elsewhere)))
-           (folder (ensure-directories-exist (merge-pathnames "notes/" dir)))
-           (tex (namestring (merge-pathnames "report.tex" folder))))
+           (directory (ensure-directories-exist (merge-pathnames "notes/" dir)))
+           (tex (namestring (merge-pathnames "report.tex" directory))))
       (alexandria:write-byte-vector-into-file *one-pixel-png* logo)
       (alexandria:write-string-into-file "private words" fake)
       (alexandria:write-string-into-file
@@ -1708,54 +1721,54 @@ Shut in.
           (true (member logo directories :test #'string=))
           (false (member fake directories :test #'string=))
           (false (member (string-right-trim "/" (namestring elsewhere)) directories :test #'string=))))
-      ;; a LaTeX file exported as it is: its pictures from elsewhere only when it stands in one's own folders
+      ;; a LaTeX file exported as it is: its pictures from elsewhere only when it stands in one's own directories
       (let ((job (tuatara.export::make-pdf-export nil tex :latex :file nil nil nil)))
         (destructuring-bind (&key directories &allow-other-keys)
             (tuatara.export::latex-sandbox-places job tex (stand-in-latex dir "xelatex") "/build/")
           (false (member logo directories :test #'string=)))
-        (let ((tuatara-user:*export-trusted-folders* (list (namestring folder))))
+        (let ((tuatara-user:*export-trusted-directories* (list (namestring directory))))
           (destructuring-bind (&key directories &allow-other-keys)
               (tuatara.export::latex-sandbox-places job tex (stand-in-latex dir "xelatex") "/build/")
             (true (member logo directories :test #'string=)))))
       ;; made into a PDF by a LaTeX program shut in, where there is one
       (let ((tuatara-user:*latex-engines* '("lualatex"))
-            (tuatara-user:*export-trusted-folders* (list (namestring folder))))
+            (tuatara-user:*export-trusted-directories* (list (namestring directory))))
         (when (and (tuatara.export::latex-engines-found) (eq :ready (tuatara.io:sandbox-status)))
           (alexandria:write-string-into-file
            (format nil "\\documentclass{article}~%\\usepackage{graphicx}~%\\begin{document}~%\\includegraphics[width=1cm]{~a}~%\\end{document}~%" logo)
            tex :if-exists :supersede)
           (let ((f (export-session tex (export-command "export-latex-compile-pdf") :width 200)))
             (true (tuatara.frontend.fake:fake-frame-showing f "report.pdf (lualatex)")))
-          (true (probe-file (merge-pathnames "report.pdf" folder))))))))
+          (true (probe-file (merge-pathnames "report.pdf" directory))))))))
 
-(define-test (latex-export engine-shown-its-folders)
-  ;; what a LaTeX program shut in is shown: the document's folder, the trusted ones, TeX's own and
+(define-test (latex-export engine-shown-its-directories)
+  ;; what a LaTeX program shut in is shown: the document's directory, the trusted ones, TeX's own and
   ;; your fonts, read only; its working directory to write in; TeX's own cache written apart
   (with-test-directory (dir)
-    (let* ((folder (namestring (ensure-directories-exist (merge-pathnames "survey/" dir))))
+    (let* ((directory (namestring (ensure-directories-exist (merge-pathnames "survey/" dir))))
            (engine (stand-in-latex dir "xelatex"))
-           (tex (concatenate 'string folder "notes.tex"))
+           (tex (concatenate 'string directory "notes.tex"))
            (job (tuatara.export::make-pdf-export nil tex :latex :file nil nil nil))
-           (tuatara-user:*export-trusted-folders* (list (namestring dir))))
+           (tuatara-user:*export-trusted-directories* (list (namestring dir))))
       (destructuring-bind (&key directories writable overlays)
           (tuatara.export::latex-sandbox-places job tex engine "/build/")
-        (true (member folder directories :test #'string=))
+        (true (member directory directories :test #'string=))
         (true (some (lambda (d)
                       (string= (string-right-trim "/" d) (string-right-trim "/" (namestring dir)))) directories))
         (is equal '("/build/") writable)
         (is equal '() overlays)
-        ;; the pictures an export draws are never shown as a folder
+        ;; the pictures an export draws are never shown as a directory
         (false (find-if (lambda (d) (search "latex/pictures" d)) directories)))
-      ;; never the root, the home folder nor a folder holding it, whole: a note there shows only its LaTeX
+      ;; never the root, the home directory nor a directory holding it, whole: a note there shows only its LaTeX
       ;; and the files its pictures are drawn from (nothing is written: the paths are only worked out)
       (let* ((home (tuatara.export::latex-home)))
         (false (tuatara.export::shown-whole-p "/"))
         (false (tuatara.export::shown-whole-p home))
         (false (tuatara.export::shown-whole-p (tuatara.io:parent-path home)))
-        (true (tuatara.export::shown-whole-p folder))
+        (true (tuatara.export::shown-whole-p directory))
         (let* ((given (concatenate 'string home "/given.tex"))
                (job (tuatara.export::make-pdf-export nil (concatenate 'string home "/given.org") :org :file nil nil nil))
-               (picture (concatenate 'string folder "drawn.png")))
+               (picture (concatenate 'string directory "drawn.png")))
           (setf (tuatara.export::pdf-export-pictures job) (list picture))
           (let ((directories (getf (tuatara.export::latex-sandbox-places job given engine "/build/") :directories)))
             (true (member given directories :test #'string=))
@@ -1766,7 +1779,7 @@ Shut in.
                                       :test #'string=))
                             directories)
                    "~s" directories))))
-      ;; the folders texmf.cnf is looked for in (TEXMFCNF) shown too: a TeX Live in a hidden folder of
+      ;; the directories texmf.cnf is looked for in (TEXMFCNF) shown too: a TeX Live in a hidden directory of
       ;; home, its settings found there, and the TEXMFCNF your shell may set
       (let* ((bin (namestring (ensure-directories-exist (merge-pathnames "texlive/bin/" dir))))
              (tex-engine (stand-in-latex bin "xelatex"))
@@ -1783,7 +1796,7 @@ Shut in.
           (false (member "" trees :test #'string=))
           (true (member (format nil "~atexlive/texmf-dist" (namestring dir)) trees :test #'string=))
           (is string= (format nil "~atexlive/texmf-var" (namestring dir)) var)))
-      ;; TeX Live's folders as kpsewhich beside it tells them; its cache seen, written apart
+      ;; TeX Live's directories as kpsewhich beside it tells them; its cache seen, written apart
       (let ((real (cdr (first (let ((tuatara-user:*latex-engines* '("lualatex")))
                                 (tuatara.export::latex-engines-found))))))
         (when (and real (tuatara.io:find-program (concatenate 'string (tuatara.io:parent-path real) "kpsewhich")))
@@ -1894,8 +1907,8 @@ Shut in.
       (true (search "<w:pageBreakBefore/>" docx :start2 paragraph :end2 at)))
     (is = 1 (count-matches "<w:pageBreakBefore/>" docx))))
 
-(define-test (latex-export program-by-its-real-folder)
-  ;; a LaTeX program found through a link to its folder is run from the real folder, by the name it was found by
+(define-test (latex-export program-by-its-real-directory)
+  ;; a LaTeX program found through a link to its directory is run from the real directory, by the name it was found by
   (with-test-directory (dir)
     (let* ((real (namestring (merge-pathnames "real/bin/" dir)))
            (linked (namestring (merge-pathnames "linked" dir))))
@@ -1938,8 +1951,8 @@ Shut in.
     (false (cl-ppcre:scan "hyperref\\[[^]]*\\]\\{the hidden part\\}" latex))
     (true (search "\\ref{" latex))))
 
-(define-test (latex-export docx-makes-no-folders)
-  ;; a Word export, as a LaTeX one, never makes the folder #+export_file_name names: it says so
+(define-test (latex-export docx-makes-no-directories)
+  ;; a Word export, as a LaTeX one, never makes the directory #+export_file_name names: it says so
   (with-test-directory (dir)
     (let ((file (merge-pathnames "survey.org" dir)))
       (alexandria:write-string-into-file (format nil "#+export_file_name: missing/survey~%Text.~%") file)
@@ -1988,7 +2001,7 @@ Shut in.
 (define-test (latex-export templates-read-within-a-limit)
   ;; a template named by its path, LaTeX or Word, larger than the limit is refused rather than read whole
   (with-test-directory (dir)
-    (let ((folder (namestring dir)))
+    (let ((directory (namestring dir)))
       (with-open-file (out (merge-pathnames "big.tex" dir) :direction :output)
         (write-string (make-string 5000 :initial-element #\%) out))
       (ensure-directories-exist (merge-pathnames "big/word/" dir))
@@ -1996,10 +2009,11 @@ Shut in.
         (write-string (make-string 5000 :initial-element #\x) out))
       (let ((tuatara.defaults::*org-file-read-limit* 1000)
             (tuatara.defaults::*docx-largest-unpacked* 1000))
-        (fail (tuatara.defaults::latex-template-for "./big.tex" folder) 'tuatara.io:file-system-error)
-        (fail (tuatara.defaults::docx-read-folder (concatenate 'string folder "big/")) 'tuatara.io:file-system-error))
-      (is = 5000 (length (tuatara.defaults::latex-template-for "./big.tex" folder)))
-      (is = 1 (length (tuatara.defaults::docx-read-folder (concatenate 'string folder "big/")))))))
+        (fail (tuatara.defaults::latex-template-for "./big.tex" directory) 'tuatara.io:file-system-error)
+        (fail (tuatara.defaults::docx-read-directory (concatenate 'string directory "big/"))
+              'tuatara.io:file-system-error))
+      (is = 5000 (length (tuatara.defaults::latex-template-for "./big.tex" directory)))
+      (is = 1 (length (tuatara.defaults::docx-read-directory (concatenate 'string directory "big/")))))))
 
 (define-test (latex-export font-names-never-options)
   ;; a family a note or a template names, beginning with -, is given to fc-match as a name, never as an option
@@ -2018,23 +2032,23 @@ Shut in.
       (is equal "fc-match" (first call))
       (is equal '("--" "-V") (last call 2) "~s" call))))
 
-(define-test (latex-export word-template-named-within-its-folder)
-  ;; #+template: . or .. names no folder of the Word templates' folder, a template's name does
+(define-test (latex-export word-template-named-within-its-directory)
+  ;; #+template: . or .. names no directory of the Word templates' directory, a template's name does
   (with-test-directory (dir)
     (let ((templates (concatenate 'string (namestring dir) "docx-templates/")))
-      (dolist (folder (list (namestring dir) templates (concatenate 'string templates "report/")))
-        (ensure-directories-exist (concatenate 'string folder "word/"))
-        (with-open-file (out (concatenate 'string folder "word/document.xml") :direction :output)
+      (dolist (directory (list (namestring dir) templates (concatenate 'string templates "report/")))
+        (ensure-directories-exist (concatenate 'string directory "word/"))
+        (with-open-file (out (concatenate 'string directory "word/document.xml") :direction :output)
           (write-string "<w:document/>" out)))
       (sb-int:encapsulate 'tuatara.defaults::docx-templates-directory 'test (lambda (function) (declare (ignore function)) templates))
       (unwind-protect
-           (progn (false (tuatara.defaults::docx-template-folder ".." nil))
-                  (false (tuatara.defaults::docx-template-folder "." nil))
+           (progn (false (tuatara.defaults::docx-template-directory ".." nil))
+                  (false (tuatara.defaults::docx-template-directory "." nil))
                   (is equal (concatenate 'string templates "report/")
-                      (tuatara.defaults::docx-template-folder "report" nil)))
+                      (tuatara.defaults::docx-template-directory "report" nil)))
         (sb-int:unencapsulate 'tuatara.defaults::docx-templates-directory 'test)))))
 
-(define-test (latex-export export-drawer-written-crlf)
+(define-modal-test (latex-export export-drawer-written-crlf)
   ;; in a note whose lines end with CR LF: the option goes before the line's end, a new line ends as the others do
   (flet ((after (keys text)
            (session-text (nth-value 1 (run-keys-in-turns (list keys) :text text :width 160 :height 10 :crlf t
@@ -2260,7 +2274,7 @@ Shut in.
              (let ((condition (nth-value 1 (ignore-errors (funcall thunk)))))
                (true condition)
                (princ-to-string condition))))
-      (let ((text (words (lambda () (tuatara.export::check-export-folder "/nowhere-kiwi/x.pdf")))))
+      (let ((text (words (lambda () (tuatara.export::check-export-directory "/nowhere-kiwi/x.pdf")))))
         (false (search "kiwi" text) "~a" text)
         (true (search "#+export_file_name" text) "~a" text))
       (let ((text (words (lambda () (tuatara.defaults::latex-template-for "./kiwi-template" "/tmp/")))))
@@ -2303,8 +2317,9 @@ Shut in.
       (is equal '("loadhyph-de-1996.tex" "loadhyph-sv.tex") arguments)
       (is eq (tuatara.runtime:job-cancel tuatara.runtime:*job*) (getf keys :cancel)))))
 
-(define-test (latex-export tex-folders-asked-shut-in)
-  ;; kpsewhich is asked for TeX's folders shut in, shown TeX Live's own; with no sandbox, only the program's folder
+(define-test (latex-export tex-directories-asked-shut-in)
+  ;; kpsewhich is asked for TeX's directories shut in, shown TeX Live's own; with no sandbox, only the program's
+  ;; directory
   (with-test-directory (dir)
     (let* ((root (concatenate 'string (tuatara.io:native dir) "texlive/2025/"))
            (bin (concatenate 'string root "bin/x86_64-linux/"))
@@ -2313,7 +2328,7 @@ Shut in.
       (ensure-directories-exist bin)
       (dolist (name '("lualatex" "kpsewhich"))
         (put-program (concatenate 'string bin name) (format nil "#!/bin/sh~%exit 1~%")))
-      (sb-int:encapsulate 'tuatara.io:sandbox-run 'tex-folders-seen
+      (sb-int:encapsulate 'tuatara.io:sandbox-run 'tex-directories-seen
                           (lambda (function program arguments &rest keys)
                             (declare (ignore function))
                             (push (list program arguments keys) runs)
@@ -2322,7 +2337,7 @@ Shut in.
                                              (loop for variable in tuatara.export::*tex-tree-variables*
                                                    collect (format nil "~atexmf-~(~a~)" root variable))))
                                     outcome "")))
-      (sb-int:encapsulate 'tuatara.io:program-output 'tex-folders-seen
+      (sb-int:encapsulate 'tuatara.io:program-output 'tex-directories-seen
                           (lambda (function command &rest keys)
                             (push command unconfined) (apply function command keys)))
       (flet ((trees ()
@@ -2330,9 +2345,9 @@ Shut in.
                (multiple-value-list (tuatara.export::tex-trees engine))))
         (unwind-protect
              (progn
-               (destructuring-bind (folders var) (trees)
-                 (is string= (string-right-trim "/" bin) (first folders))
-                 (true (member (format nil "~atexmf-texmfdist" root) folders :test #'string=))
+               (destructuring-bind (directories var) (trees)
+                 (is string= (string-right-trim "/" bin) (first directories))
+                 (true (member (format nil "~atexmf-texmfdist" root) directories :test #'string=))
                  (is string= (format nil "~atexmf-texmfvar" root) var))
                (is equal '() unconfined)
                (destructuring-bind (program arguments keys) (first runs)
@@ -2342,8 +2357,8 @@ Shut in.
                        "~s" (getf keys :directories)))
                (setf outcome :unavailable)
                (is equal (list (list (string-right-trim "/" bin)) nil) (trees)))
-          (sb-int:unencapsulate 'tuatara.io:sandbox-run 'tex-folders-seen)
-          (sb-int:unencapsulate 'tuatara.io:program-output 'tex-folders-seen)
+          (sb-int:unencapsulate 'tuatara.io:sandbox-run 'tex-directories-seen)
+          (sb-int:unencapsulate 'tuatara.io:program-output 'tex-directories-seen)
           (remhash (list engine (sb-posix:getenv "HOME")) tuatara.export::*tex-trees*))))))
 
 (define-test (latex-export fallback-font-has-a-space)
@@ -2373,3 +2388,298 @@ Shut in.
           (tuatara.defaults::org-latex-read-options tuatara.defaults::*org-latex*)
           (quickly (lambda () (tuatara.defaults::org-latex-check-hidden openings openings nil)))
           (quickly (lambda () (tuatara.defaults::org-latex-check-hidden text text nil))))))))
+
+(defun stand-in-tex-helpers (directory &key (engine "xelatex") also)
+  "Stand-ins in DIRECTORY for a LaTeX program, ENGINE, and for biber, bibtex and
+makeindex, each saying it ran in runs.txt where it runs. A LaTeX run leaves a
+.bcf naming refs.bib for biber when the file says biblatex, an .aux naming
+refs.bib and the \bibliographystyle for bibtex when it says \bibliography, and
+an .idx for makeindex when it says makeindex; ALSO, shell lines it runs first.
+biber, given its .bcf by its full name (else it says so in runs.txt), copies
+refs.bib of the first directory of BIBINPUTS as the .bbl and counts its runs in
+$PAR_GLOBAL_TMPDIR/runs; when refs.bib holds the word broken it says an error
+at its line 3 in its .blg, as biber does, and ends 2. bibtex copies refs.bib
+as the .bbl. Returns the stand-in LaTeX program's full name."
+  (put-program (merge-pathnames "biber" directory)
+               "#!/bin/sh
+echo biber >> runs.txt
+bcf=\"$1\"
+case \"$bcf\" in /*) ;; *) echo \"biber given $bcf\" >> runs.txt;; esac
+[ -n \"$PAR_GLOBAL_TMPDIR\" ] && echo ran >> \"$PAR_GLOBAL_TMPDIR/runs\"
+stem=$(basename \"$bcf\" .bcf)
+bib=\"${BIBINPUTS%%:*}refs.bib\"
+if grep -q broken \"$bib\"; then
+  printf '[1] Utils.pm:1> ERROR - BibTeX subsystem: /tmp/biber_tmp_1/refs.bib_42.utf8, line 3, syntax error: found \"broken\"\\n' > \"$stem.blg\"
+  exit 2
+fi
+cat \"$bib\" > \"$stem.bbl\"
+echo 'INFO - done' > \"$stem.blg\"
+")
+  (put-program (merge-pathnames "bibtex" directory)
+               "#!/bin/sh
+echo bibtex >> runs.txt
+stem=$(basename \"$1\")
+cat \"${BIBINPUTS%%:*}refs.bib\" > \"$stem.bbl\"
+: > \"$stem.blg\"
+")
+  (put-program (merge-pathnames "makeindex" directory)
+               "#!/bin/sh
+echo makeindex >> runs.txt
+stem=$(basename \"$1\" .idx)
+echo '\\item kiwi' > \"$stem.ind\"
+: > \"$stem.ilg\"
+")
+  (stand-in-latex directory engine
+                  :also (format nil "~@[~a~%~]echo ~a >> runs.txt
+if grep -q biblatex \"$tex\"; then
+  printf '<bcf:datasource type=\"file\" datatype=\"bibtex\">refs.bib</bcf:datasource>\\n' > \"$out/$stem.bcf\"
+fi
+if grep -q 'bibliography{' \"$tex\"; then
+  printf '\\\\citation{kiwi}\\n\\\\bibdata{refs}\\n\\\\bibstyle{%s}\\n' \"$(sed -n 's/.*bibliographystyle{\\([^}]*\\)}.*/\\1/p' \"$tex\")\" > \"$out/$stem.aux\"
+fi
+if grep -q makeindex \"$tex\"; then
+  printf '\\\\indexentry{kiwi}{1}\\n' > \"$out/$stem.idx\"
+fi" also engine)))
+
+(defun helper-session (tex &key (width 400))
+  "Make a PDF of the LaTeX file TEX by M-x export-latex-compile-pdf in a session of its own; what the programs
+said they ran, in runs.txt of its working directory for xelatex, each a line, read and deleted, and the frontend."
+  (let ((runs (merge-pathnames "runs.txt" (tuatara.export::latex-build-directory tex "xelatex"))))
+    (when (probe-file runs) (delete-file runs))
+    (let ((f (export-session tex (export-command "export-latex-compile-pdf") :width width)))
+      (values (prog1 (and (probe-file runs) (uiop:read-file-lines runs))
+                (when (probe-file runs) (delete-file runs)))
+              f))))
+
+(defmacro with-helper-paper ((tex bin directory &key (engine "xelatex") also) &body body)
+  "Run BODY with TEX the full name of paper.tex in DIRECTORY, a new directory of a test directory, beside refs.bib,
+and *LATEX-ENGINES* the stand-in ENGINE with its programs in BIN (STAND-IN-TEX-HELPERS, with ALSO)."
+  `(with-test-directory (dir)
+     (let* ((,bin (merge-pathnames "bin/" dir))
+            (,directory (merge-pathnames "paper/" dir))
+            (,tex (namestring (merge-pathnames "paper.tex" ,directory))))
+       (declare (ignorable ,bin))
+       (ensure-directories-exist ,bin)
+       (ensure-directories-exist ,directory)
+       (alexandria:write-string-into-file (format nil "@book{kiwi,~%  title = {Kiwi},~%  year = 2020~%}~%")
+                                          (merge-pathnames "refs.bib" ,directory))
+       (let ((tuatara-user:*latex-engines* (list (stand-in-tex-helpers ,bin :engine ,engine :also ,also))))
+         ,@body))))
+
+(defun write-paper (tex &rest lines)
+  "Write LINES as the body of TEX, a LaTeX file, in place of what it held."
+  (alexandria:write-string-into-file
+   (format nil "\\documentclass{article}~%~{~a~%~}\\begin{document}~%\\cite{kiwi}~%\\end{document}~%" lines)
+   tex :if-exists :supersede))
+
+(define-test (latex-export bibliography-and-index-made)
+  ;; biber and makeindex run after LaTeX when it leaves them work, then LaTeX again; not again until
+  ;; what they read changes; biber's errors are in *LaTeX errors*, at the line of refs.bib M-g n shows
+  (with-helper-paper (tex bin directory)
+    (let ((bib (merge-pathnames "refs.bib" directory))
+          (build (tuatara.export::latex-build-directory tex "xelatex")))
+      (write-paper tex "\\usepackage{biblatex}" "\\makeindex")
+      (is equal '("xelatex" "biber" "makeindex" "xelatex") (helper-session tex))
+      (true (search "title = {Kiwi}" (alexandria:read-file-into-string (merge-pathnames "paper.bbl" build))))
+      ;; nothing they read has changed: LaTeX once
+      (is equal '("xelatex") (helper-session tex))
+      ;; the bibliography changed: biber again, and LaTeX after it
+      (alexandria:write-string-into-file (format nil "@book{kiwi,~%  title = {Kiwi birds},~%  year = 2021~%}~%") bib
+                                         :if-exists :supersede)
+      (is equal '("xelatex" "biber" "xelatex") (helper-session tex))
+      ;; biber unpacks itself once, in a directory of its own kept beside the working directory
+      (is = 2 (length (uiop:read-file-lines (concatenate 'string (string-right-trim "/" build) ".par/runs"))))
+      ;; biber failing: the PDF is made, and what it said is a list of places
+      (alexandria:write-string-into-file (format nil "@book{kiwi,~%  title = {Kiwi},~%  broken~%}~%") bib
+                                         :if-exists :supersede)
+      (multiple-value-bind (f editor)
+          (export-session tex (list (export-command "export-latex-compile-pdf") "M-g n") :width 400)
+        (true (tuatara.frontend.fake:fake-frame-showing f "biber failed: *LaTeX errors* has what it said"))
+        (let ((text (tuatara.buffer:buffer-string (tuatara.buffer:find-buffer "*LaTeX errors*"))))
+          (true (search "biber failed:" text))
+          (true (search "  refs.bib:3: BibTeX subsystem: refs.bib, line 3, syntax error" text) "~a" text))
+        (is string= "refs.bib" (current-name editor))
+        (is = 2 (tuatara.buffer:buffer-line-number (tuatara.buffer:find-buffer "refs.bib")
+                                                   (session-point editor))))
+      ;; a program not installed is said, the PDF made all the same
+      (delete-file (merge-pathnames "makeindex" bin))
+      (delete-file (merge-pathnames "paper.ind" build))
+      (unless (tuatara.io:find-program "makeindex")
+        (let ((directories tuatara.export::*tex-live-directories*))
+          (unwind-protect
+               (progn
+                 (setf tuatara.export::*tex-live-directories* '())
+                 (true (tuatara.frontend.fake:fake-frame-showing
+                        (nth-value 1 (helper-session tex)) "makeindex is not installed, so the index is not made")))
+            (setf tuatara.export::*tex-live-directories* directories)))))))
+
+(define-test (latex-export bibliography-way-changed)
+  ;; a document gone from biblatex to \bibliography has bibtex make its bibliography, not biber from a
+  ;; .bcf an earlier run left
+  (with-helper-paper (tex bin directory)
+    (write-paper tex "\\usepackage{biblatex}")
+    (is equal '("xelatex" "biber" "xelatex") (helper-session tex))
+    (alexandria:write-string-into-file (format nil "@misc{plain,~%}~%") (merge-pathnames "mine.bst" directory))
+    (write-paper tex "\\bibliographystyle{mine}" "\\bibliography{refs}")
+    (is equal '("xelatex" "bibtex" "xelatex") (helper-session tex))
+    (is equal '("xelatex") (helper-session tex))
+    ;; the style beside the document changed: bibtex again
+    (alexandria:write-string-into-file (format nil "@misc{changed,~%}~%") (merge-pathnames "mine.bst" directory)
+                                       :if-exists :supersede)
+    (is equal '("xelatex" "bibtex" "xelatex") (helper-session tex))))
+
+(define-test (latex-export bibliography-unknown-made-again)
+  ;; a style or bibliography that cannot be looked for (no kpsewhich here) has bibtex run on every export
+  (unless (tuatara.io:find-program "kpsewhich")
+    (with-helper-paper (tex bin directory)
+      (let ((directories tuatara.export::*tex-live-directories*))
+        (unwind-protect
+             (progn
+               (setf tuatara.export::*tex-live-directories* '())
+               (write-paper tex "\\bibliographystyle{plain}" "\\bibliography{refs}")
+               (is equal '("xelatex" "bibtex" "xelatex") (helper-session tex))
+               (is equal '("xelatex" "bibtex" "xelatex") (helper-session tex)))
+          (setf tuatara.export::*tex-live-directories* directories))))))
+
+(define-test (latex-export helper-after-the-last-run)
+  ;; a bibliography made after the last run LaTeX may have is taken in by one more
+  (with-helper-paper (tex bin directory)
+    (write-paper tex "\\usepackage{biblatex}" "\\makeindex")
+    (let ((tuatara.export::*latex-runs* 1))
+      (is equal '("xelatex" "biber" "makeindex" "xelatex") (helper-session tex)))))
+
+(define-test (latex-export helper-failures-said-once)
+  ;; biber failing in every try of a program that then fails, and with the next that makes the PDF: said
+  ;; once, from the try that made it
+  (with-helper-paper (tex bin directory :engine "xelatex-flaky" :also "[ -f \"$out/$stem.blg\" ] && exit 1")
+    (alexandria:write-string-into-file (format nil "@book{kiwi,~%  broken~%}~%") (merge-pathnames "refs.bib" directory)
+                                       :if-exists :supersede)
+    (write-paper tex "\\usepackage{biblatex}")
+    (let ((tuatara-user:*latex-engines* (append tuatara-user:*latex-engines* (list (stand-in-tex-helpers bin)))))
+      (let ((f (export-session tex (export-command "export-latex-compile-pdf") :width 400)))
+        (true (tuatara.frontend.fake:fake-frame-showing f "(xelatex; xelatex-flaky failed)"))
+        (true (tuatara.frontend.fake:fake-frame-showing f "; biber failed: *LaTeX errors* has what it said"))
+        (false (tuatara.frontend.fake:fake-frame-showing f "biber and biber")))
+      (is = 1 (count-matches "biber failed:"
+                             (tuatara.buffer:buffer-string (tuatara.buffer:find-buffer "*LaTeX errors*")))))))
+
+(define-test (latex-export biber-error-places)
+  ;; biber's errors name the copy it reads: taken back to the bibliography of that name it read last,
+  ;; in its own directory
+  (with-test-directory (dir)
+    (let ((directory (namestring dir))
+          (nested (namestring (merge-pathnames "bib/refs.bib" dir))))
+      (ensure-directories-exist nested)
+      (alexandria:write-string-into-file "@book{a,}" nested)
+      (alexandria:write-string-into-file "@book{b,}" (merge-pathnames "refs.bib" dir))
+      (let ((problems (tuatara.export::helper-problems
+                       "biber"
+                       (format nil "[1] Biber.pm:1> INFO - Found BibTeX data source '~a'~%~
+                                    [2] Utils.pm:1> ERROR - BibTeX subsystem: /tmp/biber_tmp_1/refs.bib_42.utf8, line 3, syntax error~%"
+                               nested)
+                       directory '())))
+        (is equal nested (getf (first problems) :path))
+        (is = 3 (getf (first problems) :line))))))
+
+(define-test (latex-export errors-as-places)
+  ;; *LaTeX errors* is the list M-g n and M-g p go through from anywhere, each error at its place
+  (with-test-directory (dir)
+    (let ((tuatara-user:*latex-engines* (list (stand-in-latex dir "xelatex-broken" :fail t)))
+          (file (merge-pathnames "broken.org" dir)))
+      (alexandria:write-string-into-file (format nil "#+title: Notes~%* One~%Text~%Some \\nonsense here~%") file)
+      (multiple-value-bind (f editor)
+          (export-session file (list (export-command "org-export-latex-pdf") "M-g n") :width 200)
+        (declare (ignore f))
+        (is string= "broken.org" (current-name editor))
+        (is = 3 (tuatara.buffer:buffer-line-number (tuatara.buffer:find-buffer "broken.org") (session-point editor)))
+        (true (typep tuatara.defaults::*places-in-force* 'tuatara.defaults::entry-places)))
+      (multiple-value-bind (f)
+          (export-session file (list (export-command "org-export-latex-pdf") "M-g n" "M-g n" "M-g p") :width 200)
+        (true (tuatara.frontend.fake:fake-frame-showing f "No more places in *LaTeX errors*"))
+        (true (tuatara.frontend.fake:fake-frame-showing f "No place before this one in *LaTeX errors*"))))))
+
+(define-test (latex-export org-citations)
+  ;; #+cite_export: biblatex, natbib and bibtex write citations, the packages and the bibliography as Org does
+  (with-test-directory (dir)
+    (let ((note (namestring (merge-pathnames "note.org" dir)))
+          (bib (namestring (merge-pathnames "refs.bib" dir))))
+      (flet ((latex (way &optional (citations "As [cite:@kiwi] and [cite/t:see @kiwi p. 4] and [cite:@kiwi;@weka] say."))
+               (org-latex-of (format nil "#+cite_export: ~a~%#+bibliography: refs.bib~%* One~%~a~%~%#+print_bibliography:~%"
+                                     way citations)
+                             :file note)))
+        (let ((text (latex "biblatex authoryear")))
+          (true (search "\\usepackage[style=authoryear]{biblatex}" text))
+          (true (search (format nil "\\addbibresource{~a}" bib) text) "~a" text)
+          (true (search "As \\autocite{kiwi} and \\textcite[see][p. 4]{kiwi} and \\autocite{kiwi,weka} say." text)
+                "~a" text)
+          (true (search "\\printbibliography" text)))
+        (true (search "\\usepackage[bibstyle=authoryear,citestyle=numeric]{biblatex}" (latex "biblatex authoryear/numeric")))
+        (true (search "\\usepackage[bibstyle=authoryear,citestyle=numeric]{biblatex}" (latex "biblatex authoryear numeric")))
+        ;; the global notes and those of every reference; the caps variant
+        (let ((text (latex "biblatex" "[cite:see;first @kiwi p. 1;@weka p. 2;and more] [cite/t/c:@kiwi] [cite//c:@kiwi]")))
+          (true (search "\\autocites(see)(and more)[first][p. 1]{kiwi}[p. 2]{weka}" text) "~a" text)
+          (true (search "\\Textcite{kiwi} \\Autocite{kiwi}" text) "~a" text))
+        (let ((text (latex "natbib")))
+          (true (search "\\usepackage{natbib}" text))
+          (true (search "\\citep{kiwi}" text))
+          (true (search "\\citet[see][p. 4]{kiwi}" text))
+          (true (search (format nil "\\bibliographystyle{plainnat}~%\\bibliography{~a}"
+                                (subseq bib 0 (- (length bib) 4)))
+                        text)))
+        (true (search "\\Citet{kiwi} \\citep[see][more]{kiwi,weka}"
+                      (latex "natbib" "[cite/t/c:@kiwi] [cite:see;@kiwi;@weka;more]")))
+        (let ((text (latex "bibtex alpha")))
+          (false (search "biblatex" text))
+          (true (search "\\cite{kiwi}" text))
+          (true (search "\\cite[p. 4]{kiwi}" text))
+          (true (search "\\bibliographystyle{alpha}" text)))
+        ;; no way named: as written, as before
+        (true (search "[cite:@kiwi]" (org-latex-of (format nil "* One~%As [cite:@kiwi] says.~%"))))))))
+
+(defun real-tex-helper (name)
+  "The program NAME of the TeX Live xelatex belongs to here, when xelatex, it and the sandbox are all here
+and it runs (biber and bibtex asked their version: a biber built for other libraries does not); else NIL."
+  (let* ((engine (cdr (assoc "xelatex" (let ((tuatara-user:*latex-engines* '("xelatex")))
+                                           (tuatara.export::latex-engines-found))
+                             :test #'string=)))
+         (path (and engine (eq :ready (tuatara.io:sandbox-status)) (tuatara.export::tex-program-beside engine name))))
+    (and path
+         (or (string= name "makeindex")
+             (zerop (nth-value 2 (uiop:run-program (list path "--version") :ignore-error-status t
+                                                                             :output nil :error-output nil))))
+         path)))
+
+(define-test (latex-export real-bibliography-and-index)
+  ;; with TeX Live here: biber, bibtex and makeindex really run shut in, read the document's directory, and
+  ;; make what the PDF shows; skipped, and said, where they are not
+  (dolist (case '(("biber" "\\usepackage[backend=biber]{biblatex}~%\\addbibresource{refs.bib}" "\\printbibliography")
+                  ("bibtex" "" "\\bibliographystyle{plain}~%\\bibliography{refs}")
+                  ("makeindex" "\\usepackage{makeidx}~%\\makeindex" "\\printindex")))
+    (destructuring-bind (program preamble end) case
+      (if (null (real-tex-helper program))
+          (skip "this program, xelatex or the sandbox is not here" (true nil))
+          (with-test-directory (dir)
+            (let* ((tex (namestring (merge-pathnames "paper.tex" dir)))
+                   (tuatara-user:*latex-engines* '("xelatex"))
+                   (build (tuatara.export::latex-build-directory tex "xelatex")))
+              (alexandria:write-string-into-file
+               (format nil "@book{kiwi,~%  author = {Ann Weka},~%  title = {Kiwi Birds of the South},~%  year = 2020~%}~%")
+               (merge-pathnames "refs.bib" dir))
+              (alexandria:write-string-into-file
+               (format nil "\\documentclass{article}~%~@?~%\\begin{document}~%Birds \\cite{kiwi}\\index{kiwi}.~%~@?~%\\end{document}~%"
+                       preamble end)
+               tex)
+              (let ((f (export-session tex (export-command "export-latex-compile-pdf") :width 250)))
+                (true (tuatara.frontend.fake:fake-frame-showing f "paper.pdf (xelatex)"))
+                (let ((errors (tuatara.buffer:find-buffer "*LaTeX errors*")))
+                  (false errors "~a" (and errors (tuatara.buffer:buffer-string errors)))))
+              (let ((made (alexandria:read-file-into-string
+                           (concatenate 'string build (if (string= program "makeindex") "paper.ind" "paper.bbl")))))
+                (true (search (if (string= program "makeindex") "kiwi" "Kiwi Birds of the South") made) "~a" made))
+              (true (probe-file (merge-pathnames "paper.pdf" dir)))
+              (false (probe-file (merge-pathnames "paper.bbl" dir)))
+              ;; again, nothing changed: the program not run again
+              (let ((log (concatenate 'string build (if (string= program "makeindex") "paper.ilg" "paper.blg"))))
+                (delete-file log)
+                (export-session tex (export-command "export-latex-compile-pdf") :width 250)
+                (false (probe-file log)))))))))

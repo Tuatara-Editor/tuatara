@@ -2,14 +2,18 @@
 ;;;; Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
 ;;;;
 ;;;; Run by that test with sbcl --script on a display of its own (broadway):
-;;;; FILE OUT [picture | pictures-beside]. Opens a Tuatara window from these
-;;;; sources on FILE, and once it shows the file (with picture, once the file's
-;;;; picture shows; with pictures-beside, once it shows in two windows side by side),
+;;;; FILE OUT [picture | pictures-beside | floated]. Opens a Tuatara window from
+;;;; these sources on FILE, and once it shows the file (with picture, once the
+;;;; file's picture shows; with pictures-beside, once it shows in two windows side
+;;;; by side; with floated, an Org note, once its two pictures show),
 ;;;; takes a picture of the whole window as GTK renders it, drawn as the
 ;;;; graphics card is given it, then another of the same window painted whole,
 ;;;; and writes to OUT how many textures the first held, how many octets the
 ;;;; two differ in, and in how many by more than 16; or, when a step failed or
-;;;; it all took longer than ninety seconds, why, as :ERROR or :TIMED-OUT.
+;;;; it all took longer than ninety seconds, why, as :ERROR or :TIMED-OUT. With
+;;;; floated, also where the window painted whole shows pure red and pure blue
+;;;; (COLOUR-BOX), the cell's size, and whether the row beside the red picture's
+;;;; top shows text.
 
 (load (merge-pathnames "steps.lisp" *load-truename*))
 
@@ -22,8 +26,8 @@ a type and a value, of the types TUATARA.IO:C-TYPE knows."
 
 (defun window-picture (window)
   "The pixels of WINDOW as GTK renders it now, as a vector of octets, 32 bits a
-pixel, and the texture nodes it was drawn with, by count; NIL while it has
-drawn nothing yet."
+pixel, the texture nodes it was drawn with, by count, and its width in
+pixels; NIL while it has drawn nothing yet."
   (let* ((width (c "gtk_widget_get_width" :int :pointer window))
          (height (c "gtk_widget_get_height" :int :pointer window))
          (paintable (c "gtk_widget_paintable_new" :pointer :pointer window))
@@ -48,7 +52,33 @@ drawn nothing yet."
              (pixels (make-array (* 4 width height) :element-type '(unsigned-byte 8))))
         (tuatara.io:with-octets-sap (data pixels)
           (c "gdk_texture_download" :void :pointer texture :pointer data :size (* 4 width)))
-        (values pixels textures)))))
+        (values pixels textures width)))))
+
+(defun colour-box (pixels width blue green red)
+  "Where PIXELS, WIDTH pixels to a row of four octets each (blue, green, red,
+alpha), show the colour BLUE GREEN RED fully opaque: (LEFT TOP RIGHT BOTTOM),
+the last pixels of it included; NIL where none does."
+  (let (left top right bottom)
+    (loop for i from 0 below (length pixels) by 4
+          when (and (= (aref pixels i) blue) (= (aref pixels (+ i 1)) green) (= (aref pixels (+ i 2)) red)
+                    (= (aref pixels (+ i 3)) 255))
+            do (let ((x (mod (floor i 4) width)) (y (floor i (* 4 width))))
+                 (setf left (min (or left x) x) right (max (or right x) x)
+                       top (min (or top y) y) bottom (max (or bottom y) y))))
+    (and left (list left top right bottom))))
+
+(defun colours-in (pixels width left top right bottom)
+  "How many colours PIXELS, WIDTH pixels to a row, show from LEFT TOP to RIGHT
+BOTTOM, those included."
+  (let ((seen (make-hash-table)))
+    (loop for y from top to bottom
+          do (loop for x from left to right
+                   for i = (* 4 (+ x (* y width)))
+                   do (setf (gethash (logior (aref pixels i) (ash (aref pixels (+ i 1)) 8)
+                                             (ash (aref pixels (+ i 2)) 16))
+                                     seen)
+                            t)))
+    (hash-table-count seen)))
 
 (defvar *pictures* '()
   "The pictures of the window taken so far, the newest first: each its pixels
@@ -112,7 +142,10 @@ note what they hold and how they differ."
   (let ((how (third (uiop:command-line-arguments))))
     (setf *window* (or (first-window-shown 30) (error "no window showed within 30 seconds")))
     ;; a picture: once it shows, in as many windows as asked for; else the file's text
-    (cond ((member how '("picture" "pictures-beside") :test #'equal)
+    (cond ((equal how "floated")
+           (unless (wait-until (lambda () (= 2 (shown-pictures *window*))) 60)
+             (error "the two pictures did not show within 60 seconds")))
+          ((member how '("picture" "pictures-beside") :test #'equal)
            (unless (wait-until (lambda () (plusp (shown-pictures *window*))) 60)
              (error "the picture did not show within 60 seconds"))
            (when (equal how "pictures-beside")
@@ -128,8 +161,20 @@ note what they hold and how they differ."
     (picture-in-gtk (tuatara.gtk:callback picture-on-card))
     (sleep 1)
     (picture-in-gtk (tuatara.gtk:callback picture-painted-whole))
-    (destructuring-bind ((whole textures-whole) (on-card textures)) *pictures*
-      (declare (ignore textures-whole))
+    (destructuring-bind ((whole textures-whole width) (on-card textures &rest more)) *pictures*
+      (declare (ignore textures-whole more))
+      (when (equal how "floated")
+        (let ((red (colour-box whole width 0 0 255))
+              (cell (multiple-value-list (tuatara.frontend:frontend-cell-pixels *window*))))
+          (see :red red)
+          (see :blue (colour-box whole width 255 0 0))
+          (see :cell cell)
+          ;; the row beside the red picture's top, past it: text shows there, more than the ground's colour
+          (when red
+            (destructuring-bind (left top right bottom) red
+              (declare (ignore left bottom))
+              (see :beside-top (colours-in whole width (+ right (first cell)) top (+ right (* 6 (first cell)))
+                                           (+ top (second cell) -1)))))))
       (let ((same-size (= (length on-card) (length whole))))
         (see :textures textures)
         (see :octets (length whole))

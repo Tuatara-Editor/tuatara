@@ -36,9 +36,9 @@ it is that, the timestamp the second.")
   "The files the agenda reads.
 Each is one of these:
 - a file.
-- a folder: every .org file in it, those whose names begin with a dot left
+- a directory: every .org file in it, those whose names begin with a dot left
   out.
-- a pattern of names in a folder, * for any characters and ? for one
+- a pattern of names in a directory, * for any characters and ? for one
   (\"~/notes/*.org\"); names beginning with a dot only for a pattern that
   does."
   :values (list-of file))
@@ -422,7 +422,7 @@ they are here."
 (defun org-agenda-snapshot-with (open &optional (paths (org-agenda-file-paths)))
   "Away from the editor's thread: a snapshot of the agenda files PATHS as
 ORG-AGENDA-SNAPSHOT takes one, those OPEN has (ORG-AGENDA-OPEN-SNAPSHOT) as
-it has them, the others as they are on disk now. The folders of the agenda
+it has them, the others as they are on disk now. The directories of the agenda
 files are listed, and the files looked at, here."
   (loop for path in paths
         collect (or (assoc path open :test #'equal)
@@ -516,22 +516,22 @@ universal time, is passed over."
 
 (defvar *org-agenda-paths-kept* nil
   "The agenda files last worked out (ORG-AGENDA-FILE-PATHS): (FILES STAMPS
-PATHS), FILES the setting they came from and STAMPS the times of the folders
-listed for it, so that a folder is listed again only when it changed.")
+PATHS), FILES the setting they came from and STAMPS the times of the directories
+listed for it, so that a directory is listed again only when it changed.")
 
 (defun org-agenda-file-paths (&optional (files (org-agenda-files-in-force)))
   "FILES as native paths, the home directory written ~ taken as it is: a
-folder as the .org files in it, a pattern (* ?) as the files it matches, each
-in order of name, every file once. The folders are listed again only when
+directory as the .org files in it, a pattern (* ?) as the files it matches, each
+in order of name, every file once. The directories are listed again only when
 one of them changed (*ORG-AGENDA-PATHS-KEPT*)."
   (let* ((stamps (loop for file in files
                        for path = (ignoring-errors-reported ("naming the agenda file ~a" file)
                                     (tuatara.io:native (tuatara.io:expand-path file)))
-                       for (parent name) = (and path (multiple-value-list (tuatara.io:path-folder-and-name path)))
-                       for folder = (and path (cond ((find-if (lambda (c) (find c "*?")) name) parent)
+                       for (parent name) = (and path (multiple-value-list (tuatara.io:path-directory-and-name path)))
+                       for directory = (and path (cond ((find-if (lambda (c) (find c "*?")) name) parent)
                                                     ((eq :directory (tuatara.io:path-kind path)) path)
                                                     (t nil)))
-                       collect (and folder (let ((stamp (tuatara.io:path-stamp folder :failure nil)))
+                       collect (and directory (let ((stamp (tuatara.io:path-stamp directory :failure nil)))
                                              (and stamp (tuatara.io:stamp-mtime stamp))))))
          (kept *org-agenda-paths-kept*))
     (if (and kept (equal (first kept) files) (equal (second kept) stamps))
@@ -541,24 +541,24 @@ one of them changed (*ORG-AGENDA-PATHS-KEPT*)."
           paths))))
 
 (defun org-agenda-file-paths-listed (files)
-  "FILES as ORG-AGENDA-FILE-PATHS gives them, the folders listed now."
+  "FILES as ORG-AGENDA-FILE-PATHS gives them, the directories listed now."
   (let ((paths '()) (seen (make-hash-table :test 'equal)))
     (dolist (file files)
       (let ((path (tuatara.io:native (tuatara.io:expand-path file))))
-        (multiple-value-bind (folder name) (tuatara.io:path-folder-and-name path)
-          (flet ((in-folder (directory test)
+        (multiple-value-bind (dir name) (tuatara.io:path-directory-and-name path)
+          (flet ((in-directory (directory test)
                    (loop for (entry kind) in (tuatara.io:directory-entries directory)
                          when (and (eq kind :regular) (funcall test entry))
                            collect (tuatara.io:path-join directory entry))))
             (cond ((find-if (lambda (c) (find c "*?")) name)
                    ;; as the shell has it: a name beginning with a dot only for a pattern that does
-                   (dolist (match (in-folder folder (lambda (entry)
+                   (dolist (match (in-directory dir (lambda (entry)
                                                       (and (or (char= (char name 0) #\.)
                                                                (zerop (length entry)) (char/= (char entry 0) #\.))
                                                            (glob-match name entry)))))
                      (unless (gethash match seen) (setf (gethash match seen) t) (push match paths))))
                   ((eq :directory (tuatara.io:path-kind path))
-                   (dolist (match (in-folder path
+                   (dolist (match (in-directory path
                                              (lambda (entry) (and (plusp (length entry)) (char/= (char entry 0) #\.)
                                                                   (uiop:string-suffix-p entry ".org")))))
                      (unless (gethash match seen) (setf (gethash match seen) t) (push match paths))))

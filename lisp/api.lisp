@@ -224,7 +224,7 @@ takes). :ARGUMENTS is what its form says, as ORG-READ-RULE reads them. :HOUR,
     file-view-can-draw-p
     reading-buffer
     show-reading-result
-    buffer-private-folder
+    buffer-private-directory
     visit-path visit-path-as-text image-view-visit pdf-view-visit pdf-file-p office-view-visit view-made-text tuatara.io:safe-visit-p *file-changing-commands*
     ;; files and paths
     tuatara.io:native
@@ -357,7 +357,7 @@ takes). :ARGUMENTS is what its form says, as ORG-READ-RULE reads them. :HOUR,
     user-program-path
     start-detached
     open-externally-file
-    new-private-folder
+    new-private-directory
     private-cache-directory
     private-state-directory
     tuatara.io:replace-file

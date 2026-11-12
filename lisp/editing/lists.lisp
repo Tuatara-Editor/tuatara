@@ -515,7 +515,8 @@ after when negative. In Lisp and in text a definition starts at an opening
 bracket at the start of a line, one in a string or comment not counting, and
 with none before point \\[beginning-of-defun] goes to the start of the text.
 In a language whose rules name its definitions (Rust's functions, impls,
-structs and enums; C's functions, types and macros; shell functions) it is one
+structs and enums; C's functions, types and macros; shell functions; LaTeX's
+sections and environments) it is one
 of those, one inside another counting too: \\[beginning-of-defun] goes to the
 start of the one around point, or of the one before it beside it. The first
 of a run leaves the mark where point was, unless the region is active."

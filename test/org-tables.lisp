@@ -3,7 +3,7 @@
 
 (in-package #:tuatara.tests)
 
-(define-test (org tables)
+(define-modal-test (org tables)
   (flet ((lines (&rest lines) (format nil "~{~a~^~%~}" lines)))
     ;; C-c C-c aligns: numbers to the right, |- a rule, short rows filled, the first row's indentation
     (is string= (lines "  |   a | bb   |       |" "  |-----+------+-------|" "  |   1 | 22.5 |       |"
@@ -97,7 +97,7 @@
     ;; one u undoes TAB's align and new row
     (is string= (lines "| a | b" "") (remove #\@ (org-table-after "i TAB C-g u" (lines "| a | b@" ""))))))
 
-(define-test (org table-formulas)
+(define-modal-test (org table-formulas)
   ;; C-c * works the formulas out as Org (and its Calc) does: every case of test/org/formulas.sexp
   (let ((cases (with-open-file (in (asdf:system-relative-pathname :tuatara "test/org/formulas.sexp")
                                    :external-format :utf-8)
@@ -238,8 +238,8 @@ echo commented
           (true (tuatara.frontend.fake:fake-frame-showing f "new" "2 blocks" "out.sh"))
           (true (tuatara.frontend.fake:fake-frame-showing f "other.sh" "executable"))
           (true (tuatara.frontend.fake:fake-frame-showing f "cannot" "nope/x.sh"))
-          (true (tuatara.frontend.fake:fake-frame-showing f "its folder does not exist"))
-          (true (tuatara.frontend.fake:fake-frame-showing f "new" "folder made" "made/y.sh"))
+          (true (tuatara.frontend.fake:fake-frame-showing f "its directory does not exist"))
+          (true (tuatara.frontend.fake:fake-frame-showing f "new" "directory made" "made/y.sh"))
           (true (tuatara.frontend.fake:fake-frame-showing f "Write 6 files?"))
           (true (tuatara.frontend.fake:fake-frame-showing f "Nothing written")))
         (false (file "out.sh"))
@@ -253,20 +253,20 @@ echo commented
         ;; noweb put in; <<name()>>, which would run the block, left as it is
         (is string= (format nil "print(\"hello\")~%<<greeting()>>~%* not a headline~%") (file "py/main.py"))
         (false (file "nope/x.sh"))
-        ;; its folder made; the white space around the code trimmed, as Org trims it
+        ;; its directory made; the white space around the code trimmed, as Org trims it
         (is string= (format nil "echo made~%") (file "made/y.sh"))
         ;; again: all the same, nothing to write
         (true (tuatara.frontend.fake:fake-frame-showing (session "C-c C-v t") "Nothing to write"))
-        ;; outside the Org file's folder, said
+        ;; outside the Org file's directory, said
         (let ((open (tuatara.buffer:find-buffer "t.org"))) (when open (tuatara.buffer:kill-buffer open)))
         (alexandria:write-string-into-file (format nil
                                                    "#+begin_src sh :tangle ../outside-~a.sh~%echo~%#+end_src~%"
                                                    (random 1000000)) org
                                                    :if-exists :supersede)
         (let ((f (session "C-c C-v t n RET")))
-          (true (tuatara.frontend.fake:fake-frame-showing f "outside the Org file's folder"))
-          (true (tuatara.frontend.fake:fake-frame-showing f "(1 outside the Org file's folder)")))
-        ;; a link in the folder, to a file outside it: where it lands shown, and outside; a mode with setuid
+          (true (tuatara.frontend.fake:fake-frame-showing f "outside the Org file's directory"))
+          (true (tuatara.frontend.fake:fake-frame-showing f "(1 outside the Org file's directory)")))
+        ;; a link in the directory, to a file outside it: where it lands shown, and outside; a mode with setuid
         ;; written without it; a block referring to itself left as it is
         (let ((open (tuatara.buffer:find-buffer "t.org"))) (when open (tuatara.buffer:kill-buffer open)))
         (let ((target (merge-pathnames (format nil "../elsewhere-~d/rc" (random 1000000)) dir)))
@@ -279,8 +279,8 @@ echo commented
           (let ((f (run-keys (format nil "C-x C-f C-a C-k ~a RET C-c C-v t n RET" (rimu-typed (namestring org)))
                              :width 400
                              :height 20)))
-            (true (tuatara.frontend.fake:fake-frame-showing f "linked.sh" "→" "/rc" "outside the Org file's folder"))
-            (true (tuatara.frontend.fake:fake-frame-showing f "(1 outside the Org file's folder)")))
+            (true (tuatara.frontend.fake:fake-frame-showing f "linked.sh" "→" "/rc" "outside the Org file's directory"))
+            (true (tuatara.frontend.fake:fake-frame-showing f "(1 outside the Org file's directory)")))
           ;; what was written, kept in *Messages*, says where a link led
           (let ((open (tuatara.buffer:find-buffer "t.org"))) (when open (tuatara.buffer:kill-buffer open)))
           (let ((f (run-keys (format nil "C-x C-f C-a C-k ~a RET C-c C-v t y RET" (rimu-typed (namestring org)))

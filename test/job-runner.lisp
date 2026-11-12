@@ -128,7 +128,7 @@ questions asked, the first first."
   (is = 99 (tuatara.runtime:two-phase-percent 100 (cons 100 100)))
   (is = 50 (tuatara.runtime:two-phase-percent 100 (cons 0 0))))
 
-(define-test (job-runner one-question-to-kill)
+(define-modal-test (job-runner one-question-to-kill)
   ;; a job running and one waiting its turn: one question names both
   (let ((tuatara.defaults::*rewrite-piece-hook* (lambda () (sleep 0.3))))
     (with-background ()
@@ -141,7 +141,7 @@ questions asked, the first first."
           ;; answered no: the buffer and both jobs go on
           (is string= "c c c" (session-text editor)))))))
 
-(define-test (job-runner one-question-to-exit)
+(define-modal-test (job-runner one-question-to-exit)
   ;; running and waiting jobs: one question before exiting; a save is waited for, the rest stopped
   (let ((tuatara.defaults::*rewrite-piece-hook* (lambda () (sleep 0.3))))
     (with-background ()
@@ -202,7 +202,7 @@ questions asked, the first first."
              (true (notany (lambda (job) (car (tuatara.runtime:job-cancel job))) tuatara.runtime:*jobs*))))
       (tuatara.buffer:kill-buffer b))))
 
-(define-test (job-runner files-copied-processing)
+(define-modal-test (job-runner files-copied-processing)
   ;; a list's files copied: P lit in the mode line, never the copying's own words;
   ;; listed with the other jobs, and stopped there
   (multiple-value-bind (f editor job)
@@ -215,7 +215,7 @@ questions asked, the first first."
     (true (tuatara.frontend.fake:fake-frame-showing f "*scratch*" "Copying 0%" "Copying 1 file to"))
     (is eq :stopped (tuatara.runtime:job-status job))))
 
-(define-test (job-runner agenda-and-marks-listed)
+(define-modal-test (job-runner agenda-and-marks-listed)
   ;; an agenda worked out and a calendar's days marked are jobs like the others: listed, and stoppable
   (multiple-value-bind (f editor job)
       (job-session (second (find "agenda" (job-kinds) :key #'first :test #'string=))

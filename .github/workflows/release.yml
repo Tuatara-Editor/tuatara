@@ -49,7 +49,7 @@ jobs:
       - name: Install SBCL, Zig and Quicklisp
         run: tools/ci-setup.sh
 
-      # tools/release.sh refuses a file naming the home folder or the account it
+      # tools/release.sh refuses a file naming the home directory or the account it
       # was built by; here the account is runner, a word Tuatara's own text uses
       # and no one's name, so the check is given a name of its own. The steps
       # after find the release up to date and leave it as it is.

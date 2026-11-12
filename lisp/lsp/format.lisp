@@ -4,7 +4,7 @@
 ;;;; M-x format-buffer gives the buffer's text to its language's formatter
 ;;;; (rustfmt, ruff, clang-format, shfmt..., see *LANGUAGE-FORMATTERS*, else the one
 ;;;; Helix names) on its standard input, in the background, shut in the sandbox:
-;;;; it sees the project's folder and its own, read only, and no network. What
+;;;; it sees the project's directory and its own, read only, and no network. What
 ;;;; comes back is put in as one change that undo takes back whole, only the
 ;;;; lines that differ replaced, so that point and the marks stay on their text;
 ;;;; when the buffer was changed meanwhile, nothing is put in. With no formatter
@@ -25,7 +25,7 @@ save, the save going on once the text is laid out.
 (define-setting *format-in-sandbox* t
   "Whether formatters run shut in the sandbox. A formatter reads the project's
 settings, and some run code of the project's.
-- t: the project's folder and the formatter's own are seen, read only,
+- t: the project's directory and the formatter's own are seen, read only,
   nothing is written, no network.
 - nil: they run as any program, for one that cannot work shut in (it needs
   its plugins from elsewhere)."
@@ -65,8 +65,8 @@ buffer and whether its text was laid out, called once it is over."
   (and (tuatara.runtime:running-job buffer 'format-job) t))
 
 (defun format-project-directory (buffer language)
-  "The folder BUFFER's formatter works from: the top of its project, the
-nearest folder up from its file holding one of LANGUAGE's root files
+  "The directory BUFFER's formatter works from: the top of its project, the
+nearest directory up from its file holding one of LANGUAGE's root files
 \(Cargo.toml, pyproject.toml) or a project's marker (.git), else its file's own."
   (let ((here (buffer-directory buffer)))
     (or (let ((roots (language-roots language))) (and roots (marked-directory here roots :below-home t)))

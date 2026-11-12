@@ -51,8 +51,8 @@ of SYMBOL's name."
 matched by PATTERN, a regular expression whose register is the name: a
 table of them, upper case."
   (let ((keys (make-hash-table :test 'equal)))
-    (dolist (folder '("src/" "lisp/") keys)
-      (dolist (file (directory (merge-pathnames (concatenate 'string folder "**/*.lisp")
+    (dolist (dir '("src/" "lisp/") keys)
+      (dolist (file (directory (merge-pathnames (concatenate 'string dir "**/*.lisp")
                                                 (asdf:system-source-directory :tuatara))))
         (cl-ppcre:do-register-groups (name) (pattern (uiop:read-file-string file))
           (setf (gethash (string-upcase name) keys) t))))))
@@ -75,15 +75,15 @@ BUFFER 'NAME); else NIL."
               (consp (third form)) (eq (car (third form)) 'quote) (symbolp (second (third form))))
          (second (third form)))))
 
-(defun outside-api (name folder)
-  "The names the package NAME, in FOLDER, uses that are not Tuatara's API,
+(defun outside-api (name directory)
+  "The names the package NAME, in DIRECTORY, uses that are not Tuatara's API,
 written with Tuatara's package in front (read from its files but test.lisp),
 each with how."
   (let ((own (find-package (string-upcase name)))
         (keys (source-buffer-keys "buffer-local [^()']*'([a-z0-9*+%-]+)"))
         (keywords (source-buffer-keys "buffer-local\\s+(?:[^\\s()']+|\\([^()]*\\))\\s+:([a-z0-9*+%-]+)"))
         (found '()))
-    (dolist (file (uiop:directory-files folder "*.lisp"))
+    (dolist (file (uiop:directory-files directory "*.lisp"))
       (unless (string= (pathname-name file) "test")
         (with-open-file (in file)
           (let ((*package* own) (*read-eval* t))
@@ -115,20 +115,20 @@ each with how."
                        (walk form)))))))
     (sort found #'string<)))
 
-(defun test-package (name folder)
-  "Test the package NAME of FOLDER, a package repository's top, against this
+(defun test-package (name directory)
+  "Test the package NAME of DIRECTORY, a package repository's top, against this
 source tree: load it as load-package loads one fetched anew, with its tests
 \(TUATARA.PACKAGES:LOAD-PACKAGE-FOR-TEST), say each name it uses outside
 Tuatara's API (OUTSIDE-API), then run its tests, the test of its name.
 Returns the exit code for the repository's test run: 0 when the package
 loads, keeps to the API and passes its tests, 1 otherwise."
-  (let ((refused (tuatara.packages:load-package-for-test name folder))
+  (let ((refused (tuatara.packages:load-package-for-test name directory))
         (failed nil))
     (cond (refused
            (format t "~&~a is refused: ~a~%" name refused)
            (setf failed t))
           (t
-           (dolist (use (outside-api name folder))
+           (dolist (use (outside-api name directory))
              (format t "~&~a uses ~a~%" name use)
              (setf failed t))
            (let ((test (find-symbol (string-upcase name) :tuatara.tests)))

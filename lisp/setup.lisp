@@ -41,6 +41,7 @@
     ("C-x T h" hl-line-mode) ("C-x T c" cursor-column-mode) ("C-x T l" soft-wrap-mode) ("C-x T v" visual-line-mode)
     ("C-x T o" centred-text-mode)
     ("C-x T i" invisible-characters-mode)
+    ("C-x T p" inline-pictures-mode)
     ("C-x T s" search-toggle-highlight)
     ("C-x T t" toggle-mode-line-tuatara)
     ;; characters and input methods
@@ -72,7 +73,7 @@
     ("DEL" delete-backward-char)
     ("<delete>" delete-char)
     ("C-d" delete-char) ("C-k" kill-line) ("C-y" yank) ("C-w" kill-region) ("M-w" kill-ring-save)
-    ("C-SPC" set-mark-command) ("C-x C-SPC" pop-global-mark) ("C-x C-x" exchange-point-and-mark)
+    ("C-SPC" set-mark-command) ("C-x C-SPC" pop-global-mark) ("C-x C-x" exchange-point-and-mark) ("C-x z" repeat)
     ("C-x r SPC" rectangle-mark-mode) ("C-x r k" kill-rectangle) ("C-x r M-w" copy-rectangle-as-kill)
     ("C-x r d" delete-rectangle) ("C-x r y" yank-rectangle) ("C-x r t" string-rectangle)
     ("C-x r c" clear-rectangle) ("C-x r N" number-rectangle-lines)
@@ -254,6 +255,7 @@ so that \\`C-c' shows, and runs, what the buffer at hand can do in every mode
     (install-characters editor)
     (install-search-keys)
     (install-recorded-keys)
+    (define-repeat-keys '(("z" repeat)))
     (install-search-filters)
     (install-rewrites)
     (install-jobs)
@@ -292,6 +294,7 @@ so that \\`C-c' shows, and runs, what the buffer at hand can do in every mode
     (install-ielm)
     (install-macroexpand)
     (install-csv)
+    (install-latex)
     (install-special-buffers)
     (install-entry-previews editor)
     (install-help)
@@ -310,6 +313,7 @@ so that \\`C-c' shows, and runs, what the buffer at hand can do in every mode
     (install-metadata)
     (install-open-externally)
     (install-image-view)
+    (install-org-pictures)
     (install-org-folding editor)
     (install-org-parts)
     (install-org-editing)
@@ -344,10 +348,10 @@ so that \\`C-c' shows, and runs, what the buffer at hand can do in every mode
     (tuatara.display:apply-theme *startup-theme*)
     (setf *theme-chosen* nil *style-followed* nil)
     (load-user-config)
-    ;; the logs in the cache folder the init file chose
+    ;; the logs in the cache directory the init file chose
     (after-init-step "Moving the logs to *cache-directory*"
                      (lambda ()
-                       ;; each folder the init file named looked at now, so that one not there is said at once
+                       ;; each directory the init file named looked at now, so that one not there is said at once
                        (when *cache-directory*
                          (ignoring-errors-reported ("making the cache directory") (tuatara.io:cache-directory)))
                        (when *state-directory*

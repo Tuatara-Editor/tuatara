@@ -44,7 +44,7 @@ return the text after, and the frontend."
   (is string= "qq zebra qq" (word-keys "M-/" :text "qq zebra qq"))
   (true (showing (nth-value 1 (word-keys "M-/" :text "qq zebra qq")) "No word")))
 
-(define-test (word-completion other-buffers)
+(define-modal-test (word-completion other-buffers)
   (is string= "zebra" (word-keys "M-/" :text "ze" :other "zebra stripes"))
   ;; this buffer's words come before another's
   (is string= "zero zero" (word-keys "M-/" :text "zero ze" :other "zebra"))
@@ -89,13 +89,13 @@ return the text after, and the frontend."
     (is string= (format nil "~aneedle" near) (word-keys "M-/" :text (format nil "~aneed" near)))))
 
 (define-test (word-completion text-made-from-files-and-evidence)
-  ;; a buffer open before its folder became evidence is of the evidence kind
+  ;; a buffer open before its directory became evidence is of the evidence kind
   (with-test-directory (dir)
     (let ((b (tuatara.buffer:make-buffer "evidence-words" :text "zebra"
                                                           :file (namestring (merge-pathnames "e.txt" dir)))))
       (unwind-protect
            (progn (is eq nil (tuatara.defaults::word-completion-kind b))
-                  (with-evidence-folders ((list (namestring dir)))
+                  (with-evidence-directories ((list (namestring dir)))
                     (is eq :evidence (tuatara.defaults::word-completion-kind b)))
                   (is eq nil (tuatara.defaults::word-completion-kind b)))
         (tuatara.buffer:kill-buffer b))))

@@ -7,7 +7,7 @@
   "Run BODY with the repository at DIRECTORY answered look only, and
 forgotten after."
   (let ((real (gensym)))
-    `(let ((,real (tuatara.defaults::real-folder (namestring ,directory))))
+    `(let ((,real (tuatara.defaults::real-directory (namestring ,directory))))
        (unwind-protect (progn (tuatara.defaults::state-list-put tuatara.defaults::*look-only* (list ,real))
                               ,@body)
          (tuatara.defaults::state-list-drop tuatara.defaults::*look-only* (list ,real))))))
@@ -53,9 +53,9 @@ since their commit."
 
 (defun markers (marker)
   "The files made by the programs of a HOSTILE-REPOSITORY whose MARKER was given."
-  (let ((folder (directory-namestring marker)) (name (file-namestring marker)))
+  (let ((directory (directory-namestring marker)) (name (file-namestring marker)))
     (remove-if-not (lambda (path) (uiop:string-prefix-p name (file-namestring path)))
-                   (uiop:directory-files folder))))
+                   (uiop:directory-files directory))))
 
 (define-test (git look-only-runs-no-program)
   ;; a repository looked at only: git reads it, and no program its settings, the files they take in,
@@ -130,7 +130,7 @@ since their commit."
     (let* ((tuatara.defaults::*modal-editing* nil)
            (tuatara-user:*lsp-trusted-projects* '())
            (top (tuatara.git:repository-top (namestring dir)))
-           (real (tuatara.defaults::real-folder top)))
+           (real (tuatara.defaults::real-directory top)))
       (flet ((status () (tuatara.git::git-buffer-of top 'tuatara.git::git-status-mode)))
         (unwind-protect
              (let ((f (auto-save-session
@@ -177,7 +177,7 @@ since their commit."
     (let* ((tuatara.defaults::*modal-editing* nil)
            (tuatara-user:*lsp-trusted-projects* '())
            (top (tuatara.git:repository-top (namestring dir)))
-           (real (tuatara.defaults::real-folder top)))
+           (real (tuatara.defaults::real-directory top)))
       (unwind-protect
            (with-looked-at-only (dir)
              (let ((f (auto-save-session
@@ -205,8 +205,8 @@ since their commit."
         (tuatara.defaults::state-list-drop tuatara.defaults::*lsp-trusted* (list real))))))
 
 (define-test (git look-only-list-fails-closed)
-  ;; the list of projects looked at only is kept as every list is; a line of a later release naming a folder,
-  ;; whatever fields follow, is still read, so that the folder stays looked at only
+  ;; the list of projects looked at only is kept as every list is; a line of a later release naming a directory,
+  ;; whatever fields follow, is still read, so that the directory stays looked at only
   (is string= "look-only" (tuatara.defaults::state-list-name tuatara.defaults::*look-only*))
   (false (tuatara.defaults::state-list-trust tuatara.defaults::*look-only*))
   (is string= "/cases/seized/"
@@ -215,7 +215,7 @@ since their commit."
                                         (format nil "/cases/seized/~cfield of later" #\Tab))))
 
 (define-test (evidence seized-repository-read-untouched)
-  ;; a repository in an evidence folder: read in look-only mode, and nothing of it changes, its index included
+  ;; a repository in an evidence directory: read in look-only mode, and nothing of it changes, its index included
   (with-test-directory (dir)
     (let* ((ev (namestring (ensure-directories-exist (merge-pathnames "ev/" dir))))
            (seized (namestring (ensure-directories-exist (merge-pathnames "ev/seized/" dir)))))
@@ -226,10 +226,10 @@ since their commit."
       (let ((now (- (get-universal-time) (encode-universal-time 0 0 0 1 1 1970 0))))
         (sb-posix:utimes (concatenate 'string seized "a.txt") now now))
       (flet ((snapshot ()
-               ;; every file and folder, .git's too, with its size, time and inode
+               ;; every file and directory, .git's too, with its size, time and inode
                (uiop:run-program (list "find" seized "-printf" "%p %s %T@ %i\\n") :output :string)))
         (let ((before (snapshot)))
-          (with-evidence-folders ((list ev))
+          (with-evidence-directories ((list ev))
             (true (tuatara.defaults::project-look-only-reason seized))
             (dolist (arguments '(("status" "--porcelain=v2" "--branch" "-z") ("diff") ("diff" "--cached") ("log" "-p")
                                  ("show") ("blame" "a.txt") ("describe" "--always" "--dirty") ("ls-files" "-m")))
@@ -237,10 +237,10 @@ since their commit."
             (true (refused-any (tuatara.git:run-git seized '("checkout" "--" "a.txt")))))
           (is equal before (snapshot)))))))
 
-(defun repository-snapshot (folder)
-  "Every file and folder within FOLDER, .git's too, with its kind, size, times, inode and mode, and the SHA-256 of each file."
+(defun repository-snapshot (directory)
+  "Every file and directory within DIRECTORY, .git's too, with its kind, size, times, inode and mode, and the SHA-256 of each file."
   (uiop:run-program (list "sh" "-c" "cd \"$1\" && find . -printf '%p %y %s %T@ %C@ %i %m\\n' | sort && find . -type f -print0 | sort -z | xargs -0 sha256sum"
-                          "snapshot" folder)
+                          "snapshot" directory)
                     :output :string :ignore-error-status t))
 
 (defparameter *hostile-commands*
@@ -311,13 +311,13 @@ since their commit."
                         (tuatara.git::git-blame-raw-words '("blame" "--porcelain" "--" "a.txt")
                                                           (repo "mailmap")
                                                           (repo "mailmap")))))
-        ;; refused in one sentence, never read through the repository's own folder
+        ;; refused in one sentence, never read through the repository's own directory
         (dolist (name '("idxfifo" "idxlink" "unknown"))
           (is eq :refused (nth-value 1 (run name '("status" "--porcelain"))) "~a" name))
         (true (search "index is not a file" (run "idxfifo" '("status" "--porcelain"))))
         (true (search "index is not a file" (run "idxlink" '("status" "--porcelain"))))
         (true (search "extension someday" (run "unknown" '("status" "--porcelain"))))
-        ;; a folder with an empty .git of its own inside a repository is no way to its settings
+        ;; a directory with an empty .git of its own inside a repository is no way to its settings
         (is eq :refused (nth-value 1 (run "nest/X" '("status" "--porcelain"))))
         ;; a bare repository inside a trusted one is never taken for it
         (let ((tuatara-user:*lsp-trusted-projects* (list (repo "holder"))))
@@ -327,7 +327,7 @@ since their commit."
         (is equal '() (uiop:directory-files marks))))))
 
 (define-test (git look-only-wins)
-  ;; the answer that runs less wins: a folder answered look only inside a trusted one, or named both ways, is looked at only
+  ;; the answer that runs less wins: a directory answered look only inside a trusted one, or named both ways, is looked at only
   (with-test-directory (dir)
     (let* ((outer (namestring dir))
            (inner (namestring (ensure-directories-exist (merge-pathnames "case/" dir))))
@@ -340,10 +340,10 @@ since their commit."
         (true (tuatara.defaults::project-look-only-reason deeper))
         (let ((tuatara-user:*lsp-trusted-projects* '()))
           (tuatara.defaults::state-list-put tuatara.defaults::*lsp-trusted*
-                                            (list (tuatara.defaults::real-folder inner)))
+                                            (list (tuatara.defaults::real-directory inner)))
           (unwind-protect (false (tuatara.defaults::project-trusted-p inner))
             (tuatara.defaults::state-list-drop tuatara.defaults::*lsp-trusted*
-                                               (list (tuatara.defaults::real-folder inner)))))))))
+                                               (list (tuatara.defaults::real-directory inner)))))))))
 
 (define-test (git reading-words-parsed)
   ;; options are read as git reads them: clusters, values in the next word, subcommands after options; anything not listed is refused
@@ -417,7 +417,7 @@ since their commit."
     (false (tuatara.io:path-kind left))))
 
 (defun shadows-size ()
-  "The kibibytes this session's shadows of git hold on the disk: its own folder
+  "The kibibytes this session's shadows of git hold on the disk: its own directory
 in the private cache, not those of other sessions sharing the cache."
   (parse-integer (string-trim '(#\Newline #\Space)
                               (uiop:run-program (list "sh" "-c" "du -sk \"$1\" | cut -f1" "size"
@@ -468,7 +468,7 @@ in the private cache, not those of other sessions sharing the cache."
         (is eq t (nth-value 1 (run "objlink" '("log" "-1"))))
         (true (search "objlink-objects" (format nil "~a" (tuatara.git::git-shadow-elsewhere-of (repo "objlink")))))
         (dolist (name '("gitlink" "gitfile" "common"))
-          (true (tuatara.git::git-folder-elsewhere (repo name)) "~a" name))
+          (true (tuatara.git::git-directory-elsewhere (repo name)) "~a" name))
         ;; blame of a link is of its own text; of a pipe refused; nothing outside shown as the file
         (is eq t (nth-value 1 (run "blamez" '("blame" "--porcelain" "--" "z.txt"))))
         (is eq :refused (nth-value 1 (run "blamef" '("blame" "--porcelain" "--" "f.txt"))))
@@ -478,7 +478,7 @@ in the private cache, not those of other sessions sharing the cache."
         (is eq :refused (nth-value 1 (run "cfg" '("log" "-1"))))
         ;; a setting given twice: the last one counts, as git takes it
         (is eq :refused (nth-value 1 (run "cfgtwice" '("log" "-1"))))
-        ;; a trusted folder whose .git leads into a repository looked at only reads it only
+        ;; a trusted directory whose .git leads into a repository looked at only reads it only
         (with-looked-at-only ((repo "lookedat"))
           (let ((snapshot (repository-snapshot (repo "lookedat")))
                 (tuatara-user:*lsp-trusted-projects* (list (repo "trustedwt"))))
@@ -489,7 +489,7 @@ in the private cache, not those of other sessions sharing the cache."
         (is equal '() (uiop:directory-files marks))))))
 
 (define-test (git shadow-not-walked-again)
-  ;; once a repository of 20,000 tags has its shadow, a command looks at a few folders, not at every reference
+  ;; once a repository of 20,000 tags has its shadow, a command looks at a few directories, not at every reference
   (with-test-directory (dir)
     (scratch-repository dir :trusted nil)
     (let ((hash (string-trim '(#\Newline) (git-output dir "rev-parse" "HEAD")))
@@ -518,26 +518,26 @@ in the private cache, not those of other sessions sharing the cache."
       (is equal "a.txt" (car (last words))))))
 
 (define-test (git live-sessions-shadows-kept)
-  ;; a folder of shadows whose owner.lock a running session holds is never taken for one left behind
-  (let* ((folder (tuatara.defaults::new-private-folder (tuatara.defaults::private-cache-directory "git-shadow/")
+  ;; a directory of shadows whose owner.lock a running session holds is never taken for one left behind
+  (let* ((directory (tuatara.defaults::new-private-directory (tuatara.defaults::private-cache-directory "git-shadow/")
                                                        :hold nil))
-         (fd (progn (tuatara.io:write-private-file (tuatara.io:path-join folder "owner.lock") (machine-instance))
-                    (sb-posix:open (tuatara.io:path-join folder "owner.lock") sb-posix:o-rdwr))))
+         (fd (progn (tuatara.io:write-private-file (tuatara.io:path-join directory "owner.lock") (machine-instance))
+                    (sb-posix:open (tuatara.io:path-join directory "owner.lock") sb-posix:o-rdwr))))
     (unwind-protect
          (progn
            (true (tuatara.runtime:lock-fd fd))
            ;; another descriptor's lock: as another session's
-           (let ((other (sb-posix:open (tuatara.io:path-join folder "owner.lock") sb-posix:o-rdwr)))
+           (let ((other (sb-posix:open (tuatara.io:path-join directory "owner.lock") sb-posix:o-rdwr)))
              (false (tuatara.runtime:lock-fd other))
              (sb-posix:close other))
            (tuatara.git::forget-old-git-shadows)
-           (true (tuatara.io:path-kind folder)))
+           (true (tuatara.io:path-kind directory)))
       (sb-posix:close fd))
     (tuatara.git::forget-old-git-shadows)
-    (false (tuatara.io:path-kind folder))))
+    (false (tuatara.io:path-kind directory))))
 
 (define-test (git status-says-names-escaped)
-  ;; a folder name holding a newline, ESC and a right-to-left mark reaches the status's top escaped: one line each, no forged line
+  ;; a directory name holding a newline, ESC and a right-to-left mark reaches the status's top escaped: one line each, no forged line
   (with-test-directory (dir)
     (let* ((odd (concatenate 'string
                              (namestring dir)
@@ -563,7 +563,7 @@ in the private cache, not those of other sessions sharing the cache."
                  (let* ((text (tuatara.buffer:buffer-string buffer))
                         (lines (uiop:split-string text :separator '(#\Newline))))
                    (true (uiop:string-prefix-p "Look only: " (first lines)))
-                   (true (uiop:string-prefix-p "Git's own folder: " (second lines)) "~s" (second lines))
+                   (true (uiop:string-prefix-p "Git's own directory: " (second lines)) "~s" (second lines))
                    (is = 1 (count-if (lambda (line) (uiop:string-prefix-p "Look only: " line)) lines))
                    (false (find (code-char 27) text))
                    (false (find (code-char #x202E) text))
@@ -571,7 +571,7 @@ in the private cache, not those of other sessions sharing the cache."
             (tuatara.buffer:kill-buffer buffer)))))))
 
 (define-test (git written-over-in-place-seen-when-asked)
-  ;; a reference written over in place, its folder untouched, is seen once the status is read again when asked
+  ;; a reference written over in place, its directory untouched, is seen once the status is read again when asked
   (with-test-directory (dir)
     (scratch-repository dir :trusted nil)
     (git-output dir "commit" "-q" "--allow-empty" "-m" "Second")
@@ -620,12 +620,12 @@ in the private cache, not those of other sessions sharing the cache."
         (remhash (tuatara.git:repository-top top) tuatara.git::*git-timed-out*)))))
 
 (define-test (git other-machines-shadows-kept)
-  ;; a folder of shadows another machine's session made is never deleted here; one of this machine's, ended, is
+  ;; a directory of shadows another machine's session made is never deleted here; one of this machine's, ended, is
   (flet ((made (host)
-           (let ((folder (tuatara.defaults::new-private-folder (tuatara.defaults::private-cache-directory "git-shadow/")
-                                                               :hold nil)))
-             (tuatara.io:write-private-file (tuatara.io:path-join folder "owner.lock") host)
-             folder)))
+           (let ((directory (tuatara.defaults::new-private-directory
+                             (tuatara.defaults::private-cache-directory "git-shadow/") :hold nil)))
+             (tuatara.io:write-private-file (tuatara.io:path-join directory "owner.lock") host)
+             directory)))
     (let ((elsewhere (made "another-machine.example"))
           (here (made (machine-instance))))
       (unwind-protect
@@ -636,13 +636,13 @@ in the private cache, not those of other sessions sharing the cache."
 
 (define-test (git evidence-refused-by-variables)
   ;; GIT_DIR, GIT_WORK_TREE or GIT_INDEX_FILE in the editor's own environment, the one git is given, naming an
-  ;; evidence folder: the command that would write there is refused, never run
+  ;; evidence directory: the command that would write there is refused, never run
   (with-test-directory (dir)
     (let* ((ev (namestring (ensure-directories-exist (merge-pathnames "ev/" dir))))
            (work (namestring (ensure-directories-exist (merge-pathnames "work/" dir)))))
       (scratch-repository work)
       (scratch-repository ev)
-      (with-evidence-folders ((list ev))
+      (with-evidence-directories ((list ev))
         (dolist (setting (list (cons "GIT_DIR" (concatenate 'string ev ".git"))
                                (cons "GIT_WORK_TREE" ev)
                                (cons "GIT_INDEX_FILE" (concatenate 'string ev ".git/index"))))

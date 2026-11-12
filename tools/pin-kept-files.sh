@@ -4,7 +4,7 @@
 # Writes test/api/kept-files.sexp: each list kept between sessions with its
 # class and the version of its format (a list of trust with :trust and the
 # number of its lines' fields too), and the other files of Tuatara's
-# folders with theirs, with the version in tuatara.asd; and into
+# directories with theirs, with the version in tuatara.asd; and into
 # test/kept-files/VERSION/ the file of each list as this release writes it,
 # none over a file there. Run at each version bump, beside
 # tools/pin-stable-surface.sh, once the changes it shows are meant (git diff).

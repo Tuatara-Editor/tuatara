@@ -1,7 +1,7 @@
 ;;;; lisp/files/bookmarks.lisp --- Places in files kept by name, between sessions: Emacs's bookmarks.
 ;;;; Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
 ;;;;
-;;;; M-x bookmark-set keeps where point is in the current file (or the folder a
+;;;; M-x bookmark-set keeps where point is in the current file (or the directory a
 ;;;; directory list shows) under a name; M-x bookmark-jump goes back there, in a
 ;;;; later session too; M-x bookmark-manager manages them in a list as the buffer
 ;;;; list does buffers: marks, deleting, renaming. A bookmark keeps the
@@ -91,7 +91,7 @@ offered and new ones typed (READ-SEVERAL), CURRENT, a list, written in first."
                                                        :none "no category" :more "no more categories"))))
 
 (define-command bookmark-set ()
-  "Keep where point is in the current file (or the folder a directory list shows
+  "Keep where point is in the current file (or the directory a directory list shows
 and the entry the cursor is on) under a name you give, the file's name offered,
 then in the categories you choose, those used already offered, new ones typed
 \(*BOOKMARK-SET-ASKS-CATEGORIES*). After that, \\[bookmark-jump] goes back
@@ -179,18 +179,18 @@ them again, marks kept, as the list does by itself while it is shown."
 (defvar *bookmarks-keymap* (mode-keymap 'bookmarks-mode)
   "Keys of the bookmark manager (bookmarks-mode's keymap).")
 
-(defparameter *bookmarks-columns* '((" M" :width 2) ("Name" :width 24) ("Kind" :width 8) ("File or folder"))
+(defparameter *bookmarks-columns* '((" M" :width 2) ("Name" :width 24) ("Kind" :width 9) ("File or directory"))
   "The columns of the bookmark manager, as TABLE-HEADING-PIECES takes them: the
-mark (> or D), the name, whether it keeps a place in a file or a folder, and
-the file or folder.")
+mark (> or D), the name, whether it keeps a place in a file or a directory, and
+the file or directory.")
 
 (defun bookmark-name-face (mark kind)
   "The face of a bookmark's name in the bookmark manager: that of its MARK
-\(LIST-MARK-FACE) when it has one; else :list-directory for a folder's,
-:list-dim for one whose file or folder is gone (its KIND), none for a file's."
+\(LIST-MARK-FACE) when it has one; else :list-directory for a directory's,
+:list-dim for one whose file or directory is gone (its KIND), none for a file's."
   (or (list-mark-face mark)
       (cond ((string= kind "gone") :list-dim)
-            ((string= kind "folder") :list-directory))))
+            ((string= kind "directory") :list-directory))))
 
 (defparameter *no-category* "No category"
   "The title of the bookmark manager's section for the bookmarks in no category.")
@@ -265,9 +265,9 @@ buffers, in sections: one for each category (\\[bookmark-set] asks for them,
 \\<bookmarks-mode>\\[bookmark-set-categories] here sets them), its heading
 saying how many it holds, then one for the bookmarks in none; a bookmark in two
 categories is in both. Each line: its mark (> marked, D marked for deletion),
-name, whether it keeps a place in a file or a folder (a rimu list's, the entry
-the cursor was on), and the file or folder. The names of folders, of bookmarks
-whose file or folder is gone and of those marked each set apart in a face of
+name, whether it keeps a place in a file or a directory (a rimu list's, the entry
+the cursor was on), and the file or directory. The names of directories, of bookmarks
+whose file or directory is gone and of those marked each set apart in a face of
 their own. \\[list-toggle-fold] or \\`RET' on a heading folds or unfolds a
 section, \\[list-toggle-all-folds] all of them. \\[list-visit] or \\`RET' goes
 to the bookmark on the line, \\[list-visit-other] in another window.

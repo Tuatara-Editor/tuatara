@@ -15,7 +15,7 @@ work in the background the one before began is done."
   "The frontend after KEYS are typed on TEXT, as MANY-TEXT types them."
   (run-keys-in-turns (if (listp keys) keys (list keys)) :text text :width 100 :height 10))
 
-(define-test (many-places one-question-past-the-limit)
+(define-modal-test (many-places one-question-past-the-limit)
   ;; f, t and c on a rectangle ask the one question past their limits, with one setting
   (let ((tuatara-user:*split-limit-ask* t)
         (tuatara-user:*split-limit* 2)
@@ -44,7 +44,7 @@ work in the background the one before began is done."
       (is string= (format nil "Xbc~%Xbc~%Xbc~%Xbc~%")
           (many-text (list (format nil "m v j j j c ~a X C-g" answer) "") lines) "c on a rectangle, ~a" answer))))
 
-(define-test (many-places change-is-one-undo)
+(define-modal-test (many-places change-is-one-undo)
   ;; c empties and types at many places as one change: one u takes both back
   (let ((two (format nil "foo bar~%foo baz~%")))
     (is string= two (many-text "% f f o o RET c X C-g u" two))
@@ -54,7 +54,7 @@ work in the background the one before began is done."
     (let ((tuatara-user:*split-limit* 1))
       (is string= two (many-text '("% f f o o RET c X C-g" "u") two)))))
 
-(define-test (many-places one-kill-of-parts)
+(define-modal-test (many-places one-kill-of-parts)
   ;; a rectangle's kill goes in as a block by C-y and by p, and a row to each of as many cursors
   (let ((two (format nil "ab~%cd~%")) (block (format nil "bab~%dcd~%")))
     (is string= block (many-text "l m v j M-w g g C-y" two))
@@ -83,7 +83,7 @@ work in the background the one before began is done."
     (is string= (format nil "a~%b") (tuatara.defaults::parts-kill-text '("a" "b")))
     (false (tuatara.defaults::parts-kill-text '("" "")))))
 
-(define-test (many-places wrap-and-unwrap-alike)
+(define-modal-test (many-places wrap-and-unwrap-alike)
   ;; a wrap key wraps, and again takes the pair off, at every kind of place
   (let ((two (format nil "ab~%ab~%")) (wrapped (format nil "(ab)~%(ab)~%")))
     (is string= (format nil "(ab)~%ab~%") (many-text "m w (" two))
@@ -120,7 +120,7 @@ work in the background the one before began is done."
            (false (tuatara.defaults::delete-spans b '((1 . 1)))))
       (tuatara.buffer:kill-buffer b))))
 
-(define-test (many-places one-matcher)
+(define-modal-test (many-places one-matcher)
   ;; f, r r and :s find a pattern one way
   (flet ((kind (pattern &rest keys)
            (tuatara.defaults::matcher-kind (apply #'tuatara.defaults::make-pattern-matcher pattern keys))))
@@ -139,7 +139,7 @@ work in the background the one before began is done."
     (is string= (format nil "Xpfel Xpfel~%") (many-text "C-x h M-x r e p l a c e - r e g e x p RET % ä RET X RET" text))
     (is string= (format nil "Xpfel Xpfel~%") (many-text "r r % ä / X RET" text))))
 
-(define-test (many-places one-words-for-jobs)
+(define-modal-test (many-places one-words-for-jobs)
   ;; every job at many places says what it does from one table
   (is string= "Pasting the rectangle's 2 rows" (tuatara.defaults::job-words :paste :doing "the rectangle's 2 rows"))
   (is string= "Writing at the other lines" (tuatara.defaults::job-words :type :doing "the other lines"))
@@ -164,7 +164,7 @@ work in the background the one before began is done."
       (true (tuatara.frontend.fake:fake-frame-showing (many-frame '("l m v j d" "") text)
                                                       "Cut the rectangle's 2 rows in")))))
 
-(define-test (many-places last-line-copied-as-a-line)
+(define-modal-test (many-places last-line-copied-as-a-line)
   ;; V y of a last line without a line end copies it as a whole line: p puts it in as one
   (is string= (format nil "three~%one~%two~%three") (many-text "g e V y g g p" (format nil "one~%two~%three")))
   (is string= (format nil "two~%one~%two~%three") (many-text "j V y g g p" (format nil "one~%two~%three"))))

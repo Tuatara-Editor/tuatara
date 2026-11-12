@@ -24,14 +24,14 @@ forgets it: WITH-TEST-DIRECTORY)."
 (defun trust-test-repository (dir)
   "Trust the repository at DIR, as when asked (a test directory forgets it: WITH-TEST-DIRECTORY)."
   (tuatara.defaults::state-list-put tuatara.defaults::*lsp-trusted*
-                                    (list (tuatara.defaults::real-folder (namestring dir)))))
+                                    (list (tuatara.defaults::real-directory (namestring dir)))))
 
-(defmacro with-trusted-folders ((folders) &body body)
-  "Run BODY with *LSP-TRUSTED-PROJECTS* FOLDERS for every thread, the git
+(defmacro with-trusted-directories ((directories) &body body)
+  "Run BODY with *LSP-TRUSTED-PROJECTS* DIRECTORIES for every thread, the git
 jobs' too, set back after."
   (let ((old (gensym)))
     `(let ((,old tuatara-user:*lsp-trusted-projects*))
-       (unwind-protect (progn (setf tuatara-user:*lsp-trusted-projects* ,folders) ,@body)
+       (unwind-protect (progn (setf tuatara-user:*lsp-trusted-projects* ,directories) ,@body)
          (setf tuatara-user:*lsp-trusted-projects* ,old)))))
 
 (defun git-output (dir &rest arguments)
@@ -138,7 +138,7 @@ jobs' too, set back after."
     (is equal '(("plain.txt" "modified")) (tuatara.git::git-state-unstaged state))))
 
 (define-test (git trusted-where-it-really-is)
-  ;; a project is trusted by where it really is: a link from a trusted folder lends none,
+  ;; a project is trusted by where it really is: a link from a trusted directory lends none,
   ;; nor does .. out of one; one trusted when asked is kept by its real place
   (with-test-directory (trusted)
     (with-test-directory (elsewhere)
@@ -157,17 +157,17 @@ jobs' too, set back after."
         (false (tuatara.defaults::project-trusted-p (concatenate 'string (namestring trusted) "not-there/")))))))
 
 (define-test (git trust-looked-up-once)
-  ;; whether a project is trusted asks where it really is, and not again where each trusted folder is
+  ;; whether a project is trusted asks where it really is, and not again where each trusted directory is
   (with-test-directory (dir)
-    (let* ((folders (loop for k below 50
+    (let* ((directories (loop for k below 50
                           collect (namestring (ensure-directories-exist (merge-pathnames (format nil "t~d/" k) dir)))))
-           (tuatara-user:*lsp-trusted-projects* folders)
+           (tuatara-user:*lsp-trusted-projects* directories)
            (calls 0))
-      (tuatara.defaults::project-trusted-p (first folders))
+      (tuatara.defaults::project-trusted-p (first directories))
       (sb-int:encapsulate 'tuatara.io:real-path 'count-calls
                           (lambda (f path) (incf calls) (funcall f path)))
       (unwind-protect
-           (progn (true (tuatara.defaults::project-trusted-p (car (last folders))))
+           (progn (true (tuatara.defaults::project-trusted-p (car (last directories))))
                   (false (tuatara.defaults::project-trusted-p (namestring dir))))
         (sb-int:unencapsulate 'tuatara.io:real-path 'count-calls))
       (is = 2 calls))))
@@ -312,7 +312,7 @@ DIR is visited and its status read, the project trusted. Returns the frontend."
       (false (tuatara.buffer:find-buffer "a.txt")))))
 
 (define-test (git a-status-for-each-repository)
-  ;; two repositories whose folders share a name have a status each, found by their top
+  ;; two repositories whose directories share a name have a status each, found by their top
   (with-test-directory (dir)
     (let* ((one (native-in dir "one/repo/"))
            (two (native-in dir "two/repo/"))
@@ -405,7 +405,7 @@ DIR is visited and its status read, the project trusted. Returns the frontend."
           (is equal (format nil "First~%") (git-output dir "log" "--format=%s")))))))
 
 (define-test (git found-where-path-names-it-from-the-root)
-  ;; git is run from a folder PATH names from the root, never from one relative to wherever the editor is
+  ;; git is run from a directory PATH names from the root, never from one relative to wherever the editor is
   (with-test-directory (dir)
     (scratch-repository dir)
     (let ((path (sb-posix:getenv "PATH")))
@@ -620,7 +620,7 @@ DIR is visited and its status read, the project trusted. Returns the frontend."
           (tree (native-in dir "wt")))
       (ensure-directories-exist repo)
       (scratch-repository repo)
-      (with-trusted-folders ((list (namestring dir)))
+      (with-trusted-directories ((list (namestring dir)))
       (let ((tuatara.defaults::*modal-editing* nil))
         (let ((f (auto-save-session
                   (list (format nil "C-x C-f C-a C-k ~a RET" (rimu-typed (native-in repo "a.txt")))
@@ -831,7 +831,7 @@ DIR is visited and its status read, the project trusted. Returns the frontend."
                       (tuatara.buffer:buffer-string (tuatara.buffer:find-buffer "*git diff unstaged*"))))))))
 
 (define-test (git fetch-pull-push-menus)
-  ;; a remote in a folder: P p pushes, f u fetches what another clone pushed,
+  ;; a remote in a directory: P p pushes, f u fetches what another clone pushed,
   ;; F u brings it in; a forced push is asked first, and no leaves it
   (with-test-directory (dir)
     (let ((repo (merge-pathnames "repo/" dir))
@@ -979,26 +979,26 @@ DIR is visited and its status read, the project trusted. Returns the frontend."
         (false (probe-file (merge-pathnames "b.txt" dir)))
         (true (probe-file (merge-pathnames "c.txt" dir)))))))
 
-(define-test (git rebase-leaves-no-folder)
-  ;; the folder a rebase's list keeps its files in goes when the list is given
+(define-test (git rebase-leaves-no-directory)
+  ;; the directory a rebase's list keeps its files in goes when the list is given
   ;; up, and when git has rebased as it says
   (with-test-directory (dir)
     (scratch-repository dir)
     (git-commit-file dir "b.txt" "b" "Add B")
-    (let ((folders '()))
+    (let ((directories '()))
       (flet ((todo () (git-buffer-named "*git rebase:"))
-             (note-folder ()
-               (push (tuatara.defaults::buffer-private-folder (git-buffer-named "*git rebase:")) folders))
-             (gone () (notany #'probe-file (remove nil folders))))
+             (note-directory ()
+               (push (tuatara.defaults::buffer-private-directory (git-buffer-named "*git rebase:")) directories))
+             (gone () (notany #'probe-file (remove nil directories))))
         (git-session dir "a.txt"
                      (list "~ R i" (list :until (asking "Rebase the commits after")) "F i r s t RET"
-                           (list :until #'todo) #'note-folder
+                           (list :until #'todo) #'note-directory
                            "C-c C-k" (list :until #'gone)
                            "~ R i" (list :until (asking "Rebase the commits after")) "F i r s t RET"
-                           (list :until #'todo) #'note-folder
+                           (list :until #'todo) #'note-directory
                            "C-c C-c" (list :until (lambda () (and (not (todo)) (gone)))))
                      :width 120 :height 30)
-        (is = 2 (count-if #'identity folders))
+        (is = 2 (count-if #'identity directories))
         (true (gone))))))
 
 (define-test (git renamed-file-followed)
@@ -1076,7 +1076,7 @@ DIR is visited and its status read, the project trusted. Returns the frontend."
                                   (list :until (asking "Address of up:"))
                                   "C-a C-k / t m p / t w o . g i t RET"
                                   (list :until (lambda () (search "/tmp/two.git" (remotes))))
-                                  ;; a folder written from ~/ is made whole
+                                  ;; a directory written from ~/ is made whole
                                   "M a"
                                   (list :until (asking "Remote name"))
                                   "h o m e RET"
@@ -1139,7 +1139,7 @@ DIR is visited and its status read, the project trusted. Returns the frontend."
       (ensure-directories-exist sub)
       (scratch-repository repo)
       (scratch-repository sub)
-      ;; a submodule from a folder, which git refuses by default: allowed by a
+      ;; a submodule from a directory, which git refuses by default: allowed by a
       ;; global settings file of the test's own, never yours
       (put-file (merge-pathnames "gitconfig" dir)
                 (format nil "[protocol \"file\"]~%	allow = always~%[commit]~%	gpgsign = false~%"))
@@ -1186,7 +1186,7 @@ DIR is visited and its status read, the project trusted. Returns the frontend."
 (define-test (git patches-notes-sparse-refs-run)
   ;; W c writes commits as patches; w w takes one in on another branch; W s
   ;; saves the changes as a patch, W a applies it; T T notes a commit; > s
-  ;; checks out one folder, > d all again; y lists the branches and tags; !
+  ;; checks out one directory, > d all again; y lists the branches and tags; !
   ;; runs a git command; W b writes a bundle, W v checks it
   (with-test-directory (dir)
     (let ((repo (merge-pathnames "repo/" dir)))
@@ -1240,7 +1240,7 @@ DIR is visited and its status read, the project trusted. Returns the frontend."
                            (list :until (asking "Note on HEAD:"))
                            "R e v i e w e d RET"
                            (list :until (lambda () (search "Reviewed" (git-output repo "notes" "show" "HEAD"))))
-                           "> s" (list :until (asking "Check out only the folders:")) "d o c s RET"
+                           "> s" (list :until (asking "Check out only the directories:")) "d o c s RET"
                            (list :until (lambda () (search "true" (git-output repo "config" "core.sparseCheckout"))))
                            "> d"
                            (list :until
@@ -1260,7 +1260,7 @@ DIR is visited and its status read, the project trusted. Returns the frontend."
                            (list :until (asking "Check bundle:"))
                            (format nil "C-a C-k ~a RET" (rimu-typed (native-in dir "all.bundle")))
                            (list :until (lambda () (search "is good" (messages))))
-                           "O s" (list :until (asking "Subtree folder to split:")) "d o c s RET" (list :wait 0.5))
+                           "O s" (list :until (asking "Subtree directory to split:")) "d o c s RET" (list :wait 0.5))
                      :width 120 :height 30)))
             (true (probe-file (merge-pathnames "docs/guide.txt" repo)))
             (let ((refs (tuatara.buffer:buffer-string (git-buffer-named "*git refs:"))))
@@ -1294,9 +1294,9 @@ DIR is visited and its status read, the project trusted. Returns the frontend."
           (true (search "+line 18" (status-text)))
           (true (search "... 7 more lines of changes: TAB here shows 7 more" (status-text))))))))
 
-(define-test (git untracked-folder-one-line)
-  ;; a folder none of whose files git tracks is one line of Untracked files,
-  ;; however many it holds; l lists the folder, s stages every file in it
+(define-test (git untracked-directory-one-line)
+  ;; a directory none of whose files git tracks is one line of Untracked files,
+  ;; however many it holds; l lists the directory, s stages every file in it
   (with-test-directory (dir)
     (scratch-repository dir)
     (ensure-directories-exist (merge-pathnames "big/deep/" dir))
@@ -1306,20 +1306,20 @@ DIR is visited and its status read, the project trusted. Returns the frontend."
            (rimu () (find-if #'tuatara.defaults::rimu-list-p tuatara.buffer:*buffers*))
            (staged () (tuatara.git::git-state-staged (git-state-here))))
       (git-session dir "a.txt"
-                   (list (lambda () (setf (getf (symbol-plist 'untracked-folder) :first) (status-text)))
+                   (list (lambda () (setf (getf (symbol-plist 'untracked-directory) :first) (status-text)))
                          "M-< C-s b i g RET l" (list :until #'rimu)
                          (lambda ()
-                           (setf (getf (symbol-plist 'untracked-folder) :listed)
+                           (setf (getf (symbol-plist 'untracked-directory) :listed)
                                  (tuatara.defaults::rimu-list-directory (rimu))))
                          "C-x g" (list :until (lambda () (eq (tuatara.command:current-buffer) (git-status-here))))
                          "M-< C-s b i g RET s" (list :until (lambda () (= 51 (length (staged)))))))
-      (let ((first (getf (symbol-plist 'untracked-folder) :first)))
+      (let ((first (getf (symbol-plist 'untracked-directory) :first)))
         (true (search "Untracked files (1)" first))
         (true (search "untracked  big/" first))
         (false (search "f1.txt" first)))
-      (true (uiop:string-suffix-p (getf (symbol-plist (quote untracked-folder)) :listed) "big/")
+      (true (uiop:string-suffix-p (getf (symbol-plist (quote untracked-directory)) :listed) "big/")
             "listed ~s; messages ~a"
-            (getf (symbol-plist (quote untracked-folder)) :listed)
+            (getf (symbol-plist (quote untracked-directory)) :listed)
             (messages-text))
       (is = 51 (length (staged))))))
 
@@ -1365,7 +1365,7 @@ DIR is visited and its status read, the project trusted. Returns the frontend."
 
 (define-test (git status-at-rest-asks-no-wakes)
   ;; a status shown, its repository unchanged, asks the editor to wake for
-  ;; nothing: the folders of git's own files are watched on disk instead
+  ;; nothing: the directories of git's own files are watched on disk instead
   (with-test-directory (dir)
     (scratch-repository dir)
     (let ((tick :unset) (watched '()))
@@ -1375,9 +1375,9 @@ DIR is visited and its status read, the project trusted. Returns the frontend."
                          (list :wait 0.3)
                          (lambda ()
                            (setf tick (tuatara.git::git-watch-tick tuatara.command:*editor*)
-                                 watched (tuatara.git::git-watched-folders)))))
+                                 watched (tuatara.git::git-watched-directories)))))
       (false tick)
-      (true (find-if (lambda (folder) (uiop:string-suffix-p folder "/.git/")) watched)))))
+      (true (find-if (lambda (directory) (uiop:string-suffix-p directory "/.git/")) watched)))))
 
 (define-test (git shown-text-closes-with-q)
   ;; a commit shown in a buffer of its own is read in SUPPORT state, and closes
@@ -1402,7 +1402,7 @@ DIR is visited and its status read, the project trusted. Returns the frontend."
 
 (define-test (git ignored-files-folded)
   ;; the files git ignores are under Ignored files, folded: TAB on the heading
-  ;; lists them (a folder ignored whole as one line) and folds them again; s
+  ;; lists them (a directory ignored whole as one line) and folds them again; s
   ;; stages none of them
   (with-test-directory (dir)
     (scratch-repository dir)
@@ -1597,11 +1597,11 @@ DIR is visited and its status read, the project trusted. Returns the frontend."
       (put-file (sb-ext:parse-native-namestring (native-in dir "a[1].txt")) "x")
       (put-file (merge-pathnames "a1.txt" dir) "x")
       (is equal (format nil "?? .gitignore~%?? a1.txt~%") (git-output dir "status" "--short"))
-      ;; git's own exclude file, its folder not there yet: both made
+      ;; git's own exclude file, its directory not there yet: both made
       (uiop:delete-directory-tree (merge-pathnames ".git/info/" dir) :validate t :if-does-not-exist :ignore)
       (tuatara.git::git-add-ignore-pattern (native-in dir ".git/info/exclude") "/x" (tuatara.io:native dir))
       (is equal (format nil "/x~%") (alexandria:read-file-into-string (merge-pathnames ".git/info/exclude" dir)))
-      ;; a name holding \\ and * offered from its folder as written, not as a Lisp pathname reads it
+      ;; a name holding \\ and * offered from its directory as written, not as a Lisp pathname reads it
       (sb-int:encapsulate 'tuatara.git::git-file-here 'ignore-test (lambda (f top)
                                                                      (declare (ignore f top))
                                                                      "sub/a*\\b.txt"))
@@ -1870,12 +1870,12 @@ DIR is visited and its status read, the project trusted. Returns the frontend."
             ;; back in the file as it is, on the line the history was on
             (is equal '("b.txt" 1) back)))))))
 
-(define-test (git rewind-folder)
-  ;; in rimu M-x git-rewind lists the folder as its commits left it, in a rimu
-  ;; list of its own: p goes a commit older, l into a folder as it was then, h
+(define-test (git rewind-directory)
+  ;; in rimu M-x git-rewind lists the directory as its commits left it, in a rimu
+  ;; list of its own: p goes a commit older, l into a directory as it was then, h
   ;; up, RET on a file through its history from there, q back to the list;
   ;; what works on the files as they are now is refused; M-x git-rewind again
-  ;; goes back to the folder now, the histories ended
+  ;; goes back to the directory now, the histories ended
   (with-test-directory (dir)
     (scratch-repository dir)
     (flet ((git (&rest arguments) (apply #'git-output dir arguments))
@@ -1927,8 +1927,8 @@ DIR is visited and its status read, the project trusted. Returns the frontend."
           (true back-to-list)
           (is equal '(nil t) back))))))
 
-(define-test (git rewind-folder-reads-git)
-  ;; a folder as a commit left it is read from git, not the disk: its entries,
+(define-test (git rewind-directory-reads-git)
+  ;; a directory as a commit left it is read from git, not the disk: its entries,
   ;; their kinds and sizes, and a file's text then, for the preview
   (with-test-directory (dir)
     (scratch-repository dir)
@@ -2082,7 +2082,7 @@ DIR is visited and its status read, the project trusted. Returns the frontend."
     (is string= "1" (sb-posix:getenv "GIT_CONFIG_NOSYSTEM"))))
 
 (define-test (git warnings-kept-apart)
-  ;; git warns of a folder it cannot read on its error output: what it prints is read alone,
+  ;; git warns of a directory it cannot read on its error output: what it prints is read alone,
   ;; every file and the commit there, the warning taken for none of them
   (with-test-directory (dir)
     (scratch-repository dir)

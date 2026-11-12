@@ -694,7 +694,7 @@ thread (*rewrite-threshold* 0)."
   "The text after TURNS typed on TEXT, each once the work in the background the one before began is done."
   (session-text (nth-value 1 (run-keys-in-turns (append turns '("")) :text text :width width :height 10 :mode mode))))
 
-(define-test (simple large-selections)
+(define-modal-test (simple large-selections)
   ;; a selection too large to work on at once is changed in the background, as the small one is at once
   (flet ((both (keys text &optional mode)
            (let ((small (small-text (list keys) text :mode mode))
@@ -770,7 +770,7 @@ thread (*rewrite-threshold* 0)."
            (loop for i below 100 collect (cons (* 2 i) (1+ (* 2 i))))))
     (tuatara.buffer:kill-buffer (tuatara.buffer:find-buffer "*stretches*"))))
 
-(define-test (simple soft-wrap-mode)
+(define-modal-test (simple soft-wrap-mode)
   (let ((tuatara-user:*fill-column* 8)
         (text "aaa bbb ccc ddd eee"))
     (flet ((screen (keys &key (text text) (width 40))
@@ -843,7 +843,7 @@ thread (*rewrite-threshold* 0)."
           (true (search "aaa bbb ccc ddd" (first lines)))
           (true (search "↪ eee" (second lines))))))))
 
-(define-test (simple soft-wrap-under-an-indented-headline)
+(define-modal-test (simple soft-wrap-under-an-indented-headline)
   ;; in Org's indented view, j from a headline's first column goes to the text's first character
   ;; under it, never to the indentation shown before it, which stands for no character
   (multiple-value-bind (f editor)
@@ -853,7 +853,7 @@ thread (*rewrite-threshold* 0)."
     (is = (length (format nil "* Head~%Text under it~%more~%")) (session-point editor))
     (false (search "outside buffer" (tuatara.buffer:buffer-string (tuatara.buffer:find-buffer "*Messages*"))))))
 
-(define-test (simple visual-line-mode)
+(define-modal-test (simple visual-line-mode)
   (let ((tuatara-user:*fill-column* 8)
         (text (format nil "aaa bbb ccc~%x~%")))
     (flet ((ruled (f row)
@@ -993,7 +993,7 @@ stands around takes it off).")
   (false (tuatara.command:where-is 'tuatara.defaults::toggle-comment-lines-ret (list tuatara.defaults::*global-keymap*)))
   (true (assoc 'tuatara.defaults::toggle-comment-lines-ret tuatara.defaults::*cursor-verbs*)))
 
-(define-test (simple comments-and-pairs)
+(define-modal-test (simple comments-and-pairs)
   (loop for (mode text keys expected) in *comment-and-pair-cases*
         do (multiple-value-bind (plain point mark) (point-and-mark-text text)
              (multiple-value-bind (f editor) (session-in mode plain keys :point point :mark mark :width 100)
@@ -1013,7 +1013,7 @@ stands around takes it off).")
     (setf tuatara-user:*electric-pair-mode* t)
     (true tuatara.defaults::*electric-pair-mode*)))
 
-(define-test (simple cursor-column-mode)
+(define-modal-test (simple cursor-column-mode)
   (let ((text (format nil "aaa bbb ccc~%x~%~%dddd eeee~%")))
     (flet ((marked (f row)
              ;; the screen columns of ROW in :cursor-column, whatever faces are over it
@@ -1076,7 +1076,7 @@ stands around takes it off).")
           (is equal '() (marked (run-keys "" :text text :width 40 :height 9) 1))
           (is equal '(0) (marked (run-keys "SPC t |" :text text :width 40 :height 9) 1)))))))
 
-(define-test (simple huge-counts)
+(define-modal-test (simple huge-counts)
   ;; a count of billions stops at once where the text ends, the editor never held up
   (let ((start (get-internal-real-time)))
     (multiple-value-bind (f editor) (run-keys "C-u 9 9 9 9 9 9 9 9 9 9 C-f" :text (format nil "abc~%def"))
@@ -1097,7 +1097,7 @@ stands around takes it off).")
     (true (tuatara.frontend.fake:fake-frame-showing f "more than can be inserted at once"))
     (is string= "x" (session-text editor))))
 
-(define-test (simple negative-counts)
+(define-modal-test (simple negative-counts)
   ;; a negative count goes the other way, as in Emacs
   (multiple-value-bind (f editor) (run-keys "g e C-u - 2 M-f" :text "one two three")
     (declare (ignore f))

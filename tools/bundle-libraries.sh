@@ -8,7 +8,7 @@
 # A library no package owns, whose package has no copyright file, or whose
 # file name is given twice, stops it.
 # DOC_DIR (default /usr/share/doc) is where the copyright files are, USR_ROOT
-# (default /usr) the folder dpkg's /lib and /bin are under.
+# (default /usr) the directory dpkg's /lib and /bin are under.
 # Usage: tools/bundle-libraries.sh OUTDIR LIBRARY...
 set -euo pipefail
 out="$1"

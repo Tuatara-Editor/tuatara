@@ -1,7 +1,7 @@
 ;;;; lisp/editing/snippets.lisp --- Snippets: text with fields to fill in, put in by a key and TAB.
 ;;;; Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
 ;;;;
-;;;; A snippet is a file in the folder of a major mode under
+;;;; A snippet is a file in the directory of a major mode under
 ;;;; ~/.config/tuatara/snippets/ (org-mode/, prog-mode/, fundamental-mode/ for
 ;;;; every buffer; a mode's snippets serve the modes made from it too):
 ;;;;
@@ -29,16 +29,16 @@
 (in-package #:tuatara.defaults)
 
 (define-setting *snippet-directories* nil
-  "The folders your snippets are in, each with a folder for each major mode
+  "The directories your snippets are in, each with a directory for each major mode
 \(org-mode/, prog-mode/, fundamental-mode/), a snippet a file in it.
-- a list of folders' names: those folders.
-- nil: snippets/ in your configuration folder (~/.config/tuatara/snippets/,
+- a list of directories' names: those directories.
+- nil: snippets/ in your configuration directory (~/.config/tuatara/snippets/,
   XDG_CONFIG_HOME's when it is set), the standard."
-  :values (list-of folder))
+  :values (list-of directory))
 
 (defun snippet-directories ()
-  "The folders your snippets are in (*SNIPPET-DIRECTORIES*): snippets/ in
-your configuration folder (CONFIG-PATH) when it names none."
+  "The directories your snippets are in (*SNIPPET-DIRECTORIES*): snippets/ in
+your configuration directory (CONFIG-PATH) when it names none."
   (or (setting-list '*snippet-directories* *snippet-directories*)
       (list (config-path "snippets/"))))
 
@@ -48,7 +48,7 @@ your configuration folder (CONFIG-PATH) when it names none."
 - nil: it does not."
   :values boolean)
 
-(defparameter *built-in-snippets* (built-in-data-files "snippets/" :by-folder t)
+(defparameter *built-in-snippets* (built-in-data-files "snippets/" :by-directory t)
   "Tuatara's own snippets, each (MODE-NAME FILE-NAME TEXT): Org's blocks and
 keyword lines (<s, <q, <e ...).")
 
@@ -57,7 +57,7 @@ keyword lines (<s, <q, <e ...).")
 (defstruct (snippet (:constructor make-snippet (name key body)) (:copier nil))
   "A snippet: NAME, what it is called; KEY, what typed before the cursor and
 \\`TAB' put it in (NIL for none); BODY, its text as written; MODE, the name of
-the mode whose folder it is in, FILE its file's name there and OWN true for
+the mode whose directory it is in, FILE its file's name there and OWN true for
 one of Tuatara's (NIL for one of yours)."
   name key body mode file own)
 
@@ -80,25 +80,25 @@ TEXT is (READ-SNIPPET), OWN true for one of Tuatara's."
     (setf (snippet-mode s) mode-name (snippet-file s) file-name (snippet-own s) own)
     s))
 
-(defvar *snippet-folders* (make-hash-table :test 'equal)
-  "Your snippets as read from each folder of them: its native name to the
+(defvar *snippets-read-by-directory* (make-hash-table :test 'equal)
+  "Your snippets as read from each directory of them: its native name to the
 names and stamps of its files then, and the snippets read from them.")
 
 (defun user-snippets-of (mode-name)
   "Your snippets for the mode called MODE-NAME, as SNIPPETs: those of its
-folder in each of *SNIPPET-DIRECTORIES*, read again only from a folder whose
-files have changed, come or gone since (FOLDER-FILES)."
+directory in each of *SNIPPET-DIRECTORIES*, read again only from a directory whose
+files have changed, come or gone since (DIRECTORY-FILES)."
   (loop for directory in (snippet-directories)
-        for place = (tuatara.io:native (own-folder directory mode-name))
+        for place = (tuatara.io:native (own-subdirectory directory mode-name))
         for files = (loop for (name kind nil nil stamp) in (tuatara.io:directory-entries place :stamps t)
                           when (and (eq kind :regular) (own-file-name-p name))
                             collect (cons name stamp))
-        append (let ((kept (gethash place *snippet-folders*)))
+        append (let ((kept (gethash place *snippets-read-by-directory*)))
                  (if (and kept (equalp (car kept) files))
                      (cdr kept)
-                     (let ((snippets (loop for (file . text) in (folder-files (list directory) mode-name)
+                     (let ((snippets (loop for (file . text) in (directory-files (list directory) mode-name)
                                            when text collect (read-snippet-of mode-name file text nil))))
-                       (setf (gethash place *snippet-folders*) (cons files snippets))
+                       (setf (gethash place *snippets-read-by-directory*) (cons files snippets))
                        snippets)))))
 
 (defvar *built-in-snippets-read* nil
@@ -575,7 +575,7 @@ place, the selected text where it has $TM_SELECTED_TEXT."
 
 (define-command copy-snippet ()
   "Copy one of Tuatara's own snippets, chosen by its name, into your snippets
-folder (the first of *snippet-directories*, in the folder of its mode) and
+directory (the first of *snippet-directories*, in the directory of its mode) and
 visit it: your copy, changed as you like, takes the place of Tuatara's. One
 you have already is visited as it is."
   (copy-chosen-own-file "Copy snippet: "

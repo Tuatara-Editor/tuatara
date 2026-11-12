@@ -96,7 +96,7 @@ list, newest first, of what is said of those that fail in it."
       (false ran)
       (false said))))
 
-(define-test (hooks after-save-failure-said)
+(define-modal-test (hooks after-save-failure-said)
   ;; a function run after saving that fails leaves the file saved, the others run and the failure said
   (clrhash tuatara.runtime::*hook-failures*)
   (with-test-directory (dir)

@@ -9,7 +9,7 @@ matter.
 A search answers the question "where is this?". A replacement answers "change
 this everywhere". Both start from a pattern, a short description of the text
 you want. This chapter begins with the search you will use all day, then
-covers replacing, narrowing a list to its matches, searching a whole folder
+covers replacing, narrowing a list to its matches, searching a whole directory
 of files, and going to a heading. A table at the end of each section lists
 every command, setting and face that belongs to it.
 
@@ -332,9 +332,9 @@ see. Press ~C-x / r~ to see everything again.
 ** Searching many files
 
 ~M-s g~ finds text in many files at once. It looks in the project that holds
-your file. A project is the folder above your file that holds a =.git= or
-=.project= entry (see =*project-root-markers*=). If there is no such folder,
-it looks in the folder of the file. In a directory listing it searches that
+your file. A project is the directory above your file that holds a =.git= or
+=.project= entry (see =*project-root-markers*=). If there is no such directory,
+it looks in the directory of the file. In a directory listing it searches that
 directory, and with a prefix argument (~C-u~ first) it asks for a directory.
 
 Type words and Tuatara lists every line that holds all of them, in any order,
@@ -372,27 +372,27 @@ the files as they were.
 Files that you opened safely, files you may not write and read-only buffers are
 never written. The message log says why.
 
-*** Keeping folders read
+*** Keeping directories read
 
-A big folder takes a while to read. Name the folders you search often in
-=*indexed-directories*= in your init file, for example
-=(setf *indexed-directories* (list "~/notes/"))=. Tuatara then keeps their file
-names and text in memory. It reads them in the background when it starts, and
-again when something changes on disk. After that ~M-s g~ in them answers at
-once, and so does the search of your files with formatted names. While a folder
-is being read the mode line shows =U= after the =P= sign, and while a kept
-folder is searched it shows =S=. They stand always in the same place and are
+A big directory takes a while to read. Name the directories you search often in
+=*indexed-directories*= in your init file, for example =(setf
+*indexed-directories* (list "~/notes/"))=. Tuatara then keeps their file names
+and text in memory. It reads them in the background when it starts, and again
+when something changes on disk. After that ~M-s g~ in them answers at once, and
+so does the search of your files with formatted names. While a directory is
+being read the mode line shows =U= after the =P= sign, and while a kept
+directory is searched it shows =S=. They stand always in the same place and are
 faint when idle (=*indexing-indicator*=, =*searching-indicator*=).
 
 By default what was read is also kept on disk between sessions
 (=*indexes-kept-on-disk*=), so that at the next start only the files that
-changed are read again. Set it to nil for a folder whose text must not be
+changed are read again. Set it to nil for a directory whose text must not be
 copied anywhere. =*search-files-limit*= is the most text Tuatara keeps for
-one search or one kept folder, 128 MB as standard. Files past it are searched
+one search or one kept directory, 128 MB as standard. Files past it are searched
 from the disk, more slowly.
 
-#+begin_try Try it, with a folder of notes
-1. Make a folder called =notes= in your home folder, with your file manager
+#+begin_try Try it, with a directory of notes
+1. Make a directory called =notes= in your home directory, with your file manager
    or with =mkdir ~/notes= in a terminal. Open =~/notes/akaroa.txt= with
    ~C-x C-f~ and type =Tui and kereru near the harbour=. Save it with
    ~C-x C-s~. Make a second file, =~/notes/kaikoura.txt=, with =Fantail and
@@ -406,7 +406,7 @@ from the disk, more slowly.
    because it holds both words. Press ~C-c C-l~ to put the lines in a buffer,
    ~C-x C-q~ to change them, replace =harbour= with =bay= on the line, then
    ~C-c C-c~ to write it back. Look at =akaroa.txt=: it says =bay=.
-5. To keep the folder read, add =(setf *indexed-directories* (list
+5. To keep the directory read, add =(setf *indexed-directories* (list
    "~/notes/"))= to your init file and restart. The =U= in the mode
    line lights up while it is read, and is faint again when it is done.
 #+end_try

@@ -1,4 +1,4 @@
-;;;; lisp/git/rimu.lisp --- Rimu and git: each entry's last commit, and a folder as a commit left it.
+;;;; lisp/git/rimu.lisp --- Rimu and git: each entry's last commit, and a directory as a commit left it.
 ;;;; Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
 ;;;;
 ;;;; G in a rimu list shows, after each name, when the entry last changed in
@@ -6,7 +6,7 @@
 ;;;; dired-git-info does; a directory's is the last commit of anything in it.
 ;;;; One git log is read on a thread of its own, the newest commit first, until
 ;;;; every entry has its commit, and the column fills in when it is done.
-;;;; C-x G (M-x git-rewind) in a list lists the folder as a commit left it, in a
+;;;; C-x G (M-x git-rewind) in a list lists the directory as a commit left it, in a
 ;;;; rimu list of its own read from git (git ls-tree), its preview reading
 ;;;; the files as they were then; p and n go a commit older and newer, RET
 ;;;; on a file goes through its history, C-x G again back to now.
@@ -15,7 +15,7 @@
 
 (defun rimu-git-p (buffer)
   "True when the rimu list BUFFER shows the git column (\\<rimu-mode>\\[rimu-toggle-git]):
-never in a list opened safely, nor in one of a folder as a commit left it."
+never in a list opened safely, nor in one of a directory as a commit left it."
   (rimu-column-allowed-p buffer 'rimu-git))
 
 (defun rimu-git-commits (directory names &key cancel)
@@ -87,10 +87,10 @@ git's history: when it was made and the first line of its message.
 *RIMU-GIT-INFO* says whether new lists show it."
   (rimu-toggle 'rimu-git "Last commits shown" "Last commits hidden"))
 
-;;; A folder as a commit left it
+;;; A directory as a commit left it
 
 (defparameter *rimu-link-limit* 4096
-  "The longest target of a link in a folder as a commit left it that is read
+  "The longest target of a link in a directory as a commit left it that is read
 from git; a longer one is shown with none.")
 
 (defun rimu-link-targets (top objects)
@@ -121,7 +121,7 @@ or one longer than *RIMU-LINK-LIMIT*, is not in it."
     targets))
 
 (defstruct (git-rewound (:constructor make-git-rewound (top &optional hash)) (:copier nil))
-  "A rimu list's folder as a commit left it: the TOP of its repository and
+  "A rimu list's directory as a commit left it: the TOP of its repository and
 the HASH of the commit shown, NIL until its history is read."
   top (hash nil))
 
@@ -130,7 +130,7 @@ the HASH of the commit shown, NIL until its history is read."
   (git-rewound-top source))
 
 (defmethod rimu-source-buffer-name ((source git-rewound) directory)
-  "*git rewind: and the folder's name."
+  "*git rewind: and the directory's name."
   (format nil "*git rewind: ~a*" (rimu-buffer-name directory)))
 
 (defmethod rimu-source-taken ((source git-rewound) buffer)
@@ -138,17 +138,17 @@ the HASH of the commit shown, NIL until its history is read."
   (setf (tuatara.buffer:buffer-local buffer :git-top) (git-rewound-top source)))
 
 (defmethod rimu-source-listing ((source git-rewound) directory)
-  "The folder as the commit left it (RIMU-READ-AT-COMMIT)."
+  "The directory as the commit left it (RIMU-READ-AT-COMMIT)."
   (rimu-read-at-commit (git-rewound-top source) (git-rewound-hash source) directory))
 
 (defun rimu-read-at-commit (top hash directory)
   "A RIMU-LISTING of DIRECTORY, a native name ending in / within the repository
-at TOP, as the commit HASH left it. It holds what the folder held as git keeps
+at TOP, as the commit HASH left it. It holds what the directory held as git keeps
 it, each with its kind and permissions, a file its size and a link where it
 leads, all changed when that commit was made and owned by you, with no inode. It
-gives why not, when the commit held no such folder then. A name no file in a
-folder can have (., .. or one holding a /) is left out."
-  (let* ((folder (subseq directory (length top)))
+gives why not, when the commit held no such directory then. A name no file in a
+directory can have (., .. or one holding a /) is left out."
+  (let* ((dir (subseq directory (length top)))
          (made (* 1000000000
                   (or (parse-integer (git-job-try nil top (list "log" "-1" "--format=%ct" "--end-of-options" hash))
                                      :junk-allowed t)
@@ -162,7 +162,7 @@ folder can have (., .. or one holding a /) is left out."
                                      (tuatara.io:make-stamp 0 0 size made 1 mode uid gid)
                                      size nil target nil))
            (link-p (mode) (= (logand mode #o170000) #o120000)))
-      (multiple-value-bind (tree ok) (git-job-try nil top (list "ls-tree" "-z" "-l" (git-object-name hash folder)))
+      (multiple-value-bind (tree ok) (git-job-try nil top (list "ls-tree" "-z" "-l" (git-object-name hash dir)))
         (when ok
           (dolist (line (uiop:split-string tree :separator (list (code-char 0))))
             (let ((tab (position #\Tab line)))
@@ -183,7 +183,7 @@ folder can have (., .. or one holding a /) is left out."
            (coerce (list* (entry "." #o40755 0) (entry ".." #o40755 0)
                           (loop for (name mode type object size) in (nreverse rows)
                                 collect (cond ((string= type "tree") (entry name #o40755 0))
-                                              ;; a submodule, a repository of its own: a folder that lists nothing
+                                              ;; a submodule, a repository of its own: a directory that lists nothing
                                               ((string= type "commit") (entry name #o40755 0))
                                               ;; git keeps no permissions for a link: a link's own
                                               ((link-p mode) (entry name #o120777 size (gethash object targets "")))
@@ -207,11 +207,11 @@ folder can have (., .. or one holding a /) is left out."
                    (sb-posix:close fd))))))))
 
 (defun rimu-rewind (list top)
-  "Go through the history of the folder the rimu LIST lists, in the
-repository at TOP: in a new rimu list shown at once in its place, the folder
+  "Go through the history of the directory the rimu LIST lists, in the
+repository at TOP: in a new rimu list shown at once in its place, the directory
 as its latest commit left it, point on the entry it was on (\\[git-rewind])."
   (let* ((directory (tuatara.buffer:buffer-local list 'rimu-directory))
-         (folder (subseq directory (length top)))
+         (dir (subseq directory (length top)))
          (entry (rimu-entry-at list (tuatara.buffer:buffer-point list)))
          (point-on (and entry (tuatara.io:listed-octets entry)))
          (buffer (rimu-make-list directory :name (format nil "*git rewind: ~a*" (rimu-buffer-name directory)) :like list)))
@@ -220,9 +220,9 @@ as its latest commit left it, point on the entry it was on (\\[git-rewind])."
           (buffer-override-keymap buffer) *git-rewind-keymap*)
     (show-buffer buffer)
     (rimu-show-layout buffer (rimu-reading-layout directory "Reading its history...") nil :fresh t)
-    (start-git-job "Reading the folder's history"
+    (start-git-job "Reading the directory's history"
                    (lambda (job)
-                     (let ((path (if (string= folder "") "." folder)))
+                     (let ((path (if (string= dir "") "." dir)))
                        (coerce (parse-git-commits (git-job-output job top (list "log" "--date=short" *git-commit-format* "--" path)) :path path)
                                'simple-vector)))
                    (lambda (revisions)
@@ -235,7 +235,7 @@ as its latest commit left it, point on the entry it was on (\\[git-rewind])."
                    :quiet t :buffer buffer)))
 
 (defun rimu-rewind-show (buffer index &optional point-on)
-  "List in BUFFER, a rimu list of a folder as a commit left it, the folder as
+  "List in BUFFER, a rimu list of a directory as a commit left it, the directory as
 the commit INDEX of its history (0 the latest) left it, point kept on its
 entry, or on the one named by the octets POINT-ON."
   (let ((revision (svref (tuatara.buffer:buffer-local buffer :git-rewind-revisions) index)))
@@ -252,7 +252,7 @@ the one shown, and say which it is, when it was not already."
       (message "~a" (git-rewind-words buffer wanted)))))
 
 (defmethod rimu-source-open ((source git-rewound) buffer entry)
-  "A folder listed in its place as the commit left it, a file gone through
+  "A directory listed in its place as the commit left it, a file gone through
 from that commit back (GIT-REWIND-FILE), \\[quit-window] coming back to the list."
   (let ((top (git-rewound-top source)))
     (let ((path (rimu-path (tuatara.buffer:buffer-local buffer 'rimu-directory) entry)))
@@ -261,7 +261,7 @@ from that commit back (GIT-REWIND-FILE), \\[quit-window] coming back to the list
           (git-rewind-file top (subseq path (length top)) :at (git-rewound-hash source) :list buffer)))))
 
 (defun rimu-show-nearest (directory &key point-on)
-  "List with rimu DIRECTORY, or where it is gone the nearest folder above it
+  "List with rimu DIRECTORY, or where it is gone the nearest directory above it
 that is there; point on the entry whose name is the octets POINT-ON when it
 is DIRECTORY's."
   (loop for place = directory then (tuatara.io:parent-path place)
@@ -269,8 +269,8 @@ is DIRECTORY's."
         finally (return (rimu-show-directory place :point-on (and (string= place directory) point-on)))))
 
 (defun rimu-rewind-leave (buffer)
-  "End BUFFER, a rimu list of a folder as a commit left it, and the histories
-of files opened from it: list the folder as it is now, point on the entry it
+  "End BUFFER, a rimu list of a directory as a commit left it, and the histories
+of files opened from it: list the directory as it is now, point on the entry it
 was on (RIMU-SHOW-NEAREST)."
   (let* ((directory (tuatara.buffer:buffer-local buffer 'rimu-directory))
          (entry (rimu-entry-at buffer (tuatara.buffer:buffer-point buffer)))
@@ -288,7 +288,7 @@ was on (RIMU-SHOW-NEAREST)."
 
 (defun install-rimu-git ()
   "Make the git column, and bind G to show or hide it; refuse in a list of a
-folder not on the disk git's commands on the files as they are now."
+directory not on the disk git's commands on the files as they are now."
   (rimu-set-column :git 'rimu-git-cells :place :after :shown 'rimu-git-p
                    :documentation "The entry's last commit: when, and the first line of its message.")
   (define-key *rimu-keymap* "G" 'rimu-toggle-git)

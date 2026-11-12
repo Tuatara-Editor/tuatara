@@ -8,9 +8,9 @@
 # LIB_TSV gives: OUTDIR/SOURCE/ holds its .dsc and the files the .dsc names,
 # as apt-get source downloads them from Ubuntu's archive, apt checking each
 # against the archive's signed index, and each then checked again against the
-# SHA-256 the .dsc gives it. A folder already holding the version wanted is
+# SHA-256 the .dsc gives it. A directory already holding the version wanted is
 # kept, its files fetched again only when they are not the ones named; a
-# folder of a source package no longer bundled is removed. OUTDIR/README
+# directory of a source package no longer bundled is removed. OUTDIR/README
 # says what it is, with a line for each library: its file, package, source
 # package, source version and the licences its copyright file names (or
 # where that file is in the AppImage, when it names none in a form read). A
@@ -38,9 +38,9 @@ while IFS=$'\t' read -r file package version _; do
   [ -n "$licences" ] || licences="see licenses/libraries/$package.copyright"
   printf '%s\t%s\t%s\t%s\t%s\n' "$file" "$package" "$source" "$source_version" "$licences" >> "$out/libraries.part"
 done < "$table"
-for folder in "$out"/*/; do
-  [ -d "$folder" ] || continue
-  [ -n "${wanted[$(basename "$folder")]+x}" ] || rm -rf "$folder"
+for directory in "$out"/*/; do
+  [ -d "$directory" ] || continue
+  [ -n "${wanted[$(basename "$directory")]+x}" ] || rm -rf "$directory"
 done
 for source in $(printf '%s\n' "${!wanted[@]}" | sort); do
   version="${wanted[$source]}"
@@ -48,7 +48,7 @@ for source in $(printf '%s\n' "${!wanted[@]}" | sort); do
   [ -f "$dsc" ] || rm -rf "${out:?}/$source"
   mkdir -p "$out/$source"
   (cd "$out/$source" && apt-get source -qq -o APT::Sandbox::User=root --download-only "$source=$version" >/dev/null)
-  # the files the .dsc names, each with its SHA-256, and nothing else in the folder
+  # the files the .dsc names, each with its SHA-256, and nothing else in the directory
   checks="$(sed -n '/^Checksums-Sha256:/,/^[^ ]/s/^ \([0-9a-f]\{64\}\) [0-9]* \(.*\)/\1  \2/p' "$dsc")"
   [ -n "$checks" ] || { echo "$dsc names no files" >&2; exit 1; }
   (cd "$out/$source" && sha256sum -c --quiet <<<"$checks") ||
@@ -62,7 +62,7 @@ done
   cat <<'EOF'
 The source of every library Tuatara-x86_64.AppImage bundles (its lib/): for
 each, exactly the Ubuntu 24.04 source package its binary package was built
-from, at the version bundled, as Ubuntu's archive gives it. Each folder holds
+from, at the version bundled, as Ubuntu's archive gives it. Each directory holds
 one source package, its .dsc and the files the .dsc names, each checked
 against the SHA-256 the .dsc gives it; dpkg-source -x NAME_VERSION.dsc
 unpacks it. The AppImage's licenses/bundled-libraries.txt names each

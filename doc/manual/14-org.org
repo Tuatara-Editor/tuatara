@@ -729,9 +729,10 @@ calendar. You look at it in the morning to see what the day holds.
 
 *** Telling Tuatara which files to read
 
-The agenda reads the files named in =*org-agenda-files*=. As it comes, that
-is the one file =~/org/agenda.org=. Set it in your init file to the files or
-folders where you keep tasks. A folder stands for every =.org= file in it.
+The agenda reads the files named in =*org-agenda-files*=. As it comes, that is
+the one file =~/org/agenda.org=. Set it in your init file to the files or
+directories where you keep tasks. A directory stands for every =.org= file in
+it.
 
 #+begin_example
 (setf *org-agenda-files* '("~/org/" "~/holiday.org"))
@@ -872,12 +873,12 @@ the entry of the line the cursor is on, and change it in its file.
 | none  | ~s~       | Saves every agenda file that has changes                |
 
 The usual keys from the file, such as ~C-c C-t~ and ~C-c C-q~, work in the
-agenda too. Changes made from the agenda are in the files' buffers and are
-not on disk until you press ~s~. If you want them saved as they are made,
-name the files in =*org-agenda-autosave-files*=. It is =nil= as standard, no
-file. =t= saves every agenda file at once, and a list names some, as
-=*org-agenda-files*= does, files, folders or patterns. A change is a keyword,
-a date, tags, a note or the clock. For one file:
+agenda too. Changes made from the agenda are in the files' buffers and are not
+on disk until you press ~s~. If you want them saved as they are made, name the
+files in =*org-agenda-autosave-files*=. It is =nil= as standard, no file. =t=
+saves every agenda file at once, and a list names some, as =*org-agenda-files*=
+does, files, directories or patterns. A change is a keyword, a date, tags, a
+note or the clock. For one file:
 
 #+begin_example
 (setf *org-agenda-autosave-files* '("~/notes/agenda.org"))
@@ -961,7 +962,7 @@ go to the day and press ~i~.
 2. The echo area asks for tags. Type =phone= and press ~RET~.
 3. In the window that opens, type =Ring Wanaka Plumbing about the tap=.
 4. Press ~C-c C-c~. The echo area says where it was filed and you are back
-   where you started. If the folder =~/org/= does not exist yet, Tuatara
+   where you started. If the directory =~/org/= does not exist yet, Tuatara
    asks whether to make it.
 5. Press ~C-x a a~ and then ~t~. The new task is in the list.
 #+end_try
@@ -994,15 +995,15 @@ Recommended by %^{Who recommended it}
 | =%a=         | A link to where you were                              |
 | =%i=         | The text that was selected                            |
 
-Your templates live in the folder =capture-templates= in your configuration
-folder, one file each. The easy way to start is ~M-x
+Your templates live in the directory =capture-templates= in your configuration
+directory, one file each. The easy way to start is ~M-x
 org-capture-template-copy~, which copies one of Tuatara's there for you to
 change. A template of yours with the same key as one of Tuatara's replaces
 it.
 
-=*capture-template-directories*= says where those folders are. It is =nil=
-as it comes, which means =capture-templates= in your configuration folder.
-Give it a list to read the templates from other folders, such as one you
+=*capture-template-directories*= says where those directories are. It is =nil=
+as it comes, which means =capture-templates= in your configuration directory.
+Give it a list to read the templates from other directories, such as one you
 share with others:
 
 #+begin_example
@@ -1270,6 +1271,167 @@ understands as well.
 
 #+table: faces :org-link :org-target
 
+*** Pictures among the lines
+
+A link to a picture that stands alone on its line, with no words of its own,
+can be shown as the picture itself:
+
+#+begin_example
+The garden as it was in March:
+
+#+ATTR_ORG: :width 400 :align center
+[[file:garden.jpg]]
+#+end_example
+
+~C-x T p~ switches this on and off for the buffer you are in. It is off as
+standard. It does what ~C-c C-x C-v~ does in Emacs's Org, and sits with the
+other display switches under ~C-x T~. The picture takes rows of its own, as many as its height needs,
+and the lines after it move down to make room. The text itself does not
+change: saving, searching, copying and undo all see the link. Move the
+cursor onto the picture's line and the link shows again, so that you can
+change it; move off and the picture comes back.
+
+Pictures are drawn in the background, only those you can see, by the same
+program that draws a picture you open, shut in the sandbox. The size is read
+from the file first, so the rows are held at once and the text does not jump
+when the picture arrives. A file opened safely never shows its pictures.
+
+The =#+ATTR_ORG:= line above the link says how large the picture is and
+where it stands, as Org reads it:
+
+| Written              | Means                                                  |
+|----------------------+--------------------------------------------------------|
+| =:width 400=         | 400 pixels wide; =400px= is the same                   |
+| =:width 50%=         | half the width of the text; =0.5= is the same          |
+| =:width t=           | its own width                                          |
+| =:align center=      | in the middle of the text; =right= at its right edge   |
+| =:center t=          | in the middle, as =:align center=                      |
+
+The width of the text is the window's, or the fill column (~C-x f~) where
+that is narrower, so a picture stays inside the column your lines are
+filled to. The height follows the width, the picture's proportions kept,
+and a picture is never wider than the text. A width given as a share
+follows the window as it is split or resized. Where the
+=#+ATTR_ORG:= line gives no width, the width on another =#+ATTR_...:= line
+is used, such as =#+ATTR_HTML: :width 300=, and where none does,
+=*inline-picture-width*= says: =t=, the standard, for the picture's own
+width, or a number of pixels. Alignment counts only for a picture that is
+alone in its paragraph.
+
+A picture can also stand to one side with the text going round it, as a
+picture in a printed page does:
+
+#+begin_example
+#+ATTR_ORG: :float left :width 200
+[[file:garden.jpg]]
+The beds along the south wall were dug in February, and the ...
+#+end_example
+
+| Written                       | Means                                       |
+|-------------------------------+---------------------------------------------|
+| =:float left=                 | at the left, the text going round its right |
+| =:float right=                | at the right, the text ending short of it   |
+| =:float wrap= (on any line)   | at the left, as LaTeX's export places it    |
+| =:placement {r}= with =wrap=  | at the right                                |
+
+The picture's own line takes no row while the cursor is elsewhere: the
+picture's top is beside the line after it, and the rows from there are
+narrower for as far down as the picture reaches; after that the text has the
+whole width again, also in the middle of a paragraph. A picture on rows of
+its own that comes while a floated one still reaches down begins below it. A
+long line wraps in the narrower rows when lines wrap (~C-x T l~), and is cut
+short there when they do not, the window scrolling sideways to keep the
+cursor in sight beside the picture. The cursor, moving by rows, scrolling
+and clicking all follow the narrower rows, and a window that begins beside
+the picture shows the part of it that is left. A floated picture is never
+wider than two thirds of the text, so that some room is left for the words.
+Where pictures cannot be drawn, its line names it as any other picture's
+does, and nothing is narrower. =#+ATTR_LATEX: :float wrap= is read as well,
+so a note written for LaTeX's export looks the same here.
+
+To change the width as you look, put the cursor on the picture's line or on
+its =#+ATTR_ORG:= line and press ~C-c C-x w~. The picture shows, and the
+echo row says its width. Then ~+~ or ~=~ makes it a fifth wider, ~-~ narrower,
+and ~0~ takes the width away, back to the size it has when none is written.
+These keys go on working by themselves until you press another, as the keys
+that size a window do. Each change is written as =:width= on the
+=#+ATTR_ORG:= line, which is made when there is none and taken away when
+nothing is left on it. A width written as a share of the window stays a
+share.
+
+In a terminal that can draw pictures (kitty, Ghostty), the pictures are
+drawn there too, each taking whole rows and columns. Inside tmux, or in a
+terminal that cannot, each picture's line shows its name and size instead:
+
+#+begin_example
+[picture: garden.jpg, 1600×1200]
+#+end_example
+
+To have pictures shown whenever an Org file opens, set
+=(setf *inline-pictures-modes* '((org-mode . t)))= in your init file, or
+=*global-inline-pictures-mode*= to =t= for every buffer. A note can say it
+for itself: =#+STARTUP: inlineimages= shows its pictures, and
+=#+STARTUP: noinlineimages= does not, whatever the settings say.
+
+#+begin_try Try it, with a picture beside a note
+1. Copy a photo into the directory of an Org note, and call it =garden.jpg=.
+2. In the note, write =[[file:garden.jpg]]= on a line of its own and move
+   the cursor to another line.
+3. Press ~C-x T p~. The photo is drawn where the link was.
+4. Move the cursor onto the photo's line. The link shows again. Press
+   ~C-c C-x w~ and then ~-~ three times. The photo grows narrower, and a line
+   =#+ATTR_ORG: :width ...= appears above it.
+5. Press ~0~. The width is gone and so is the line.
+6. Write a line =#+ATTR_ORG: :float left= above the link, and a few long
+   lines of words below it. Move off the photo's line. The words now go round
+   the photo on its right, and widen again below it.
+7. Press ~C-x T p~ again to show the link as written.
+#+end_try
+
+#+table: commands inline-pictures-mode org-resize-picture
+
+#+table: settings *global-inline-pictures-mode* *inline-pictures-modes* *inline-picture-width*
+
+*** Formulas as pictures
+
+The same switch, ~C-x T p~, shows the note's formulas as LaTeX sets them:
+
+| Written                          | Shown                                    |
+|----------------------------------+------------------------------------------|
+| =$x^2$= or =\(x^2\)= in a line   | in the line, in the columns it stands in |
+| =\[ ... \]= or =$$ ... $$= alone | centred on rows of its own               |
+| =\begin{align} ... \end{align}=  | centred, all its lines in one picture    |
+
+A formula in a line is never taller than a row: a tall one, a fraction, is
+drawn smaller to fit. Put it on a line of its own to see it at full size.
+Move the cursor into a formula and it shows as written, to be changed.
+
+The formulas are drawn by the first LaTeX program of =*latex-engines*=
+found, in the background, those asked for together in one run, in the
+colour of your text. The program is shut in the sandbox: it sees TeX's own
+files and your fonts and nothing else, and it never runs without the
+sandbox. Until a formula is drawn, and where pictures cannot be shown (in
+tmux, or a terminal without them), it shows as written; so does one LaTeX
+cannot set.
+
+Each formula is drawn after =*formula-preamble*= (amsmath and amssymb as
+standard) and the note's =#+LATEX_HEADER:= lines above its first heading,
+so a macro the note defines there can be used in its formulas. When
+nothing can be drawn after those lines, the formulas are drawn after
+=*formula-preamble*= alone. =#+STARTUP: latexpreview= shows a note's
+formulas as it opens, as =inlineimages= does, and =nolatexpreview= does not.
+
+#+begin_try Try it
+1. In an Org note write a line =The area is $\pi r^2$.= and below it a
+   line =\[ \int_0^1 x^2\,dx = \frac{1}{3} \]=.
+2. Move the cursor to another line and press ~C-x T p~. After a moment
+   both formulas are drawn, the second centred on rows of its own.
+3. Move the cursor into the first. It shows as written; change =r^2= to
+   =r^3= and move off. It is drawn again.
+#+end_try
+
+#+table: settings *formula-preamble*
+
 ** Blocks and code
 
 A block is a stretch of text set apart between a line that begins =#+begin_=
@@ -1332,13 +1494,14 @@ files and says which are new and which would change, and asks. This suits
 settings files well: the note says why each setting is there, and the file
 the program reads is made from it.
 
-A file name with folders in it, such as =:tangle ~/.config/foot/foot.ini=,
-needs the folders to exist. A block with =:mkdirp yes= makes them as it is
+A file name with directories in it, such as =:tangle ~/.config/foot/foot.ini=,
+needs the directories to exist. A block with =:mkdirp yes= makes them as it is
 written, and one with =:mkdirp no= never does. For a block that says nothing,
-=*code-files-make-folders*= decides: =nil=, the standard, makes none, so a
-note writes the same on every machine and a mistyped folder is an error and
-not a new folder; =t= makes them for every block. A tangled note that always
-writes into folders you want made takes =(setf *code-files-make-folders* t)=.
+=*code-files-make-directories*= decides: =nil=, the standard, makes none, so a
+note writes the same on every machine and a mistyped directory is an error and
+not a new directory; =t= makes them for every block. A tangled note that always
+writes into directories you want made takes =(setf *code-files-make-directories*
+t)=.
 
 *** A table of contents
 
@@ -1409,7 +1572,7 @@ out of either.
 
 #+table: commands tangle-code-files toc-org-insert-toc org-dynamic-block-insert-dblock org-dblock-update org-update-all-dblocks insert-formatted-links-block insert-formatted-missing-links-block insert-formatted-backlinks-block insert-formatted-files-block insert-formatted-files-as-headings-block insert-formatted-sequence-block
 
-#+table: settings *org-src-languages* *code-files-make-folders* *org-toc-on-save* *org-toc-max-depth* *org-toc-style*
+#+table: settings *org-src-languages* *code-files-make-directories* *org-toc-on-save* *org-toc-max-depth* *org-toc-style*
 
 #+table: faces :org-block :org-block-begin-line :org-block-end-line :org-quote :org-verse
 
@@ -1468,9 +1631,57 @@ part of a note, select the lines first.
 
 If LaTeX fails, the echo area names the line of your note where it went
 wrong, and a buffer called =*LaTeX errors*= lists each error. ~RET~ on one
-shows that line of the note. An export is a background job like any other,
-so chapter 11 applies to it. ~C-x j~ lists what is running and ~C-x J~
-stops it.
+shows that line of the note. The list is also a list of places (chapter 2):
+~M-g n~ and ~M-g p~ go from error to error from any buffer, showing each line
+of the note in turn. An export is a background job like any other, so
+chapter 11 applies to it. ~C-x j~ lists what is running and ~C-x J~ stops it.
+
+*** Bibliographies and indexes
+
+A note cites its sources the way Org does. Name a bibliography file and the
+LaTeX package that sets it, then cite by key and say where the list goes:
+
+#+begin_example
+,#+cite_export: biblatex authoryear
+,#+bibliography: sources.bib
+,* Findings
+The fence line was moved in 1998 [cite:@surveyor1998].
+
+,#+print_bibliography:
+#+end_example
+
+=#+cite_export:= takes =biblatex= with a style (two styles, for the
+bibliography and the citations, as =authoryear/numeric=), =natbib=, or
+=bibtex= with a style (=plain= unless you name one). A citation
+=[cite:@key]= becomes =\autocite{key}= for biblatex, =[cite/t:@key]= names
+the author in the sentence, and =[cite/t/c:@key]= does so with a capital
+letter. Text before and after a key, =[cite:see @key p. 4]=, is printed
+around that reference, and text before the first key and after the last,
+set off by =;=, around them all. The =#+bibliography:= file is taken from
+the note's directory, so the PDF finds it wherever =#+export_file_name= puts
+the LaTeX. A LaTeX file of your own that uses biblatex, =\bibliography= or
+=\makeindex= is handled the same way.
+
+When LaTeX leaves a bibliography or an index to make, the export runs biber
+(for biblatex), bibtex (for =\bibliography=) or makeindex (for an index),
+then LaTeX again, and the status of the job says which is running. Each runs
+only when what it reads has changed: the citations, the =.bib= files and a
+bibtex style, found where TeX finds them. When one of those cannot be looked
+for, it runs every time to be safe. Making the PDF again after a small change
+otherwise takes one run of LaTeX, and a bibliography made after the last run
+LaTeX is allowed gets one run more to take it in. biber unpacks itself once
+into a directory kept beside the export's working directory, not on every
+run. If one of them finds a fault, the PDF is made all the same and
+=*LaTeX errors*= lists what it said under its name, each error with the line
+of the =.bib= file where there is one; ~M-g n~ takes you there. A program that is not
+installed is mentioned once in the echo area when the PDF is written, and
+the bibliography or index is left out.
+
+They run as LaTeX does, shut in the sandbox (chapter 12): they read the
+document's directory, the TeX installation and the directories in
+=*export-trusted-directories*=, and write only in the export's own working
+directory. Keep the =.bib= file beside the note, or in one of those directories,
+so that they can read it.
 
 *** Making a Word document
 
@@ -1527,6 +1738,32 @@ who want to work on the LaTeX themselves. If you have a LaTeX file of your
 own, ~M-x export-latex-compile-pdf~ and its two companions make a PDF from
 it in the same three ways.
 
+*** From a line to the PDF and back
+
+A PDF made by ~M-x export-latex-compile-pdf-buffer~ or one of its companions
+comes with a note of where each line of the LaTeX went on the pages. In the
+LaTeX file, ~C-c C-v~ shows the line the cursor is on in the PDF: the PDF
+opens beside the file if it is not shown, turns to the page the line is on,
+scrolls it into sight and marks it for a moment. In the PDF, ~C-c C-v~ goes the
+other way. It opens the LaTeX file in the other window at the line that made
+the part of the page you see, the place last marked or the middle of the
+window. In the window of the desktop version, a double click on a page goes to
+the line of that point.
+
+From an Org file, ~M-x show-line-in-pdf~ does the same for a PDF exported in
+this session, and ~C-c C-v~ in the PDF then opens the Org file, not the LaTeX
+written from it. There is no key for it in Org files.
+
+When the file has changed since the PDF was made, or the PDF was made some
+other way, Tuatara says so and names the command that makes the PDF again.
+In a terminal, where pages are shown as their text, the text is turned to the
+page and the place is not marked.
+
+Going back from the PDF opens only files in the directory of the LaTeX file,
+or the Org file it was written from. A line that comes from any other file
+(a class or package of TeX's own, or a file a document read from elsewhere)
+is named in the echo area instead.
+
 *** Layout in plain words
 
 In the enhanced export a wide table is made to fit. Columns of sentences
@@ -1558,10 +1795,10 @@ as you type it.
 
 A template gives a document its look: the fonts, the margins, a header with
 a logo. A note chooses one with a line at the top, =#+template:= and the
-template's name. Templates are kept in your configuration folder.
+template's name. Templates are kept in your configuration directory.
 
 The simplest start is ~M-x export-latex-template-copy~. It copies one of the
-built-in templates to your folder and opens it for you to change. If someone
+built-in templates to your directory and opens it for you to change. If someone
 gives you a Word or LaTeX document and asks for reports that look like it,
 ~M-x export-template-from-docx~ and ~M-x export-template-from-latex~ make a
 template from that document.
@@ -1573,7 +1810,7 @@ with, such as the =#+template:= line and the headings every report has.
 The programs that make the PDF are in =*latex-engines*=, which is
 =("xelatex" "lualatex")= as standard. They are tried in that order, and when
 one fails the next is tried. A name is looked for on the PATH and then in
-TeX Live's own folders; a full path, =~/texlive/bin/xelatex= for one
+TeX Live's own directories; a full path, =~/texlive/bin/xelatex= for one
 installed elsewhere, works too. A note or a LaTeX file that names its program
 in its first line (=#+latex_compiler: lualatex= in Org, or =%!TEX program =
 lualatex= in LaTeX) has that one tried first when it is in the list.
@@ -1599,8 +1836,8 @@ three. To set a document in Noto Serif with code in Cascadia Code:
 The text of the PDF is then in Noto Serif, its headings (in the sans-serif
 face) are as before, and a source block is in Cascadia Code.
 
-A template that shows a logo gets it from the folder =*logos-directory*=
-names. At =nil=, the standard, that is =logos/= in your configuration folder,
+A template that shows a logo gets it from the directory =*logos-directory*=
+names. At =nil=, the standard, that is =logos/= in your configuration directory,
 =~/.config/tuatara/logos/=. A note's =#+logo: firm.pdf= line is looked for
 there. If your pictures are kept elsewhere,
 =(setf *logos-directory* "~/Pictures/logos")=.
@@ -1631,31 +1868,33 @@ export refuses a note that asks for it.
 
 An exported note can pull in other files: pictures it shows and setup files
 it names. A note that someone sent you could name files of yours that way.
-So the export takes files only from the note's own folder and the folders
-in it, and says what it left out. =*export-trusted-folders*= names further
-folders you allow. Chapter 12 has more on files you do not trust.
+So the export takes files only from the note's own directory and the directories
+in it, and says what it left out. =*export-trusted-directories*= names further
+directories you allow. Chapter 12 has more on files you do not trust.
 
-The folder of your note templates is always allowed. =*export-trusted-folders*=
-is =nil= as standard, no other. Give it a list of folders, with =~= standing
-for your home folder, when setup files are shared by notes that are kept in
-folders of their own:
+The directory of your note templates is always allowed.
+=*export-trusted-directories*= is =nil= as standard, no other. Give it a list of
+directories, with =~= standing for your home directory, when setup files are
+shared by notes that are kept in directories of their own:
 
 #+begin_example
-(setf *export-trusted-folders* '("~/notes/latex/"))
+(setf *export-trusted-directories* '("~/notes/latex/"))
 #+end_example
 
 A note in =~/notes/work/= that says =#+SETUPFILE: ~/notes/latex/house.org= is
 then exported with that file. Without the line the export leaves the file out
-and, when it is done, says =house.org= was left out. Allow only folders you
+and, when it is done, says =house.org= was left out. Allow only directories you
 wrote yourself, since whoever sends you a note can name any file in them.
 
 #+table: commands org-export-latex-pdf-enhanced org-export-latex-pdf-enhanced-buffer org-export-latex-pdf-enhanced-xdg org-export-latex-enhanced org-export-docx org-export-docx-xdg org-export-html
 
 #+table: commands org-export-latex-pdf org-export-latex-pdf-buffer org-export-latex-pdf-xdg org-export-latex export-latex-compile-pdf export-latex-compile-pdf-buffer export-latex-compile-pdf-xdg
 
+#+table: commands show-line-in-pdf pdf-view-show-source pdf-view-show-source-at-click
+
 #+table: commands org-insert-export-drawer describe-export-settings export-latex-template-copy export-template-from-docx export-template-from-latex insert-formatted-note-template org-macro-wrap org-macro-unwrap export-check-redactions
 
-#+table: settings *latex-engines* *latex-main-font* *latex-sans-font* *latex-mono-font* *logos-directory* *export-trusted-folders* *latex-redaction-commands*
+#+table: settings *latex-engines* *latex-main-font* *latex-sans-font* *latex-mono-font* *logos-directory* *export-trusted-directories* *latex-redaction-commands*
 
 #+table: faces :org-macro :org-macro-text
 

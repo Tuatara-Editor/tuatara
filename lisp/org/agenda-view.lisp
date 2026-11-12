@@ -738,40 +738,40 @@ it shows it, as two values; NIL when no window shows the agenda."
                                  (buffer-window buffer editor)))))
     (and window (values buffer window))))
 
-(defvar *org-agenda-folders-kept* nil
-  "The folders of the agenda files last worked out (ORG-AGENDA-FOLDERS):
-\(FILES . FOLDERS), FILES the setting they came from.")
+(defvar *org-agenda-directories-kept* nil
+  "The directories of the agenda files last worked out (ORG-AGENDA-DIRECTORIES):
+\(FILES . DIRECTORIES), FILES the setting they came from.")
 
-(defun org-agenda-folders ()
-  "The folders the agenda files (ORG-AGENDA-FILES-IN-FORCE) are in, native names
-ending in /: a folder listed, the folder of a pattern, and that of each file
+(defun org-agenda-directories ()
+  "The directories the agenda files (ORG-AGENDA-FILES-IN-FORCE) are in, native names
+ending in /: a directory listed, the directory of a pattern, and that of each file
 listed, whether it is there yet or not. Worked out again only when the
 setting changes."
-  (let ((kept *org-agenda-folders-kept*) (files (org-agenda-files-in-force)))
+  (let ((kept *org-agenda-directories-kept*) (files (org-agenda-files-in-force)))
     (if (and kept (equal (car kept) files))
         (cdr kept)
-        (let ((folders (loop for file in files
+        (let ((directories (loop for file in files
                              for path = (ignoring-errors-reported ("naming the agenda file ~a" file)
                                           (tuatara.io:native (tuatara.io:expand-path file)))
                              when path
-                               collect (multiple-value-bind (parent name) (tuatara.io:path-folder-and-name path)
+                               collect (multiple-value-bind (parent name) (tuatara.io:path-directory-and-name path)
                                          (if (and (string/= name "") (not (find-if (lambda (c) (find c "*?")) name))
                                                   (eq :directory (tuatara.io:path-kind path)))
                                              (concatenate 'string path "/")
                                              parent)))))
-          (setf folders (remove-duplicates folders :test #'string= :from-end t)
-                *org-agenda-folders-kept* (cons (copy-tree files) folders))
-          folders))))
+          (setf directories (remove-duplicates directories :test #'string= :from-end t)
+                *org-agenda-directories-kept* (cons (copy-tree files) directories))
+          directories))))
 
-(defun org-agenda-watched-folders ()
-  "The folders of the agenda files, watched on disk while an agenda is shown."
-  (and *editor* (org-agenda-shown-window *editor*) (org-agenda-folders)))
+(defun org-agenda-watched-directories ()
+  "The directories of the agenda files, watched on disk while an agenda is shown."
+  (and *editor* (org-agenda-shown-window *editor*) (org-agenda-directories)))
 
-(defun org-agenda-folders-changed (changed)
-  "Draw the agenda shown again when one of the folders CHANGED holds an agenda
+(defun org-agenda-directories-changed (changed)
+  "Draw the agenda shown again when one of the directories CHANGED holds an agenda
 file that changed, made or deleted there, as by another program
 \(KEEP-SHOWN-LISTS-CURRENT)."
-  (when (intersection changed (org-agenda-watched-folders) :test #'string=)
+  (when (intersection changed (org-agenda-watched-directories) :test #'string=)
     (keep-shown-lists-current *editor*)))
 
 (defun org-agenda-next-redraw (drawn)
@@ -1076,7 +1076,7 @@ selected window, or in another with OTHER."
 A change made from the agenda is a keyword, a date, tags, a note or the clock.
 - nil: none; \\<org-agenda-mode>\\[org-agenda-save-all-buffers] saves them.
 - t: every agenda file.
-- a list: those files, folders and patterns, as *ORG-AGENDA-FILES* takes
+- a list: those files, directories and patterns, as *ORG-AGENDA-FILES* takes
   them: '(\"~/notes/agenda.org\")."
   :values (or boolean (list-of file)))
 
@@ -1340,7 +1340,7 @@ that day."
   "Bind the agenda's keys, undo's among them (those EDITOR runs undo by, and u),
 and the calendar's key that shows the agenda of its day. And keep an agenda
 shown current by itself: drawn again when an agenda file changes on disk, its
-folder watched (ORG-AGENDA-FOLDERS-CHANGED), and every
+directory watched (ORG-AGENDA-DIRECTORIES-CHANGED), and every
 *ORG-AGENDA-REFRESH-MINUTES* and at midnight (ORG-AGENDA-REFRESH-TICK). And, as
 Tuatara starts, take up the clocks left running in the agenda files
 \(ORG-CLOCK-START-TICK)."
@@ -1363,7 +1363,7 @@ Tuatara starts, take up the clocks left running in the agenda files
                                      ("i" org-capture-on-day)))
   (pushnew 'org-agenda-refresh-tick *tick-functions*)
   (pushnew 'org-clock-start-tick *tick-functions*)
-  (follow-directories-for 'org-agenda-watched-folders 'org-agenda-folders-changed)
+  (follow-directories-for 'org-agenda-watched-directories 'org-agenda-directories-changed)
   (pushnew 'org-calendar-mark-source *calendar-mark-functions*)
   (pushnew '(:calendar-marked org-calendar-goto-agenda "agenda") *calendar-day-openers* :test #'equal)
   (define-keys (mode-keymap 'calendar-mode) '(("a" org-calendar-goto-agenda) ("i" org-capture-on-day)))

@@ -265,7 +265,7 @@ makes the count negative, so ~C-u - 2 w~ moves back two words, as ~b~
 (non-modal: ~M-b~) would. A number you type after ~C-u C-u~ starts a new count
 of its own.
 
-~.~ (non-modal: ~C-z .~) runs the last command again, with the count it had.
+~.~ (non-modal: ~C-x z~) runs the last command again, with the count it had.
 Press ~.~ after ~C-u 3 j~ and the cursor goes three more lines down.
 
 Other chapters use the same count for other things, such as how many times to
@@ -286,7 +286,7 @@ insert a character. The count is always taken by the key that follows it.
 | Modal | Non-modal | Command              | What it does                            |
 |-------+-----------+----------------------+-----------------------------------------|
 | none  | ~C-u~     | =universal-argument= | Starts a count. Alone it is 4, twice it is 16, digits give a number and a minus sign negates. |
-| ~.~   | ~C-z .~   | =repeat=             | Runs the last command again with its count. |
+| ~.~   | ~C-x z~   | =repeat=             | Runs the last command again with its count. |
 
 ** Marks and going back
 
@@ -358,10 +358,11 @@ its name.
 ** Going to the next place in a list
 
 Some commands make a list of places for you to visit: the errors of a program
-that was built, the lines that a search through files found, and the problems
-that a language server reports. Chapters 13 and 6 describe how those lists are
-made. Two keys take you through the list one place at a time, from any buffer. A
-place in a file opens that file at the line.
+that was built, the lines that a search through files found, the problems
+that a language server reports, and the errors of a PDF made from Org or
+LaTeX. Chapters 13, 6 and 14 describe how those lists are made. Two keys take
+you through the list one place at a time, from any buffer. A place in a file
+opens that file at the line.
 
 *** Commands
 
@@ -378,6 +379,6 @@ work there too: ~h~, ~j~, ~k~, ~l~, ~w~, ~W~, ~b~, ~B~, ~g g~, ~g e~, ~g h~,
 ~g l~, ~S~, ~:~ and ~z z~. They move the cursor and change nothing.
 
 A list that a command made, such as the list of buffers or of the files in a
-folder, may use some of these letters for its own purposes. In a list ~h~ closes
-the window, and ~g~ starts a move, so the list is made again with ~r~. The
-chapter for each list says what its keys do.
+directory, may use some of these letters for its own purposes. In a list ~h~
+closes the window, and ~g~ starts a move, so the list is made again with ~r~.
+The chapter for each list says what its keys do.

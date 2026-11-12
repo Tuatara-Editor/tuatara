@@ -298,7 +298,7 @@ target copies and moves are offered first; NIL when there is none."
 
 (defun rimu-place-kind (target)
   "What TARGET, a place files are copied or moved to, is, as TUATARA.IO:PATH-KIND
-says: a folder on another machine is taken for a folder, not asked for."
+says: a directory on another machine is taken for a directory, not asked for."
   (if (remote-name-p target) :directory (tuatara.io:path-kind target)))
 
 (defun rimu-destinations (paths target)
@@ -399,7 +399,7 @@ signalled without one). Returns what was left alone, as words (the names
 in an archive extracted that were there already). An error when not all of
 it was done: a named pipe, a socket or a device left out of a copy is said; a
 copy stopped or failed half-way is taken away, so that no file is left with
-part of what it should hold. A file or folder on another machine is worked
+part of what it should hold. A file or directory on another machine is worked
 on through SFTP (REMOTE-RIMU-WORK)."
   (destructuring-bind (from . to) pair
     (let ((skipped '()))
@@ -441,15 +441,16 @@ that leads to B: put in B's place, it would lose what it leads to."
            (or (same-p (tuatara.io:path-stamp a :follow nil))
                (same-p (tuatara.io:path-stamp a :failure nil)))))))
 
-(defun rimu-archive-work (operation pairs replace)
+(defun rimu-archive-work (operation pairs replace password)
   "Pack the FROMs of PAIRS, all of one TO, into that archive for OPERATION
-\(WRITE-ARCHIVE), with REPLACE what is there moved to the trash first: all of
-them in one step, or none."
+\(WRITE-ARCHIVE), with REPLACE what is there moved to the trash first, locked
+with PASSWORD when it is given: all of them in one step, or none."
   (let ((archive (cdr (first pairs))))
     (handler-case
         (reporting-errors ("packing ~a" archive)
           (let ((there (tuatara.io:path-stamp archive :follow nil)))
-            (write-archive (mapcar #'car pairs) archive :cancel (rimu-operation-cancel operation) :replace replace)
+            (write-archive (mapcar #'car pairs) archive :cancel (rimu-operation-cancel operation) :replace replace
+                                                        :password password)
             (when (and replace there) (incf (rimu-operation-replaced operation)))
             (setf (rimu-operation-done-pairs operation) (reverse pairs)
                   (rimu-operation-done operation) (length pairs))))
@@ -465,11 +466,12 @@ there first moved to the trash. ALONG, a function of a pair's FROM, gives a
 file to delete with it once it is done, or NIL (a thing's .trashinfo in the
 trash), not counted apart. LEFT, what was left alone, is said when it is
 over; THEN, a function of no arguments, is called then. PASSWORDS, each
-\(FROM . PASSWORD), open the archives extracted that are locked; they are
+\(FROM . PASSWORD), open the archives extracted that are locked, or, each
+\(TO . PASSWORD), lock the archive made; they are
 wiped once the job is over, and let go of (LET-GO-OF-SECRET). An archive
 found locked without one waits, and its password is asked for once the job
 is taken in (RIMU-ASK-PASSWORDS). Nothing is begun when one of them would write in
-an evidence folder (*EVIDENCE-FOLDERS*): that is said, and NIL returned."
+an evidence directory (*EVIDENCE-DIRECTORIES*): that is said, and NIL returned."
   (let ((refusal (loop for (from . to) in pairs
                        thereis (or (and (member verb '(:move :trash :delete :hardlink))
                                         (evidence-refusal (rimu-verb-words verb :verb) from))
@@ -485,7 +487,8 @@ an evidence folder (*EVIDENCE-FOLDERS*): that is said, and NIL returned."
                  (let ((*secret-at-hand* (or *secret-at-hand* (and passwords t))))
                    (unwind-protect
                        (if (eq verb :archive)
-                           (rimu-archive-work operation pairs replace)
+                           (rimu-archive-work operation pairs replace
+                                              (cdr (assoc (cdr (first pairs)) passwords :test #'string=)))
                            (dolist (pair pairs)
                              (when (car (rimu-operation-cancel operation)) (return))
                              (handler-case
@@ -530,7 +533,7 @@ PATHS is in."
     (dolist (buffer (copy-list tuatara.buffer:*buffers*))
       (when (and (rimu-list-p buffer)
                  (let ((directory (tuatara.buffer:buffer-local buffer 'rimu-directory)))
-                   ;; a folder as a commit left it does not change; one on another machine does
+                   ;; a directory as a commit left it does not change; one on another machine does
                    (and (or (not (rimu-source buffer)) (remote-name-p directory))
                         (if (rimu-found-p buffer)
                             (some (lambda (path) (tuatara.io:path-within-p path directory)) paths)
@@ -754,41 +757,81 @@ so, the old going to the trash."
 
 (define-command rimu-archive-create ()
   "Pack the marked entries, from every directory they are marked in, or the
-one on the line, into one tar archive asked for, navigating to it as
+one on the line, into one archive asked for, navigating to it as
 \\[find-file] does: the directory of the other list beside this one offered
-first. Its name says how it is compressed: .tar.gz or .tgz with gzip, .tar.bz2
-with bzip2, .tar.xz with xz, .tar.zst with zstd, .tar not at all; a directory
-given, it is named after what it holds, .tar.gz. Directories go in with all
-in them, links as links; inside, each keeps its path below the deepest
-directory all of them are in. tar does it in the background, shut in the
-sandbox, the archive given its name only once whole. One there already is
-replaced only when you say so, the old going to the trash."
+first. Its name says what kind it is and how it is compressed: .tar.gz or
+.tgz with gzip, .tar.bz2, .tbz2 or .tbz with bzip2, .tar.xz or .txz with xz,
+.tar.zst or .tzst with zstd, .tar not at all, all by tar; .zip a zip archive
+\(Deflate), .7z a 7z one (LZMA), each by 7-Zip where it is installed, else
+by bsdtar. A directory given, it is named after what it holds, .tar.gz.
+With \\[universal-argument] first, a zip or 7z archive is locked with a
+password, asked for twice, typed hidden, after the name (named after a
+directory given, .zip): a zip one with AES-256, its names still seen; a 7z
+one with its names locked too, which only 7-Zip makes. A password takes only
+plain ASCII. Directories go in with all in them, links as links; inside,
+each keeps its path below the deepest directory all of them are in. It is
+done in the background, shut in the sandbox, the archive given its name only
+once whole. One there already is replaced only when you say so, the old
+going to the trash."
   (let* ((buffer (current-buffer))
          (paths (rimu-chosen-paths buffer))
-         (here (tuatara.buffer:buffer-local buffer 'rimu-directory)))
+         (here (tuatara.buffer:buffer-local buffer 'rimu-directory))
+         (locked (and (prefix-argument) t)))
     (if (null paths)
         (message "~a" (rimu-nothing-words buffer "archive"))
-        (let* ((name (format nil "~a.tar.gz"
+        (let* ((name (format nil "~a~:[.tar.gz~;.zip~]"
                              (tuatara.io:native-file-name
-                              (if (rest paths) (string-right-trim "/" (paths-common-directory paths)) (first paths)))))
-               (target (read-native-path (format nil "~a " (rimu-question "Archive" paths :here here :after "as:"))
+                              (if (rest paths) (string-right-trim "/" (paths-common-directory paths)) (first paths)))
+                             locked))
+               (target (read-native-path (format nil "~a " (rimu-question "Archive" paths :here here
+                                                                          :after (if locked
+                                                                                     "with a password, as:"
+                                                                                     "as:")))
                                          :initial (abbreviated-path (or (rimu-other-directory buffer) here))
                                          :kind :any :writing t))
                (target (if (and target (eq :directory (tuatara.io:path-kind target)))
-                           (tuatara.io:path-join target (if (string= name ".tar.gz") "archive.tar.gz" name))
-                           target)))
+                           (tuatara.io:path-join target (if (member name '(".tar.gz" ".zip") :test #'string=)
+                                                            (format nil "archive~a" name)
+                                                            name))
+                           target))
+               (kind (and target (archive-kind-of-name target :made t))))
           (cond ((null target) (message "Nowhere given: nothing archived"))
-                ((null (archive-kind-of-name target :made t))
-                 (message "Name the archive .tar, .tar.gz, .tar.bz2, .tar.xz or .tar.zst: nothing archived"))
+                ((null kind)
+                 (message "Name the archive ~a: nothing archived" (archive-made-endings)))
+                ((and locked (not (getf (rest kind) :made)))
+                 (message "~a: nothing archived" (archive-password-refusal kind "")))
                 ((some (lambda (path) (tuatara.io:path-within-p target path)) paths)
                  (message "~a would be inside what it holds: nothing archived" (abbreviated-path target)))
                 (t (let ((replace (and (tuatara.io:path-stamp target :follow nil)
                                        (yes-or-no-p* (format nil "~a is there already: replace, the old to the trash?"
                                                              (abbreviated-path target))))))
-                     (if (and (tuatara.io:path-stamp target :follow nil) (not replace))
-                         (message "Nothing archived: ~a is there already" (abbreviated-path target))
-                         (rimu-start-operation :archive (mapcar (lambda (path) (cons path target)) paths) buffer
-                                               :replace replace)))))))))
+                     (cond ((and (tuatara.io:path-stamp target :follow nil) (not replace))
+                            (message "Nothing archived: ~a is there already" (abbreviated-path target)))
+                           ((not locked)
+                            (rimu-start-operation :archive (mapcar (lambda (path) (cons path target)) paths) buffer
+                                                  :replace replace))
+                           (t (rimu-archive-locked paths target buffer replace))))))))))
+
+(defun rimu-archive-locked (paths target list replace)
+  "Ask for the password to lock the archive TARGET with, twice, typed hidden,
+then pack PATHS, chosen in LIST, into it (RIMU-START-OPERATION), with
+REPLACE the one there moved to the trash first. A password that cannot lock
+it (ARCHIVE-PASSWORD-REFUSAL) is said, nothing begun. It is held as a secret
+meanwhile (HOLD-SECRET), and wiped when nothing is begun."
+  (let ((password nil) (started nil) (*secret-at-hand* t))
+    (hold-secret)
+    (unwind-protect
+         (progn (setf password (read-password (format nil "Password for ~a: " (tuatara.io:native-file-name target))
+                                              :confirm t))
+                (let ((refusal (archive-password-refusal (archive-kind-of-name target :made t) password)))
+                  (if refusal
+                      (message "~a: nothing archived" refusal)
+                      (setf started (rimu-start-operation :archive (mapcar (lambda (path) (cons path target)) paths)
+                                                          list :replace replace
+                                                          :passwords (list (cons target password)))))))
+      (unless started
+        (wipe-string password)
+        (let-go-of-secret)))))
 
 (define-command rimu-diff ()
   "Compare the two entries marked, from every directory they are marked in,

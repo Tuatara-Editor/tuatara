@@ -25,19 +25,19 @@
 (defvar *test-state-directory*
   (merge-pathnames (format nil "tuatara-test-state-~d/" (sb-posix:getpid)) (uiop:temporary-directory)))
 (sb-posix:setenv "XDG_STATE_HOME" (namestring *test-state-directory*) 1)
-;; Nor leave files in the system's temporary folder: the run has one of its
+;; Nor leave files in the system's temporary directory: the run has one of its
 ;; own inside that directory, so whatever a test forgets goes with it.
 (let ((tmp (ensure-directories-exist (merge-pathnames "tmp/" *test-state-directory*))))
   (sb-posix:setenv "TMPDIR" (namestring tmp) 1)
   (setf uiop:*temporary-directory* tmp))
-;; Nor read or write the developer's configuration folder (their Word and LaTeX
+;; Nor read or write the developer's configuration directory (their Word and LaTeX
 ;; templates): one of the run's own.
 (sb-posix:setenv "XDG_CONFIG_HOME" (namestring (merge-pathnames "config/" *test-state-directory*)) 1)
 ;; Nor move the cache when a test makes a home of its own: it stays where it was
-;; for the whole run, and no .cache/ folder appears in that home.
+;; for the whole run, and no .cache/ directory appears in that home.
 (sb-posix:setenv "XDG_CACHE_HOME" (namestring (uiop:xdg-cache-home)) 1)
 ;; Nor reach the developer's running daemons, or start one where they look: the
-;; run's own folder of sockets, for the run alone as the system's is.
+;; run's own directory of sockets, for the run alone as the system's is.
 (let ((runtime (merge-pathnames "runtime/" *test-state-directory*)))
   (ensure-directories-exist runtime)
   (sb-posix:chmod (namestring runtime) #o700)
@@ -117,7 +117,8 @@ process no longer running."
     (sweep (tuatara.io:cache-directory) "test-")))
 (remove-stale-test-directories)
 ;; the tests' own report template, which notes in their test directories name by its path
-(push (namestring (asdf:system-relative-pathname :tuatara "test/latex-export/")) tuatara-user:*export-trusted-folders*)
+(push (namestring (asdf:system-relative-pathname :tuatara "test/latex-export/"))
+      tuatara-user:*export-trusted-directories*)
 
 ;; The tests take the leader keys the starter init file offers (commented out
 ;; there, SPC being yours), as one who takes them does: the tests that

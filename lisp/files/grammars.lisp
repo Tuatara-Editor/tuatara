@@ -96,12 +96,12 @@ meanwhile), made again only when the list has changed."
 
 (defun user-grammar-names ()
   "The names of the grammars you added (TUATARA.SYNTAX:USER-GRAMMAR-P): each
-NAME.so in the folder you add them to, or kept from it, whose name Tuatara
+NAME.so in the directory you add them to, or kept from it, whose name Tuatara
 has no grammar of."
   (remove-duplicates
-   (loop for folder in (remove nil (list (tuatara.syntax:user-grammar-directory) (tuatara.syntax:user-grammar-store)))
-         append (loop for path in (ignoring-errors-reported ("listing ~a" folder)
-                                    (directory (merge-pathnames "*.so" folder) :resolve-symlinks nil))
+   (loop for dir in (remove nil (list (tuatara.syntax:user-grammar-directory) (tuatara.syntax:user-grammar-store)))
+         append (loop for path in (ignoring-errors-reported ("listing ~a" dir)
+                                    (directory (merge-pathnames "*.so" dir) :resolve-symlinks nil))
                       for name = (pathname-name path)
                       when (tuatara.syntax:user-grammar-p name) collect name))
    :test #'string=))
@@ -201,7 +201,7 @@ the disk: the file is looked at when the grammar is loaded."
       (t (or (eq how :named) (and (gethash grammar (user-grammar-records)) t))))))
 
 (defun open-user-grammar (name)
-  "A descriptor open for reading on NAME.so in the folder of grammars you add,
+  "A descriptor open for reading on NAME.so in the directory of grammars you add,
 and its size: a plain file there, not a link (never followed); NIL when
 there is none such."
   (let* ((path (uiop:native-namestring (merge-pathnames (format nil "~a.so" name)
@@ -215,7 +215,7 @@ there is none such."
             (progn (sb-posix:close fd) nil))))))
 
 (defun user-grammar-file-sum (name)
-  "The SHA-256 of NAME.so in the folder of grammars you add, read through a
+  "The SHA-256 of NAME.so in the directory of grammars you add, read through a
 descriptor on the file itself (OPEN-USER-GRAMMAR); NIL when there is none."
   (let ((fd (open-user-grammar name)))
     (when fd
@@ -224,7 +224,7 @@ descriptor on the file itself (OPEN-USER-GRAMMAR); NIL when there is none."
 
 (defun stored-grammar-path (name)
   "The path of the copy kept of NAME, a grammar you added (USER-GRAMMAR-STORE),
-or NIL when that folder cannot be used."
+or NIL when that directory cannot be used."
   (let ((store (tuatara.syntax:user-grammar-store)))
     (and store (merge-pathnames (format nil "~a.so" name) store))))
 
@@ -240,13 +240,13 @@ stays off."
   nil)
 
 (defun store-user-grammar (name)
-  "Keep NAME.so of the folder of grammars you add as turned on. Its octets are
+  "Keep NAME.so of the directory of grammars you add as turned on. Its octets are
 read through a descriptor on the file itself and written as a new file of
 yours alone in USER-GRAMMAR-STORE, on the disk before it takes the place of
 the copy kept before. The SHA-256 of those octets is kept between sessions.
 The program running grammars loads that copy. The sum, or NIL when the file is
 not a plain file there, is larger than *USER-GRAMMAR-LARGEST*, or could not be
-kept (a full disk, the folder no use), said once."
+kept (a full disk, the directory no use), said once."
   (multiple-value-bind (fd size) (open-user-grammar name)
     (when fd
       (let ((octets (unwind-protect (ignoring-errors-reported ("reading the ~a grammar" name)

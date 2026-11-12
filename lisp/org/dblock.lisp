@@ -962,30 +962,30 @@ block's, kept) worked out and written under them, aligned, each column as wide a
         (org-formula-error (e) (message "The clock table's formulas: ~a" (org-formula-error-text e)))))
     (format nil "~a~@[~a~%~]" (values (org-table-render model)) tblfm)))
 
-(defun org-path-beside-p (path folder &optional agenda)
-  "True when the file at PATH (native) stands in FOLDER or under it, every
+(defun org-path-beside-p (path directory &optional agenda)
+  "True when the file at PATH (native) stands in DIRECTORY or under it, every
 link and .. in either followed (TUATARA.IO:REALLY-WITHIN-P), or is one of AGENDA, the
 agenda's files: what a file may have the editor read when it names a file."
   (or (member path agenda :test #'equal)
-      (and folder (tuatara.io:really-within-p path folder))))
+      (and directory (tuatara.io:really-within-p path directory))))
 
-(defun path-in-folders-p (path folders)
-  "True when the file at PATH (native) stands in one of FOLDERS or under it,
-links followed (ORG-PATH-BESIDE-P); FOLDERS are folder names, ~ standing for
-your home folder."
-  (some (lambda (folder)
-          (let ((folder (tuatara.io:native (tuatara.io:expand-path folder))))
-            (and folder (org-path-beside-p path folder))))
-        folders))
+(defun path-in-directories-p (path directories)
+  "True when the file at PATH (native) stands in one of DIRECTORIES or under it,
+links followed (ORG-PATH-BESIDE-P); DIRECTORIES are directory names, ~ standing for
+your home directory."
+  (some (lambda (directory)
+          (let ((directory (tuatara.io:native (tuatara.io:expand-path directory))))
+            (and directory (org-path-beside-p path directory))))
+        directories))
 
 (defun org-archive-files-of (path text &optional (agenda (org-agenda-file-paths)))
   "The archive files of the Org file at PATH (native; TEXT its text): the file
 its #+ARCHIVE: setting names before the ::, %s standing for the file's name,
 NAME_archive beside it without one, and the files its :ARCHIVE: properties name.
-Of those, the regular files that exist, standing in the file's folder or under
+Of those, the regular files that exist, standing in the file's directory or under
 it or among AGENDA's files, since a file must not have the editor read
 elsewhere."
-  (let* ((folder (tuatara.io:parent-path path))
+  (let* ((directory (tuatara.io:parent-path path))
          (name (tuatara.io:native-file-name path))
          (locations (cons (or (org-file-keyword text "ARCHIVE") "%s_archive::")
                           (let ((found '()))
@@ -1005,34 +1005,34 @@ elsewhere."
                                                                                    (declare (ignore r))
                                                                                    name)
                                                                                  :simple-calls t)
-                                                     :directory (or folder (tuatara.io:default-directory)))))))
+                                                     :directory (or directory (tuatara.io:default-directory)))))))
                 (when (and file
                            (not (member file files :test #'equal))
                            (eq :regular (tuatara.io:path-kind file))
-                           (org-path-beside-p file folder agenda))
+                           (org-path-beside-p file directory agenda))
                   (push file files))))))))))
 
 (defun clocktable-scope-files (scope buffer)
   "The files a clock table's SCOPE names, as native paths: the agenda's for
 agenda, with their archive files for agenda-with-archives. The buffer's own file
 with its archives for file-with-archives (ORG-ARCHIVE-FILES-OF). Of a list, each
-name read from the folder of BUFFER's file (the block's own), those that are
-agenda files or stand beside that file (in its folder or under it, links
+name read from the directory of BUFFER's file (the block's own), those that are
+agenda files or stand beside that file (in its directory or under it, links
 followed). Another is left out and said, since a file must not have the editor
 read what it names. NIL for the scopes within the buffer."
   (cond ((listp scope)
          (let* ((agenda (org-agenda-file-paths))
                 (file (tuatara.buffer:buffer-file buffer))
-                (folder (and file (tuatara.io:parent-path file))))
+                (directory (and file (tuatara.io:parent-path file))))
            (loop for name in scope
                  when (stringp name)
                    append (let ((path (ignoring-errors-reported ("finding the file ~a" name)
                                         (tuatara.io:native
                                          (tuatara.io:expand-path name
-                                                                 :directory (or folder
+                                                                 :directory (or directory
                                                                                 (tuatara.io:default-directory)))))))
                             (cond ((null path) '())
-                                  ((org-path-beside-p path folder agenda) (list path))
+                                  ((org-path-beside-p path directory agenda) (list path))
                                   (t (message "The clock table leaves ~a out: neither an agenda file nor beside this one" name)
                                      '()))))))
         ((string-equal scope "agenda-with-archives")

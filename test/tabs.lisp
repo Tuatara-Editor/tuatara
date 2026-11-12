@@ -24,7 +24,7 @@ for major modes, and the settings made for modes before it put back afterwards."
          (setf tuatara.defaults::*mode-tab-widths* ,widths
                tuatara.defaults::*mode-indent-tabs* ,tabs)))))
 
-(define-test (tabs tab-key)
+(define-modal-test (tabs tab-key)
   ;; spaces to the next stop, 4 columns apart
   (is string= "    abc" (session-text (nth-value 1 (run-keys "i TAB" :text "abc"))))
   (is string= "ab  c" (session-text (nth-value 1 (run-keys "l l i TAB" :text "abc"))))
@@ -46,7 +46,7 @@ for major modes, and the settings made for modes before it put back afterwards."
     (is string= (format nil "~cabc" #\Tab) (session-text editor))
     (true (tuatara.frontend.fake:fake-frame-showing f "Indent-Tabs mode enabled in current buffer"))))
 
-(define-test (tabs normal-state)
+(define-modal-test (tabs normal-state)
   ;; TAB changes no text in NORMAL state
   (is string= "abc" (session-text (nth-value 1 (run-keys "TAB" :text "abc"))))
   (is string= "abc" (session-text (nth-value 1 (run-keys "M-x l i s p - m o d e RET TAB" :text "abc"))))
@@ -55,7 +55,7 @@ for major modes, and the settings made for modes before it put back afterwards."
   (let ((tuatara-user:*tuatara-normal-tab-modes* '()))
     (is string= "abc" (session-text (nth-value 1 (run-keys "M-x o r g - m o d e RET TAB" :text "abc"))))))
 
-(define-test (tabs for-a-mode)
+(define-modal-test (tabs for-a-mode)
   ;; a mode's own width, and the modes derived from it
   (with-mode-tabs ((text :width 2))
     (is string= "  abc" (session-text (nth-value 1 (run-keys "M-x t e x t - m o d e RET i TAB" :text "abc"))))
@@ -110,7 +110,7 @@ for major modes, and the settings made for modes before it put back afterwards."
     (let ((f (run-keys "M-x t e x t - m o d e RET" :text (format nil "~cx" #\Tab))))
       (is string= "   x" (string-right-trim " " (tuatara.frontend.fake:fake-screen-line f 0))))))
 
-(define-test (tabs indentation)
+(define-modal-test (tabs indentation)
   ;; a new line is indented with spaces, or with tabs and spaces where tabs are wanted
   (flet ((typed (keys) (session-text (nth-value 1 (run-keys keys :text "")))))
     (let ((keys (format nil "M-x l i s p - m o d e RET i ~a RET" (key-string "(let ((a 1)"))))
@@ -145,7 +145,7 @@ for major modes, and the settings made for modes before it put back afterwards."
         (list (cons 14 6))
         (tuatara.defaults::lisp-indent-lines (tuatara.text:string->rope text) 14 (length text)))))
 
-(define-test (tabs tab-indents-where-the-mode-indents)
+(define-modal-test (tabs tab-indents-where-the-mode-indents)
   (flet ((typed (keys text) (session-text (nth-value 1 (run-keys keys :text text :width 120)))))
     ;; in Lisp TAB indents the line, point from the blanks to the text
     (multiple-value-bind (f editor) (run-keys "M-x l i s p - m o d e RET j i TAB"

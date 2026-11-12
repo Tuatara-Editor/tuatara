@@ -236,7 +236,7 @@ shown at the end of a row after a space."
       (declare (ignore editor))
       (true (tuatara.frontend.fake:fake-frame-showing f "Rimu  by name")))))
 
-(define-test (rimu moving)
+(define-modal-test (rimu moving)
   (with-rimu-tree (dir)
     (let ((name (rimu-list-name dir)))
       ;; l lists a directory in the same buffer, named after it
@@ -351,7 +351,7 @@ shown at the end of a row after a space."
       (is equal "y-dir" (name-at "M-> <"))
       (is equal "m-dir" (name-at "M-> < <")))))
 
-(define-test (rimu jump)
+(define-modal-test (rimu jump)
   (with-rimu-tree (dir)
     (let ((file (namestring (merge-pathnames "text.txt" dir))))
       ;; C-x C-j and SPC d d list the file's directory, point on the file
@@ -411,7 +411,7 @@ shown at the end of a row after a space."
         (true (tuatara.frontend.fake:fake-frame-showing f "text.txt (preview)"))
         (true (tuatara.frontend.fake:fake-frame-showing f "hello"))
         (is equal '("text.txt (preview)") (mapcar #'tuatara.buffer:buffer-name (previews)))
-        ;; finding a file from it starts in the file's folder
+        ;; finding a file from it starts in the file's directory
         (is string= (tuatara.io:native dir) (tuatara.buffer:buffer-local (first (previews)) :directory)))
       ;; the one before goes when the next is shown
       (multiple-value-bind (f editor) (rimu-session dir "g f t e x t . t x t RET g f d a t a RET" :preview t)
@@ -501,7 +501,7 @@ shown at the end of a row after a space."
                                    tuatara.buffer:*buffers*)))))
     (rimu-forget)))
 
-(define-test (rimu point-on-entries)
+(define-modal-test (rimu point-on-entries)
   ;; the cursor stays on the entries: g e and j on the last entry put it on the last one's name
   (with-rimu-tree (dir)
     (dolist (keys '("g e" "g e j" "g e k j j"))
@@ -546,7 +546,7 @@ shown at the end of a row after a space."
       (true (tuatara.frontend.fake:fake-frame-showing f "TIFF image, 6000 × 6000")))
     (rimu-forget)))
 
-(define-test (rimu quick-edit)
+(define-modal-test (rimu quick-edit)
   (with-rimu-tree (dir)
     (let* ((path (tuatara.io:expand-path (merge-pathnames "text.txt" dir)))
            (name (rimu-list-name dir)))
@@ -854,8 +854,13 @@ with ATTACHMENTS, a list of such, each of them."
                                                      "<< /Type /Filespec /F (~a) /EF << /F ~d 0 R >> >>" name
                                                      (+ spec (* 2 i) 1))
                                              (format nil "<< /Type /EmbeddedFile /Length ~d >>~%stream~%~a~%endstream"
-                                                     (length text) text)))))
-         (offsets '())
+                                                     (length text) text))))))
+    (pdf-of-objects objects)))
+
+(defun pdf-of-objects (objects)
+  "A PDF of OBJECTS, the text of each object in turn from number 1, the first
+its catalogue, with a cross-reference table giving where each is."
+  (let* ((offsets '())
          (text (with-output-to-string (out)
                  (format out "%PDF-1.4~%")
                  (loop for object in objects
@@ -999,7 +1004,7 @@ program writing as it goes makes them: each entry's sizes after its data."
     (dolist (name '("report.pdf" "notes.txt" "script.pdf" "scan.pdf" "broken.pdf" "binary.pdf"))
       (delete-file (merge-pathnames name dir)))))
 
-(define-test (rimu pdf-decoding-stopped)
+(define-modal-test (rimu pdf-decoding-stopped)
   ;; moving on while a PDF is decoded stops its program, and the next entry is shown
   (with-rimu-tree (dir)
     (alexandria:write-byte-vector-into-file (pdf-octets '("Slow")) (merge-pathnames "slow.pdf" dir))
@@ -1588,7 +1593,7 @@ and the editor."
         (true commits)
         (true (and commits (search "The first file" (format nil "~a" (gethash "a.txt" commits)))))))))
 
-(define-test (rimu bindings-none-here)
+(define-modal-test (rimu bindings-none-here)
   (with-rimu-tree (dir)
     (rimu-session dir "?" :width 120 :height 40)
     (let* ((help (tuatara.buffer:find-buffer "*Help*"))
@@ -1652,7 +1657,7 @@ and the editor."
                        (rimu-lines editor)))))))
 
 (define-test (rimu stays-in-its-project)
-  ;; going up out of a project lists the folder above in a list of its own, the project's
+  ;; going up out of a project lists the directory above in a list of its own, the project's
   ;; list left where it was; g l goes back to it; within the project, the same list
   (with-test-directory (dir)
     (let ((project (merge-pathnames "proj/" dir)))
@@ -1678,18 +1683,18 @@ and the editor."
     (rimu-forget)))
 
 (define-test (rimu bookmarks-reuse-project-lists)
-  ;; a folder bookmark moves the project's list there; one of no project, with no list of
+  ;; a directory bookmark moves the project's list there; one of no project, with no list of
   ;; none, gets a list of its own; with *rimu-reuse-lists* nil every one gets its own
   (with-test-directory (dir)
     (let ((project (merge-pathnames "proj/" dir)))
       (ensure-directories-exist (merge-pathnames ".project/" project))
-      (dolist (folder '("proj/one/" "proj/two/" "elsewhere/"))
-        (ensure-directories-exist (merge-pathnames folder dir)))
+      (dolist (directory '("proj/one/" "proj/two/" "elsewhere/"))
+        (ensure-directories-exist (merge-pathnames directory dir)))
       (flet ((lists ()
                (sort (mapcar (lambda (b) (tuatara.buffer:buffer-local b 'tuatara.defaults::rimu-directory))
                              (remove-if-not #'tuatara.defaults::rimu-list-p tuatara.buffer:*buffers*))
                      #'string<))
-             (native (folder) (tuatara.io:native (merge-pathnames folder dir))))
+             (native (directory) (tuatara.io:native (merge-pathnames directory dir))))
         (tuatara.defaults::state-list-put tuatara.defaults::*bookmarks*
                                           (list (list "tbtwo" (native "proj/two/") 0 "" nil nil)
                                                 (list "tbelse" (native "elsewhere/") 0 "" nil nil)))
@@ -1705,8 +1710,8 @@ and the editor."
           (tuatara.defaults::state-list-drop tuatara.defaults::*bookmarks* '("tbtwo" "tbelse"))
           (rimu-forget))))))
 
-(define-test (rimu folder-opened-safely)
-  ;; a folder opened safely is listed, as one opened as usual is, never read as a file
+(define-test (rimu directory-opened-safely)
+  ;; a directory opened safely is listed, as one opened as usual is, never read as a file
   (with-test-directory (dir)
     (alexandria:write-string-into-file "x" (merge-pathnames "inside.txt" dir))
     (rimu-forget)
@@ -1720,7 +1725,7 @@ and the editor."
       (false (tuatara.frontend.fake:fake-frame-showing f "not a file of text"))
       (true (tuatara.io:safe-visit-p (session-buffer editor))))
     ;; its preview shows a file as one opened safely is shown: its text, no major mode;
-    ;; a folder's preview list is opened safely too
+    ;; a directory's preview list is opened safely too
     (alexandria:write-string-into-file "(defun shown-in-preview ())" (merge-pathnames "code.lisp" dir))
     (ensure-directories-exist (merge-pathnames "sub/" dir))
     (rimu-forget)
@@ -1789,8 +1794,8 @@ and the editor."
       (true (tuatara.io:safe-visit-p (session-buffer editor))))
     (rimu-forget)))
 
-(define-test (rimu folder-name-with-a-line-break)
-  ;; a folder whose name holds a line break is listed on one title line, so that each
+(define-test (rimu directory-name-with-a-line-break)
+  ;; a directory whose name holds a line break is listed on one title line, so that each
   ;; line acts on the entry it shows
   (with-test-directory (dir)
     (let ((odd (merge-pathnames (format nil "dir~%nl/") dir)))

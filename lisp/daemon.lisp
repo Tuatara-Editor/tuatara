@@ -4,7 +4,7 @@
 ;;;; tuatara --daemon runs an editor with no screen; tuatara --client shows it
 ;;;; in a terminal, a frame of its own painted through a remote frontend
 ;;;; (src/frontend/remote.lisp). The daemon listens on a local socket in a
-;;;; folder for you alone, $XDG_RUNTIME_DIR/tuatara/NAME.socket, held
+;;;; directory for you alone, $XDG_RUNTIME_DIR/tuatara/NAME.socket, held
 ;;;; by a lock beside it for as long as it runs. A connection is taken only
 ;;;; from a program run by the same account that sees the same files at the
 ;;;; same paths; it is greeted on a thread of its own, never the editor's, and
@@ -41,20 +41,20 @@ shows as owned by that id."
              (parse-integer (uiop:read-file-string "/proc/sys/kernel/overflowuid") :junk-allowed t)))
     (file-error () nil)))
 
-(defun runtime-folder-refusal (stamp what uid &key (private t) on-the-way)
-  "Why the folder WHAT, as STAMP (not following a link) says it is, is not
+(defun runtime-directory-refusal (stamp what uid &key (private t) on-the-way)
+  "Why the directory WHAT, as STAMP (not following a link) says it is, is not
 safe for a daemon's socket, in words, or NIL when it is safe. It is safe when
-it is a folder and no link and is UID's. With PRIVATE it must be for UID alone
+it is a directory and no link and is UID's. With PRIVATE it must be for UID alone
 (mode 700), else at least not writable by others. With ON-THE-WAY, WHAT is a
-folder on the way to that one. It need only be root's or UID's, and writable
+directory on the way to that one. It need only be root's or UID's, and writable
 by others only with the sticky bit, as /tmp is, where no one may remove or
 rename what is another's. A sticky one may also be owned by an id the editor's
 namespace of user ids leaves out (OUTSIDE-OWNER), as /tmp is seen from a
 container."
   (let ((mode (and stamp (tuatara.io:stamp-mode stamp))))
     (cond ((null stamp) (format nil "~a is not there" what))
-          ((eq (tuatara.io:stamp-kind stamp) :symlink) (format nil "~a is a link, not a folder" what))
-          ((not (eq (tuatara.io:stamp-kind stamp) :directory)) (format nil "~a is not a folder" what))
+          ((eq (tuatara.io:stamp-kind stamp) :symlink) (format nil "~a is a link, not a directory" what))
+          ((not (eq (tuatara.io:stamp-kind stamp) :directory)) (format nil "~a is not a directory" what))
           ((not (member (tuatara.io:stamp-uid stamp)
                         (cond ((not on-the-way) (list uid))
                               ((logtest mode #o1000) (list 0 uid (outside-owner)))
@@ -65,16 +65,16 @@ container."
                (if private (/= (logand mode #o777) #o700) (logtest mode #o022)))
            (format nil "~a may be used by others (its mode is ~3,'0o)" what (logand mode #o777))))))
 
-(defun folder-refusal (path what uid &key (private t))
-  "Why the folder at PATH, a native name, is not safe to keep what only UID
+(defun directory-refusal (path what uid &key (private t))
+  "Why the directory at PATH, a native name, is not safe to keep what only UID
 may change in, in words naming it WHAT, or NIL when it is safe. It is checked
-named from the root. Every folder on the way to it from there must be safe as
-RUNTIME-FOLDER-REFUSAL says with ON-THE-WAY. A link on the way is followed and
-where it leads is checked the same way. The folder itself must be no link and
+named from the root. Every directory on the way to it from there must be safe as
+RUNTIME-DIRECTORY-REFUSAL says with ON-THE-WAY. A link on the way is followed and
+where it leads is checked the same way. The directory itself must be no link and
 safe as that says with PRIVATE."
   (flet ((named (parts) (format nil "/~{~a~^/~}" (reverse parts)))
          (on-the-way (name stamp)
-           (runtime-folder-refusal stamp (format nil "~a, on the way to ~a," name what) uid :on-the-way t)))
+           (runtime-directory-refusal stamp (format nil "~a, on the way to ~a," name what) uid :on-the-way t)))
     (if (not (uiop:string-prefix-p "/" path))
         (format nil "~a is not named from the root" what)
         (let ((passed '()) (links 0)
@@ -84,7 +84,8 @@ safe as that says with PRIVATE."
                 (let ((part (pop ahead)))
                   (cond ((and (null part) (null passed)) (return (format nil "~a is the root" what)))
                         ((null part)
-                         (return (runtime-folder-refusal (tuatara.io:path-stamp (named passed) :follow nil :failure nil)
+                         (return (runtime-directory-refusal (tuatara.io:path-stamp (named passed)
+                                                                                   :follow nil :failure nil)
                                                          what uid :private private)))
                         ((member part '("" ".") :test #'string=))
                         ((string= part "..") (pop passed))
@@ -103,40 +104,40 @@ safe as that says with PRIVATE."
                                  (push part passed)))))))))))))
 
 (defvar *runtime-directory* nil
-  "The folder of the session's own files that daemons' sockets go in, or NIL
+  "The directory of the session's own files that daemons' sockets go in, or NIL
 for the one $XDG_RUNTIME_DIR names, as the system sets it.")
 
-(defun daemon-folder ()
-  "The folder daemons' sockets are in, $XDG_RUNTIME_DIR/tuatara/ (or in
+(defun daemon-directory ()
+  "The directory daemons' sockets are in, $XDG_RUNTIME_DIR/tuatara/ (or in
 *RUNTIME-DIRECTORY*), a native name ending in /: made for you alone when it
-is not there, and checked each time (RUNTIME-FOLDER-REFUSAL). Refused, saying
-why, when XDG_RUNTIME_DIR is not set or the folder is not safe: there is no
+is not there, and checked each time (RUNTIME-DIRECTORY-REFUSAL). Refused, saying
+why, when XDG_RUNTIME_DIR is not set or the directory is not safe: there is no
 other place for it."
   (let ((runtime (or *runtime-directory* (tuatara.io:own-variable "XDG_RUNTIME_DIR")))
         (uid (sb-posix:geteuid)))
     (unless (and runtime (plusp (length runtime)) (char= (char runtime 0) #\/))
-      (refuse "XDG_RUNTIME_DIR is not set to a folder, and a daemon's socket goes nowhere else"))
+      (refuse "XDG_RUNTIME_DIR is not set to a directory, and a daemon's socket goes nowhere else"))
     (let* ((runtime (tuatara.io:slash-ended runtime))
-           (folder (tuatara.io:path-join runtime "tuatara/"))
-           (why (folder-refusal runtime (format nil "XDG_RUNTIME_DIR (~a)" runtime) uid :private nil)))
+           (directory (tuatara.io:path-join runtime "tuatara/"))
+           (why (directory-refusal runtime (format nil "XDG_RUNTIME_DIR (~a)" runtime) uid :private nil)))
       (when why (refuse "~a: no daemon's socket goes there" why))
-      (unless (tuatara.io:path-stamp folder :follow nil :failure nil)
-        (handler-case (tuatara.io:make-directory folder #o700)
+      (unless (tuatara.io:path-stamp directory :follow nil :failure nil)
+        (handler-case (tuatara.io:make-directory directory #o700)
           ;; made meanwhile by another start: it is checked as it is
           (tuatara.io:file-system-error () nil)))
-      (let ((why (folder-refusal folder folder uid)))
+      (let ((why (directory-refusal directory directory uid)))
         (when why (refuse "~a: no daemon's socket goes there" why)))
-      folder)))
+      directory)))
 
 (defun daemon-path (name type)
   "The path of the daemon NAME's file of TYPE, \"socket\" or \"lock\", in
-the daemons' folder (DAEMON-FOLDER); refused for a name that cannot name a
+the daemons' directory (DAEMON-DIRECTORY); refused for a name that cannot name a
 daemon (DAEMON-NAME-P) or one too long for a socket."
   (unless (daemon-name-p name)
     (refuse "~a cannot name a daemon: letters, digits, - and _, at most 40" name))
-  (let ((path (concatenate 'string (daemon-folder) name "." type)))
+  (let ((path (concatenate 'string (daemon-directory) name "." type)))
     (when (> (length (tuatara.text:string-octets path)) tuatara.io:+most-socket-path+)
-      (refuse "~a is too long a path for a socket: XDG_RUNTIME_DIR names a folder too deep" path))
+      (refuse "~a is too long a path for a socket: XDG_RUNTIME_DIR names a directory too deep" path))
     path))
 
 ;;; A daemon: its lock, its socket, and the clients being greeted
@@ -180,8 +181,8 @@ NIL before."
 (defun open-daemon (name)
   "Make this process the daemon NAME: take its lock, so that no other daemon
 of the name runs, take away a socket a daemon that ended left, and listen on
-a new one. Refused, saying why, when one of the name runs or the folder is
-not safe (DAEMON-FOLDER). Returns the DAEMON."
+a new one. Refused, saying why, when one of the name runs or the directory is
+not safe (DAEMON-DIRECTORY). Returns the DAEMON."
   (let* ((lock-path (daemon-path name "lock"))
          (socket (daemon-path name "socket"))
          (fd (handler-case (tuatara.io:open-lock-file lock-path)
@@ -482,8 +483,8 @@ for: what is greeted wakes the editor."
   "Do what CLIENT of EDITOR asked for as it attached, REQUEST, in its frame.
 It may ask to open its files (standard input among them), each where its +LINE
 asks, the first shown. It may ask to compare or merge files. Asking for none,
-it takes up the folder of the client that ended last, with its layouts, when
-the session is kept (TAKE-UP-ENDED-FOLDER). It may also ask to open the frames
+it takes up the group of the client that ended last, with its layouts, when
+the session is kept (TAKE-UP-ENDED-GROUP). It may also ask to open the frames
 asked for, or to stop the editor. A file that cannot be opened is said, as
 when the editor starts with it."
   (let* ((merge (tuatara.frontend:request-merge request))
@@ -514,7 +515,7 @@ when the editor starts with it."
         (only-window (current-window))))
     (when merge (merge-files-into (first merge) (second merge) (third merge) (fourth merge)))
     (unless (or entries input (tuatara.frontend:request-diff request))
-      (take-up-ended-folder editor client))
+      (take-up-ended-group editor client))
     (let ((frames (tuatara.frontend:request-frames request)))
       (when (> frames 1) (open-start-frames editor frames)))))
 
@@ -561,7 +562,7 @@ input CLIENT passed, which may never end; what was read stays in *stdin*."
 does in a client: its frames close and it exits, the editor going on. Its
 encrypted buffers close with it; each with changes not saved is asked about
 first: s saves it, l closes it without saving, \\`C-g' keeps the client.
-Its other buffers stay, unsaved ones too, in a folder of their own in
+Its other buffers stay, unsaved ones too, in a group of their own in
 \\[buffers], for another client to take up."
   (let* ((editor *editor*)
          (client (current-client editor)))
@@ -640,25 +641,25 @@ that is kept (CLIENT-KEPT-P); the daemon and the other clients go on."
 
 ;;; Stopping the daemon
 
-(defun unsaved-by-folder (editor)
+(defun unsaved-by-group (editor)
   "The buffers of EDITOR with changes leaving it would lose (UNSAVED-P), in
-the folders of the buffer list (BUFFER-FOLDER), each (FOLDER . BUFFERS), the
-folder of the client working in the frame first."
+the groups of the buffer list (BUFFER-LIST-GROUP), each (GROUP . BUFFERS), the
+group of the client working in the frame first."
   (let ((client (current-client editor)))
     (group-sections (remove-if-not #'unsaved-p tuatara.buffer:*buffers*)
-                    (lambda (b) (buffer-folder b client))
+                    (lambda (b) (buffer-list-group b client))
                     :first client :last :everyone)))
 
-(defun ask-about-unsaved-by-folder (editor)
-  "Ask about the changes not saved in EDITOR's buffers, folder by folder
-\(UNSAVED-BY-FOLDER): s saves those of the folder, l leaves them unsaved,
+(defun ask-about-unsaved-by-group (editor)
+  "Ask about the changes not saved in EDITOR's buffers, group by group
+\(UNSAVED-BY-GROUP): s saves those of the group, l leaves them unsaved,
 \\`C-g' gives the question up, as it does any. Their saves are begun."
-  (loop for (folder . buffers) in (unsaved-by-folder editor)
+  (loop for (group . buffers) in (unsaved-by-group editor)
         do (let ((*buffers-asked-about* buffers))
              (when (char= #\s (read-answer-key
                                (format nil "~a: ~d with changes not saved (~{~a~^, ~}): s saves them, ~
                                             l leaves them (C-g keeps the daemon running) "
-                                       (buffer-section-title folder) (length buffers)
+                                       (buffer-section-title group) (length buffers)
                                        (mapcar #'tuatara.buffer:buffer-name buffers))
                                '(#\s #\l)))
                (save-buffers-saying buffers "Saved ~d file~:p")))))
@@ -723,7 +724,7 @@ wherever this is called from (it is woken), within *LEAVING-SECONDS*
 (define-command daemon-quit ()
   "Stop the editor running in the background (tuatara --daemon), from any of
 its clients, asked first about every change not saved in it, the clients
-that ended included, folder by folder: s saves those of a folder, l leaves
+that ended included, group by group: s saves those of a group, l leaves
 them unsaved, \\`C-g' keeps the daemon running; the saves begun are waited
 for (\\`C-g' there keeps it running too). Then every other client is told the
 daemon ends, gives its terminal back and exits 1, and the daemon writes what
@@ -738,7 +739,7 @@ it keeps (the files visited lately, the places) and ends.
                          unless answer return :stay
                          collect answer)))
       (unless (eq answers :stay)
-        (ask-about-unsaved-by-folder editor)
+        (ask-about-unsaved-by-group editor)
         ;; the saves just begun end before the daemon does, never cut short by its exit
         (unless (wait-for-saves-begun)
           (refuse "Not stopped: saves are still running"))

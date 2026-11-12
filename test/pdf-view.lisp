@@ -11,10 +11,30 @@ move as in any text. I says what it says of itself, a lists and saves its embedd
 says the page, the zoom and Sandboxed. The page and zoom are kept for the next time. Where pictures are
 not shown, the text. A safe visit opens its octets.")
 
+(defun pdf-views-busy-p ()
+  "True while a PDF's view draws its pages, takes its text out or does other work in the background."
+  (or (some (lambda (b) (let ((view (tuatara.defaults::pdf-view-of b)))
+                          (and view
+                               (or (tuatara.defaults::pdf-view-job view)
+                                   (tuatara.defaults::pdf-view-text-job view)))))
+            tuatara.defaults::*pdf-views*)
+      (some #'tuatara.defaults::pdf-view-task-p tuatara.runtime:*jobs*)))
+
+(defun after-pdf-views (function &optional (start (get-internal-real-time)))
+  "A step of a session (QUEUE-TEST-KEYS): FUNCTION called once the PDFs' views
+are done with what they make in the background, or after 20 seconds."
+  (lambda ()
+    (if (and (pdf-views-busy-p) (< (- (get-internal-real-time) start) (* 20 internal-time-units-per-second)))
+        (progn (sleep 0.02)
+               (tuatara.frontend.fake:fake-queue-action (tuatara.command:editor-frontend tuatara.command:*editor*)
+                                                        (after-pdf-views function start)))
+        (funcall function))))
+
 (defun pdf-session (file first then &key cell-pixels (width 120) (height 30))
   "Visit FILE with C-x C-f in an editor session, typing FIRST, then, once what
-the PDF's views make in the background is done, THEN; CELL-PIXELS has the
-frontend show pictures. Returns the frontend and the editor."
+the PDF's views make in the background is done, THEN (keys, or steps as
+QUEUE-TEST-KEYS takes them); CELL-PIXELS has the frontend show pictures.
+Returns the frontend and the editor."
   (let ((f (tuatara.frontend.fake:make-fake-frontend :width width :height height :cell-pixels cell-pixels))
         (start (get-internal-real-time)))
     (let ((scratch (tuatara.buffer:find-buffer "*scratch*")))
@@ -24,17 +44,10 @@ frontend show pictures. Returns the frontend and the editor."
                                            (format nil
                                                    "C-x C-f C-a C-k ~a RET~@[ ~a~]"
                                                    (rimu-typed (namestring file)) first))
-    (labels ((busy ()
-               (or (some (lambda (b) (let ((view (tuatara.defaults::pdf-view-of b)))
-                                       (and view
-                                            (or (tuatara.defaults::pdf-view-job view)
-                                                (tuatara.defaults::pdf-view-text-job view)))))
-                         tuatara.defaults::*pdf-views*)
-                   (some #'tuatara.defaults::pdf-view-task-p tuatara.runtime:*jobs*)))
-             (check ()
-               (if (and (busy) (< (- (get-internal-real-time) start) (* 20 internal-time-units-per-second)))
+    (labels ((check ()
+               (if (and (pdf-views-busy-p) (< (- (get-internal-real-time) start) (* 20 internal-time-units-per-second)))
                    (progn (sleep 0.02) (tuatara.frontend.fake:fake-queue-action f #'check))
-                   (when then (tuatara.frontend.fake:fake-queue-keys f then)))))
+                   (when then (queue-test-keys f then)))))
       (tuatara.frontend.fake:fake-queue-action f #'check))
     (values f (tuatara.command:run-editor f :setup #'tuatara.defaults:install-defaults
                                             :buffer (tuatara.buffer:find-buffer "*scratch*")))))

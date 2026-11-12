@@ -561,7 +561,7 @@ ITEMS and OPTIONS, the buffer killed and its file deleted after."
     (is string= "name,place,count" (tuatara.frontend.fake:fake-screen-line f 0))
     (is equal '("name,place,count" "weka,Akaroa,1") (records-shown buffer))))
 
-(define-test (search-filters csv-edits)
+(define-modal-test (search-filters csv-edits)
   (let ((kiwi-line 1))
     (flet ((on-line (n) (lambda () (let ((b (tuatara.command:current-buffer)))
                                      (setf (tuatara.buffer:buffer-point b) (tuatara.buffer:buffer-goto-line b n))))))
@@ -628,7 +628,7 @@ with y hidden between them and after the last.")
   "A step of keys keeping the kill first on the kill ring in *SEEN-KILL*."
   (lambda () (setf *seen-kill* (first (tuatara.command:editor-kill-ring tuatara.command:*editor*)))))
 
-(define-test (search-filters copies-take-records-shown)
+(define-modal-test (search-filters copies-take-records-shown)
   (let ((shown (format nil "a1,x~%a3,x~%a5,x~%")))
     ;; V over three records shown, two hidden between: y copies the three alone, and says what it left out
     (with-records (f buffer path)
@@ -676,7 +676,7 @@ with y hidden between them and after the last.")
       (is string= (format nil "a1,x~%b2,y~%a3,x~%") *seen-kill*)
       (false (tuatara.frontend.fake:fake-frame-showing f "left out")))))
 
-(define-test (search-filters copies-take-folds-whole)
+(define-modal-test (search-filters copies-take-folds-whole)
   ;; a folded Org subtree is copied whole: folds are not search filters
   (let ((tuatara-user:*org-startup-indented* nil) (*seen-kill* nil))
     (run-keys (list "M-x o r g - m o d e RET S-TAB V y" (see-kill))
@@ -688,7 +688,7 @@ with y hidden between them and after the last.")
   (format nil "~{~a~%~}" (let ((lines (butlast (uiop:split-string text :separator '(#\Newline)))))
                            (append (subseq lines 0 n) (nthcdr (1+ n) lines)))))
 
-(define-test (search-filters csv-save-and-revert)
+(define-modal-test (search-filters csv-save-and-revert)
   ;; saving writes the whole file, with the edit made to a record shown
   (with-records (f buffer path) ((list "C-x / s k i w i RET"
                                        (lambda () (let ((b (tuatara.command:current-buffer)))
@@ -946,7 +946,7 @@ many searches it made."
           do (true (< (- later earlier) (/ internal-time-units-per-second 10)) "a key took ~,3f s"
                    (/ (- later earlier) internal-time-units-per-second)))))
 
-(define-test (search-filters rectangle-lit-where-shown)
+(define-modal-test (search-filters rectangle-lit-where-shown)
   ;; a rectangle across lines the filters hide is lit on the lines shown alone,
   ;; not worked out for every hidden line between them at each frame
   (let ((path (records-file (with-output-to-string (o)
@@ -984,7 +984,7 @@ tiny pieces, a few lines each, so that a small text exercises it."
   (format nil "NAME,CITY,NOTE~%Ann,Auckland,tea~%Bob,\"Napier, Hawke's Bay\",coffee~%Cat,Nelson,\"said \"\"hi\"\"\"~%Dan,Auckland~%")
   "Records: a quoted field holding the separator, one holding doubled quotes, one short a field.")
 
-(define-test (search-filters records-kept-and-deleted)
+(define-modal-test (search-filters records-kept-and-deleted)
   (dolist (on-disk '(nil t))
     ;; by the header's name: the quoted field's value, the comma inside it no separator
     (is string= (format nil "NAME,CITY,NOTE~%Bob,\"Napier, Hawke's Bay\",coffee~%")

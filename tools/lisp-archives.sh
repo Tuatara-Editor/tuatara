@@ -19,7 +19,7 @@
 #                                               download LIBRARY over HTTPS from
 #                                               the set's index and add its line
 #                                               to the list, for review
-# QUICKLISP is the folder holding setup.lisp: $QUICKLISP_SETUP's, else
+# QUICKLISP is the directory holding setup.lisp: $QUICKLISP_SETUP's, else
 # ~/quicklisp, else ~/.local/share/quicklisp.
 set -euo pipefail
 root="$(cd "$(dirname "$0")/.." && pwd)"
@@ -30,7 +30,7 @@ dist_url=https://beta.quicklisp.org/dist/quicklisp/2026-01-01
 
 fail() { echo "tools/lisp-archives.sh: $*" >&2; exit 1; }
 
-quicklisp_dir() {  # the folder given, else where Quicklisp is installed
+quicklisp_dir() {  # the directory given, else where Quicklisp is installed
   local dir setup
   if [ -n "${1:-}" ]; then echo "$1"; return; fi
   for setup in "${QUICKLISP_SETUP:-}" "$HOME/quicklisp/setup.lisp" "$HOME/.local/share/quicklisp/setup.lisp"; do

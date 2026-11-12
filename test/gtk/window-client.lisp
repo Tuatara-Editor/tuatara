@@ -3,7 +3,7 @@
 ;;;;
 ;;;; Run by that test with sbcl --script on a display of its own (broadway):
 ;;;; NAME RUNTIME FILE DROPPED PICTURE OUT. Starts tuatara --client=NAME --gui
-;;;; FILE from these sources, the daemon's sockets in the folder RUNTIME, then
+;;;; FILE from these sources, the daemon's sockets in the directory RUNTIME, then
 ;;;; types in the window, pastes what another program put on the clipboard,
 ;;;; makes the font a step larger, opens another window with C-x 5 2 (both
 ;;;; drawn by the renderer the daemon's settings choose), types

@@ -24,7 +24,8 @@ fonts, rich cells, windows and frames.")
            #:*fold-ellipsis* #:row-faces #:row-char-bytes #:row-spans #:row-extend #:merge-face #:apply-highlights
            #:layout #:point-row-column
            #:face #:define-face #:find-face #:set-face-attributes #:resolve-face-spec #:face-ground #:cursor-colour
-           #:resolve-face-underline-colour #:combine-faces #:resolve-face-font #:*row-scaling* #:row-scale
+           #:resolve-face-underline-colour #:combine-faces #:resolve-face-font #:*row-scaling* #:row-scale #:text-scale
+           #:row-float-start
            #:face-attribute #:*faces* #:*face-generation* #:make-face-cache #:face-cache-table
            #:face-doc #:face-fg #:face-bg #:face-bold #:face-italic #:face-underline #:face-reverse #:face-dim
            #:face-extend #:face-font #:face-inherit #:face-underline-colour #:face-height #:*basic-colour-names*
@@ -39,7 +40,7 @@ fonts, rich cells, windows and frames.")
            #:call-keeping-window-lines #:window-width #:window-height #:window-wrap
            #:window-hscroll #:line-prefix-columns #:*layout-probe* #:window-goal-column #:window-rows #:window-margin
            #:window-layout #:window-point-position #:large-column #:window-line-scale #:window-text-width
-           #:window-rows-drawn
+           #:window-rows-drawn #:window-row-top #:window-row-at #:window-float-in-force #:window-float-function
            #:window-ensure-point-visible #:step-lines #:window-scroll #:window-recenter #:display-column #:code-columns
            #:advance-column #:screen-slice-keys #:buffer-slice-keys #:buffer-screen-column
            #:buffer-move-to-screen-column #:buffer-screen-slice #:scroll-lines

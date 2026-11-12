@@ -110,21 +110,21 @@ NIL when TOKEN is not a string."
   (let ((base (token-base token)))
     (and base (plusp (length base)) (char/= (char base 0) #\:) base)))
 
-(defvar *packages-folder-candidates* '("../tuatara-packages/" "../../../../tuatara-packages/")
-  "Where PACKAGES-FOLDER looks, relative to this tree: beside it, and four folders up for a worktree.")
+(defvar *packages-directory-candidates* '("../tuatara-packages/" "../../../../tuatara-packages/")
+  "Where PACKAGES-DIRECTORY looks, relative to this tree: beside it, and four directories up for a worktree.")
 
-(defun packages-folder (&optional (candidates *packages-folder-candidates*))
-  "The folder with the package repositories as a full name with no \"..\" in it, looked for beside the editor's
-folder and, for a worktree, four folders up; NIL when it is in neither."
+(defun sibling-packages-directory (&optional (candidates *packages-directory-candidates*))
+  "The directory with the package repositories as a full name with no \"..\" in it, looked for beside the editor's
+directory and, for a worktree, four directories up; NIL when it is in neither."
   (let ((found (find-if #'uiop:directory-exists-p
                         (mapcar (lambda (candidate) (merge-pathnames candidate (asdf:system-source-directory :tuatara)))
                                 candidates))))
     (and found (truename found))))
 
 (defun package-repositories ()
-  "The folders of the package repositories (PACKAGES-FOLDER), each a git repository of its own, the worktrees of
-their branches left out; none when there is no such folder."
-  (let ((root (packages-folder)))
+  "The directories of the package repositories (PACKAGES-DIRECTORY), each a git repository of its own, the worktrees of
+their branches left out; none when there is no such directory."
+  (let ((root (sibling-packages-directory)))
     (and root (sort (remove-if-not (lambda (directory) (uiop:directory-exists-p (merge-pathnames ".git/" directory)))
                                    (uiop:subdirectories root))
                     #'string< :key #'namestring))))
