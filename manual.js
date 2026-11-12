@@ -68,8 +68,9 @@ window.tuataraManualText = {"01-the-screen":" the screen what tuatara shows you,
   });
 
   // The entry of the column for the part being read is marked, following as
-  // the page is scrolled: the last heading that has reached the top of the
-  // window. On the whole manual, where no chapter is marked as the one
+  // the page is scrolled: the last heading that has reached the middle of
+  // the window, and the entries it is under, so a section folded out of sight
+  // leaves the section holding it marked. On the whole manual, where no chapter is marked as the one
   // shown, its chapter is unfolded too.
   var whole = !nav.querySelector("li.here");
   var here = location.pathname;
@@ -89,6 +90,13 @@ window.tuataraManualText = {"01-the-screen":" the screen what tuatara shows you,
     marks.sort(function (a, b) { return a.top - b.top; });
   }
 
+  // Mark or unmark the entry of MARK and every entry it is under.
+  function light(mark, on) {
+    for (var item = mark.link.closest("li"); item && nav.contains(item); item = item.parentElement.closest("li")) {
+      item.querySelector(":scope > a").classList.toggle("in-view", on);
+    }
+  }
+
   // Keep LINK in view in whichever part of the column scrolls.
   function reveal(link) {
     [nav, nav.querySelector("ol.chapters")].forEach(function (box) {
@@ -100,19 +108,20 @@ window.tuataraManualText = {"01-the-screen":" the screen what tuatara shows you,
     });
   }
 
-  // Mark the entry of the heading last scrolled past: a search in the
-  // measured places, the page changed only when the entry is another.
+  // Mark the entry of the last heading at or above the middle of the
+  // window, the first when none is: a search in the measured places, the
+  // page changed only when the entry is another.
   function follow() {
-    var line = window.scrollY + 16;
+    var line = window.scrollY + window.innerHeight / 2;
     var low = 0, high = marks.length - 1, found = marks[0];
     while (low <= high) {
       var middle = (low + high) >> 1;
       if (marks[middle].top <= line) { found = marks[middle]; low = middle + 1; } else { high = middle - 1; }
     }
     if (found === marked) { return; }
-    if (marked) { marked.link.classList.remove("in-view"); }
+    if (marked) { light(marked, false); }
     marked = found;
-    marked.link.classList.add("in-view");
+    light(marked, true);
     if (whole) {
       var chapter = marked.link.closest("ol.chapters > li");
       nav.querySelectorAll("ol.chapters > li.here").forEach(function (item) {
@@ -126,7 +135,7 @@ window.tuataraManualText = {"01-the-screen":" the screen what tuatara shows you,
   // Measure again when pictures have loaded or the window changed size.
   function again() {
     measure();
-    if (marked) { marked.link.classList.remove("in-view"); }
+    if (marked) { light(marked, false); }
     marked = null;
     follow();
   }
