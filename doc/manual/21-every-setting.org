@@ -3,7 +3,7 @@
 
 * Every setting
 
-The name, standard value and purpose of every setting you can change.
+The name, default, values and purpose of every setting you can change.
 
 The earlier chapters describe the settings of each subject where you meet it.
 This chapter lists them all in one table, in the order of the alphabet, so that
@@ -12,17 +12,23 @@ this manual is made, so it never lists a setting that Tuatara does not have.
 
 A setting is a name that starts and ends with a star, such as
 =*auto-save*=. You change one in your init file, as in
-=(setf *auto-save* nil)=. The table has three columns. The first is the name
-of the setting. The second is its standard value, the one Tuatara has until
-you change it, and a long value is cut short with three dots. The third says
-what the setting changes.
+=(setf *auto-save* nil)=. The table has four columns. The first is the name
+of the setting. The second is its default, the value Tuatara has until you
+change it, and a long value is cut short with three dots. The third says which
+values the setting takes: =t, nil= for a setting that is on or off, a list of
+the words it understands, such as =:absolute, :relative, nil=, or a kind of
+value, such as a whole number, text or a folder's name. The fourth says what
+the setting changes. Its full description in the editor says what each value
+does.
 
 Only the settings that Tuatara promises to keep are listed. A setting that
 is not here may change from one version to the next, and should not be set in
 an init file you keep for years.
 
 To find a setting from within the editor, press ~C-h v~ and type a few
-letters of its name. Tuatara shows its value and its full description. To
-find the settings that mention a word, press ~C-h a~ and type the word.
+letters of its name. Tuatara shows its value, the values it takes and its
+full description. ~M-x check-health~ lists any setting whose value is not one
+of those it takes. To find the settings that mention a word, press ~C-h a~ and
+type the word.
 
 #+table: all-settings

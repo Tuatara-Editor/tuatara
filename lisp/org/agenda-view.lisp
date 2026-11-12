@@ -12,27 +12,37 @@
 
 (in-package #:tuatara.defaults)
 
-(defvar *org-agenda-span* :week
-  "How many days \\[org-agenda]'s agenda shows: :day, :week, :month or :year,
-or a number of days.")
+(define-setting *org-agenda-span* :week
+  "How many days \\[org-agenda]'s agenda shows.
+- :day, :week, :month, :year: one day, a week, a month or a year.
+- a whole number: that many days."
+  :values (or (member :day :week :month :year) (integer 1 *)))
 
-(defvar *org-agenda-start-on-weekday* 1
-  "The day a week's agenda starts on, 1 for Monday to 6 for Saturday and 7 or 0
-for Sunday; NIL to start on today.")
+(define-setting *org-agenda-start-on-weekday* 1
+  "The day a week's agenda starts on.
+- 1 to 6: Monday to Saturday.
+- 7 or 0: Sunday.
+- nil: today."
+  :values (or (member nil) (integer 0 7)))
 
-(defvar *org-agenda-time-grid*
+(define-setting *org-agenda-time-grid*
   '((:daily :today :require-timed) (800 1000 1200 1400 1600 1800 2000) " ┄┄┄┄┄ " "┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄")
-  "Today's time grid in the agenda: (WHEN TIMES AFTER-TIME LINE). WHEN holds
-:daily for a grid on every day of a day's agenda, :today for one on today,
-:weekly for one on every day, :require-timed for none on a day with no entry at
-a time of day. TIMES the times of the grid's lines (800 for 8:00). AFTER-TIME
-what follows a time, on the grid's lines and the entries' alike. LINE the grid's
-line. NIL for no grid.")
+  "Today's time grid in the agenda, lines at set times of the day.
+- nil: no grid.
+- (WHEN TIMES AFTER-TIME LINE): a grid. WHEN holds :daily for a grid on every
+  day of a day's agenda, :today for one on today, :weekly for one on every
+  day of an agenda of any span, :require-timed for none on a day with no entry at a time of day. TIMES
+  are the times of the grid's lines (800 for 8:00). AFTER-TIME is what follows
+  a time, on the grid's lines and the entries' alike. LINE is the grid's
+  line."
+  :values "nil, or a list (WHEN TIMES AFTER-TIME LINE)")
 
-(defvar *org-agenda-category-width* 12
-  "How wide the agenda's first column is, its category (the file's name, or
-its #+CATEGORY:) and a colon, in columns: a longer one is cut short with …,
-so that every line's time and text stand in one column.")
+(define-setting *org-agenda-category-width* 12
+  "How wide the agenda's first column is, in columns.
+The column holds the category (the file's name, or its #+CATEGORY:) and a
+colon; a longer one is cut short with …, so that every line's time and text
+stand in one column."
+  :values (integer 3 *))
 
 (defun org-agenda-category-column (category)
   "CATEGORY and a colon, *ORG-AGENDA-CATEGORY-WIDTH* columns wide: filled out
@@ -43,44 +53,63 @@ wide characters counted as the columns they take."
     (concatenate 'string shown (make-string (max 0 (- width (tuatara.display:string-columns shown)))
                                             :initial-element #\Space))))
 
-(defvar *org-agenda-untimed-text* "all day"
-  "What the agenda's time column says on a line with no time of day, faint:
-\"all day\", so that every line's kind and text stand in one column; \"\"
-leaves the column empty, lined up all the same; NIL leaves it out, the line's
-text where the time would have been.")
+(define-setting *org-agenda-untimed-text* "all day"
+  "What the agenda's time column says, faint, on a line with no time of day.
+- text: that text, \"all day\" as standard, so that every line's kind and
+  text stand in one column.
+- \"\": the column left empty, lined up all the same.
+- nil: the column left out, the line's text where the time would have
+  been."
+  :values (or (member nil) string))
 
-(defvar *org-agenda-event-kind-text* "Event:"
-  "What the agenda's column of kinds (Scheduled:, Deadline:) says on the line of
-an event, a date in the text of an entry with no TODO keyword
-\(:org-agenda-event-kind), Event:. This way every line says what it is and its
-heading stands in one column. The kinds shorter than the column (1/3): filled
-out to it; \"\" leaves the column empty, lined up all the same. NIL leaves it
-out, the heading where the kind would have been, as Org's, a task's too
-\(*ORG-AGENDA-TASK-KIND-TEXT*).")
+(define-setting *org-agenda-event-kind-text* "Event:"
+  "What the agenda's column of kinds says on the line of an event.
+The column of kinds says Scheduled:, Deadline: and the like; an event is a
+date in the text of an entry with no TODO keyword (:org-agenda-event-kind).
+This way every line says what it is and its heading stands in one column.
+Kinds shorter than the column are filled out to it.
+- text: that text. The standard text is Event:.
+- \"\": the column left empty, lined up all the same.
+- nil: the column left out, for events and tasks alike
+  (*ORG-AGENDA-TASK-KIND-TEXT*), the heading where the kind would have
+  been."
+  :values (or (member nil) string))
 
-(defvar *org-agenda-task-kind-text* "Task:"
-  "What the agenda's column of kinds says on the line of a date in the text
-of a task, an entry with a TODO keyword, not on its SCHEDULED: or DEADLINE:
-line: Task:, told apart from an event's (*ORG-AGENDA-EVENT-KIND-TEXT*, which
-says whether the column is there at all).")
+(define-setting *org-agenda-task-kind-text* "Task:"
+  "What the agenda's column of kinds says on the line of a date in a task's text.
+A task is an entry with a TODO keyword; this is for a date in its text, not
+on its SCHEDULED: or DEADLINE: line. Whether the column is there at all is
+said by *ORG-AGENDA-EVENT-KIND-TEXT*.
+- text: that text, told apart from an event's. The standard text is Task:.
+- nil: the event's text."
+  :values (or (member nil) string))
 
-(defvar *org-agenda-current-time-string* "← now ───────────────────────────────────────────────"
-  "The line that shows the time now in today's time grid; NIL for none.")
+(define-setting *org-agenda-current-time-string* "← now ───────────────────────────────────────────────"
+  "The line that shows the time now in today's time grid.
+- text: the line.
+- nil: no such line."
+  :values (or (member nil) string))
 
-(defvar *org-agenda-refresh-minutes* 10
-  "Minutes after which an agenda shown is drawn again by itself, so that the
-time now in its grid and the days left to deadlines stay true; NIL for
-never. It is drawn again just after midnight too, and whenever an agenda
-file changes, in a buffer or on disk.")
+(define-setting *org-agenda-refresh-minutes* 10
+  "How often an agenda shown is drawn again by itself, in minutes.
+Drawn again, the time now in its grid and the days left to deadlines stay
+true. It is drawn again just after midnight too, and whenever an agenda file
+changes, in a buffer or on disk.
+- a number: that many minutes.
+- nil: only at midnight and when a file changes."
+  :values (or (member nil) (number 0 *)))
 
-(defvar *org-agenda-custom-commands*
+(define-setting *org-agenda-custom-commands*
   '(("u" "Untagged tasks" :tags-todo "-{.*}" :header "Untagged tasks"))
-  "Views of your own that \\[org-agenda] offers beside its own: each (KEY
-DESCRIPTION TYPE MATCH :header HEADER).
-TYPE is :tags-todo (the tasks not done that MATCH, an Org match, selects),
-:tags (every headline it selects) or :todo (the tasks with the keyword MATCH);
+  "Views of your own that \\[org-agenda] offers beside its own.
+Each is (KEY DESCRIPTION TYPE MATCH :header HEADER). TYPE is one of these:
+- :tags-todo: the tasks not done that MATCH, an Org match, selects.
+- :tags: every headline it selects.
+- :todo: the tasks with the keyword MATCH.
+
 HEADER, when given, is the line above them. The standard one is u, the tasks
-with no tag: -{.*}.")
+with no tag: -{.*}."
+  :values (list-of "(KEY DESCRIPTION TYPE MATCH :header HEADER)"))
 
 (define-major-mode org-agenda-mode special-mode
   "The agenda: the days of a span with their entries, the TODO list, or the
@@ -1042,12 +1071,14 @@ selected window, or in another with OTHER."
 
 ;;; Changing entries from the agenda
 
-(defvar *org-agenda-autosave-files* nil
-  "The agenda files saved as soon as a change made from the agenda (a keyword,
-a date, tags, a note, the clock) changes them: NIL for none
-\(\\<org-agenda-mode>\\[org-agenda-save-all-buffers] saves them), T for every
-agenda file, or a list of files, folders and patterns as *ORG-AGENDA-FILES*
-takes them: '(\"~/notes/agenda.org\").")
+(define-setting *org-agenda-autosave-files* nil
+  "The agenda files saved as soon as a change made from the agenda changes them.
+A change made from the agenda is a keyword, a date, tags, a note or the clock.
+- nil: none; \\<org-agenda-mode>\\[org-agenda-save-all-buffers] saves them.
+- t: every agenda file.
+- a list: those files, folders and patterns, as *ORG-AGENDA-FILES* takes
+  them: '(\"~/notes/agenda.org\")."
+  :values (or boolean (list-of file)))
 
 (defun org-agenda-autosave-file-p (buffer)
   "True when BUFFER's file is one of *ORG-AGENDA-AUTOSAVE-FILES*, saved at once

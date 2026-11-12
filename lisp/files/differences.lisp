@@ -9,10 +9,13 @@
 
 (in-package #:tuatara.defaults)
 
-(defvar *differences-limit* (* 64 1024 1024)
-  "The most octets of differences shown (64 MB); when there are more, none
-are shown, and that is said. Raise it to see larger differences, at the cost of
-the memory of all of them; lower it to refuse them sooner.")
+(define-setting *differences-limit* (* 64 1024 1024)
+  "The most octets of differences shown.
+When there are more, none are shown, and that is said. Raise it to see larger
+differences, at the cost of the memory of all of them; lower it to refuse them
+sooner.
+- a whole number of octets: the limit, 64 MB as standard."
+  :values (integer 0 *))
 
 (defun sandbox-seen-directory (path)
   "The directory a program shut in the sandbox is shown to see the file or

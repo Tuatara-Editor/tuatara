@@ -4,7 +4,7 @@
 (in-package #:tuatara.tests)
 
 (define-test command-line
-  :description "The command line's +LINE[:COLUMN] before a file and --diff OLD NEW, read by the program's own option reader and carried out in a session: the line a file opens at, a line past the end, a file named +5 after --, a missing file to compare, and a file in an evidence folder opened at a line staying a safe visit.")
+  :description "The command line's +LINE[:COLUMN] before a file and --diff OLD NEW, read by the program's own option reader and carried out in a session. The tests cover the line a file opens at, a line past the end, a file named +5 after --, a missing file to compare, and a file in an evidence folder opened at a line staying a safe visit.")
 
 (defun session-from-arguments (arguments &key (directory (uiop:getcwd)) (until (constantly t)) (seconds 20) keys input)
   "Run an editor session started with the command-line ARGUMENTS, as the program

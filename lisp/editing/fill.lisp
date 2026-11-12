@@ -3,10 +3,12 @@
 
 (in-package #:tuatara.defaults)
 
-(defvar *fill-column* 80
+(define-setting *fill-column* 80
   "The column filled lines end by, unless a buffer has its own: one given to
 a fill command as its count, or set with \\[set-fill-column], kept while the
-editor runs.")
+editor runs.
+- a whole number, 1 or more: the column. 80 as standard."
+  :values (integer 1 *))
 
 (defparameter *fill-prefix-characters* "-–!|#%;>*·•‣⁃◦ 	"
   "Characters the text before a paragraph's words may be made of, kept at
@@ -17,13 +19,16 @@ quotation's >, a list's -.")
   "The column BUFFER's lines are filled to."
   (tuatara.buffer:buffer-local buffer :fill-column *fill-column*))
 
-(defvar *sentence-end-double-space* nil
-  "True for two spaces between sentences, as a typist writes them: a sentence
-then ends at . ? ! or … followed by two spaces, a tab or a line end, and
-filling keeps two spaces after a sentence's end where there were two or a line
-end. NIL, one space ends a sentence and filling puts one. Either way an
+(define-setting *sentence-end-double-space* nil
+  "Whether two spaces separate sentences, as a typist writes them. Either way an
 abbreviation's full stop (*SENTENCE-ABBREVIATIONS*: e.g., Dr.) ends none. A
-buffer whose file says which it uses (sentence-end-double-space: t in its Local Variables block) goes by that.")
+buffer whose file says which it uses (sentence-end-double-space: t in its
+Local Variables block) goes by that.
+- t: a sentence ends at . ? ! or … followed by two spaces, a tab or a line
+  end, and filling keeps two spaces after a sentence's end where there were
+  two or a line end.
+- nil: one space ends a sentence and filling puts one (the standard)."
+  :values boolean)
 
 (defun sentence-end-double-space-p (buffer)
   "True when BUFFER's sentences are two spaces apart (*SENTENCE-END-DOUBLE-SPACE*,
@@ -99,12 +104,14 @@ characters are the language's comment marker."
         (words (string-left-trim '(#\Space #\Tab) text)))
     (and marker (>= (length words) (length marker)) (string= marker words :end2 (length marker)))))
 
-(defparameter *fill-paragraph-limit* (* 1024 1024)
+(define-setting *fill-paragraph-limit* (* 1024 1024)
   "The most octets a paragraph may span to be filled, by itself
 (\\[fill-paragraph], \\<normal>\\[fill-paragraph]) or in a selection
-(\\[fill-region]); a larger one is not filled, and says so, so that filling
+(\\[fill-region]). A larger one is not filled, and says so, so that filling
 never holds the editor up for long. Set it larger in the init file to fill
-larger paragraphs.")
+larger paragraphs.
+- a whole number, 0 or more: the most octets. 1048576 (1 MB) as standard."
+  :values (integer 0 *))
 
 (defgeneric mode-unfilled-line-p (mode text)
   (:documentation "True when TEXT, a line of a buffer in major mode MODE, is no prose: it
@@ -498,13 +505,16 @@ on, while the editor runs, and say so; true when it was."
       (keep-fill-column buffer n)
       t)))
 
-(defvar *fill-ask-column* t
-  "True to ask for the column each time \\[fill-paragraph] or \\[fill-region] fills
-(\\<normal>\\[fill-paragraph] and \\[fill-region] too), the buffer's fill column
-offered: \\<minibuffer>\\[minibuffer-finish] fills to it, and another number typed
-fills to that column and makes it the buffer's from then on, while the editor
-runs. A count given first (\\[universal-argument] 72 \\[fill-paragraph]) answers
-the question. NIL fills at once.")
+(define-setting *fill-ask-column* t
+  "Whether \\[fill-paragraph] and \\[fill-region] ask for the column each time
+they fill (\\<normal>\\[fill-paragraph] and \\[fill-region] too). The
+buffer's fill column is offered: \\<minibuffer>\\[minibuffer-finish] fills to
+it, and another number typed fills to that column and makes it the buffer's
+from then on, while the editor runs. A count given first
+(\\[universal-argument] 72 \\[fill-paragraph]) answers the question.
+- t: ask for the column.
+- nil: fill at once."
+  :values boolean)
 
 (defun ask-fill-column (buffer)
   "Unless a count gave it, ask for the column to fill BUFFER's text to, as

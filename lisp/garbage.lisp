@@ -73,14 +73,17 @@ to be answered."
             (t (setf *start-up-tick-time* now)
                1)))))
 
-(defvar *idle-collection-seconds* 0.3
-  "Seconds you leave the editor alone, no key typed, after which the garbage
-made since the last collection is collected, when it is at least half of
-what makes one (*NURSERY-OCTETS*): the pause comes while you think, not
-between two keys. NIL to leave every collection to come when it comes. A
-shorter time collects sooner, in shorter pauses of thought; NIL, or a longer
-time, leaves more collections to fall between keys. A collection stands still
-for about 0.1 s with a few hundred megabytes in use and 1.6 s with 1.1 GB.")
+(define-setting *idle-collection-seconds* 0.3
+  "How long you leave the editor alone before the garbage made since the last
+collection is collected, so the pause comes while you think, not between two
+keys. It collects only when that garbage is at least half of what makes one
+\(*NURSERY-OCTETS*). A collection stands still for about 0.1 s with a few
+hundred megabytes in use and 1.6 s with 1.1 GB.
+- a number: the seconds without a key typed after which it collects, 0.3 as
+  standard. A shorter time collects sooner, in shorter pauses of thought; a
+  longer time leaves more collections to fall between keys.
+- nil: every collection is left to come when it comes."
+  :values (or (member nil) (number 0 *)))
 
 (defvar *consed-at-gc* 0
   "The octets of data made in all (SB-EXT:GET-BYTES-CONSED) when garbage was

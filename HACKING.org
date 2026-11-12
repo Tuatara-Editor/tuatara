@@ -123,6 +123,9 @@ either stopping the build on a file that differs. It is a release file too, so
 that a release carries its libraries' sources itself, whatever Ubuntu's archive
 keeps.
 
+A release carries the Lisp sources in =source/= beside the program, for the
+links in help to where a name is defined.
+
 A release carries every grammar's licence (=grammars/licenses/=), and SBCL's
 and those of the Lisp libraries compiled into the program (=licenses/=); and
 =build/release/tuatara-sources.tar.zst= holds what it is made from: Tuatara,
@@ -331,7 +334,25 @@ package =tuatara= exports (=lisp/api.lisp=), and nothing else of Tuatara's:
 Positions are octets from 0 into a buffer's text, as the core counts them. A
 setting is made with =define-package-setting=, its name beginning with the
 package's (=*garamond-mode-line*=), so that an init file sets it by that name
-as it sets Tuatara's own. Of the libraries Tuatara is built with, a package
+as it sets Tuatara's own. Its =:values= says which values it takes, as each of
+Tuatara's settings says with =define-setting=; ~C-h v~ and the manual show
+them in words, and ~M-x check-health~ names a setting holding another value:
+
+#+begin_src lisp
+(define-package-setting *garamond-mode-line* t
+  "Whether the mode line shows the page number.
+- t: shown.
+- nil: not shown."
+  :values boolean)
+#+end_src
+
+A description is =boolean= (t or nil), =(member :left :right nil)=,
+=(integer 0 *)= or =(number 0.5 10)= (=*= for an open end), =integer=,
+=number=, =string= (text), =file=, =folder=, =function=, =(list-of
+DESCRIPTION)=, =(or DESCRIPTION ...)=, or words in a string for anything else
+(="a list of (NAME . PATTERN)"=), which are shown but never checked. The
+docstring's first sentence says what the setting changes; a line beginning
+=- VALUE:= for each value says what it does. Of the libraries Tuatara is built with, a package
 may use the few names =*api-from-libraries*= lists: cl-ppcre's regular
 expressions, and uiop's =string-prefix-p=, =split-string= and =getenv=. A
 package's =tools/test.sh= fails it when it uses a name outside the API, one
@@ -481,5 +502,8 @@ says what it is for.
 - Each source file starts with its name, a one-line description, and the
   copyright and license line.
 - A new setting: its name in =tuatara-user='s export list (=src/package.lisp=),
-  a =defvar= with a docstring where it is used, and a commented line in the
-  starter init file (=data/init.lisp=, read into =*starter-config*=).
+  a =define-setting= where it is used, with a docstring and the =:values= it
+  takes (=src/runtime/settings.lisp= lists the descriptions), and a commented
+  line in the starter init file (=data/init.lisp=, read into
+  =*starter-config*=). The test =documentation settings-declare-values= fails
+  a setting that declares no values.

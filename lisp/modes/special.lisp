@@ -625,18 +625,104 @@ there is one, before them all, and the section LAST after them. O(items)."
                 (if order (stable-sort others order :key #'car) others)
                 (alone last))))))
 
-(defun sectioned-pieces (list sections title row &key count after section-face section-note)
+(defun inner-sections (members)
+  "The sections MEMBERS, what a section of a list holds (SECTIONED-PIECES),
+are when it holds sections, written (:SECTIONS . SECTIONS); NIL when they are
+members."
+  (and (consp members) (eq (first members) :sections) (rest members)))
+
+(defun map-section-members (function sections)
+  "Call FUNCTION with each member of SECTIONS, each (SECTION . MEMBERS) as
+SECTIONED-PIECES takes them, and the section holding it, those of sections
+within sections too, in their order."
+  (loop for (section . members) in sections
+        for inner = (inner-sections members)
+        do (if inner
+               (map-section-members function inner)
+               (dolist (member members) (funcall function member section)))))
+
+(defun section-leaves (members)
+  "The members a section holding MEMBERS has, as SECTIONED-PIECES takes them:
+MEMBERS themselves, or those of every section it holds, in order."
+  (let ((inner (inner-sections members)))
+    (if inner
+        (let ((leaves '()))
+          (map-section-members (lambda (member section) (declare (ignore section)) (push member leaves)) inner)
+          (nreverse leaves))
+        members)))
+
+(defun section-members (sections section)
+  "The members of SECTION among SECTIONS, each (SECTION . MEMBERS) as
+SECTIONED-PIECES takes them, those of the sections it holds too; NIL when it
+is not there."
+  (loop for (key . members) in sections
+        do (when (equal key section) (return (section-leaves members)))
+           (let ((found (section-members (inner-sections members) section)))
+             (when found (return found)))))
+
+(defun section-entry (section parent)
+  "The entry of the heading of SECTION in a list (SECTIONED-PIECES), PARENT
+the section holding it, NIL for one at the top."
+  (list* :section section (and parent (list parent))))
+
+(defun section-parent (list section)
+  "The section of LIST that holds SECTION, or NIL for one at the top."
+  (cdr (assoc section (tuatara.buffer:buffer-local list 'list-section-parents) :test #'equal)))
+
+(defun row-indent (list position)
+  "How many columns the line of LIST holding POSITION is set in for the
+sections around its section (SECTIONED-PIECES): two for each, 0 for a line of
+a section at the top or of no member."
+  (let ((entry (and (tuatara.buffer:buffer-local list 'list-section-parents) (list-entry-at list position))))
+    (if (and (consp entry) (eq (first entry) :member))
+        (loop for section = (section-parent list (third entry)) then (section-parent list section)
+              while section
+              sum 2)
+        0)))
+
+(defun map-set-in-pieces (function pieces spaces)
+  "Call FUNCTION with each of PIECES, as PIECES-TEXT takes them, in order, and
+with SPACES, a string, before each line they make, but an empty line; a line
+that begins inside a piece is not set in. With SPACES NIL, with PIECES alone."
+  (let ((line-start t))
+    (dolist (piece pieces)
+      (let ((text (piece-parts piece)))
+        (when (and spaces line-start (plusp (length text)) (char/= (char text 0) #\Newline))
+          (funcall function spaces))
+        (funcall function piece)
+        (setf line-start (and (plusp (length text)) (char= (char text (1- (length text))) #\Newline)))))))
+
+(defun set-in-pieces (pieces columns)
+  "PIECES, as PIECES-TEXT takes them, each line they make set COLUMNS spaces
+in, as MAP-SET-IN-PIECES sets them."
+  (if (zerop columns)
+      pieces
+      (let ((out '()))
+        (map-set-in-pieces (lambda (piece) (push piece out)) pieces (make-string columns :initial-element #\Space))
+        (nreverse out))))
+
+(defun sectioned-pieces (list sections title row &key count after section-face section-note (margin 0))
   "The lines of LIST for SECTIONS, each (SECTION . MEMBERS), as two values:
-their entries, for RENDER-PIECES, and their pieces. Each section has a
-heading: ▾, or ▸ when it is folded, its title (TITLE, a function of the
+their entries, for RENDER-PIECES, and their pieces. A section may hold
+sections in place of members, (SECTION :SECTIONS . SECTIONS), each the same
+way; every section, held or not, has a key of its own (EQUAL). Each section
+has a heading: ▾, or ▸ when it is folded, its title (TITLE, a function of the
 section) and how many it holds in brackets, all in :heading, its entry
-\(:SECTION SECTION). How many is the number of its members, or what COUNT, a
-function of the section and its members, gives, no brackets when that is NIL.
-Unless the section is folded, each member has a line under it (folded too
-while search filters narrow LIST, which then hide it). ROW (a function of the
-member and the section) gives its pieces, its entry (:MEMBER MEMBER SECTION).
-For a member shown on several lines, or on lines with entries of their own,
-ROW gives as a second value their entries, a sequence of one for each line.
+\(:SECTION SECTION), or (:SECTION SECTION PARENT) for one held in PARENT, its
+heading set in two spaces for each section around it. A member's lines are
+set in MARGIN columns (0 unless given) and two more for each section around
+its section, as far as its heading is (MAP-SET-IN-PIECES): with MARGIN 2, as the
+tables of RENDER-TABLE-LIST have it, a line starts under the text of its
+heading at any depth. How many is the number
+of its members, those of the sections it holds for one that holds sections, or
+what COUNT, a function of the section and those members, gives, no brackets
+when that is NIL. Unless the section is folded, each member has a line under
+it, and each section it holds its heading and lines; a section folded hides
+those it holds, each of which keeps its own fold (all shown while search
+filters narrow LIST, which then hide them). ROW (a function of the member and
+the section) gives its pieces, its entry (:MEMBER MEMBER SECTION). For a
+member shown on several lines, or on lines with entries of their own, ROW
+gives as a second value their entries, a sequence of one for each line.
 AFTER, a function of the section and its members, gives lines following the
 members of an open section the same way, their pieces and their entries (\"...
 3 more\"). An empty line follows each open section another comes after.
@@ -644,31 +730,47 @@ SECTION-FACE, a function of a section, gives the face of its heading, :heading
 when it gives none. SECTION-NOTE, a function of a section, gives words shown
 after its heading in :warning, or NIL. The sections are kept for
 \\[list-toggle-all-folds]."
-  (setf (tuatara.buffer:buffer-local list 'list-sections) (mapcar #'car sections))
-  (let ((folded (list-folded list)) (entries '()) (pieces '()))
-    (flet ((add (&optional more-pieces more-entries)
-             (dolist (piece more-pieces) (push piece pieces))
-             (map nil (lambda (entry) (push entry entries)) more-entries)))
-      (loop for (section . members) in sections
-            for open-before = nil then open
-            for open = (not (member section folded :test #'equal))
-            for number = (if count (funcall count section members) (length members))
-            do (when open-before
-                 (push nil entries)
-                 (push (string #\Newline) pieces))
-               (push (list :section section) entries)
-               (push (cons (format nil "~:[▸~;▾~] ~a~@[ (~:d)~]" open (escape-controls (funcall title section)) number)
-                           (or (and section-face (funcall section-face section)) :heading))
-                     pieces)
-               (let ((note (and section-note (funcall section-note section))))
-                 (when note (push (cons (format nil " ~a" (escape-controls note)) :warning) pieces)))
-               (push (string #\Newline) pieces)
-               (when (or open (list-filters-on-p list))
-                 (dolist (member members)
-                   (multiple-value-bind (row-pieces row-entries) (funcall row member section)
-                     (add row-pieces (or row-entries (list (list :member member section))))))
-                 (when after
-                   (multiple-value-call #'add (funcall after section members))))))
+  (let ((folded (list-folded list)) (filtered (list-filters-on-p list))
+        (keys '()) (parents '()) (entries '()) (pieces '()))
+    (labels ((add (spaces &optional more-pieces more-entries)
+               (flet ((put-piece (piece) (push piece pieces)))
+                 (declare (dynamic-extent #'put-piece))
+                 (map-set-in-pieces #'put-piece more-pieces spaces))
+               (map nil (lambda (entry) (push entry entries)) more-entries))
+             (put (sections parent indent)
+               (loop for (section . members) in sections
+                     for inner = (inner-sections members)
+                     for open-before = nil then open
+                     for open = (not (member section folded :test #'equal))
+                     for number = (if count
+                                      (funcall count section (section-leaves members))
+                                      (length (section-leaves members)))
+                     do (push section keys)
+                        (when parent (push (cons section parent) parents))
+                        (when open-before
+                          (push nil entries)
+                          (push (string #\Newline) pieces))
+                        (push (section-entry section parent) entries)
+                        (push (cons (format nil "~a~:[▸~;▾~] ~a~@[ (~:d)~]"
+                                            indent open (escape-controls (funcall title section)) number)
+                                    (or (and section-face (funcall section-face section)) :heading))
+                              pieces)
+                        (let ((note (and section-note (funcall section-note section))))
+                          (when note (push (cons (format nil " ~a" (escape-controls note)) :warning) pieces)))
+                        (push (string #\Newline) pieces)
+                        (when (or open filtered)
+                          (if inner
+                              (put inner section (concatenate 'string indent "  "))
+                              (let ((spaces (let ((columns (+ margin (length indent))))
+                                              (and (plusp columns) (make-string columns :initial-element #\Space)))))
+                                (dolist (member members)
+                                  (multiple-value-bind (row-pieces row-entries) (funcall row member section)
+                                    (add spaces row-pieces (or row-entries (list (list :member member section))))))
+                                (when after
+                                  (multiple-value-call #'add spaces (funcall after section members)))))))))
+      (put sections nil ""))
+    (setf (tuatara.buffer:buffer-local list 'list-sections) (nreverse keys)
+          (tuatara.buffer:buffer-local list 'list-section-parents) parents)
     (values (nreverse entries) (nreverse pieces))))
 
 (defun entry-lines (function)
@@ -738,12 +840,16 @@ RENDER-PIECES was given), when one shows it."
 
 (defun fold-list-sections (list folded)
   "Fold the sections FOLDED of LIST, the others open, and make it again; when
-the section point was in is folded, point goes to its heading."
-  (let ((section (list-section-at list)))
+the section point was in is folded, or one holding it, point goes to the
+heading of the outermost of them."
+  (let ((around (loop for section = (list-section-at list) then (section-parent list section)
+                      while section
+                      collect (cons section (section-parent list section)))))
     (setf (tuatara.buffer:buffer-local list 'list-folded) folded)
     (redraw-list list)
-    (when (and section (member section folded :test #'equal))
-      (list-goto-entry list (list :section section)))))
+    (let ((closed (find-if (lambda (place) (member (car place) folded :test #'equal)) around :from-end t)))
+      (when closed
+        (list-goto-entry list (section-entry (car closed) (cdr closed)))))))
 
 (defun list-toggle-section (list section)
   "Fold SECTION of LIST, or unfold it when it is folded."
@@ -806,12 +912,13 @@ rows do. At most 30, so that a narrow window keeps room for its text."
 (defun hanging-prefix (buffer line-start continuation)
   "What a buffer shows before the rows a long line wraps into (\\[soft-wrap-mode]),
 its :line-prefix-function: as many spaces as its HANGING setting says, a
-number, or for :CELLS where the text of the line beginning at LINE-START
+number, more by as far as a row of a section held in others is set in
+\(ROW-INDENT), or for :CELLS where the text of the line beginning at LINE-START
 starts (HANGING-COLUMNS); nothing before a line's first row (CONTINUATION
 false). The rows then continue under their own text."
   (when continuation
     (let* ((hang (tuatara.buffer:buffer-local buffer 'hanging))
-           (columns (cond ((integerp hang) (min 30 hang))
+           (columns (cond ((integerp hang) (min 30 (+ hang (row-indent buffer line-start))))
                           (hang (hanging-columns (buffer-line-head buffer line-start 128) :cells t))
                           (t 0))))
       (and (plusp columns) (make-string columns :initial-element #\Space)))))
@@ -863,22 +970,23 @@ the texts of its cells, and the first row's texts."
             texts first)))
 
 (defun render-made-table-list
-    (list columns rows texts first &rest options &key before after first-line &allow-other-keys)
+    (list columns rows texts first &rest options &key before after first-line (margin 0) &allow-other-keys)
   "Fill LIST with a table whose ROWS are made (TABLE-LIST-ROWS, TEXTS and
 FIRST as it gives them): the titles of COLUMNS over them, BEFORE and AFTER,
 pieces, above the titles and below the rows; the columns kept for a filter to
 try a pattern on one (KEEP-LIST-TABLE). The other OPTIONS go to
 RENDER-PIECES, FIRST-LINE counted from the titles when not given. A last column
 with no width continues, where a long row wraps (\\[soft-wrap-mode]), under
-its own start (SET-HANGING)."
+its own start (SET-HANGING). With MARGIN, the titles and the lines of AFTER
+are set in that many columns, as ROWS are by their maker (SET-IN-PIECES)."
   (keep-list-table list (map 'simple-vector (lambda (column) (string-trim " " (first column))) columns) texts first)
   (set-hanging list (and (rest columns) (not (getf (rest (car (last columns))) :width))
-                         (1+ (table-columns-width (butlast columns) 0))))
+                         (+ 1 margin (table-columns-width (butlast columns) 0))))
   (apply #'render-pieces list
-         (append before (table-heading-pieces columns) rows after)
+         (append before (set-in-pieces (table-heading-pieces columns) margin) rows (set-in-pieces after margin))
          :first-line (or first-line (+ 2 (count #\Newline (pieces-text before))))
          (loop for (name value) on options by #'cddr
-               unless (member name '(:before :after :first-line))
+               unless (member name '(:before :after :first-line :margin))
                  append (list name value))))
 
 (defun render-table-list (list columns items cells
@@ -890,8 +998,11 @@ its own start (SET-HANGING)."
 a row for each of ITEMS, its cells what CELLS, a function of the item, its
 mark (ENTRY-MARK) and its section, gives (TABLE-ROW-PIECES). With SECTIONS,
 ITEMS are sections, each (SECTION . MEMBERS), under headings that fold
-\(SECTIONED-PIECES, SECTION-TITLE naming each, SECTION-FACE giving the face of
-its heading, SECTION-NOTE words after it in the colour of warnings). MARKED-BY, a function of an
+\(SECTIONED-PIECES, a section holding sections in place of members as it
+says; SECTION-TITLE naming each, SECTION-FACE giving the face of
+its heading, SECTION-NOTE words after it in the colour of warnings), the titles
+and the rows set in two columns, so that a row starts under the text of its
+heading. MARKED-BY, a function of an
 item and its section, gives what its mark is kept by; with KEEP-MARKS, the marks of
 items no longer listed are dropped. The other OPTIONS go to
 RENDER-MADE-TABLE-LIST: BEFORE and AFTER, pieces above the titles and below
@@ -905,15 +1016,19 @@ that \\[search-filter-show-records] can try a pattern on one column."
                pieces)))
       (when keep-marks
         (keep-list-marks list (if sections
-                                  (loop for (section . members) in items
-                                        append (mapcar (lambda (member) (funcall marked-by member section)) members))
+                                  (let ((keys '()))
+                                    (map-section-members (lambda (member section)
+                                                           (push (funcall marked-by member section) keys))
+                                                         items)
+                                    keys)
                                   (mapcar (lambda (item) (funcall marked-by item nil)) items))))
       (multiple-value-bind (entries rows)
           (if sections
-              (sectioned-pieces list items section-title #'row :section-face section-face :section-note section-note)
+              (sectioned-pieces list items section-title #'row :section-face section-face :section-note section-note
+                                :margin 2)
               (values items (loop for item in items append (row item nil))))
         (apply #'render-made-table-list list columns rows texts first
-               :entries entries
+               :entries entries :margin (if sections 2 0)
                :mark-key (if sections
                              (lambda (entry)
                                (let ((member (entry-member entry)))

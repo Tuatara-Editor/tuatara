@@ -28,11 +28,13 @@
 
 (in-package #:tuatara.defaults)
 
-(defvar *snippet-directories* nil
+(define-setting *snippet-directories* nil
   "The folders your snippets are in, each with a folder for each major mode
-\(org-mode/, prog-mode/, fundamental-mode/), a snippet a file in it; NIL, as
-standard, for snippets/ in your configuration folder
-\(~/.config/tuatara/snippets/, XDG_CONFIG_HOME's when it is set).")
+\(org-mode/, prog-mode/, fundamental-mode/), a snippet a file in it.
+- a list of folders' names: those folders.
+- nil: snippets/ in your configuration folder (~/.config/tuatara/snippets/,
+  XDG_CONFIG_HOME's when it is set), the standard."
+  :values (list-of folder))
 
 (defun snippet-directories ()
   "The folders your snippets are in (*SNIPPET-DIRECTORIES*): snippets/ in
@@ -40,8 +42,11 @@ your configuration folder (CONFIG-PATH) when it names none."
   (or (setting-list '*snippet-directories* *snippet-directories*)
       (list (config-path "snippets/"))))
 
-(defvar *snippet-tab* t
-  "True for a snippet's key before the cursor and \\`TAB' to put the snippet in.")
+(define-setting *snippet-tab* t
+  "Whether \\`TAB' puts in the snippet whose key is before the cursor.
+- t: it does (the standard).
+- nil: it does not."
+  :values boolean)
 
 (defparameter *built-in-snippets* (built-in-data-files "snippets/" :by-folder t)
   "Tuatara's own snippets, each (MODE-NAME FILE-NAME TEXT): Org's blocks and

@@ -23,15 +23,22 @@
 header comment saying what the buffer is for, the keys it names written in
 when the buffer is made (SUBSTITUTE-COMMAND-KEYS).")
 
-(defvar tuatara-user:*auto-scratch-buffers* '("*lisp-scratch*" "*org-scratch*")
-  "The scratch buffers made without being asked for: at startup, and when the
-last buffer is killed. NIL for none: starting without files shows an empty
-*scratch* then. \\[lisp-scratch] and \\[org-scratch] make theirs whenever they
-are asked. Set it in the init file.")
+(define-setting tuatara-user:*auto-scratch-buffers* '("*lisp-scratch*" "*org-scratch*")
+  "The scratch buffers made without being asked for, at startup and when the
+last buffer is killed. \\[lisp-scratch] and \\[org-scratch] make theirs
+whenever they are asked. Set it in the init file.
+- a list of buffer names: those buffers are made, \"*lisp-scratch*\" and
+  \"*org-scratch*\" as standard.
+- nil: none; starting without files shows an empty *scratch* then."
+  :values (list-of string))
 
-(defvar tuatara-user:*startup-buffer* "*lisp-scratch*"
-  "The buffer shown when the editor starts without files: \"*lisp-scratch*\" or
-\"*org-scratch*\" (or any buffer the init file makes). Set it in the init file.")
+(define-setting tuatara-user:*startup-buffer* "*lisp-scratch*"
+  "The buffer shown when the editor starts without files. Set it in the init
+file.
+- \"*lisp-scratch*\": the Lisp scratch buffer, as standard.
+- \"*org-scratch*\": the Org scratch buffer.
+- any other text: the buffer of that name, which the init file makes."
+  :values string)
 
 (defun make-scratch-buffer (name mode text)
   "Make the scratch buffer NAME in MODE holding TEXT, with point after it and
@@ -60,13 +67,52 @@ when it has none."
         tuatara-user:*startup-buffer*
         (find-if (lambda (name) (assoc name *scratch-buffers* :test #'string=)) allowed))))
 
+(defun client-scratch (client &optional kind except)
+  "CLIENT's scratch buffer of KIND, the name of one of *SCRATCH-BUFFERS*,
+of any kind when KIND is NIL, other than EXCEPT: the one CLIENT has, else a
+new one, as at startup, its name numbered when that name is taken
+\(*lisp-scratch*<2>), of KIND or the kind AUTO-SCRATCH-NAME names (an empty
+*scratch* when that is none). A new one stands in CLIENT's folder and is
+CLIENT's. The second value is true when it is new."
+  (let ((own (find-if (lambda (b)
+                        (let ((made-as (tuatara.buffer:buffer-local b :client-scratch)))
+                          (and made-as (not (eq b except)) (member client (buffer-clients b))
+                               (or (null kind) (equal made-as kind)))))
+                      tuatara.buffer:*buffers*)))
+    (if own
+        (values own nil)
+        (let* ((kind (or kind (auto-scratch-name) "*scratch*"))
+               (entry (assoc kind *scratch-buffers* :test #'string=))
+               (name (tuatara.buffer:unique-buffer-name kind))
+               (buffer (if entry
+                           (make-scratch-buffer name (second entry) (third entry))
+                           (tuatara.buffer:make-buffer name))))
+          (when (client-directory client)
+            (setf (buffer-given-directory buffer) (client-directory client)))
+          (setf (tuatara.buffer:buffer-local buffer :client-scratch) kind)
+          (join-client buffer client)
+          (values buffer t)))))
+
+(defun working-client ()
+  "The client working in the frame when it is one of an editor running in
+the background that has not ended, else NIL."
+  (let ((client (current-client)))
+    (and client (client-remote client) (not (client-ended client)) client)))
+
 (defun show-scratch (name)
   "Show the scratch buffer NAME, one of *SCRATCH-BUFFERS*: the one there is,
-as it is, or, when it was killed, a new one as at startup, which is said."
+as it is, or, when it was killed, a new one as at startup, which is said. In
+a client of an editor running in the background, the client's own of that
+kind (CLIENT-SCRATCH), the others' left where they are."
   (destructuring-bind (mode text) (rest (assoc name *scratch-buffers* :test #'string=))
-    (let ((existing (tuatara.buffer:find-buffer name)))
-      (show-buffer (or existing (make-scratch-buffer name mode text)))
-      (unless existing (message "Made a new ~a" name)))))
+    (multiple-value-bind (buffer made)
+        (let ((client (working-client)))
+          (if client
+              (client-scratch client name)
+              (let ((existing (tuatara.buffer:find-buffer name)))
+                (values (or existing (make-scratch-buffer name mode text)) (not existing)))))
+      (show-buffer buffer)
+      (when made (message "Made a new ~a" (tuatara.buffer:buffer-name buffer))))))
 
 (define-command lisp-scratch ()
   "Show *lisp-scratch*, the Lisp buffer that is not saved, where
@@ -85,10 +131,14 @@ killed, a new one."
 names, made as at startup, in its mode with its first text, or the one there
 is when it is not DYING, the buffer being killed (DYING, when it has that
 name, gives it up to the new one); NIL, for an empty *scratch*, when
-*AUTO-SCRATCH-BUFFERS* has none."
-  (let* ((name (auto-scratch-name))
-         (existing (and name (tuatara.buffer:find-buffer name))))
+*AUTO-SCRATCH-BUFFERS* has none. In a client of an editor running in the
+background, a scratch buffer of the client's own other than DYING
+\(CLIENT-SCRATCH)."
+  (let* ((client (working-client))
+         (name (auto-scratch-name))
+         (existing (and name (not client) (tuatara.buffer:find-buffer name))))
     (cond
+      (client (client-scratch client nil dying))
       ((null name) nil)
       ((and existing (not (eq existing dying))) existing)
       (t

@@ -780,23 +780,28 @@ does."
             (tuatara.defaults::*conflict-markers-max-bytes* 0)
             (tuatara.defaults::*vc-gutter-max-bytes* 0))
         (flet ((paged (n)
-                 ;; the pages held after paging down N times, and the octets paged through
+                 ;; the pages held after paging down N times, once the count of the lines has ended and let go of
+                 ;; what it read, and the octets paged through
                  (let-go-of-file path)
                  (multiple-value-bind (f editor)
                      (run-keys (format nil "~{~a~^ ~}" (make-list n :initial-element "C-v"))
                                :file path :width 80 :height 20)
                    (declare (ignore f))
+                   (let ((job (tuatara.io::index-job-of (session-buffer editor))))
+                     (tuatara.runtime:wait-until (lambda () (not (and job (tuatara.runtime:job-running-p job)))) 30))
                    (multiple-value-prog1 (values (pages-held-inside path) (shown-start editor))
                      (tuatara.buffer:kill-buffer (session-buffer editor))))))
           (if (let-go-of-file path)
-              (let ((opened (paged 0)))
-                (multiple-value-bind (held at) (paged 40)
-                  (multiple-value-bind (all-held all) (pages-held-inside path)
-                    (declare (ignore all-held))
-                    ;; the rows paged through, 256 KB read ahead, and what the system reads around a page
-                    (true (< (- held opened) (+ (ceiling at 4096) 64 128))
-                          "~d pages held more after paging through ~d octets" (- held opened) at)
-                    (true (< held (/ all 4)) "~d of ~d pages held" held all))))
+              (let ((opened (paged 0)) (held 0) (at 0) (all 0))
+                ;; the rows paged through, 256 KB read ahead, and what the system reads around a page; what the
+                ;; count read and the disk brought in after it was let go of is let go of again a little later
+                (flet ((near-the-window-p ()
+                         (setf (values held all) (pages-held-inside path))
+                         (and (null tuatara.text::**late-looks**) (< (- held opened) (+ (ceiling at 4096) 64 128)))))
+                  (setf at (nth-value 1 (paged 40)))
+                  (true (tuatara.runtime:wait-until #'near-the-window-p 10)
+                        "~d pages held more after paging through ~d octets" (- held opened) at)
+                  (true (< held (/ all 4)) "~d of ~d pages held" held all)))
               (skip "this file system holds its files in memory" (true nil))))))))
 
 (defun reading-ahead-garbage (keys path)

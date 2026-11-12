@@ -19,12 +19,17 @@
 (setf (documentation 'split-arrangement 'function) "How SPLIT holds its areas: :STACKED or :SIDE-BY-SIDE."
       (documentation 'split-children 'function) "The areas in SPLIT, from the top or from the left.")
 
-(defvar *window-min-height* 4
+(define-setting *window-min-height* 4
   "The fewest rows, its mode line included, a window may be left with when it
-is split or made smaller.")
+is split or made smaller.
+- a whole number, 1 or more: the rows; 4 as standard."
+  :values (integer 1 *))
 
-(defvar *window-min-width* 10
-  "The fewest columns a window may be left with when it is split or made narrower.")
+(define-setting *window-min-width* 10
+  "The fewest columns a window may be left with when it is split or made
+narrower.
+- a whole number, 1 or more: the columns; 10 as standard."
+  :values (integer 1 *))
 
 (defun area-root (area)
   "The area holding AREA and every other: the whole layout."

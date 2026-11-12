@@ -17,15 +17,18 @@ each line its own number, from 1. In a buffer showing relative ones, absolute
 ones in their place."
   :command display-line-numbers-mode :lookup line-numbers-mode
   :global *line-numbers-default*
-  :global-doc "Line numbers for buffers that have not chosen, and whose major mode
-*LINE-NUMBERS-MODES* says nothing of: NIL for none, :absolute, or :relative
-\(the current line shows its own number, the others their distance). Set it in
+  :global-doc "Whether the gutter shows line numbers in buffers that have not
+chosen, and whose major mode *LINE-NUMBERS-MODES* says nothing of. Set it in
 the init file, (setf *line-numbers-default* :relative) for example;
 \\[toggle-line-numbers] and the other commands still choose for one buffer,
 and \\[global-display-line-numbers-mode] switches it while the editor runs."
   :what "show line numbers in the gutter"
   :example "'((prog-mode . :relative) (org-mode . nil))"
-  :values ((:absolute "absolute") (:relative "relative")))
+  :values ((:absolute "absolute") (:relative "relative"))
+  :values-doc "- nil: no line numbers.
+- :absolute: each line shows its own number, from 1.
+- :relative: the current line shows its own number, the others their
+  distance from it.")
 
 (defun past-text-line-p (buffer line)
   "True when LINE of BUFFER is the empty one after its last newline, or the

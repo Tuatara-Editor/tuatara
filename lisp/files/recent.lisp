@@ -10,20 +10,29 @@
 
 (in-package #:tuatara.defaults)
 
-(defvar *remember-recent-files* t
-  "True to keep a list of the files you visit, the latest first, for
-find-recent-file (\\[find-recent-file], \\<normal>\\[find-recent-file]) to offer;
-NIL adds nothing to it. The list is the file recent-files in
-$XDG_STATE_HOME/tuatara/ (~/.local/state/tuatara/), readable by you alone.")
+(define-setting *remember-recent-files* t
+  "Whether a list of the files you visit is kept, the latest first, for
+find-recent-file (\\[find-recent-file], \\<normal>\\[find-recent-file]) to
+offer.
+The list is the file recent-files in $XDG_STATE_HOME/tuatara/
+(~/.local/state/tuatara/), readable by you alone.
+- t: the list is kept.
+- nil: nothing is added to it."
+  :values boolean)
 
-(defvar *recent-files-limit* 25
-  "How many files the list of recent files keeps, 25 as standard. Raise it to
-choose among more files; lower it for a shorter list.")
+(define-setting *recent-files-limit* 25
+  "How many files the list of recent files keeps.
+Raise it to choose among more files; lower it for a shorter list.
+- a whole number: the count, 25 as standard."
+  :values (integer 0 *))
 
-(defvar *recent-files-auto-cleanup* t
-  "True to take out of the list of recent files, when the editor starts, the
-files no longer there; NIL keeps them, shown as not found. A file that cannot
-be looked at just then, on a drive not answering, is kept.")
+(define-setting *recent-files-auto-cleanup* t
+  "Whether the files no longer there are taken out of the list of recent files
+when the editor starts.
+A file that cannot be looked at just then, on a drive not answering, is kept.
+- t: they are taken out.
+- nil: they are kept, shown as not found."
+  :values boolean)
 
 (defvar *recent-files-cleaned* nil
   "True once this session has cleaned the list of recent files.")

@@ -385,24 +385,6 @@ forward (FORWARDABLE-PATH-P); else nothing."
     (and (tuatara.frontend:request-far request) path (forwardable-path-p path)
          (list (cons "SSH_AUTH_SOCK" path)))))
 
-(defun client-scratch (client)
-  "A scratch buffer for CLIENT: the one shown at the start (STARTUP-BUFFER)
-while it is no client's, else a new one, its name numbered; it stands in
-CLIENT's folder and is CLIENT's."
-  (let* ((first (startup-buffer))
-         (buffer (if (buffer-clients first)
-                     (let ((entry (assoc (tuatara.buffer:buffer-name first) *scratch-buffers* :test #'string=)))
-                       (if entry
-                           (make-scratch-buffer (tuatara.buffer:unique-buffer-name (first entry))
-                                                (second entry) (third entry))
-                           (tuatara.buffer:make-buffer (tuatara.buffer:unique-buffer-name "*scratch*"))))
-                     first)))
-    (when (client-directory client)
-      (setf (buffer-given-directory buffer) (client-directory client)))
-    (setf (tuatara.buffer:buffer-local buffer :client-scratch) t)
-    (join-client buffer client)
-    buffer))
-
 (defun checked-terminal (device &key (uid (sb-posix:geteuid)))
   "DEVICE, the terminal a client names, when it is one the client may lend
 \(a program is given it as its terminal, GPG_TTY): a terminal device under
@@ -602,28 +584,50 @@ ended (END-CLIENTS-WITHOUT-BUFFERS).")
 
 (defun client-has-work-in-p (client buffer)
   "True when BUFFER is one of CLIENT's that holds something of its own: any
-but the scratch buffer CLIENT was given at its start (CLIENT-SCRATCH) while
-nothing is typed in it. A buffer a client that ended had and another took up
-is the other's alone (BUFFER-CLIENTS names the clients that have it); a
-buffer shown to everyone, as *Messages*, is no one's; and the buffer list
-holds nothing of its own, so that killing a client's last buffer from it ends
-that client as \\[kill-buffer] there would."
+but a scratch buffer of CLIENT's (CLIENT-SCRATCH) while nothing is typed in
+it. A buffer a client that ended had and another took up is the other's
+alone (BUFFER-CLIENTS names the clients that have it); a buffer shown to
+everyone, as *Messages*, is no one's; and the buffer list holds nothing of its
+own, so that killing a client's last buffer from it ends that client as
+\\[kill-buffer] there would."
   (and (member client (buffer-clients buffer))
        (not (typep (buffer-major-mode buffer) 'buffers-mode))
        (not (and (tuatara.buffer:buffer-local buffer :client-scratch) (not (tuatara.buffer:buffer-modified-p buffer))))))
 
-(defun note-client-without-buffers (buffer)
+(defun note-client-without-buffers (buffer &optional (clients (buffer-clients buffer)))
   "Kill-buffer function: note each client that has BUFFER, about to be killed,
 and no other buffer holding something of its own (CLIENT-HAS-WORK-IN-P): its
-last is closed. A client started with no files is not noted until a buffer
-of its own has been closed, its scratch buffer being all it has."
-  (dolist (client (buffer-clients buffer))
+last is closed. CLIENTS are those losing BUFFER: by default all that have
+it, or the one that leaves it (LEAVE-SHARED-BUFFER). A client started with
+no files is not noted until a buffer of its own has been closed, its scratch
+buffer being all it has."
+  (dolist (client clients)
     (when (and (client-remote client) (not (client-ended client))
                (notany (lambda (other) (and (not (eq other buffer)) (client-has-work-in-p client other)))
                        tuatara.buffer:*buffers*))
       (pushnew client *clients-without-buffers*))))
 
 (pushnew 'note-client-without-buffers tuatara.buffer:*kill-buffer-functions*)
+
+(defun shares-buffer-p (client buffer)
+  "True when BUFFER is CLIENT's, a client of a daemon, and another client
+that has not ended has it too (ONLY-CLIENTS-BUFFER-P): killed from CLIENT,
+it is left rather than killed (LEAVE-SHARED-BUFFER)."
+  (and client (client-remote client) (not (client-ended client)) (member client (buffer-clients buffer))
+       (not (only-clients-buffer-p buffer client))))
+
+(defun leave-shared-buffer (buffer client)
+  "When BUFFER is CLIENT's and another running client has it too
+\(SHARES-BUFFER-P), take it from CLIENT alone: it is no longer CLIENT's,
+CLIENT's frames show another of its own in its place (REPLACEMENT-BUFFER),
+and BUFFER stays for the others, unsaved changes and all. CLIENT, left with
+nothing of its own, ends as when its last buffer is killed
+\(NOTE-CLIENT-WITHOUT-BUFFERS). True when BUFFER was left."
+  (when (shares-buffer-p client buffer)
+    (note-client-without-buffers buffer (list client))
+    (setf (tuatara.buffer:buffer-local buffer :clients) (remove client (buffer-clients buffer)))
+    (replace-buffer-in-windows buffer client)
+    t))
 
 (defun end-clients-without-buffers (editor)
   "Tick function of a daemon (*TICK-FUNCTIONS*): end each client whose last
@@ -912,6 +916,7 @@ ended (CLOSE-DAEMON), and told it need no longer be ended by force
                               (setf (editor-idle-frontend editor) idle)
                               (when setup (funcall setup editor)))
                      :start (lambda (editor)
+                              (keep-for-every-client tuatara.buffer:*buffers*)
                               (start-taking-connections daemon editor)
                               (when ready (funcall ready))))
       (setf *tick-functions*

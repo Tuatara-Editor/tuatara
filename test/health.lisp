@@ -144,7 +144,7 @@ a moment.")
         (true (search "unconfined" (tuatara.export:latex-export-words))))
     ;; no sandbox program: unconfined, and said so
     (unwind-protect
-         (let ((tuatara-user:*sandbox-program* nil))
+         (let ((tuatara-user:*sandbox* nil))
            (tuatara.io:sandbox-status :again t)
            (true (search "unconfined" (tuatara.export:latex-export-words))))
       (tuatara.io:sandbox-status :again t))))
@@ -329,3 +329,14 @@ a moment.")
   (let ((tuatara.packages:*package-needs* (list (cons "gone" (list (list :programs "sh" :what "x"))))))
     (tuatara.packages::unload-package "gone")
     (false tuatara.packages:*package-needs*)))
+
+(define-test (health setting-outside-its-values)
+  ;; a setting holding a value it does not take is named among the problems with its value
+  ;; and what it takes, and keeps its value
+  (let ((tuatara-user:*package-check-signatures* "yes"))
+    (let ((problems (tuatara.defaults::health-problems '() '() '())))
+      (true (find "*package-check-signatures* is \"yes\", but it takes t, nil." problems :test #'string=)
+            "~s" problems))
+    (is equal "yes" tuatara-user:*package-check-signatures*))
+  (false (find-if (lambda (problem) (search "*package-check-signatures*" problem))
+                  (tuatara.defaults::health-problems '() '() '()))))

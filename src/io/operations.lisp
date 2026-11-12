@@ -459,12 +459,14 @@ true car first (the copy then holds part of it)."
                (sb-posix:close out))))
       (sb-posix:close in))))
 
-(defparameter *folder-tree-depth-limit* 200
+(define-setting *folder-tree-depth-limit* 200
   "The most folders, one inside another, that copying, moving or deleting a
-folder goes down through. Each holds a descriptor open while what is in it is
-dealt with, so a tree nested deeper, as a damaged file system or a hostile
-archive can hold, is refused at that depth, before descriptors or the stack
-run out half-way.")
+folder goes down through.
+Each holds a descriptor open while what is in it is dealt with, so a tree
+nested deeper, as a damaged file system or a hostile archive can hold, is
+refused at that depth, before descriptors or the stack run out half-way.
+- a whole number, 1 or more: the depth allowed; 200 as standard."
+  :values (integer 1 *))
 
 (defun check-tree-depth (depth path)
   "Signal a FILE-SYSTEM-ERROR for PATH when DEPTH, the folders above it within

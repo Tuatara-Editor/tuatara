@@ -11,13 +11,17 @@
 
 (in-package #:tuatara.defaults)
 
-(defvar *org-log-reschedule* nil
-  "What Org notes when a task's scheduled date is changed or taken away: NIL
-nothing, :TIME the date it had and when.")
+(define-setting *org-log-reschedule* nil
+  "What Org notes when a task's scheduled date is changed or taken away.
+- nil: nothing.
+- :time: the date it had, and when."
+  :values (member :time nil))
 
-(defvar *org-log-redeadline* nil
-  "What Org notes when a task's deadline is changed or taken away: NIL
-nothing, :TIME the deadline it had and when.")
+(define-setting *org-log-redeadline* nil
+  "What Org notes when a task's deadline is changed or taken away.
+- nil: nothing.
+- :time: the deadline it had, and when."
+  :values (member :time nil))
 
 (defun org-date-ts (day hour minute end-hour end-minute)
   "An active timestamp, an ORG-TS, of the day number DAY, at HOUR:MINUTE
@@ -31,13 +35,16 @@ time NOW, an ORG-TS, or NIL when INPUT is no date: what READ-DATE-TEXT reads
   (multiple-value-bind (day hour minute end-hour end-minute) (read-date-text input (org-today now))
     (and day (org-date-ts day hour minute end-hour end-minute))))
 
-(defvar *org-read-date-popup-calendar* t
-  "True for Org's date prompt (\\[org-schedule], \\[org-deadline]) to show the
-calendar below while it asks: the day
-read from what is typed marked there, \\`S-<left>' and \\`S-<right>' a day
-either way, \\`S-<up>' and \\`S-<down>' a week, \\`M-S-<left>' and
-\\`M-S-<right>' a month, \\`M-S-<up>' and \\`M-S-<down>' a year, \\`C-.' today,
-the date then written at the prompt; NIL to ask without it.")
+(define-setting *org-read-date-popup-calendar* t
+  "Whether Org's date prompt shows the calendar below while it asks.
+The prompt is that of \\[org-schedule] and \\[org-deadline].
+- t: the calendar shown, the day read from what is typed marked there.
+  \\`S-<left>' and \\`S-<right>' move a day either way, \\`S-<up>' and
+  \\`S-<down>' a week, \\`M-S-<left>' and \\`M-S-<right>' a month,
+  \\`M-S-<up>' and \\`M-S-<down>' a year, \\`C-.' to today, the date then
+  written at the prompt.
+- nil: asked without it."
+  :values boolean)
 
 (defvar *org-date-calendar* nil
   "While Org's date prompt shows the calendar: its buffer; NIL otherwise.")
@@ -70,16 +77,20 @@ the day DAY, that window staying selected; true when a window was made for it."
       keymap)
   "The keys of Org's date prompt that move the calendar below it, the minibuffer's besides.")
 
-(defvar *org-read-date-in-calendar* t
-  "True for Org's date question (\\[org-schedule], \\[org-deadline],
-\\[org-time-stamp], a capture template's %^T) to begin in the calendar shown
-below it (*ORG-READ-DATE-POPUP-CALENDAR*). \\`h' \\`l' and the arrows move its
-day a day, \\`j' \\`k' a week, \\`m' marks the day, \\`u' takes the mark off.
-\\`RET' writes the days chosen at the prompt, where a time (14:00-15:00) or a
-repeat is added, \\`RET' then taking it. Several days are marked where the
-question takes several (\\[org-time-stamp], %^T): days one after another make a
-range, the others a timestamp each. Any other key begins the date at the prompt
-\(fri, +3d). NIL to begin at the prompt.")
+(define-setting *org-read-date-in-calendar* t
+  "Whether Org's date question begins in the calendar shown below it.
+The question is that of \\[org-schedule], \\[org-deadline], \\[org-time-stamp]
+and a capture template's %^T; the calendar is shown as
+*ORG-READ-DATE-POPUP-CALENDAR* says.
+- t: it begins in the calendar. \\`h' \\`l' and the arrows move its day a
+  day, \\`j' \\`k' a week, \\`m' marks the day, \\`u' takes the mark off.
+  \\`RET' writes the days chosen at the prompt, where a time (14:00-15:00) or
+  a repeat is added, \\`RET' then taking it. Several days are marked where the
+  question takes several (\\[org-time-stamp], %^T): days one after another
+  make a range, the others a timestamp each. Any other key begins the date at
+  the prompt (fri, +3d).
+- nil: it begins at the prompt."
+  :values boolean)
 
 (defstruct (org-date-choice (:copier nil))
   "The days chosen in the calendar while Org's date question begins there:

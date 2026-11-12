@@ -19,36 +19,47 @@
 
 (in-package #:tuatara.defaults)
 
-(defvar *indexed-directories* '()
-  "Directories Tuatara keeps read in memory, so that \\[open-file-formatted],
-\\[search-in-formatted] and \\[search-in-files] answer at once there, and in
-the directories under them: the names of their files and the text of those a
-search reads (at most *SEARCH-FILES-LIMIT* octets each), read in the
-background when the editor starts and again whenever something in them
-changes on disk. NIL, as standard, for none: the files are read when you ask,
-listed as they are read. (list *formatted-file-directory*) for your files
-with formatted names; any directories, such as '(\"~/Documents/\"
-\"~/notes/\"). Each takes memory as large as the text of its files.")
+(define-setting *indexed-directories* '()
+  "The directories Tuatara keeps read in memory.
+So that \\[open-file-formatted], \\[search-in-formatted] and
+\\[search-in-files] answer at once there, and in the directories under them,
+the names of their files and the text of those a search reads (at most
+*SEARCH-FILES-LIMIT* octets each) are read in the background when the editor
+starts and again whenever something in them changes on disk. Each takes
+memory as large as the text of its files.
+- nil: none (the standard); the files are read when you ask, listed as they
+  are read.
+- a list of directories' names, such as '(\"~/Documents/\" \"~/notes/\"): those
+  directories. (list *formatted-file-directory*) is your files with formatted
+  names."
+  :values (list-of folder))
 
-(defvar *indexing-indicator* "U"
+(define-setting *indexing-indicator* "U"
   "What the mode line shows while directories are kept read
-\(*INDEXED-DIRECTORIES*), always in the same place, before [-], after the
-sign of work for the buffer (*PROCESSING-INDICATOR*): in :mode-line-sign
-while one is being read in the background (at least *SIGN-LIT-SECONDS*),
-else faint, in :mode-line-sign-idle, so that nothing after it moves as
-reading starts and ends. U (for update) as standard, which any
-font has; any text, such as ↻, or \"\" (nf-oct-sync, U+F46A) or
-\"\" (nf-fa-refresh, U+F021) for a Nerd Font, \"indexing\" in words; NIL to
-show nothing.")
+\(*INDEXED-DIRECTORIES*).
+It is always in the same place, before [-], after the sign of work for the
+buffer (*PROCESSING-INDICATOR*): in :mode-line-sign while one is being read
+in the background (at least *SIGN-LIT-SECONDS*), else faint, in
+:mode-line-sign-idle, so that nothing after it moves as reading starts and
+ends.
+- \"U\": U (for update), which any font has (the standard).
+- any other text, such as ↻, or \"\" (nf-oct-sync, U+F46A) or \"\"
+  (nf-fa-refresh, U+F021) for a Nerd Font, \"indexing\" in words.
+- nil: nothing."
+  :values (or (member nil) string))
 
-(defvar *searching-indicator* "S"
+(define-setting *searching-indicator* "S"
   "What the mode line shows after *INDEXING-INDICATOR* while directories are
-kept read, always in the same place: in :mode-line-sign while a search runs
-over a directory kept read (\\[search-in-files] and the like; at least
-*SIGN-LIT-SECONDS*), else faint, in :mode-line-sign-idle. S (for search) as
-standard, which any font has; any text, such as ⌕, or for a Nerd Font a
-looking glass such as \"\" (nf-fa-search, U+F002) or \"󰍉\"
-(nf-md-magnify, U+F0349); \"searching\" in words; NIL to show nothing.")
+kept read.
+It is always in the same place: in :mode-line-sign while a search runs over a
+directory kept read (\\[search-in-files] and the like; at least
+*SIGN-LIT-SECONDS*), else faint, in :mode-line-sign-idle.
+- \"S\": S (for search), which any font has (the standard).
+- any other text, such as ⌕, or for a Nerd Font a looking glass such as
+  \"\" (nf-fa-search, U+F002) or \"󰍉\" (nf-md-magnify, U+F0349);
+  \"searching\" in words.
+- nil: nothing."
+  :values (or (member nil) string))
 
 
 (defstruct (directory-index (:constructor make-directory-index (root)) (:copier nil))
@@ -113,14 +124,17 @@ file it is kept in on disk (*INDEXES-KEPT-ON-DISK*), once written."
 
 (setf (documentation 'index-piece-p 'function) "True when OBJECT is an INDEX-PIECE.")
 
-(defvar *indexes-kept-on-disk* t
-  "True to keep what is read of *INDEXED-DIRECTORIES* on disk between sessions,
-in the cache directory ($XDG_CACHE_HOME/tuatara/indexes/, readable by you
-alone): at the next start the directories are only listed again, and only the
-files changed meanwhile read, rather than all. Only the text of the files a
-search reads is kept there (never an encrypted file's). NIL to keep it in
-memory only, read whole at each start: for directories whose text should not
-be copied anywhere, such as evidence.")
+(define-setting *indexes-kept-on-disk* t
+  "Whether what is read of *INDEXED-DIRECTORIES* is kept on disk between
+sessions.
+It is kept in the cache directory ($XDG_CACHE_HOME/tuatara/indexes/, readable
+by you alone). Only the text of the files a search reads is kept there (never
+an encrypted file's).
+- t: at the next start the directories are only listed again, and only the
+  files changed meanwhile read, rather than all (the standard).
+- nil: it is kept in memory only, read whole at each start; for directories
+  whose text should not be copied anywhere, such as evidence."
+  :values boolean)
 
 (defvar *directory-indexes* '()
   "The directories kept read, a DIRECTORY-INDEX each, as *INDEXED-DIRECTORIES* asks.")
@@ -670,11 +684,15 @@ no indicator."
 (defvar *daemon* nil
   "The daemon this editor runs as, in the background (DAEMON), or NIL.")
 
-(defvar *daemon-indicator* "D"
-  "What the mode line shows last among its signs before [-], always in the
-same place: in :mode-line-sign while this editor runs as a daemon (tuatara
---daemon), in each of its clients, else faint, in :mode-line-sign-idle. D (for
-daemon) as standard, which any font has; any text; NIL to show nothing.")
+(define-setting *daemon-indicator* "D"
+  "What the mode line shows for a daemon, last among its signs before [-].
+It is always in the same place: in :mode-line-sign while this editor runs as
+a daemon (tuatara --daemon), in each of its clients, else faint, in
+:mode-line-sign-idle.
+- \"D\": D (for daemon), which any font has (the standard).
+- any other text: that text.
+- nil: nothing."
+  :values (or (member nil) string))
 
 (defun daemon-mode-line (editor buffer)
   "Mode line function: *DAEMON-INDICATOR*, lit while this editor runs as a

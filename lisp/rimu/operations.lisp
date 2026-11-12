@@ -19,10 +19,14 @@
 
 (in-package #:tuatara.defaults)
 
-(defvar *rimu-delete-to-trash* t
-  "True for rimu's deletions (\\<rimu-mode>\\[list-delete-marked], \\[list-execute]) to move files and
-directories to the trash the desktop's file managers use, from which they can
-be put back; NIL to delete them for good, after asking twice.")
+(define-setting *rimu-delete-to-trash* t
+  "Whether rimu's deletions (\\<rimu-mode>\\[list-delete-marked],
+\\[list-execute]) move files and directories to the trash.
+The trash is the one the desktop's file managers use, from which they can be
+put back.
+- t: moved to the trash.
+- nil: deleted for good, after asking twice."
+  :values boolean)
 
 ;;; Marks
 

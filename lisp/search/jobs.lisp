@@ -327,16 +327,18 @@ line shows it as a job of the buffer, the list of jobs (\\[list-jobs]) what it i
   (loop for f in *outside-work-functions*
         append (if buffer-p (call-hook-function f buffer) (call-hook-function f))))
 
-(defvar *processing-indicator* "P"
+(define-setting *processing-indicator* "P"
   "What the mode line shows first, before [-] and the signs of directories
-kept read (*INDEXING-INDICATOR*), always in the same place: in
-:mode-line-sign while a job runs or waits its turn in the buffer, or another
-program works for it (a language server indexing), else faint, in
-:mode-line-sign-idle, so that nothing after it moves as work starts and
-ends. What each job does, and how far it has got, are in the list of jobs
-\\(\\[list-jobs]). P (for processing) as standard, which any font has; any
-text, such as ⚙, or \"\" (nf-fa-cog, U+F013) for a Nerd Font; NIL to show
-nothing.")
+kept read (*INDEXING-INDICATOR*).
+It is always in the same place: in :mode-line-sign while a job runs or waits
+its turn in the buffer, or another program works for it (a language server
+indexing), else faint, in :mode-line-sign-idle, so that nothing after it
+moves as work starts and ends. What each job does, and how far it has got,
+are in the list of jobs (\\[list-jobs]).
+- \"P\": P (for processing), which any font has (the standard).
+- any other text, such as ⚙, or \"\" (nf-fa-cog, U+F013) for a Nerd Font.
+- nil: nothing."
+  :values (or (member nil) string))
 
 (defun buffer-working-p (buffer)
   "True while work for BUFFER runs or waits its turn: a job whose progress its

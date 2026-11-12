@@ -14,24 +14,35 @@
 
 (in-package #:tuatara.lsp)
 
-(defvar *lsp-signature-help* t
-  "True for the echo area to show the parameters of the call the cursor is in,
-as the language server knows them, once the cursor rests there.")
+(define-setting *lsp-signature-help* t
+  "Whether the echo area shows the parameters of the call the cursor is in, as
+the language server knows them, once the cursor rests there.
+- t: it shows them.
+- nil: it does not."
+  :values boolean)
 
-(defvar *lsp-hover-echo* t
-  "True for the echo area to show what the thing the cursor rests on is (its
-type, its signature), as the language server knows it, when the cursor is in
-no call whose parameters are shown.")
+(define-setting *lsp-hover-echo* t
+  "Whether the echo area shows what the thing the cursor rests on is (its type,
+its signature), as the language server knows it, when the cursor is in no
+call whose parameters are shown.
+- t: it shows it.
+- nil: it does not."
+  :values boolean)
 
-(defvar *lsp-highlight-symbol* t
-  "True for the name the cursor rests on, and its other uses the language
-server finds in the file, to be shown in :symbol-highlight.")
+(define-setting *lsp-highlight-symbol* t
+  "Whether the name the cursor rests on, and its other uses the language server
+finds in the file, are shown in :symbol-highlight.
+- t: they are.
+- nil: they are not."
+  :values boolean)
 
-(defvar *lsp-idle-delay* 0.5
-  "The seconds the cursor rests before what is known of where it stands is
-shown: what a server found wrong there, the parameters of the call, what the
-thing is, 0.5 as standard. A shorter rest shows it sooner and may ask the
-server more often as you move; a longer one asks less and shows later.")
+(define-setting *lsp-idle-delay* 0.5
+  "How long the cursor rests before what is known of where it stands is shown:
+what a server found wrong there, the parameters of the call, what the thing
+is. A shorter rest shows it sooner and may ask the server more often as you
+move; a longer one asks less and shows later.
+- a number: that many seconds, 0.5 as standard."
+  :values (number 0 *))
 
 (defun lsp-feature-allowed-p (server feature)
   "True when SERVER may serve FEATURE (\"completion\") for its language: not

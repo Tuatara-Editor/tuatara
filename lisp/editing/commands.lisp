@@ -799,12 +799,14 @@ once (TOO-LARGE-HERE-P)."
             (tuatara.buffer:buffer-edit buffer (coerce edits 'vector) :group group))
           (length edits)))))
 
-(defvar *indent-new-lines* t
-  "True to indent a line as it is begun: after \\`RET', and on a line opened
-with NORMAL state's \\<normal>\\[tuatara-open-below] or \\[tuatara-open-above], the
-new line goes to its column as the language's mode indents it (Lisp, Rust and
-shell scripts among them). Set it to NIL in the init file to keep new lines at
-column 0.")
+(define-setting *indent-new-lines* t
+  "Whether a line is indented as it is begun. That is after \\`RET', and on a
+line opened with NORMAL state's \\<normal>\\[tuatara-open-below] or
+\\[tuatara-open-above]: the new line goes to its column as the language's mode
+indents it (Lisp, Rust and shell scripts among them).
+- t: indent new lines (the standard).
+- nil: keep new lines at column 0."
+  :values boolean)
 
 (defvar *typed-line* nil
   "True while the line being indented was just begun (by \\`RET' or NORMAL state's
@@ -1066,17 +1068,22 @@ unseen: the fold is shown instead, and the key pressed again deletes."
   "True for commands that add to the kill ring, so consecutive kills append."
   (member command '(kill-line kill-region kill-whole-line kill-sexp backward-kill-sexp zap-to-char zap-up-to-char)))
 
-(defvar *clipboard-size-limit* (* 8 1024 1024)
-  "The most characters a kill may have and still go on the system clipboard, 8
-million as standard; a longer one stays on the kill ring only. Raise it to
-paste a larger kill in other programs, at the cost of the memory the clipboard
-holds; lower it to keep a large kill from being copied there at all, where a
-clipboard history would keep it.")
+(define-setting *clipboard-size-limit* (* 8 1024 1024)
+  "The most characters a kill may have and still go on the system clipboard.
+A longer one stays on the kill ring only. Raise it to paste a larger kill in
+other programs, at the cost of the memory the clipboard holds; lower it to
+keep a large kill from being copied there at all, where a clipboard history
+would keep it.
+- a whole number, 0 or more: the most characters of a kill sent to the
+  clipboard. 8 million as standard."
+  :values (integer 0 *))
 
-(defvar *kill-ring-max* 120
-  "The most kills the kill ring keeps, 120 as standard: older ones are
-forgotten. Raise it to yank text cut long ago; each kill kept holds its text in
-memory, up to *KILL-RING-MAX-SIZE* all together. Lower it to forget sooner.")
+(define-setting *kill-ring-max* 120
+  "The most kills the kill ring keeps; older ones are forgotten. Raise it to
+yank text cut long ago; each kill kept holds its text in memory, up to
+*KILL-RING-MAX-SIZE* all together. Lower it to forget sooner.
+- a whole number, 1 or more: how many kills are kept. 120 as standard."
+  :values (integer 1 *))
 
 (defvar *kill-ring-max-size* (* 64 1024 1024)
   "The most characters (octets, for a kill kept where it is) the kills on the
@@ -1362,14 +1369,19 @@ is a keyboard macro's work."
 
 ;;; The mark ring
 
-(defvar *mark-ring-max* 16
+(define-setting *mark-ring-max* 16
   "How many marks each buffer's mark ring keeps, and the global mark ring
-across buffers; past that the oldest goes.")
+across buffers; past that the oldest goes.
+- a whole number, 0 or more: how many marks are kept; 16 as standard."
+  :values (integer 0 *))
 
-(defvar *set-mark-command-repeat-pop* nil
-  "True for \\[set-mark-command] pressed again right after
-\\[universal-argument] \\[set-mark-command] (or \\[pop-global-mark]) to go on
-back to the mark before; NIL, as standard, for it to set the mark.")
+(define-setting *set-mark-command-repeat-pop* nil
+  "Whether \\[set-mark-command] pressed again right after
+\\[universal-argument] \\[set-mark-command] (or \\[pop-global-mark]) goes on
+back to the mark before.
+- t: it goes back to the mark before.
+- nil: it sets the mark (the standard)."
+  :values boolean)
 
 (defvar *global-mark-ring* '()
   "The marks set in one buffer after another, the newest first, each (BUFFER
@@ -1713,21 +1725,30 @@ NIL to stay."
 \(QUERY-ANSWER)."
   (every (lambda (function) (query-answer function "kill" buffer)) *kill-buffer-query-functions*))
 
-(defun kill-buffer-asking (buffer &key before)
-  "Kill BUFFER, asking first when it has changes not saved, once every one of
-*KILL-BUFFER-QUERY-FUNCTIONS* lets it; BEFORE, a function of none, is called
-just before it goes. True when it was killed."
-  (when (and (kill-buffer-allowed-p buffer)
-             (or (not (tuatara.buffer:buffer-modified-p buffer))
-                 (yes-or-no-p* (format nil "Buffer ~a modified; kill anyway?" (tuatara.buffer:buffer-name buffer)))))
-    (when before (funcall before))
-    (tuatara.buffer:kill-buffer buffer)
-    t))
+(defun kill-buffer-asking (buffer &key before (ask t) (client (current-client)) every-client)
+  "Kill BUFFER, asking first when it has changes not saved unless ASK is NIL,
+once every one of *KILL-BUFFER-QUERY-FUNCTIONS* lets it; BEFORE, a function
+of none, is called just before it goes. In a daemon, a buffer CLIENT shares
+with another running client is left by CLIENT alone (LEAVE-SHARED-BUFFER),
+nothing asked, and killed only by the last to have it; with EVERY-CLIENT it
+is killed whoever has it. True when it was killed or left."
+  (cond ((and (not every-client) (shares-buffer-p client buffer))
+         (when before (funcall before))
+         (leave-shared-buffer buffer client))
+        ((and (kill-buffer-allowed-p buffer)
+              (or (not ask)
+                  (not (tuatara.buffer:buffer-modified-p buffer))
+                  (yes-or-no-p* (format nil "Buffer ~a modified; kill anyway?" (tuatara.buffer:buffer-name buffer)))))
+         (when before (funcall before))
+         (tuatara.buffer:kill-buffer buffer)
+         t)))
 
 (define-command kill-buffer ()
   "Kill the current buffer, asking first when it has changes not saved. Each
 window showing it shows the buffer it showed before, or another; a window made
-or kept for it closes."
+or kept for it closes. In a client of an editor running in the background, a
+buffer another client has too is left to that client and only taken from this
+one, which shows another of its own in its place."
   (kill-buffer-asking (current-buffer)))
 
 (define-command new-empty-buffer ()

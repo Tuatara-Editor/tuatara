@@ -36,12 +36,15 @@ neither has been given one."
   (let ((rule (or (mode-setting mode *colouring-rules*) (cdr (assoc t *colouring-rules*)))))
     (values (first rule) (second rule))))
 
-(defvar *line-record-modes*
+(define-setting *line-record-modes*
   '(log-mode jsonl-mode todotxt-mode hosts-generic-mode etc-passwd-generic-mode
     pip-requirements-mode gitignore-mode dotenv-mode)
-  "The major modes whose files hold a record a line, as a log does: search
-filters (\\[search-filter-regex]) narrow them, and the modes made from them, by
-hiding the lines they leave out, as they narrow a CSV.")
+  "The major modes whose files hold a record a line, as a log does. Search
+filters (\\[search-filter-regex]) narrow them, and the modes made from them,
+by hiding the lines they leave out, as they narrow a CSV.
+- a list of mode names: log-mode, jsonl-mode, todotxt-mode and the others
+  of the standard list."
+  :values (list-of "a mode's name"))
 
 (defgeneric filters-hide-lines-p (mode buffer)
   (:documentation "True when search filters (\\[search-filter-regex]) narrow BUFFER, in
@@ -62,11 +65,14 @@ are its header unless \\[list-toggle-header] says otherwise (a CSV's one).")
     (declare (ignore mode buffer))
     0))
 
-(defvar *list-header-lock* nil
-  "True to keep the header of a file of records at the top of the window as
+(define-setting *list-header-lock* nil
+  "Whether the header of a file of records stays at the top of the window as
 the rest scrolls under it, wherever there is one: a CSV's first line, a
-log's once \\[list-toggle-header] makes it a header; as
-\\[list-toggle-header-lock] does for one buffer.")
+log's once \\[list-toggle-header] makes it a header.
+\\[list-toggle-header-lock] does it for one buffer.
+- t: it stays.
+- nil: it scrolls with the rest, as standard."
+  :values boolean)
 
 (defun list-header-p (buffer)
   "True when the first line of BUFFER, a file of records, is its header,

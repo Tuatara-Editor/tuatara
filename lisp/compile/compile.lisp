@@ -21,17 +21,22 @@
 
 (in-package #:tuatara.compile)
 
-(defvar *compile-command* "make -k "
-  "The command \\[compile] offers the first time, before you have typed one; after
-that it offers the one typed last. Run with your shell ($SHELL, else /bin/sh)
-from the root of the project the buffer's file is in (*PROJECT-ROOT-MARKERS*),
-else the buffer's directory.")
+(define-setting *compile-command* "make -k "
+  "The command \\[compile] offers the first time, before you have typed one;
+after that it offers the one typed last. It runs with your shell ($SHELL,
+else /bin/sh) from the root of the project the buffer's file is in
+\(*PROJECT-ROOT-MARKERS*), else the buffer's directory.
+- text: the command, \"make -k \" as standard."
+  :values string)
 
-(defvar *compile-output-limit* (* 256 1024 1024)
-  "The most octets of a command's output \\[compile] keeps in *compile*: 256 MB as
-standard. A command printing more (one that never ends, a loop gone wrong) is
-read on to its end and counted, but what comes past this is left out, and the
-last line says how much. NIL keeps all of it.")
+(define-setting *compile-output-limit* (* 256 1024 1024)
+  "The most octets of a command's output \\[compile] keeps in *compile*. A
+command printing more (one that never ends, a loop gone wrong) is read on to
+its end and counted, but what comes past the limit is left out, and the last
+line says how much.
+- a whole number: that many octets, 256 MB as standard.
+- nil: all of it is kept."
+  :values (or (member nil) (integer 0 *)))
 
 (defvar *compile-history* '()
   "The commands typed for \\[compile] in this session, the latest first:

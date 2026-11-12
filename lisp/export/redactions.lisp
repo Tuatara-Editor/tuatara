@@ -10,11 +10,13 @@
 
 (in-package #:tuatara.export)
 
-(defvar *latex-redaction-commands* '("R" "D" "redact")
+(define-setting *latex-redaction-commands* '("R" "D" "redact")
   "The LaTeX commands that hide their argument in your LaTeX files, \\\\R{John
-Otago} for one, by their names without the backslash: what \\[export-check-redactions]
-and \\[export-latex-compile-pdf] look for in a LaTeX file, as hidden text to be
-found nowhere else.")
+Otago} for one. \\[export-check-redactions] and \\[export-latex-compile-pdf]
+look for them in a LaTeX file, as hidden text to be found nowhere else.
+- a list of texts: the commands' names without the backslash, \"R\", \"D\" and
+  \"redact\" as standard."
+  :values (list-of string))
 
 (defparameter *redaction-shortest-part* 3
   "The fewest characters a word of a hidden text has to be looked for alone

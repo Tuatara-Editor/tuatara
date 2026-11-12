@@ -14,12 +14,15 @@
 
 (in-package #:tuatara.defaults)
 
-(defvar *search-results-save-files* t
-  "True to save the files that lines found by \\[search-in-files] are written back
-into (\\[search-results-finish]), those that were not open too, closed again after;
-NIL to leave each changed and not saved in a buffer of its own, for you to look at
-and save (\\[save-buffer]). A file open with changes of yours not saved is never
-saved by it.")
+(define-setting *search-results-save-files* t
+  "Whether the files that lines found by \\[search-in-files] are written back
+into are saved (\\[search-results-finish]).
+A file open with changes of yours not saved is never saved by it.
+- t: they are saved, those that were not open too, closed again after (the
+  standard).
+- nil: each changed file is left unsaved in a buffer of its own, for you to
+  look at and save (\\[save-buffer])."
+  :values boolean)
 
 (defstruct (result-line (:constructor make-result-line (path line prefix text
                                                         &aux (prefix-octets (tuatara.text:string-octet-length prefix))))

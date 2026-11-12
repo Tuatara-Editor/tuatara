@@ -91,7 +91,7 @@ around. Chapter 2 shows counts with moves, and the other chapters name what a
 count does for their commands, such as how many cursors to add or how many
 lines to kill. The count is always taken by the command that follows it.
 
-~.~ in NORMAL state runs the last command again, with the count it had. It
+~.~ (non-modal: ~C-z .~) runs the last command again, with the count it had. It
 is the quickest way to do the same small thing three times. After ~C-u 4 j~,
 pressing ~.~ goes four more lines down. A command started with ~M-x~ is
 repeated as well, with its count.
@@ -159,7 +159,9 @@ them.
 Tuatara has a setting that turns the modal states off. With =*modal-editing*=
 set to =nil= every key writes text as it does in a plain editor, and the
 Control and Meta keys do the commands. The prefixes in this section work in
-the same way.
+the same way. ~C-z~ is a prefix of its own for this: under it are the commands
+of NORMAL state's selecting, cursor, spelling and replacing keys, on the same
+letters (~C-z m f~ for ~m f~), and the key hints list them.
 
 ** Key hints
 
@@ -275,7 +277,8 @@ use it when ~M-x~ offered a command whose first line was not enough, or when
 you want to see the keys that a command has so that you can learn them. Every
 command is offered, including those that belong to other kinds of buffers. The
 file in the last line is a link. Press ~RET~ on it and the source opens beside
-the help, with the cursor on the definition.
+the help, with the cursor on the definition. A release carries its Lisp
+sources, so this works in the AppImage and the distribution packages too.
 
 ~C-h f~ is the same for any function of Lisp, not just for the commands. It
 shows the parameters as well. It is for people who write their own commands.
@@ -285,7 +288,10 @@ In a Lisp buffer it offers the name at the cursor first.
 you ask what a setting is for and what it is now. Press ~C-h v~, type
 =*fill-column*= and ~RET~, and the help gives the value, 80 as Tuatara comes,
 and what it is for. A very long value, such as a list of hundreds of items, is
-cut after a few thousand characters, and says so.
+cut after a few thousand characters, and says so. For a setting, a line of its
+own says which values it takes: =t, nil= for one that is on or off, the words
+it understands, or a kind of value such as a whole number or text. The
+description below it says what each value does.
 
 The help is shown in a window of its own, and you stay where you were, in the
 text. If you would rather be taken to the help, so that you can scroll it,

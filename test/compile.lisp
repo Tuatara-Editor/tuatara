@@ -4,7 +4,7 @@
 (in-package #:tuatara.tests)
 
 (define-test compiling
-  :description "M-x compile runs a command from the project's root, in a session of its own, its output shown as it comes in *compile*, kept to *compile-output-limit*, with how it ended and how long it took; the lines naming a file and line are places RET opens, error, warning and note lines in faces of their own; r runs it again, C-c C-k stops all it started; a second waits for the first; only for a project trusted; M-g n and M-g p go through the list of places used last: a compile's, a search of files', a buffer's diagnostics.")
+  :description "M-x compile runs a command from the project's root, in a session of its own, its output shown as it comes in *compile*, kept to *compile-output-limit*, with how it ended and how long it took. The lines naming a file and line are places RET opens, and error, warning and note lines have faces of their own. r runs it again and C-c C-k stops all it started. A second waits for the first. It is only for a project trusted. M-g n and M-g p go through the list of places used last: a compile's, a search of files', a buffer's diagnostics.")
 
 (defun compile-buffer ()
   "The buffer of a compile's output, when there is one."

@@ -9,7 +9,7 @@
   ;; the command of this name, apart from Common Lisp's function
   (:shadow #:compile)
   (:import-from #:tuatara.io #:octets-words)
-  (:import-from #:tuatara.runtime #:ignoring-errors-reported)
+  (:import-from #:tuatara.runtime #:ignoring-errors-reported #:define-setting)
   (:import-from #:tuatara.defaults
                 #:buffer-in-mode #:commands-for-mode #:list-entry-noun #:list-visit #:places-buffer #:places-name
                 #:project-root #:say-places-end #:set-made-text #:show-file-line #:special-mode #:step-place

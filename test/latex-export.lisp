@@ -1604,7 +1604,7 @@ its text's size in half points, when given."
   (with-test-directory (dir)
     (let* ((file (merge-pathnames "notes.org" dir))
            (tuatara-user:*latex-engines* (list (stand-in-latex dir "xelatex")))
-           (tuatara-user:*sandbox-program* nil))
+           (tuatara-user:*sandbox* nil))
       (alexandria:write-string-into-file (format nil "#+title: Notes~%* One~%Text~%") file)
       (pdf-forget)
       (let ((f (export-session file (list (export-command "org-export-latex-pdf") "n RET") :width 200)))
@@ -1664,7 +1664,7 @@ Shut in.
             ;; no sandbox here: asked first; refused, nothing is run; said yes to, made, said, and the
             ;; file outside read, as LaTeX alone allows
             (delete-file (merge-pathnames "probe.pdf" folder))
-            (let ((tuatara-user:*sandbox-program* nil))
+            (let ((tuatara-user:*sandbox* nil))
               (let ((f (export-session tex (list (export-command "export-latex-compile-pdf") "n RET") :width 200)))
                 (true (tuatara.frontend.fake:fake-frame-showing f "LaTeX would run without the sandbox (turned off"))
                 (true (tuatara.frontend.fake:fake-frame-showing f "Not exported: LaTeX runs only shut in the sandbox unless you say yes")))

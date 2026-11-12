@@ -4,7 +4,7 @@
 (in-package #:tuatara.tests)
 
 (define-test git
-  :description "C-x g shows the state of the repository a file is in: its branch, files not tracked, changed and staged, its latest commits; s stages, u unstages, x reverses changes (files, hunks or lines selected) or moves untracked files to the trash, TAB shows a file's changes, n and p go by files and hunks, c commits, L lists the log; only for a project trusted.")
+  :description "C-x g shows the state of the repository a file is in: its branch, files not tracked, changed and staged, its latest commits. s stages, u unstages, x reverses changes (files, hunks or lines selected) or moves untracked files to the trash, TAB shows a file's changes, n and p go by files and hunks, c commits, L lists the log. It is only for a project trusted.")
 
 (defun scratch-repository (dir &key (trusted t))
   "Make DIR a git repository of its own, signing nothing, holding a.txt

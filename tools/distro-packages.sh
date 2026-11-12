@@ -82,12 +82,16 @@ libraries="libgtk-4.so.1 libcairo.so.2 libncursesw.so.6 libcrypto.so.3 libzstd.s
 tools/release.sh >/dev/null
 rm -rf "$stage"
 mkdir -p "$stage/usr/lib" "$stage/usr/bin" "$stage/usr/share/applications" \
-         "$stage/usr/share/licenses/tuatara" "$stage/usr/share/man/man1" "$stage/usr/share/man/man5"
+         "$stage/usr/share/licenses/tuatara" "$stage/usr/share/man/man1" "$stage/usr/share/man/man5" \
+         "$stage/usr/share/bash-completion/completions"
 cp -a build/release/tuatara "$stage/usr/lib/tuatara"
 # the manual pages go where man looks, gzipped as each system's packages have them
 rm -rf "$stage/usr/lib/tuatara/man"
 gzip -9n -c build/release/tuatara/man/tuatara.1 > "$stage/usr/share/man/man1/tuatara.1.gz"
 gzip -9n -c build/release/tuatara/man/tuatara-init.5 > "$stage/usr/share/man/man5/tuatara-init.5.gz"
+# the completion of the options goes where bash-completion looks
+rm -rf "$stage/usr/lib/tuatara/completion"
+cp build/release/tuatara/completion/tuatara "$stage/usr/share/bash-completion/completions/tuatara"
 ln -s ../lib/tuatara/tuatara "$stage/usr/bin/tuatara"
 # the desktop entries, written by the program as it writes them for --install-desktop
 inside env TUATARA_DESKTOP_ENTRIES="$stage/usr/share/applications" build/release/tuatara/tuatara tuatara >/dev/null
@@ -146,6 +150,7 @@ cp -a /tmp/package/root/. %{buildroot}/
 /usr/share/icons/hicolor/*/apps/tuatara.*
 /usr/share/man/man1/tuatara.1*
 /usr/share/man/man5/tuatara-init.5*
+/usr/share/bash-completion/completions/tuatara
 %license /usr/share/licenses/tuatara
 
 %changelog
@@ -258,6 +263,9 @@ check_package() {
     done
     grep -q "^Exec=tuatara --gui --client --fallback %F$" /usr/share/applications/tuatara-client.desktop ||
       { echo "tuatara-client.desktop does not start a client" >&2; exit 1; }
+    completion=/usr/share/bash-completion/completions/tuatara
+    [ -f $completion ] || { echo "the bash completion is not installed" >&2; exit 1; }
+    bash -n $completion
     cd /tmp
     printf "fn main() {}\n" > probe.rs
     TERM=xterm-256color timeout 10 script -qfc "stty rows 24 cols 80; tuatara probe.rs" screen >/dev/null 2>&1 || true

@@ -6,9 +6,9 @@
 (define-test languages
   :description "Every language has its grammar and rules that compile (colouring, indentation,
 selection, text in other languages, local names, definitions, definitions and headings for the
-outline, a ; inherits: A,B line taking in the rules of A and B), a sample of each parses without
-errors and is coloured, and files find their languages' modes by extension (as written, then in
-any case), name and first line.")
+outline, a ; inherits: A,B line taking in the rules of A and B). A sample of each parses without
+errors and is coloured. Files find their languages' modes by extension (as written, then in any
+case), name and first line.")
 
 (define-test (languages every-language-works)
   ;; the grammar is there, and every set of rules the language has compiles

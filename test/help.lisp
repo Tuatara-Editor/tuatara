@@ -395,6 +395,22 @@
   (let ((tuatara.runtime:*source-tree* nil))
     (finish (tuatara.defaults::license-file))))
 
+;; a release's program records the folder it was built in, which is gone when it runs
+(define-test (help source-found-though-built-elsewhere)
+  (let* ((top (uiop:ensure-directory-pathname
+               (merge-pathnames (format nil "tuatara-source-test-~a" (random 1000000000)) (uiop:temporary-directory))))
+         (copy (merge-pathnames "lisp/selecting/selecting.lisp" top))
+         (recorded "/tmp/tuatara-release-build.Test/src/lisp/selecting/selecting.lisp"))
+    (unwind-protect
+         (let ((tuatara.runtime:*source-tree* top))
+           (ensure-directories-exist copy)
+           (with-open-file (out copy :direction :output) (write-line "(defun a ())" out))
+           (is string= (namestring (truename copy)) (tuatara.defaults::source-file-here recorded))
+           (is string= "lisp/selecting/selecting.lisp" (tuatara.defaults::source-file-words recorded))
+           ;; a file with no copy keeps the name recorded
+           (is string= "/gone/lisp/none.lisp" (tuatara.defaults::source-file-here "/gone/lisp/none.lisp")))
+      (uiop:delete-directory-tree top :validate t :if-does-not-exist :ignore))))
+
 (define-test (help columns-by-the-screen)
   ;; what a list of keys and the health report line up after a wide character starts at the
   ;; same column of the screen as after narrow ones: padded by the screen's columns
@@ -533,3 +549,19 @@ second when that row does not go on from it."
     (is = 0 (funcall hang "sentence.  Next one" :cells t))
     (is = 30 (funcall hang (format nil "~40a x" "") :cells t))))
 
+
+(define-test (help variable-values-shown)
+  ;; C-h v shows the values a setting takes on a line of their own, under its value; a
+  ;; variable that is no setting has no such line
+  (let ((tuatara.command:*editor* (nth-value 1 (run-keys "" :text ""))))
+    (let ((lines (uiop:split-string (tuatara.defaults::pieces-text
+                                     (tuatara.defaults::describe-variable-pieces
+                                      'tuatara-user:*package-check-signatures*))
+                                    :separator '(#\Newline))))
+      (is string= "Values: t, nil"
+          (second (member "Value: " lines :test (lambda (head line) (uiop:string-prefix-p head line))))
+          "~s" lines)
+      (true (find "- nil: nothing is checked." lines :test #'uiop:string-prefix-p)
+            "~s" lines))
+    (false (search "Values:" (tuatara.defaults::pieces-text
+                              (tuatara.defaults::describe-variable-pieces 'tuatara.defaults::*help-column*))))))

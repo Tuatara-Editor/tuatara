@@ -12,22 +12,28 @@
 
 (in-package #:tuatara.defaults)
 
-(defvar *complete-paths* t
-  "True to list the entries of a directory beside the cursor when a slash is
-typed in a buffer after its name: a path is a word with a slash in it (/etc/,
-~/notes/, ./src/, or a file: link's), one not starting with / or ~ taken from
-the directory the buffer stands in. The list opens with nothing chosen; typing
-narrows it, \\<popup>\\[popup-next] and \\[popup-previous] choose, \\[popup-insert] puts the chosen one in (the first
-when none is chosen), and so does \\`RET' once one is chosen; a directory put
-in lists its own entries in turn. NIL to list nothing as paths are typed.
-*COMPLETE-PATHS-MODES* says otherwise for the major modes it names.")
+(define-setting *complete-paths* t
+  "Whether the entries of a directory are listed beside the cursor when a slash is
+typed in a buffer after its name.
+A path is a word with a slash in it (/etc/, ~/notes/, ./src/, or a file: link's),
+one not starting with / or ~ taken from the directory the buffer stands in. The
+list opens with nothing chosen; typing narrows it,
+\\<popup>\\[popup-next] and \\[popup-previous] choose, \\[popup-insert] puts
+the chosen one in (the first when none is chosen), and so does \\`RET' once one
+is chosen; a directory put in lists its own entries in turn.
+*COMPLETE-PATHS-MODES* says otherwise for the major modes it names.
+- t: the entries are listed.
+- nil: nothing is listed as paths are typed."
+  :values boolean)
 
-(defvar *complete-paths-modes* '()
+(define-setting *complete-paths-modes* '()
   "Major modes whose buffers list a path's directory as it is typed, or not,
-whatever *COMPLETE-PATHS* says: a list of (MODE . ON), ON true or NIL, MODE a
-major mode's name, with or without -mode, for example ((org-mode . nil)
-\\(prog-mode . t)). A mode counts for the modes made from it, the nearest one
-listed deciding.")
+whatever *COMPLETE-PATHS* says.
+A mode counts for the modes made from it, the nearest one listed deciding.
+- nil: no mode is named.
+- a list of (MODE . ON): ON true or nil, MODE a major mode's name, with or
+  without -mode, for example ((org-mode . nil) (prog-mode . t))."
+  :values (list-of "(MODE . ON)"))
 
 (defun complete-paths-p (buffer)
   "True when typing a path in BUFFER lists its directory: as

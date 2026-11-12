@@ -14,9 +14,12 @@
 
 (in-package #:tuatara.defaults)
 
-(defvar *org-return-follows-link* t
-  "True for \\`RET' on an Org link to follow it;
-\\[org-open-at-point] follows one always.")
+(define-setting *org-return-follows-link* t
+  "Whether \\`RET' on an Org link follows it.
+\\[org-open-at-point] follows one always.
+- t: \\`RET' follows the link.
+- nil: \\`RET' does what it does elsewhere."
+  :values boolean)
 
 (defun org-links-descriptive-p (buffer)
   "True when BUFFER, an Org buffer, shows its links as their labels."

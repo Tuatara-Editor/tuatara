@@ -8,9 +8,10 @@
 
 (define-test lists
   :description "C-M-f and C-M-b at the edges of the text and over character literals; C-M-n and
-C-M-p over groups, C-M-u and up-list out of them, of strings and of comments, C-M-d into them;
-kill-sexp, C-M-DEL and C-M-SPC; delete-pair; C-M-a, C-M-e and mark-defun, by brackets at the start
-of lines in Lisp and by each language's rules in Rust, C and shell scripts; M-q in a Lisp string.")
+C-M-p over groups, C-M-u and up-list out of them, of strings and of comments, C-M-d into them.
+Also kill-sexp, C-M-DEL and C-M-SPC; delete-pair; C-M-a, C-M-e and mark-defun, by brackets at the
+start of lines in Lisp and by each language's rules in Rust, C and shell scripts; M-q in a Lisp
+string.")
 
 (defun session-in (mode text keys &key (point 0) mark (width 60) (height 10))
   "Run KEYS in an editor session on a buffer holding TEXT in major mode MODE

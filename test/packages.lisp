@@ -1551,3 +1551,31 @@ entry file of a package of a source nothing names, kept in it."
         (false (tuatara.packages::package-loaded-p "deleter"))
         (true (tuatara.packages::package-removed-p "deleter"))
         (false (tuatara.packages::package-state "deleter" (namestring dir) nil))))))
+
+(define-test (packages setting-values-declared)
+  ;; a package's setting says the values it takes as Tuatara's own do, shown in words and
+  ;; checked; one that says none still loads
+  (let ((package (make-package "VALUER" :use '(:cl :tuatara))))
+    (unwind-protect
+         (let ((*package* package))
+           (eval (read-from-string "(define-package-setting *valuer-side* :left \"Where the valuer goes.
+- :left: at the left.
+- :right: at the right.\" :values (member :left :right))"))
+           (eval (read-from-string "(define-package-setting *valuer-size* 3 \"How big the valuer is.\")"))
+           (let ((side (find-symbol "*VALUER-SIDE*" :tuatara-user))
+                 (size (find-symbol "*VALUER-SIZE*" :tuatara-user)))
+             (is string= ":left, :right" (tuatara.runtime::setting-values-words side))
+             (false (tuatara.runtime::setting-value-fault side))
+             (setf (symbol-value side) :middle)
+             (is string= "*valuer-side* is :middle, but it takes :left, :right"
+                 (tuatara.runtime::setting-value-fault side))
+             (is = 3 (symbol-value size))
+             (false (tuatara.runtime::setting-values-words size))))
+      (dolist (name '("*VALUER-SIDE*" "*VALUER-SIZE*"))
+        (let ((symbol (find-symbol name :tuatara-user)))
+          (when symbol
+            (remprop symbol 'tuatara.packages::package-setting)
+            (unexport symbol :tuatara-user)
+            (makunbound symbol)
+            (unintern symbol :tuatara-user))))
+      (delete-package package))))

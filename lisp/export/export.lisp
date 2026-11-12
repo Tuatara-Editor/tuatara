@@ -27,15 +27,18 @@
 
 (in-package #:tuatara.export)
 
-(defvar *latex-engines* '("xelatex" "lualatex")
+(define-setting *latex-engines* '("xelatex" "lualatex")
   "The programs that make a PDF of LaTeX, tried in this order: when one fails,
-the next is tried. Each is a program's name, looked for on the PATH and then
-in TeX Live's own folders (~/.texlive/2026/bin/x86_64-linux/ and the like,
-the newest release first), or its full path, which may begin with ~
-\(\"~/texlive/bin/xelatex\"), for one installed elsewhere. A file that
-names the program it is meant for, by a first line such as \"% Intended LaTeX compiler: lualatex\" (which an
-Org file's #+latex_compiler gives) or \"%!TEX program = lualatex\", has that one
-tried first when it is in the list.")
+the next is tried. A file that names the program it is meant for, by a first
+line such as \"% Intended LaTeX compiler: lualatex\" (which an Org file's
+#+latex_compiler gives) or \"%!TEX program = lualatex\", has that one tried
+first when it is in the list.
+- a list of texts, \"xelatex\" and \"lualatex\" as standard. Each is a
+  program's name, looked for on the PATH and then in TeX Live's own folders
+  (~/.texlive/2026/bin/x86_64-linux/ and the like, the newest release
+  first), or its full path, which may begin with ~ (\"~/texlive/bin/xelatex\"),
+  for one installed elsewhere."
+  :values (list-of string))
 
 (defparameter *latex-runs* 4
   "The most times a LaTeX program is run on a file for one PDF: again only
@@ -45,7 +48,7 @@ while its cross-references, contents and outline are still changing.")
   "The most lines of a LaTeX program's errors shown in *LaTeX errors*.")
 
 (defparameter *latex-carried-settings* '(*latex-engines* *latex-runs* *latex-error-lines* *export-trusted-folders*
-                                         *sandbox-program*)
+                                         *sandbox* tuatara.io::*bwrap-name*)
   "The settings an export reads as it works, carried to the thread it works on
 as they are on the editor's when it starts (TUATARA.RUNTIME:CARRY-SETTINGS).")
 
@@ -485,7 +488,7 @@ and else how it ended, as a sentence naming it."
 (defun latex-unconfined-allowed-p ()
   "True when a LaTeX program may run for an export now: shut in by the
 sandbox, or, where there is none (bwrap missing, or turned off by
-*sandbox-program*), when you say yes to running it with your rights, as what
+*sandbox*), when you say yes to running it with your rights, as what
 the document says could then read any of your files."
   (multiple-value-bind (status detail) (tuatara.io:sandbox-status)
     (or (eq status :ready)
@@ -628,7 +631,7 @@ the PDF made, in that directory, or NIL and what went wrong, as LATEX-ERRORS
 gives it. The program is shut in (RUN-SHUT-IN): what a document says, in LaTeX
 or in Lua, can read only the folders it is shown and write only in that
 directory, with no network. Where there is no sandbox (bwrap missing, or turned
-off by *sandbox-program*), it is run not shut in only when you have said yes
+off by *sandbox*), it is run not shut in only when you have said yes
 \(LATEX-UNCONFINED-ALLOWED-P), and the export says so when it is done
 \(LATEX-UNCONFINED-WORDS): it then has your rights, but for TeX's own limits
 \(no programs run, nothing written outside that directory)."

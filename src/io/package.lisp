@@ -3,9 +3,9 @@
 
 (defpackage #:tuatara.io
   (:use #:cl #:alexandria)
-  (:import-from #:tuatara.runtime #:refuse)
+  (:import-from #:tuatara.runtime #:refuse #:define-setting)
   (:import-from #:tuatara.text #:drop-cached)
-  (:import-from #:tuatara-user #:*default-directory* #:*cache-directory* #:*state-directory* #:*sandbox-program*
+  (:import-from #:tuatara-user #:*default-directory* #:*cache-directory* #:*state-directory* #:*sandbox*
                 #:*sandbox-seconds* #:*sandbox-memory* #:*sandbox-input-limit* #:*sandbox-total-memory*
                 #:*sandbox-seccomp* #:*program-output-limit* #:*folder-tree-depth-limit*
                 #:*save-in-place*)

@@ -9,10 +9,13 @@
 
 (in-package #:tuatara.defaults)
 
-(defvar *notify-program* "notify-send"
-  "The program that shows a notification on the desktop: a name looked for
-on the PATH, or a path. It is given the title and the words, as notify-send
-takes them. NIL shows none, notifications kept in *Notifications* alone.")
+(define-setting *notify-program* "notify-send"
+  "The program that shows a notification on the desktop. It is given the title
+and the words, as notify-send takes them.
+- text: the program's name, looked for on the PATH, or its path;
+  \"notify-send\" as standard.
+- nil: none is shown, notifications kept in *Notifications* alone."
+  :values (or (member nil) string))
 
 (sb-ext:defglobal **notify-missing-said** nil
   "True once it has been said that *NOTIFY-PROGRAM* is not installed.")

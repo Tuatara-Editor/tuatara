@@ -94,17 +94,19 @@ a class not named here has the article's.")
 
 ;;; Keywords and options
 
-(defvar *export-trusted-folders* '()
-  "The folders, besides a note's own folder and the folders in it and your
-note templates' folder (NOTE-TEMPLATES-DIRECTORY), that exporting the note
-\(to PDF or to a Word document) may take files from: the setup files its
-#+SETUPFILE lines name and the pictures its [[file:...]] links show. A list
-of folder names, ~ standing for your home folder; NIL for the note's own
-folder alone. A file anywhere else is left out of the export,
+(define-setting *export-trusted-folders* '()
+  "More folders that exporting a note may take files from.
+A note's export (to PDF or to a Word document) takes the setup files its
+#+SETUPFILE lines name and the pictures its [[file:...]] links show from the
+note's own folder and the folders in it, and your note templates' folder
+(NOTE-TEMPLATES-DIRECTORY). A file anywhere else is left out of the export,
 and the export says so when it is done, so that a note given to you cannot
 have its export carry your other files into the PDF or document it makes.
-A folder of setup files shared by notes kept in folders of their own goes
-here: '(\"~/notes/latex/\").")
+- a list of folders, ~ standing for your home folder: those too. A folder of
+  setup files shared by notes kept in folders of their own goes here:
+  '(\"~/notes/latex/\").
+- nil: no others."
+  :values (list-of folder))
 
 (defun org-export-path (name &optional (directory (and *org-latex* (org-latex-directory *org-latex*))))
   "NAME, a file a note names, as a native path: ~ standing for your home
@@ -133,10 +135,12 @@ nothing to take in."
       (export-note "~a: outside the note's folder, so left out of the export (*export-trusted-folders* names the folders it may also come from)"
                    (abbreviated-path path))))
 
-(defvar *logos-directory* nil
-  "The folder of the pictures your templates ask a note for, the logo its
-#+logo: names (LOGOS-DIRECTORY); NIL, as standard, for logos/ in the
-configuration directory.")
+(define-setting *logos-directory* nil
+  "The folder of the pictures your templates ask a note for.
+This is where the logo a note's #+logo: names is found (LOGOS-DIRECTORY).
+- a folder: that folder.
+- nil, as standard: logos/ in the configuration directory."
+  :values (or (member nil) folder))
 
 (defun logos-directory ()
   "Where the pictures your templates ask a note for are kept (the logo its

@@ -26,31 +26,37 @@ key that acts on them."
   (end-rectangle buffer)
   (line-selection-clear buffer))
 
-(defvar *cursors-limit* 10000
-  "The most cursors \\<normal>\\[add-cursor-below] and
-\\[add-cursor-above] make, or NIL for as many as the memory has room
-for: every key but typing runs once at every cursor, so a great many make every
-key slow; what is typed is written as it is typed only at the cursors in sight,
+(define-setting *cursors-limit* 10000
+  "The most cursors \\<normal>\\[add-cursor-below] and \\[add-cursor-above] make.
+Every key but typing runs once at every cursor, so a great many make every key
+slow; what is typed is written as it is typed only at the cursors in sight,
 the others when the typing ends. With more lines selected than this, the
 cursors in sight stand, as many as this, and the others are written in the
-background as each verb is done at those.")
+background as each verb is done at those.
+- a whole number, 0 or more: the most cursors; 10000 as standard.
+- nil: as many as the memory has room for."
+  :values (or (member nil) (integer 0 *)))
 
-(defvar *rectangle-cursors-limit* 10000
+(define-setting *rectangle-cursors-limit* 10000
   "The most rows \\<normal>\\[tuatara-change] on a rectangle
-(\\[rectangle-mark-mode]) puts a cursor on, or NIL for as many as the
-memory has room for: the block is emptied and what is typed appears on every
-row, as at the cursors of \\[add-cursor-below]. On a taller block the
-rows in sight hold the cursors, as many as this, and the others are emptied and
-written in the background as the typing ends.")
+(\\[rectangle-mark-mode]) puts a cursor on. The block is emptied and what is
+typed appears on every row, as at the cursors of \\[add-cursor-below]. On a
+taller block the rows in sight hold the cursors, as many as this, and the
+others are emptied and written in the background as the typing ends.
+- a whole number, 0 or more: the most rows; 10000 as standard.
+- nil: as many as the memory has room for."
+  :values (or (member nil) (integer 0 *)))
 
-(defvar *split-limit-ask* nil
-  "True to be asked, when the places would pass their limit, whether to hold
-them all the same, the memory having room, rather than those in sight only.
-This covers the matches of \\<normal>\\[split-selection] past *SPLIT-LIMIT*,
-the cursors of \\[add-cursor-below] past *CURSORS-LIMIT* (a count past it
-too), and those of \\[tuatara-change] on a rectangle past
-*RECTANGLE-CURSORS-LIMIT*. It is one question, the same for them all. NIL, the
-default, holds those in sight.")
+(define-setting *split-limit-ask* nil
+  "Whether to be asked, when the places would pass their limit, to hold them
+all the same, the memory having room, rather than those in sight only. This
+covers the matches of \\<normal>\\[split-selection] past *SPLIT-LIMIT*, the
+cursors of \\[add-cursor-below] past *CURSORS-LIMIT* (a count past it too),
+and those of \\[tuatara-change] on a rectangle past
+*RECTANGLE-CURSORS-LIMIT*. It is one question, the same for them all.
+- t: ask.
+- nil: hold those in sight (the standard)."
+  :values boolean)
 
 ;;; Selections: the mark, and visual-line sessions started with V
 

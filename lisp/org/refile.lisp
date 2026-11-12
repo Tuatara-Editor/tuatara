@@ -9,10 +9,15 @@
 
 (in-package #:tuatara.defaults)
 
-(defvar *org-refile-targets* '((:agenda-files . 3) (:this-file . 3))
-  "Where \\[org-refile] offers to move an entry: a list of (WHERE . LEVELS),
-WHERE :agenda-files (*ORG-AGENDA-FILES*), :this-file, or a file's name,
-LEVELS the deepest headings offered (3: down to ***).")
+(define-setting *org-refile-targets* '((:agenda-files . 3) (:this-file . 3))
+  "Where \\[org-refile] offers to move an entry, a list of (WHERE . LEVELS).
+WHERE is one of these:
+- :agenda-files: the files of *ORG-AGENDA-FILES*.
+- :this-file: the file of the entry.
+- a file's name: that file.
+
+LEVELS is the deepest headings offered (3: down to ***)."
+  :values (list-of "(WHERE . LEVELS)"))
 
 ;;; Entries put under a heading
 

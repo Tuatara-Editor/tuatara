@@ -5,6 +5,7 @@
   (:use #:cl #:alexandria)
   (:import-from #:tuatara.io #:null-pointer #:null-pointer-p #:sap-octets #:with-foreign-memory #:poll-fd #:socket-pair
                 #:send-with-descriptors)
+  (:import-from #:tuatara.runtime #:define-setting)
   (:import-from #:tuatara-user #:*syntax-helper-unconfined*)
   (:documentation "The search and regex interface, the tree-sitter binding, parsing in the
 background, colouring and moving by syntax.")

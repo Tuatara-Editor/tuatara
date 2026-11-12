@@ -184,6 +184,96 @@ name. The settings below change the standard for every list.
 
 #+table: settings *rimu-details* *rimu-permissions* *rimu-dotfiles* *rimu-sort* *rimu-directories-first* *rimu-directory-sizes* *rimu-git-info* *rimu-hidden-columns* *rimu-ignored-extensions* *rimu-follow-changes* *rimu-reuse-lists*
 
+Each key above has a setting that sets what a list starts with. They are all
+written in the init file (chapter 8).
+
+=*rimu-details*= is =nil= as standard. With =t= every list opens with the
+details of ~I~ shown:
+
+#+begin_example
+(setf *rimu-details* t)
+#+end_example
+
+=*rimu-hidden-columns*= leaves parts out, however a list is asked for them. It
+is a list of the names =:inode=, =:permissions=, =:links=, =:owner=, =:group=,
+=:size= and =:time=, which are the details, and =:sizes= and =:git=, which are
+the columns of ~S~ and ~G~. It is empty as standard. This leaves out the inode
+numbers and the groups, so a line of Figure 10.2 starts at the permissions
+and has no group:
+
+#+begin_example
+(setf *rimu-hidden-columns* '(:inode :group))
+#+end_example
+
+=*rimu-dotfiles*= is =nil=, so names that start with a dot stay hidden. Set it
+to =t= to start with them shown, as ~H~ does.
+
+=*rimu-sort*= is =:name= or =:time=. =:name= puts capital letters before small
+ones, as =ls= does in its plain mode. =:time= puts the newest change first.
+For a folder you open to find what changed last:
+
+#+begin_example
+(setf *rimu-sort* :time)
+#+end_example
+
+=*rimu-directories-first*= is =t=, so folders, and links that lead to folders,
+come before the files. With =nil= everything is in the one order, folders
+among the files.
+
+=*rimu-directory-sizes*= and =*rimu-git-info*= are =nil=, so the size column
+and the git column wait until you press ~S~ or ~G~. Set either to =t= and it
+is there when the list opens. The size of a folder is still worked out in the
+background.
+
+=*rimu-ignored-extensions*= is a list of endings. A file whose name ends in
+one of them is shown faint, in the =:list-dim= face, so the files you work on
+stand out from those a program made. Nothing more is done to it: it is still
+listed, and you can still open, mark, copy and delete it as any other. As
+standard the endings are =.o=, =.so=, =.a=, =.fasl=, =.elc=, =.pyc=, =.pyo=,
+=.class=, =~= and =#=: compiled files, backups and the files some editors
+keep while you type.
+
+An ending is any text the name ends with, not only what follows a dot: =~=
+sets back =notes.org~=, and =-old= would set back =report-old=. Capital
+letters count, so =.log= sets back =build.log= but not =BUILD.LOG=; give both
+to have both. The name must be longer than the ending, so a file called just
+=.o= is not set back. Folders and links are never set back, whatever their
+names end with.
+
+To add your own endings to the standard ones, add them to the list:
+
+#+begin_example
+(setf *rimu-ignored-extensions*
+      (append *rimu-ignored-extensions* '(".log" ".tmp" ".LOG")))
+#+end_example
+
+Setting the list itself replaces the standard endings. This sets back only
+backups and Python's compiled files:
+
+#+begin_example
+(setf *rimu-ignored-extensions* '("~" ".pyc"))
+#+end_example
+
+With =nil= no name is set back, and every file is shown alike.
+
+=*rimu-follow-changes*= is =t=, so a list reads its folder again by itself
+when a file in it is made, deleted, renamed or finished being written by
+another program. You see the list change as you watch it. Many changes at
+once are read as one. Set it to =nil= and the list stays as it was until you
+press ~g r~ (non-modal: ~M-x revert-buffer~). On a folder that changes
+without stopping, for example one a program writes to all day, that quiets
+the list:
+
+#+begin_example
+(setf *rimu-follow-changes* nil)
+#+end_example
+
+=*rimu-reuse-lists*= is =t=. When a bookmark takes you to a folder, or you go
+to a folder across the edge of a project, Tuatara lists it in the list that
+already belongs to that project, the one used last, and does not open another.
+If a list shows that folder already, you are taken to it either way. With
+=nil= such a folder gets a list of its own each time.
+
 ** The preview beside the list
 
 When you rest the cursor on an entry, Tuatara shows it in a window beside the
@@ -242,6 +332,25 @@ video that Tuatara cannot.
 *** Settings for the preview
 
 #+table: settings *rimu-preview* *rimu-preview-delay* *rimu-preview-size* *remote-preview-size-limit*
+
+=*rimu-preview-delay*= is how long the cursor rests on an entry before the
+preview reads it, 0.1 seconds as standard. Moving quickly down the list reads
+none of the files passed over. A longer wait reads fewer files as you move,
+which helps on a slow disk or a folder on another machine. A shorter one shows
+the preview at once and reads more.
+
+#+begin_example
+(setf *rimu-preview-delay* 0.4)
+#+end_example
+
+=*rimu-preview-size*= is how much of a file the preview shows, counted in
+octets (bytes) from its start. It is a megabyte as standard, as said above. A
+larger file shows its start, and its name says that. To see less of a big
+file, so the preview is quicker, or more, to read further in:
+
+#+begin_example
+(setf *rimu-preview-size* (* 256 1024))
+#+end_example
 
 ** Marks
 
@@ -510,6 +619,25 @@ deal cannot fill the drive. Archives inside an archive stay packed.
 *** Settings for archives
 
 #+table: settings *archive-free-reserve* *archive-listing-limit* *archive-seconds*
+
+=*archive-listing-limit*= is the most of an archive's list of contents that
+~C-c e~ shows, counted in octets of that list. It is 64 megabytes as standard.
+A longer list is not shown, and the echo area says so. Raise it to see what a
+very large archive holds, which costs the memory of the whole list. Lower it
+to refuse a huge list sooner:
+
+#+begin_example
+(setf *archive-listing-limit* (* 256 1024 1024))
+#+end_example
+
+=*archive-seconds*= is how long the program that lists, packs or unpacks one
+archive may run before Tuatara ends it. It is a day as standard, for the
+largest archives. Lower it to end a program that hangs sooner; ~C-x J~
+(=stop-job=) ends one at once. The number is in seconds:
+
+#+begin_example
+(setf *archive-seconds* (* 60 60))
+#+end_example
 
 ** Drives and the folder tree
 

@@ -30,10 +30,13 @@ an item's words, a table's second column (SET-HANGING)."
   "Keys of the *Help* and *Apropos* buffers (help-mode's keymap):
 \\<help-mode>\\[quit-window] goes back, \\[push-button] follows a link.")
 
-(defvar *help-window-select* nil
-  "True to move to the window a help buffer is shown in (\\[describe-function],
-\\[describe-key] and the rest); \\<help-mode>\\[quit-window] there then
-closes it and goes back; NIL (the standard) leaves you where you were.")
+(define-setting *help-window-select* nil
+  "Whether you move to the window a help buffer is shown in
+\(\\[describe-function], \\[describe-key] and the rest).
+- t: you move to it; \\<help-mode>\\[quit-window] there then closes it and
+  goes back.
+- nil: you stay where you were, as standard."
+  :values boolean)
 
 (defun show-help-pieces (pieces &key (name "*Help*") (mode 'help-mode))
   "Show PIECES (as PIECES-TEXT takes them) in the buffer called NAME, *Help*
@@ -122,14 +125,37 @@ in and in :help-key-binding."
                 (nreverse spans))
               width))))
 
+(defun source-file-in-tree (file)
+  "Where FILE, a source file of Tuatara as the compiler recorded it, is found
+on this machine, and its path within the source tree, as two values. The copy
+looked for is in source/ beside the program, as a release has it, or in the
+source tree. The folders above the tree are whatever the build had, so each
+path FILE may have within it is tried, the longest first. With no copy here,
+NIL and the longest path; for a file outside any tree, NIL and NIL."
+  (let* ((path (pathname file))
+         (tails (loop for folders on (rest (pathname-directory path))
+                      when (member (first folders) '("src" "lisp" "frontends" "test" "tools") :test #'string=)
+                        collect (format nil "~{~a/~}~a" folders (file-namestring path))))
+         (roots (tuatara.runtime:resource-directories "source/" "" :existing t)))
+    (dolist (tail tails (values nil (first tails)))
+      (dolist (root roots)
+        (let ((found (probe-file (uiop:merge-pathnames* (uiop:parse-native-namestring tail) root))))
+          (when found
+            (return-from source-file-in-tree (values found tail))))))))
+
+(defun source-file-here (file)
+  "The name of FILE, a source file as the compiler recorded it, on this
+machine: FILE when it is there, else its copy (SOURCE-FILE-IN-TREE), else FILE."
+  (or (and (not (probe-file file))
+           (let ((found (source-file-in-tree file)))
+             (and found (namestring found))))
+      file))
+
 (defun source-file-words (file)
   "FILE, a source file of Tuatara, as help names it: its path within the
 source tree (lisp/search/files.lisp), never the folders above it."
-  (let* ((path (pathname file))
-         (directory (rest (pathname-directory path)))
-         (top (position-if (lambda (name) (member name '("src" "lisp" "frontends" "test" "tools") :test #'equal))
-                           directory)))
-    (format nil "~{~a/~}~a" (if top (subseq directory top) '()) (file-namestring path))))
+  (or (nth-value 1 (source-file-in-tree file))
+      (file-namestring (pathname file))))
 
 (defun visit-source (symbol)
   "Show where SYMBOL is defined in another window, the cursor on the
@@ -300,10 +326,13 @@ cut short said to be."
 
 (defun describe-variable-pieces (symbol)
   "The help for the variable SYMBOL, as pieces (SHOW-HELP-PIECES): its value
-\(VARIABLE-VALUE-TEXT), its documentation and its source file."
-  (let ((source (source-location-pieces symbol :variable)))
-    (append (list (format nil "~(~a::~a~) is a variable.~%~%Value: ~a~%~%~a~%"
+\(VARIABLE-VALUE-TEXT), for a setting the values it takes, its documentation
+and its source file."
+  (let ((source (source-location-pieces symbol :variable))
+        (values (setting-values-words symbol)))
+    (append (list (format nil "~(~a::~a~) is a variable.~%~%Value: ~a~%~@[~a~]~%~a~%"
                           (package-name (symbol-package symbol)) symbol (variable-value-text (symbol-value symbol))
+                          (and values (with-output-to-string (out) (write-filled out "Values: " values)))
                           (documentation-text symbol 'variable)))
             source
             (and source (list (string #\Newline))))))

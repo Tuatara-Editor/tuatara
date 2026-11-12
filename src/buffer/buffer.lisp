@@ -429,11 +429,12 @@ was narrowed works within the bounds it was given."
 
 ;;; How much the undo history holds
 
-(defvar *undo-limit* nil
-  "The most memory, in octets, the undo history of one buffer may hold; NIL,
-the default, for no limit.
+(define-setting *undo-limit* nil
+  "The most memory, in octets, the undo history of one buffer may hold.
+- nil: no limit (the default).
+- a whole number, 1 or more: that many octets.
 
-With NIL every change is kept, so that each can be undone, back to the text
+With nil every change is kept, so that each can be undone, back to the text
 as it was when the buffer was opened. Nothing is let go unless you ask for
 it: in forensic work, a change silently made impossible to take back would
 be evidence lost.
@@ -452,15 +453,8 @@ newer one still can, and redo works as before. The change just made is
 always kept, however large. While work in the background (a large
 replacement, a sort) runs on a buffer, nothing of its history is let go
 until the work is done. The first time a buffer lets changes go, the editor
-says so once, naming the buffer.
-
-Some values and what they give:
-  (* 64 1024 1024)    64 MB, room for most editing, memory kept small.
-  (* 256 1024 1024)   256 MB, long sessions on large files stay undoable.
-  (* 1024 1024 1024)  1 GB: a replacement of millions of matches in a large
-                      file can still be undone.
-
-The limit applies to every buffer alike.")
+says so once, naming the buffer."
+  :values (or (member nil) (integer 1 *)))
 
 (defvar *undo-let-go-functions* '()
   "Functions called with a buffer the first time its oldest changes are let go

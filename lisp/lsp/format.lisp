@@ -14,23 +14,30 @@
 
 (in-package #:tuatara.lsp)
 
-(defvar *format-on-save* '()
+(define-setting *format-on-save* '()
   "The languages whose buffers are formatted (\\[format-buffer]) before each
-save, the save going on once the text is laid out: a list of language
-names, (rust python), or T for every language with a formatter installed.")
+save, the save going on once the text is laid out.
+- a list of language names, (rust python): those languages.
+- t: every language with a formatter installed.
+- nil: none, as standard."
+  :values (or (member t) (list-of "a language's name")))
 
-(defvar *format-in-sandbox* t
-  "True for formatters to run shut in the sandbox: the project's folder and the
-formatter's own seen, read only, nothing written, no network. NIL runs them
-as any program, for one that cannot work shut in (it needs its plugins from
-elsewhere); a formatter reads the project's settings, and some run code of
-the project's.")
+(define-setting *format-in-sandbox* t
+  "Whether formatters run shut in the sandbox. A formatter reads the project's
+settings, and some run code of the project's.
+- t: the project's folder and the formatter's own are seen, read only,
+  nothing is written, no network.
+- nil: they run as any program, for one that cannot work shut in (it needs
+  its plugins from elsewhere)."
+  :values boolean)
 
-(defvar *format-seconds* 30
-  "The seconds a formatter may take before it is stopped and nothing is
-changed, 30 as standard; a language server laying out code that has not
-answered by then is no longer waited for. Raise it for a formatter that is
-slow on a large file; lower it to give up sooner on one that hangs.")
+(define-setting *format-seconds* 30
+  "How long a formatter may take before it is stopped and nothing is changed; a
+language server laying out code that has not answered by then is no longer
+waited for. Raise it for a formatter that is slow on a large file; lower it
+to give up sooner on one that hangs.
+- a number: that many seconds, 30 as standard."
+  :values (number 0 *))
 
 (defstruct (format-job (:include tuatara.runtime:job)
                        (:constructor make-format-job (buffer version program then))

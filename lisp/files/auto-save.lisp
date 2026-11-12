@@ -19,35 +19,48 @@
 
 (in-package #:tuatara.defaults)
 
-(defvar *auto-save* t
-  "True for buffers visiting files to have their changes not saved written now
-and then to a copy of their own in *AUTO-SAVE-DIRECTORY*, never to the file
-itself; M-x recover-file takes such a copy back. NIL writes none.")
+(define-setting *auto-save* t
+  "Whether buffers visiting files have their changes not saved written now and
+then to a copy of their own in *AUTO-SAVE-DIRECTORY*.
+The copy is never the file itself; M-x recover-file takes such a copy back.
+- t: the changes are auto-saved.
+- nil: none are written."
+  :values boolean)
 
-(defvar *auto-save-directory* nil
-  "The folder auto-saved copies are kept in, made for you alone when it is not
-there: NIL for auto-save/ in Tuatara's state folder ($XDG_STATE_HOME/tuatara/,
-or ~/.local/state/tuatara/), or a folder's name, \"~/backups/tuatara/\".")
+(define-setting *auto-save-directory* nil
+  "The folder auto-saved copies are kept in.
+It is made for you alone when it is not there.
+- nil: auto-save/ in Tuatara's state folder ($XDG_STATE_HOME/tuatara/, or
+  ~/.local/state/tuatara/).
+- a folder's name: that folder, \"~/backups/tuatara/\" for example."
+  :values (or (member nil) folder))
 
-(defvar *auto-save-idle* 5
+(define-setting *auto-save-idle* 5
   "Seconds without a change after which a buffer's changes not saved are
-auto-saved (*AUTO-SAVE*), 5 as standard. A shorter wait loses less when the
-editor or the machine stops, and writes more often; a longer one writes less
-while you type in bursts. Each auto-save writes the buffer whole, so a large
-buffer saved often costs disk time.")
+auto-saved (*AUTO-SAVE*).
+A shorter wait loses less when the editor or the machine stops, and writes more
+often; a longer one writes less while you type in bursts. Each auto-save writes
+the buffer whole, so a large buffer saved often costs disk time.
+- a number of seconds: the wait, 5 as standard."
+  :values (number 0 *))
 
-(defvar *auto-save-interval* 60
-  "The most seconds changes not saved go without an auto-save while they go
-on without a pause (*AUTO-SAVE*), 60 as standard. Without it, typing with no
-pause as long as the idle wait (*AUTO-SAVE-IDLE*) would never be saved. Lower
-it to lose less in a crash, at the cost of writing the buffer whole more
-often.")
+(define-setting *auto-save-interval* 60
+  "The most seconds changes not saved go without an auto-save while they go on
+without a pause (*AUTO-SAVE*).
+Without it, typing with no pause as long as the idle wait (*AUTO-SAVE-IDLE*)
+would never be saved. Lower it to lose less in a crash, at the cost of writing
+the buffer whole more often.
+- a number of seconds: the most, 60 as standard."
+  :values (number 0 *))
 
-(defvar *auto-save-size-limit* (* 256 1024 1024)
-  "The largest buffer auto-saved, in octets, 256 MB as standard: a larger one is
-not copied (each copy would be written whole), so a crash loses its changes
-not saved. Raise it to protect a larger file, at the cost of writing it whole
-at each auto-save; lower it where the disk is slow or has little room.")
+(define-setting *auto-save-size-limit* (* 256 1024 1024)
+  "The largest buffer auto-saved, in octets.
+A larger one is not copied (each copy would be written whole), so a crash loses
+its changes not saved. Raise it to protect a larger file, at the cost of
+writing it whole at each auto-save; lower it where the disk is slow or has
+little room.
+- a whole number of octets: the limit, 256 MB as standard."
+  :values (integer 0 *))
 
 (defun auto-save-directory ()
   "The folder auto-saved copies go in, as *AUTO-SAVE-DIRECTORY* says; a native

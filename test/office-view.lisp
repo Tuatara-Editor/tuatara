@@ -6,12 +6,12 @@
 (define-test office-view
   :description "An Excel workbook is read as an Org note: its sheets in order, hidden and very hidden ones
 marked, cells as a table of their saved values (shared and inline strings, numbers as written, dates by
-their format, booleans and errors), hidden rows and columns marked, formulas listed, never worked out,
-a sheet no list names read at the end, the cells read held to a limit; a PowerPoint presentation as
-one: each slide's title, text, tables, pictures and speaker notes, hidden slides marked. OpenDocument
-text, spreadsheets and presentations are read so too, by what they hold, a locked one refused. All
-refuse parts too large; all are shown as their pages by LibreOffice in the sandbox, as Word documents
-are, and in rimu's preview.")
+their format, booleans and errors), hidden rows and columns marked, formulas listed, never worked out. A
+sheet no list names is read at the end, and the cells read are held to a limit. A PowerPoint
+presentation is read as one: each slide's title, text, tables, pictures and speaker notes, hidden slides
+marked. OpenDocument text, spreadsheets and presentations are read so too, by what they hold, a locked
+one refused. All refuse parts too large; all are shown as their pages by LibreOffice in the sandbox, as
+Word documents are, and in rimu's preview.")
 
 (defparameter *xlsx-test-parts*
   '(("[Content_Types].xml" . "<?xml version='1.0' encoding='UTF-8'?><Types xmlns='http://schemas.openxmlformats.org/package/2006/content-types'><Default Extension='rels' ContentType='application/vnd.openxmlformats-package.relationships+xml'/><Default Extension='xml' ContentType='application/xml'/><Default Extension='bin' ContentType='application/vnd.ms-office.vbaProject'/><Override PartName='/xl/workbook.xml' ContentType='application/vnd.ms-excel.sheet.macroEnabled.main+xml'/><Override PartName='/xl/worksheets/sheet1.xml' ContentType='application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml'/><Override PartName='/xl/worksheets/sheet2.xml' ContentType='application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml'/><Override PartName='/xl/worksheets/sheet3.xml' ContentType='application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml'/><Override PartName='/xl/sharedStrings.xml' ContentType='application/vnd.openxmlformats-officedocument.spreadsheetml.sharedStrings+xml'/><Override PartName='/xl/styles.xml' ContentType='application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml'/><Override PartName='/docProps/core.xml' ContentType='application/vnd.openxmlformats-package.core-properties+xml'/></Types>")

@@ -78,10 +78,10 @@
                ;; m marks (>), U takes the marks off, D deletes the marked after asking
                (multiple-value-bind (f editor) (run-keys "C-x m l m" :width 120 :height 14)
                  (declare (ignore f))
-                 (true (cl-ppcre:scan "(?m)^> +alpha" (session-text editor))))
+                 (true (cl-ppcre:scan "(?m)^  > +alpha" (session-text editor))))
                (multiple-value-bind (f editor) (run-keys "C-x m l m U" :width 120 :height 14)
                  (declare (ignore f))
-                 (false (cl-ppcre:scan "(?m)^> +alpha" (session-text editor))))
+                 (false (cl-ppcre:scan "(?m)^  > +alpha" (session-text editor))))
                (run-keys "C-x m l m m D y e s RET" :width 120 :height 14)
                (is equal '("gone") (tuatara.defaults::bookmark-names))
                ;; none marked: D deletes the one on the line
@@ -285,7 +285,7 @@
                  (tuatara.defaults::state-list-put tuatara.defaults::*bookmarks* (list (list name file 0 "" '("c1")))))
                (let ((text (manage "C-x m l C-u 2 m")))
                  (is = 2
-                     (count-if (lambda (l) (uiop:string-prefix-p ">" l))
+                     (count-if (lambda (l) (uiop:string-prefix-p "  >" l))
                                (uiop:split-string text :separator '(#\Newline)))))
                ;; z, the latest, marked for deletion; the section folded; x unfolds it and asks
                (let ((text (manage "C-x m l d C-p TAB x y e s RET")))

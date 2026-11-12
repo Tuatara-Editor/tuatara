@@ -14,53 +14,68 @@
 
 (in-package #:tuatara.terminal-emulator)
 
-(defvar tuatara-user:*terminal-send-escape* nil
-  "True to give Escape to a full-screen program in a terminal (one on the
-alternate screen: nvim, less, htop) even while *ESCAPE-QUITS* is on, Escape
-then still stopping typing at a shell's prompt. C-g stops typing in both.
-NIL: *ESCAPE-QUITS* holds in a full-screen program too, and C-q ESC gives it
-its Escape.")
+(define-setting tuatara-user:*terminal-send-escape* nil
+  "Whether Escape goes to a full-screen program in a terminal (one on the
+alternate screen: nvim, less, htop) even while *ESCAPE-QUITS* is on. C-g
+stops typing in both cases.
+- t: Escape goes to the program; at a shell's prompt it still stops typing.
+- nil: *ESCAPE-QUITS* holds in a full-screen program too, and C-q ESC gives
+  it its Escape."
+  :values boolean)
 
-(defvar tuatara-user:*terminal-editor-keys* '("C-x" "M-x" "C-g" "C-\\" "C-q" "C-s")
+(define-setting tuatara-user:*terminal-editor-keys* '("C-x" "M-x" "C-g" "C-\\" "C-q" "C-s")
   "Keys that stay the editor's while you type into a terminal (\\[terminal]).
 Every other key goes to the program in it. C-x (and the keys after it, for
-windows and buffers) and M-x work as anywhere. C-g and C-\\ stop typing there:
-NORMAL state, the screen as text. C-q sends the next key to the program
-whatever it is, so C-q C-g gives the program its C-g. C-s searches the
-terminal's history (\\[terminal-search]). Each is written as keys are written
-for bind-key, \"C-x\", \"M-x\". Escape goes to the program unless
-*ESCAPE-QUITS* is on; then it stops typing there as C-g does, and C-q ESC
-gives the program its Escape. For a program that needs C-g itself, such as
-another editor, put (setf *terminal-editor-keys* (remove \"C-g\"
+windows and buffers) and M-x work as anywhere. C-g and C-\\ stop typing
+there: NORMAL state, the screen as text. C-q sends the next key to the
+program whatever it is, so C-q C-g gives the program its C-g. C-s searches
+the terminal's history (\\[terminal-search]). Escape goes to the program
+unless *ESCAPE-QUITS* is on; then it stops typing there as C-g does, and C-q
+ESC gives the program its Escape. For a program that needs C-g itself, such
+as another editor, put (setf *terminal-editor-keys* (remove \"C-g\"
 *terminal-editor-keys* :test #'string=)) in the init file: C-g then goes to
-the program, and C-\\ alone stops typing.")
+the program, and C-\\ alone stops typing.
+- a list of texts: the keys, each written as keys are written for bind-key,
+  \"C-x\", \"M-x\", \"C-g\", \"C-\\\", \"C-q\" and \"C-s\" as standard."
+  :values (list-of string))
 
-(defvar tuatara-user:*terminal-paste-keys* '("C-V" "S-<insert>")
-  "Keys that paste into a terminal while you type there (\\[terminal-paste]): the
-text copied last, in Tuatara or another program, marked as pasted for a
+(define-setting tuatara-user:*terminal-paste-keys* '("C-V" "S-<insert>")
+  "Keys that paste into a terminal while you type there (\\[terminal-paste]):
+the text copied last, in Tuatara or another program, marked as pasted for a
 program that asks (a shell then runs none of its lines until you press RET).
-C-V is Control, Shift and v together, as most terminals paste. Each as keys
-are written for bind-key.")
+- a list of texts: the keys, each written as keys are written for bind-key,
+  \"C-V\" and \"S-<insert>\" as standard. C-V is Control, Shift and v together,
+  as most terminals paste."
+  :values (list-of string))
 
-(defvar tuatara-user:*terminal-program* nil
-  "The program \\[terminal] runs, a list of it and its arguments, (\"bash\" \"-l\"); NIL
-for your shell ($SHELL, else /bin/sh).")
+(define-setting tuatara-user:*terminal-program* nil
+  "The program \\[terminal] runs.
+- a list of texts: the program and its arguments, (\"bash\" \"-l\").
+- nil: your shell ($SHELL, else /bin/sh)."
+  :values (or (member nil) (list-of string)))
 
-(defvar tuatara-user:*terminal-place* :bottom
-  "Where a terminal shows (\\[terminal], \\[terminal-toggle]): :bottom or :top,
-a window across that whole side of the screen *TERMINAL-SIZE* high; :left or
-:right, one down that whole side *TERMINAL-WIDTH* wide; or :full, the
-selected window.")
+(define-setting tuatara-user:*terminal-place* :bottom
+  "Where a terminal shows (\\[terminal], \\[terminal-toggle]).
+- :bottom, :top: a window across that whole side of the screen,
+  *TERMINAL-SIZE* high.
+- :left, :right: a window down that whole side, *TERMINAL-WIDTH* wide.
+- :full: the selected window."
+  :values (member :bottom :top :left :right :full))
 
-(defvar tuatara-user:*terminal-size* 0.3
+(define-setting tuatara-user:*terminal-size* 0.3
   "How high a terminal's window is at the bottom or top of the screen
-\(*TERMINAL-PLACE*, \\[terminal-bottom], \\[terminal-top]): a fraction of the
-screen's height (0.3), or a number of rows (15).")
+\(*TERMINAL-PLACE*, \\[terminal-bottom], \\[terminal-top]).
+- a number below 1: that fraction of the screen's height, 0.3 as standard.
+- a whole number: that many rows (15)."
+  :values (number 0 *))
 
-(defvar tuatara-user:*terminal-width* 0.5
+(define-setting tuatara-user:*terminal-width* 0.5
   "How wide a terminal's window is at the left or right of the screen
-\(*TERMINAL-PLACE*, \\[terminal-left], \\[terminal-right]): a fraction of the
-screen's width (0.5, half of it), or a number of columns (80).")
+\(*TERMINAL-PLACE*, \\[terminal-left], \\[terminal-right]).
+- a number below 1: that fraction of the screen's width, 0.5 (half of it) as
+  standard.
+- a whole number: that many columns (80)."
+  :values (number 0 *))
 
 (defun terminal-place-size (place)
   "How big a terminal's new window at PLACE is: *TERMINAL-WIDTH* at :left and
@@ -69,8 +84,11 @@ screen's width (0.5, half of it), or a number of columns (80).")
     ((:left :right) tuatara-user:*terminal-width*)
     ((:bottom :top) tuatara-user:*terminal-size*)))
 
-(defvar tuatara-user:*terminal-scrollback* 100000
-  "How many lines a terminal (\\[terminal]) keeps that have gone up off its screen.")
+(define-setting tuatara-user:*terminal-scrollback* 100000
+  "How many lines a terminal (\\[terminal]) keeps that have gone up off its
+screen.
+- a whole number: that many lines, 100000 as standard."
+  :values (integer 0 *))
 
 (define-major-mode terminal-mode special-mode
   "A terminal: the screen of a program run on a pseudo-terminal, your shell
@@ -499,9 +517,12 @@ whose spaces kept for the cursor changed."
                (incf octets (length row-octets)))
       (values text (nreverse spans)))))
 
-(defvar tuatara-user:*terminal-title-limit* 40
+(define-setting tuatara-user:*terminal-title-limit* 40
   "The most columns of a terminal's title (as the shell gives it, user@host:~/dir
-in many) the mode line shows; NIL shows none.")
+in many) the mode line shows.
+- a whole number: that many columns, 40 as standard.
+- nil: no title is shown."
+  :values (or (member nil) (integer 0 *)))
 
 (defun follow-terminal-program (buffer emulator)
   "Have BUFFER, a terminal, stand in the directory its program is in now, so

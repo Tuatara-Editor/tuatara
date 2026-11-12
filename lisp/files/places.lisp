@@ -10,16 +10,20 @@
 
 (in-package #:tuatara.defaults)
 
-(defvar *save-place-mode* t
-  "True to remember where point was in each file you visit and put it back
-there when you visit the file again, in this session or a later one
-\(on as standard); NIL to open files at their top.
+(define-setting *save-place-mode* t
+  "Whether point's place in each file you visit is remembered and put back when
+you visit the file again, in this session or a later one.
 The places are the file places in $XDG_STATE_HOME/tuatara/
-\(~/.local/state/tuatara/), readable by you alone.")
+(~/.local/state/tuatara/), readable by you alone.
+- t: remembered, as standard.
+- nil: files open at their top."
+  :values boolean)
 
-(defvar *save-place-limit* 400
-  "How many files' places are kept, the latest first, 400 as standard. Raise
-it to come back to the place in more files; lower it to forget sooner.")
+(define-setting *save-place-limit* 400
+  "How many files' places are kept, the latest first.
+Raise it to come back to the place in more files; lower it to forget sooner.
+- a whole number: the count, 400 as standard."
+  :values (integer 0 *))
 
 (defun parse-saved-place-line (line)
   "The entry of the places LINE writes, (PATH . OFFSET): the octet point was

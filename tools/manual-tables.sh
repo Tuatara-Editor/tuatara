@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Generate the manual's reference tables from the program itself: every
-# command with its keys, every setting with its standard value, every face.
+# command with its keys, every setting with its default and the values it takes, every face.
 # Writes doc/manual/generated/, puts the rows into the lines "#+table: commands
 # NAME ..." of each chapter as doc/manual/generated/NN-name.org, and says which
 # names no chapter covers yet.

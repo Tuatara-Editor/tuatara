@@ -964,9 +964,12 @@ so that it follows cd whatever the shell is and however it is set up."
 
 ;;; Pictures programs send (kitty's graphics protocol)
 
-(defvar tuatara-user:*terminal-picture-memory* (* 64 1024 1024)
-  "The most octets of pictures a terminal keeps for the programs in it
-that draw them; 0 takes none, programs then drawing with text.")
+(define-setting tuatara-user:*terminal-picture-memory* (* 64 1024 1024)
+  "The most octets of pictures a terminal keeps for the programs in it that
+draw them.
+- a whole number: that many octets, 64 MB as standard.
+- 0: none; programs then draw with text."
+  :values (integer 0 *))
 
 (defparameter *terminal-picture-largest* 4096
   "The most pixels across or down a PNG picture a terminal's program sends is
@@ -1377,11 +1380,14 @@ cells it leaves empty clear."
 
 ;;; Compressing a quiet terminal's scrollback
 
-(defvar tuatara-user:*terminal-compress-after* 10
-  "Seconds a terminal's program has printed nothing after which its scrollback
-is compressed, in the background, a little at a time, so that a terminal
-with a long history holds a fraction of the memory; reading the history
-\(its history view) undoes it as it goes, unseen. NIL never compresses.")
+(define-setting tuatara-user:*terminal-compress-after* 10
+  "How long a terminal's program has printed nothing before its scrollback is
+compressed, in the background, a little at a time, so that a terminal with a
+long history holds a fraction of the memory. Reading the history (its
+history view) undoes it as it goes, unseen.
+- a number: that many seconds, 10 as standard.
+- nil: it is never compressed."
+  :values (or (member nil) (number 0 *)))
 
 (defvar *compressor* nil
   "The thread that compresses quiet terminals' scrollback (COMPRESS-QUIET-TERMINALS),

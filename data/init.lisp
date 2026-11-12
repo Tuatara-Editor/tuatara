@@ -274,7 +274,7 @@
 
   ;; Have the keys that comment a line move on to the next line afterwards.
   ;; Not set: the cursor stays.
-  ;; (bind-key "C-x C-;" 'toggle-comment-lines-ret)
+  ;; (bind-key "C-z C" 'toggle-comment-lines-ret)
   ;; (bind-key "C" 'toggle-comment-lines-ret :map :normal)
 
   ;; Two keys typed quickly one after the other in INSERT state leave it for
@@ -308,8 +308,8 @@
   ;; (setf *kitty-keyboard* nil)
 
   ;;; Editing: tabs, indentation, pairs, filling
-  ;; TAB indents where the mode indents, else goes on to the next tab stop; M-i
-  ;; goes to it anywhere; C-q TAB puts a tab in
+  ;; TAB indents where the mode indents, else goes on to the next tab stop; C-z
+  ;; TAB goes to it anywhere; C-q TAB puts a tab in
 
   ;; Tab stops every 8 columns: where TAB goes, how wide a tab shows. Not set: 4.
   ;; (setf *tab-width* 8)
@@ -1480,8 +1480,9 @@
   ;; more, and the program is stopped, its output not taken. Not set: 64 MB.
   ;; (setf *program-output-limit* (* 256 1024 1024))
 
-  ;; No file decoded: pictures and PDFs as octets and text. Not set: "bwrap".
-  ;; (setf *sandbox-program* nil)
+  ;; No file decoded: pictures and PDFs as octets and text. Not set: t,
+  ;; decoders shut in by bubblewrap (bwrap).
+  ;; (setf *sandbox* nil)
 
   ;; Decoding programs may make every system call. Not set: t: mounting,
   ;; namespaces, modules, tracing, io_uring, BPF, sockets refused.

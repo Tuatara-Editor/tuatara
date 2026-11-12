@@ -4,53 +4,72 @@
 (defpackage #:tuatara.frontend.tui
   (:use #:cl)
   (:import-from #:tuatara.io #:define-c-function #:null-pointer #:null-pointer-p)
+  (:import-from #:tuatara.runtime #:define-setting)
   (:import-from #:tuatara-user #:*tui-padding* #:*tui-pictures* #:*tui-mouse* #:*tui-colours* #:*kitty-keyboard*)
   (:documentation "The ncurses frontend: paints rows into the terminal and turns key presses into events.")
   (:export #:tui-frontend #:make-tui-frontend))
 
 (in-package #:tuatara.frontend.tui)
 
-(defvar *tui-padding* 0
+(define-setting *tui-padding* 0
   "The room, in whole cells, between the edges of the terminal and Tuatara's
-text. It is one number for all four sides, or a list. A list of two gives the
-top and bottom, then the right and left ((0 2) is none above and below, two
-columns at the sides). A list of three gives the top, the right and left, the
-bottom. A list of four gives the top, right, bottom and left, clockwise. A
-terminal may have padding of its own, in pixels, which is finer. Set it in
+text.
+A terminal may have padding of its own, in pixels, which is finer. Set it in
 the init file, or try values with \\[eval-expression] (setf *tui-padding* 1),
-which the terminal follows at once.")
+which the terminal follows at once.
+- a whole number: that room on all four sides (0 as standard).
+- a list of two: the top and bottom, then the right and left ((0 2) is none
+  above and below, two columns at the sides).
+- a list of three: the top, the right and left, the bottom.
+- a list of four: the top, right, bottom and left, clockwise."
+  :values (or (integer 0 *) (list-of (integer 0 *))))
 
-(defvar *tui-pictures* :auto
+(define-setting *tui-pictures* :auto
   "Whether pictures (a preview of an image, a PDF's pages) are shown in the
-terminal. :auto shows them where the terminal says, when asked at the start,
-that it speaks the kitty graphics protocol (such as kitty or Ghostty), never
-inside tmux or screen. T shows them in any terminal, for one that speaks it
-but does not say. NIL never shows them, the file's octets shown instead.")
+terminal.
+- :auto: where the terminal says, when asked at the start, that it speaks the
+  kitty graphics protocol (such as kitty or Ghostty), never inside tmux or
+  screen (the standard).
+- t: in any terminal, for one that speaks it but does not say.
+- nil: never; the file's octets are shown instead."
+  :values (member :auto t nil))
 
-(defvar *tui-mouse* t
-  "Whether the mouse works in Tuatara in a terminal as in its window: the first
-button puts point, drags select (past the text, scrolling), twice selects a
-word and three times a line, the wheel scrolls, and a terminal's program in
-\\[terminal] gets them. NIL leaves the mouse to the terminal, its own
-selection and copying. With it on, Shift held selects as the terminal does,
-in most terminals (kitty, Ghostty, WezTerm, GNOME's).")
+(define-setting *tui-mouse* t
+  "Whether the mouse works in Tuatara in a terminal as in its window.
+- t: the first button puts point, drags select (past the text, scrolling),
+  twice selects a word and three times a line, the wheel scrolls, and a
+  terminal's program in \\[terminal] gets them. Shift held selects as the
+  terminal does, in most terminals (kitty, Ghostty, WezTerm, GNOME's); this is
+  the standard.
+- nil: the mouse is left to the terminal, its own selection and copying."
+  :values boolean)
 
-(defvar *tui-colours* :auto
-  "How many colours Tuatara uses in a terminal. :AUTO (the standard) goes by
-what the terminal says: 24-bit colour, the theme's colours exactly, where
-COLORTERM is truecolor or 24bit (as kitty, Ghostty, WezTerm, foot, Konsole and
-GNOME's terminal set it), outside the Linux console; else as many as TERM's description gives; none where NO_COLOR is
-set. :24-BIT, 256, 16 or 8 say it outright, for a terminal that does not say
-(COLORTERM is not passed on by ssh), so that over ssh the theme's colours come
-out exactly rather than approximated; a number the terminal cannot show gives
-wrong colours. NIL, none, the plain theme in their place.")
+(define-setting *tui-colours* :auto
+  "How many colours Tuatara uses in a terminal.
+:24-BIT, 256, 16 or 8 say it outright, for a terminal that does not say
+\(COLORTERM is not passed on by ssh), so that over ssh the theme's colours
+come out exactly rather than approximated; a number the terminal cannot show
+gives wrong colours.
+- :auto: go by what the terminal says (the standard). It is 24-bit colour, the
+  theme's colours exactly, where COLORTERM is truecolor or 24bit (as kitty,
+  Ghostty, WezTerm, foot, Konsole and GNOME's terminal set it), outside the
+  Linux console; else as many as TERM's description gives; none where
+  NO_COLOR is set.
+- :24-bit: 24-bit colour.
+- 256, 16, 8: that many colours.
+- nil: none, the plain theme in their place."
+  :values (member :auto :24-bit 256 16 8 nil))
 
-(defvar *kitty-keyboard* :auto
-  "Whether the terminal frontend reads keys by the kitty keyboard protocol. Then
-Escape, Alt and Control keys arrive whole, nothing waits 25 ms to tell Escape
-then a key from Meta and that key, and Tab is told from C-i, RET from C-m.
-:AUTO (the standard) asks the terminal (kitty, foot, WezTerm, Ghostty and
-others speak it), T uses it, NIL never.")
+(define-setting *kitty-keyboard* :auto
+  "Whether the terminal frontend reads keys by the kitty keyboard protocol.
+Then Escape, Alt and Control keys arrive whole, nothing waits 25 ms to tell
+Escape then a key from Meta and that key, and Tab is told from C-i, RET from
+C-m.
+- :auto: ask the terminal (kitty, foot, WezTerm, Ghostty and others speak
+  it); the standard.
+- t: use it.
+- nil: never."
+  :values (member :auto t nil))
 
 (defun load-ncurses ()
   "Load ncurses, the library the terminal is drawn with, once; signals when it is missing."

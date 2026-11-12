@@ -95,6 +95,12 @@ CLIENT's, else the first client's whose it is (CLIENT-SEES-BUFFER-P), or
   "True when SECTION of the buffer list is the folder of a client that ended."
   (and (client-p section) (client-ended section) t))
 
+(defun project-sections (buffers roots)
+  "BUFFERS, those used most recently first, in a section for each project,
+each (ROOT . BUFFERS), the project of the buffer used last first, then one for
+those in none, ROOT :NONE; ROOTS shares what BUFFER-PROJECT finds."
+  (group-sections buffers (lambda (b) (buffer-project b roots)) :last :none))
+
 (defun buffer-sections (buffers)
   "BUFFERS, those used most recently first, in sections, each (SECTION .
 BUFFERS): one for each project, SECTION its root, the project of the buffer
@@ -102,28 +108,50 @@ used last first; then one for those in none, SECTION :NONE. Where each client
 has buffers of its own (CLIENT-FOLDERS-P), a folder for each client instead,
 SECTION the client, the one working in the frame first, the others in the
 order they came, then those of clients that ended, the last to end first;
-then one for the buffers of no one's, SECTION :EVERYONE."
-  (if (client-folders-p)
-      (let ((client (current-client)))
-        (group-sections buffers (lambda (b) (buffer-folder b client))
-                        :first client :last :everyone
-                        :order (lambda (a b)
-                                 (cond ((and (client-ended a) (client-ended b)) (ended-later-p a b))
-                                       ((client-ended a) nil)
-                                       ((client-ended b) t)
-                                       (t (< (client-number a) (client-number b)))))))
-      (let ((roots (make-hash-table :test 'equal)))
-        (group-sections buffers (lambda (b) (buffer-project b roots)) :last :none))))
+then one for the buffers of no one's, SECTION :EVERYONE. A client's folder
+whose buffers are in more than one project holds a section for each, in the
+same order, (FOLDER :SECTIONS ((FOLDER . ROOT) . BUFFERS) ...) as
+SECTIONED-PIECES takes sections within sections; the folder of no one's
+buffers stays one."
+  (let ((roots (make-hash-table :test 'equal)))
+    (if (client-folders-p)
+        (let ((client (current-client)))
+          (mapcar (lambda (folder)
+                    (destructuring-bind (owner . buffers) folder
+                      (let ((projects (project-sections buffers roots)))
+                        (if (and (rest projects) (not (eq owner :everyone)))
+                            (list* owner :sections
+                                   (mapcar (lambda (project) (cons (cons owner (car project)) (cdr project)))
+                                           projects))
+                            folder))))
+                  (group-sections buffers (lambda (b) (buffer-folder b client))
+                                  :first client :last :everyone
+                                  :order (lambda (a b)
+                                           (cond ((and (client-ended a) (client-ended b)) (ended-later-p a b))
+                                                 ((client-ended a) nil)
+                                                 ((client-ended b) t)
+                                                 (t (< (client-number a) (client-number b))))))))
+        (project-sections buffers roots))))
+
+(defun section-folder (section)
+  "The folder of the buffer list SECTION is or is in: the client, or
+:EVERYONE, of a project's section within a folder ((FOLDER . ROOT)), else
+SECTION itself."
+  (if (consp section) (car section) section))
 
 (defparameter *every-client-folder* "Every client's"
   "The title of the buffer list's folder of the buffers every client is offered.")
 
-(defvar *client-kept-without-buffers* :first
-  "Which clients of a daemon stay when their last buffer is closed: :FIRST,
-the one opened first of those running; :LAST, only the last one left; :ALL,
-every one; NIL, none. The others end as \\[save-buffers-kill-editor] would end
-them. In the buffer list \\<buffers-mode>\\[buffers-keep-client] makes another
-client the one that stays, until it ends.")
+(define-setting *client-kept-without-buffers* :first
+  "Which clients of a daemon stay when their last buffer is closed.
+The others end as \\[save-buffers-kill-editor] would end them. In the buffer
+list \\<buffers-mode>\\[buffers-keep-client] makes another client the one that
+stays, until it ends.
+- :first: the one opened first of those running.
+- :last: only the last one left.
+- :all: every one.
+- nil: none."
+  :values (member :first :last :all nil))
 
 (defvar *client-chosen-to-keep* nil
   "The client \\<buffers-mode>\\[buffers-keep-client] made the one that stays when its
@@ -148,13 +176,19 @@ one it names."
 is when another of SECTIONS (each (SECTION . BUFFERS)) has a folder of that
 name; *NO-PROJECT* for :NONE; a client's folder by when and where it began
 \(CLIENT-FOLDER-WORDS), one that ended after saying so, the one working in the
-frame called this client; *EVERY-CLIENT-FOLDER* for :EVERYONE."
+frame called this client; *EVERY-CLIENT-FOLDER* for :EVERYONE. A project's
+section within a folder, (FOLDER . ROOT), is called as the project is among
+the others of that folder."
   (flet ((name (root) (tuatara.io:native-file-name root)))
-    (cond ((eq section :none) *no-project*)
+    (cond ((consp section)
+           (buffer-section-title (cdr section)
+                                 (mapcar (lambda (project) (cons (cdar project) (cdr project)))
+                                         (inner-sections (cdr (assoc (car section) sections))))))
+          ((eq section :none) *no-project*)
           ((eq section :everyone) *every-client-folder*)
           ((client-p section)
            (format nil "~:[~;This client: ~]~a" (eq section (current-client)) (client-folder-words section)))
-          ((find-if (lambda (other) (and (not (eq other :none)) (not (equal other section))
+          ((find-if (lambda (other) (and (stringp other) (not (equal other section))
                                          (equal (name other) (name section))))
                     sections :key #'car)
            (abbreviated-path section))
@@ -178,7 +212,8 @@ NIL."
 
 (defun buffers-render (list-buffer &optional (point :line))
   "Fill LIST-BUFFER with the live buffers (see BUFFERS) in a section for each
-project and one for those in none (BUFFER-SECTIONS, SECTIONED-PIECES), then a
+project and one for those in none, or in a daemon a folder for each client
+holding them (BUFFER-SECTIONS, SECTIONED-PIECES), then a
 line summing them up. Point stays on its buffer's line, or on its line when that
 buffer is gone, at its start, or with POINT :keep at its column. A mark on a
 buffer killed meanwhile is dropped."
@@ -191,7 +226,7 @@ buffer killed meanwhile is dropped."
      :sections t
      :section-title (lambda (section) (buffer-section-title section sections))
      :section-note #'buffer-section-note
-     :section-face (lambda (section) (and (ended-folder-p section) :list-dim))
+     :section-face (lambda (section) (and (ended-folder-p (section-folder section)) :list-dim))
      :after (cons (string #\Newline)
                   (table-row-pieces *buffers-columns*
                                     (list "" (format nil "~[No buffers~;1 buffer~:;~:*~d buffers~]" (length buffers))
@@ -231,7 +266,9 @@ standing in them), the project of the buffer used last first, then one for those
 in none. Each heading says the project's folder name and how many buffers it
 holds. In an editor running in the background, a folder for each client instead:
 this client's open, the other clients' folded, then those of clients that ended,
-the last to end first, each under a faint heading saying when it ended. Then
+the last to end first, each under a faint heading saying when it ended. A
+client's folder whose buffers are in more than one project holds a section for
+each, its heading and rows set in under the folder's, folded on its own. Then
 come those of the buffers every client is offered (*Messages*). A buffer opened
 from another folder becomes this client's too. Where they are shows in the last
 column, a rimu list's folder there too. \\<buffers-mode>\\[list-visit] on the
@@ -240,7 +277,8 @@ starting tuatara --client with no files does for the last to end, and
 \\[list-mark-for-deletion] there marks every buffer of its folder for deletion.
 \\[list-toggle-fold] folds or unfolds a section, \\[list-toggle-all-folds] all
 of them. \\[list-delete-marked] on a heading kills the buffers of the project or
-client's folder, as \\[kill-project-buffers] does from any of them. Each line
+client's folder, a project's within a folder those of that client alone, as
+\\[kill-project-buffers] does from any of them. Each line
 shows a buffer's marks (> marked, D marked for deletion, * modified, %
 read-only), name, size, major mode and file; names in stars (*Messages*),
 read-only buffers, help and marked names each set apart in a face of their own;
@@ -280,18 +318,26 @@ list staying in its own; one killed meanwhile is said so, the list made again."
         (other (pop-to-buffer b :other t))
         (t (show-buffer b))))
 
-(defun kill-buffers-asked (targets question &key modified-only)
+(defun kill-buffers-asked (targets question &key modified-only every-client)
   "Kill the buffers TARGETS after QUESTION, a string, says what, asked with
 yes or no (modified ones said), or with MODIFIED-ONLY only when one of them
 is modified; each lets go only when a question of its own lets it
-\(KILL-BUFFER-ALLOWED-P). The buffer list, when it is open, is made again;
-how many were killed is said."
-  (let ((modified (count-if #'tuatara.buffer:buffer-modified-p targets)))
+\(KILL-BUFFER-ALLOWED-P). In a daemon, one another running client has too
+is left by the client whose folder holds it (BUFFER-FOLDER), as
+KILL-BUFFER-ASKING does, and not counted as modified; with EVERY-CLIENT
+each is killed whoever has it. The buffer list, when it is open, is made
+again; how many were killed or left is said."
+  (let* ((client (current-client))
+         (leaver (lambda (b) (let ((folder (buffer-folder b client))) (and (client-p folder) folder))))
+         (modified (count-if (lambda (b) (and (tuatara.buffer:buffer-modified-p b)
+                                              (or every-client (not (shares-buffer-p (funcall leaver b) b)))))
+                             targets)))
     (when (or (and modified-only (zerop modified))
               (yes-or-no-p* (format nil "~a~[~;, 1 modified~:;, ~:*~d modified~]?" question modified)))
-      (dolist (b targets) (when (kill-buffer-allowed-p b) (tuatara.buffer:kill-buffer b)))
-      (refill-open-list "*Buffers*" 'buffers-mode)
-      (let ((killed (count-if-not #'live-buffer-p targets)))
+      (let ((killed (count-if (lambda (b) (kill-buffer-asking b :ask nil :client (funcall leaver b)
+                                                                :every-client every-client))
+                              targets)))
+        (refill-open-list "*Buffers*" 'buffers-mode)
         (message "Killed ~d buffer~:p~[~:;, ~:*~d kept~]" killed (- (length targets) killed))))))
 
 (defun kill-listed-buffers (targets &key modified-only)
@@ -316,7 +362,7 @@ the section."
 anywhere."
   (let ((section (list-section-at list)))
     (when (and (eq mark :deletion) (ended-folder-p section) (eq (first (list-entry-at list)) :section))
-      (dolist (b (cdr (assoc section (buffer-sections (buffers-in-order list)))))
+      (dolist (b (section-members (buffer-sections (buffers-in-order list)) section))
         (set-entry-mark list b :deletion)))
     (call-next-method)))
 
@@ -342,7 +388,7 @@ that stays when its last buffer is closed, in place of the one
 \"(persistent)\". With that setting :ALL every client stays, and there is
 nothing to choose."
   (let* ((list (current-buffer))
-         (section (list-section-at list)))
+         (section (section-folder (list-section-at list))))
     (cond ((not (and (client-p section) (not (client-ended section))))
            (message "The cursor is not in the folder of a running client"))
           ((eq *client-kept-without-buffers* :all)
@@ -365,34 +411,61 @@ buffer on the current line."
                               (buffers-render list)))))
                "buffer"))
 
-(defun project-buffers (root)
+(defun project-buffers (root &optional every-client)
   "The live buffers of the project at ROOT (BUFFER-PROJECT), those used most
 recently first, of those offered to the client working in the frame
-\(CLIENT-BUFFERS); with ROOT :NONE, those in no project."
-  (let ((roots (make-hash-table :test 'equal)))
-    (remove-if-not (lambda (b) (equal (buffer-project b roots) root)) (client-buffers (buffers-in-order)))))
+\(CLIENT-BUFFERS), or with EVERY-CLIENT of all; with ROOT :NONE, those in no
+project."
+  (let ((roots (make-hash-table :test 'equal)) (buffers (buffers-in-order)))
+    (remove-if-not (lambda (b) (equal (buffer-project b roots) root))
+                   (if every-client buffers (client-buffers buffers)))))
 
 (defun kill-project-buffers-asked (root &optional except)
-  "Kill the buffers of the project at ROOT (PROJECT-BUFFERS), or of the folder
-of ROOT when it is a client (BUFFER-SECTIONS), but EXCEPT, after asking, the
-project or folder named as the buffer list names it. The buffers in no
-project (ROOT :NONE) are not killed together: *Messages* and the scratch
-buffers are among them."
-  (let ((targets (and (not (eq root :none))
-                      (remove except (if (client-p root)
-                                         (cdr (assoc root (buffer-sections (buffers-in-order))))
-                                         (project-buffers root))))))
-    (cond ((eq root :none)
-           (message "The buffers in no project are not killed together: mark them (m), then D"))
+  "Kill the buffers of the project at ROOT (PROJECT-BUFFERS), of the folder
+of ROOT when it is a client, or of a client's project when it is a project's
+section within a folder, (FOLDER . ROOT), as the buffer list holds them
+\(BUFFER-SECTIONS), but EXCEPT, after asking, the project or folder named as
+the buffer list names it. The buffers in no project (ROOT :NONE) are not
+killed together: *Messages* and the scratch buffers are among them."
+  (let* ((sections (buffer-sections (buffers-in-order)))
+         (none (eq (if (consp root) (cdr root) root) :none))
+         (targets (and (not none)
+                       (remove except (if (or (client-p root) (consp root))
+                                          (section-members sections root)
+                                          (project-buffers root))))))
+    (cond (none (message "The buffers in no project are not killed together: mark them (m), then D"))
           ((null targets) (message "No buffer on this line"))
           (t (kill-buffers-asked
               targets (list-question "Kill" "buffer" targets
                                      :name-of #'tuatara.buffer:buffer-name
-                                     :after (format nil "of ~a" (buffer-section-title root (buffer-sections (buffers-in-order))))))))))
+                                     :after (format nil "of ~a~@[ in client ~d~]"
+                                                    (buffer-section-title root sections)
+                                                    (and (consp root) (client-p (car root))
+                                                         (client-number (car root))))))))))
+
+(defun kill-project-buffers-of-every-client (root)
+  "Kill the buffers of the project at ROOT whoever has them, after asking,
+the question saying how many are in each folder of the buffer list (\"Kill 5
+buffers of tuatara: 3 of client 2, 2 of client 3\")."
+  (let ((targets (project-buffers root t)))
+    (if (null targets)
+        (message "No buffer of ~a" (buffer-section-title root))
+        (kill-buffers-asked
+         targets (list-question "Kill" "buffer" targets
+                                :the nil :name-of #'tuatara.buffer:buffer-name
+                                :after (format nil "of ~a: ~{~a~^, ~}" (buffer-section-title root)
+                                               (mapcar (lambda (folder)
+                                                         (format nil "~d of ~:[every client's~;client ~:*~d~]"
+                                                                 (length (section-leaves (cdr folder)))
+                                                                 (and (client-p (car folder))
+                                                                      (client-number (car folder)))))
+                                                       (buffer-sections targets))))
+         :every-client t))))
 
 (defmethod delete-list-entries ((mode buffers-mode) list mark)
   "On a section's heading with no buffer marked, \\<buffers-mode>\\[list-delete-marked] kills every buffer of
-that project or client's folder, after asking."
+that project or client's folder, or of that client's project for a project's
+section within its folder, after asking."
   (let ((entry (list-entry-at list)))
     (if (and (eq mark :marked) (eq (first entry) :section) (null (list-marked list :marked)))
         (kill-project-buffers-asked (second entry) list)
@@ -403,14 +476,26 @@ that project or client's folder, after asking."
 it holding one of *PROJECT-ROOT-MARKERS*, .git or .project), its files, its
 folders listed (\\[rimu]), and the buffers standing in them; after asking,
 saying how many are modified, each modified one asked about as it goes. In
-*Buffers*, the project of the section the cursor is in."
+*Buffers*, the project of the section the cursor is in. In an editor running
+in the background, only this client's buffers of the project, or in the buffer
+list those of the client whose folder the cursor is in, a buffer another
+client has too being left to it rather than killed; with
+\\[universal-argument], those of every client, the question saying how many
+each has."
   (let* ((buffer (current-buffer))
-         (root (if (typep (buffer-major-mode buffer) 'buffers-mode)
-                   (list-section-at buffer)
-                   (buffer-project buffer))))
-    (if (or (null root) (eq root :none))
-        (message "~a is in no project" (tuatara.buffer:buffer-name buffer))
-        (kill-project-buffers-asked root))))
+         (listed (typep (buffer-major-mode buffer) 'buffers-mode))
+         (section (if listed (list-section-at buffer) (buffer-project buffer))))
+    (if (and (prefix-argument) (client-folders-p))
+        (let ((root (cond ((not listed) section)
+                          ((consp section) (cdr section))
+                          (t (let ((b (list-member-at buffer))) (and b (buffer-project b)))))))
+          (if (or (null root) (eq root :none))
+              (message "~a is in no project"
+                       (tuatara.buffer:buffer-name (or (and listed (list-member-at buffer)) buffer)))
+              (kill-project-buffers-of-every-client root)))
+        (if (or (null section) (eq section :none))
+            (message "~a is in no project" (tuatara.buffer:buffer-name buffer))
+            (kill-project-buffers-asked section)))))
 
 (defun install-buffers ()
   "Bind the *Buffers* keys and the global entry points."

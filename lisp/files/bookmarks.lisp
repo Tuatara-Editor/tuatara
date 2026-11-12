@@ -11,9 +11,11 @@
 
 (in-package #:tuatara.defaults)
 
-(defvar *bookmarks-kept* 1000
+(define-setting *bookmarks-kept* 1000
   "How many bookmarks you may have before setting another says you have more.
-Every bookmark is kept whatever their number: none is ever dropped for it.")
+Every bookmark is kept whatever their number: none is ever dropped for it.
+- a whole number: the count past which the message comes, 1000 as standard."
+  :values (integer 0 *))
 
 (defun parse-bookmark-line (line)
   "The bookmark LINE writes, (NAME PATH OFFSET CONTEXT CATEGORIES SAFE), or NIL
@@ -66,10 +68,14 @@ CATEGORIES SAFE): the categories and safe last, when it has them."
   "The bookmark called NAME, or NIL."
   (state-list-find *bookmarks* name))
 
-(defvar *bookmark-set-asks-categories* t
-  "True for \\[bookmark-set] to ask, after the name, which categories the
-bookmark is in (those used already offered, new ones typed); NIL never to ask.
-The bookmark manager (\\[bookmark-manager]) sets them too.")
+(define-setting *bookmark-set-asks-categories* t
+  "Whether \\[bookmark-set] asks, after the name, which categories the bookmark
+is in.
+The categories used already are offered, new ones typed. The bookmark manager
+(\\[bookmark-manager]) sets them too.
+- t: it asks.
+- nil: it never asks."
+  :values boolean)
 
 (defun bookmark-category-names ()
   "Every category a bookmark is in, each once, in the order of their names."

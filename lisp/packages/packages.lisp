@@ -30,16 +30,20 @@
 
 (in-package #:tuatara.packages)
 
-(defvar *package-ask-before-loading* t
-  "True to be asked before a package is first compiled and loaded: one fetched
-the first time, and again when an update brings another commit; one of a
-folder of yours the first time only, what you change in it later being yours.
-y loads it, n leaves it, v shows its source first. NIL to load them without
-asking.")
+(define-setting *package-ask-before-loading* t
+  "Whether you are asked before a package is first compiled and loaded: one
+fetched the first time, and again when an update brings another commit; one
+of a folder of yours the first time only, what you change in it later being
+yours.
+- t: you are asked; y loads it, n leaves it, v shows its source first.
+- nil: packages load without asking."
+  :values boolean)
 
-(defvar *package-sources* '()
-  "The places packages come from, each (NAME . WHERE): WHERE a git
-repository's address or a folder of your disk (PACKAGE-SOURCE sets them).")
+(define-setting *package-sources* '()
+  "The places packages come from (PACKAGE-SOURCE sets them).
+- a list of (NAME . WHERE): WHERE a git repository's address or a folder of
+  your disk."
+  :values (list-of "(NAME . WHERE)"))
 
 (defvar *packages-kept* 500
   "How many fetched packages' versions are remembered.")
@@ -202,11 +206,14 @@ a later release adds."
   "What a package called NAME from WHERE, VERSION asked for, is remembered by."
   (format nil "~a ~a ~a" name where (or version "release")))
 
-(defvar *packages-directory* nil
-  "The folder Tuatara keeps the packages it fetches in, in place of
-~/.local/share/tuatara/packages/ ($XDG_DATA_HOME/tuatara/packages/); NIL for
-that standard place. As *CACHE-DIRECTORY*: made by you, and while it is not
-there no package is fetched or loaded from it.")
+(define-setting *packages-directory* nil
+  "The folder Tuatara keeps the packages it fetches in. As *CACHE-DIRECTORY*:
+made by you, and while it is not there no package is fetched or loaded from
+it.
+- nil: ~/.local/share/tuatara/packages/ ($XDG_DATA_HOME/tuatara/packages/),
+  the standard place.
+- a folder's name: that folder."
+  :values (or (member nil) folder))
 
 (defun packages-directory ()
   "Where fetched packages are kept: *PACKAGES-DIRECTORY* when set
@@ -1180,18 +1187,23 @@ already a setting of Tuatara or of another package."
           (import symbol owner))
         symbol))))
 
-(defmacro define-package-setting (name value documentation)
+(defmacro define-package-setting (name value documentation &key values)
   "Define NAME, a setting of the package being loaded, with VALUE unless an
 init file set it first, and DOCUMENTATION: in TUATARA-USER, where an init file
 sets it by that name, and NAME in the package's own code
 \(CLAIM-PACKAGE-SETTING). Its name begins with the package's (*facematch-).
+VALUES describes the values it takes, as Tuatara's own settings do
+\(DEFINE-SETTING): boolean, (member :left :right), (integer 0 *), string,
+folder, (list-of string), (or (member nil) string) or words. Help and the
+manual show them, and \\[check-health] says when the setting holds another.
 It comes before the package's code that reads it, at the top of its file: a
 name read before it is defined is the package's own, not the setting."
   (let ((owner (package-name *package*)))
     `(progn
        (eval-when (:compile-toplevel :load-toplevel :execute)
          (claim-package-setting ,(symbol-name name) (find-package ,owner)))
-       (defvar ,(claim-package-setting (symbol-name name) *package*) ,value ,documentation))))
+       (define-setting ,(claim-package-setting (symbol-name name) *package*) ,value ,documentation
+         :values ,values))))
 
 (defvar *package-needs* '()
   "What the packages loaded need of the system, each (NAME . NEEDS) as
@@ -1459,11 +1471,13 @@ an error for any other folder."
       (refuse "~a is no folder of the packages': not deleted" (abbreviated-path native)))
     (tuatara.io:delete-tree native)))
 
-(defparameter *package-size-limit* (* 512 1024 1024)
+(define-setting *package-size-limit* (* 512 1024 1024)
   "The most octets a package may take on disk while it is fetched, what git
 keeps of its history and its files together: a fetch that grows past it is
-ended and its files deleted. 512 MB as standard. Raise it for a package with a
-long history; lower it to refuse large fetches, as on a metered link.")
+ended and its files deleted. Raise it for a package with a long history;
+lower it to refuse large fetches, as on a metered link.
+- a whole number: that many octets, 512 MB as standard."
+  :values (integer 0 *))
 
 (define-condition package-too-large (error)
   ((where :initarg :where :reader package-too-large-where))

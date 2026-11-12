@@ -4,9 +4,9 @@
 (in-package #:tuatara.tests)
 
 (define-test daemon
-  :description "tuatara --daemon runs an editor with no screen, listening in a folder of the user's alone;
+  :description "tuatara --daemon runs an editor with no screen, listening in a folder of the user's alone.
 tuatara --client shows it in a terminal: a frame of its own, buffers of its own, C-x C-c closing it alone with
-the exit code its files left; the daemon takes no other user's or container's program, one of a name runs at
+the exit code its files left. The daemon takes no other user's or container's program, one of a name runs at
 once, and M-x daemon-quit or tuatara --stop stops it.")
 
 ;;; A daemon in this process, and clients of it on fake screens
@@ -1582,7 +1582,7 @@ structure; the folder of A ended an hour after B's."
        (goto-folder-heading c ended-a)
        (type-keys c "d")
        (true (wait-until (lambda () (marked)) 10) "buffers are marked")
-       (is equal '("*lisp-scratch*" "alpha.txt" "beta.txt") (marked) "the folder's buffers, no others")
+       (is equal '("*lisp-scratch*<2>" "alpha.txt" "beta.txt") (marked) "the folder's buffers, no others")
        (type-keys c "x")
        (true (wait-until (lambda () (not (in-daemon (lambda () (tuatara.buffer:find-buffer "alpha.txt"))))) 10)
              "the folder's buffers are killed")
@@ -1693,6 +1693,100 @@ thread, no client chosen to keep before or after."
                               (type-keys two "C-x k RET")
                               (is eq :late (client-ends two-runner 1) "the one chosen stays")))))))
 
+(defun buffer-owners (name)
+  "The numbers of the clients of the test daemon that have the buffer NAME,
+or :NONE when there is no buffer of that name."
+  (in-daemon (lambda ()
+               (let ((buffer (tuatara.buffer:find-buffer name)))
+                 (if buffer
+                     (mapcar #'tuatara.command:client-number (tuatara.command::buffer-clients buffer))
+                     :none)))))
+
+(defun shown-in-client (number)
+  "The name of the buffer the selected window of the first frame of the test
+daemon's client NUMBER shows."
+  (let ((client (remote-client-numbered number)))
+    (in-daemon (lambda ()
+                 (let ((frame (first (tuatara.command:client-frames (daemon-editor) client))))
+                   (tuatara.buffer:buffer-name
+                    (tuatara.display:window-buffer (tuatara.command::frame-window frame))))))))
+
+(defun typed-name (name)
+  "NAME as keys typed one by one, then RET, for TYPE-KEYS."
+  (format nil "~{~a~^ ~} RET" (map 'list #'string name)))
+
+(define-test (daemon every-clients-buffers-stay-every-clients)
+  ;; a buffer the daemon had before its clients stays every client's when a client shows it; M-x org-scratch in a
+  ;; client shows a scratch buffer of its own, made when it has none; a file a client opens is its own
+  (with-test-directory (dir)
+    (let ((alpha (namestring (put-file (merge-pathnames "alpha.txt" dir) "alpha text")))
+          (beta (namestring (put-file (merge-pathnames "beta.txt" dir) "beta text")))
+          (gamma (namestring (put-file (merge-pathnames "gamma.txt" dir) "gamma text"))))
+      (with-test-daemon (name)
+        (let ((one (attach-test-client name :directory dir :files (list alpha) :width 200))
+              (two (attach-test-client name :directory dir :files (list beta) :width 200)))
+          (true (shows one "alpha text"))
+          (true (shows two "beta text"))
+          (is equal '() (buffer-owners "*lisp-scratch*") "the first client is given a scratch buffer of its own")
+          (type-keys one "C-x b")
+          (type-keys one (typed-name "*org-scratch*"))
+          (true (shows one "scribbling in org-mode"))
+          (is equal '() (buffer-owners "*org-scratch*") "shown with C-x b, it stays every client's")
+          (type-keys one "M-x o r g - s c r a t c h RET")
+          (true (shows one "*org-scratch*<2>"))
+          (is equal '(1) (buffer-owners "*org-scratch*<2>") "a new one, the client's own")
+          (is equal '() (buffer-owners "*org-scratch*") "every client's one left where it is")
+          (type-keys one "C-x b")
+          (type-keys one (typed-name "alpha.txt"))
+          (true (shows one "alpha text"))
+          (type-keys one "M-x o r g - s c r a t c h RET")
+          (true (wait-until (lambda () (equal "*org-scratch*<2>" (shown-in-client 1))) 10)
+                "asked again, the client's own is shown")
+          (is eq :none (buffer-owners "*org-scratch*<3>") "and no other made")
+          (type-keys two "M-x o r g - s c r a t c h RET")
+          (true (shows two "*org-scratch*<3>"))
+          (is equal '(2) (buffer-owners "*org-scratch*<3>") "the other client is given one of its own")
+          (is equal '(1) (buffer-owners "*org-scratch*<2>"))
+          (type-keys one "C-x C-f")
+          (type-keys one (typed-name gamma))
+          (true (shows one "gamma text"))
+          (is equal '(1) (buffer-owners "gamma.txt") "a file opened in a client is its own"))))))
+
+(define-test (daemon kept-client-left-on-its-own-scratch)
+  ;; the client that stays, its last buffer of its own killed, is left on a new scratch buffer of its own, no
+  ;; buffer taken from every client's folder or from another client
+  (with-test-directory (dir)
+    (let ((alpha (namestring (put-file (merge-pathnames "alpha.txt" dir) "alpha text")))
+          (beta (namestring (put-file (merge-pathnames "beta.txt" dir) "beta text"))))
+      (call-keeping-clients
+       :first
+       (lambda ()
+         (with-test-daemon (name)
+           (multiple-value-bind (one one-runner)
+               (attach-test-client name :directory dir :files (list alpha) :width 200)
+             (let ((two (attach-test-client name :directory dir :files (list beta) :width 200)))
+               (true (shows one "alpha text"))
+               (true (shows two "beta text"))
+               (let* ((client (remote-client-numbered 1))
+                      (scratch (in-daemon
+                                (lambda ()
+                                  (tuatara.buffer:buffer-name
+                                   (find-if (lambda (b) (and (tuatara.buffer:buffer-local b :client-scratch)
+                                                             (member client (tuatara.command::buffer-clients b))))
+                                            tuatara.buffer:*buffers*))))))
+                 (in-daemon (lambda () (tuatara.buffer:kill-buffer (tuatara.buffer:find-buffer scratch))))
+                 (is eq :none (buffer-owners scratch) "its scratch buffer is killed"))
+               (type-keys one "C-x k RET")
+               (true (wait-until (lambda () (eq :none (buffer-owners "alpha.txt"))) 10) "its last buffer is killed")
+               (is eq :late (client-ends one-runner 1) "the client stays")
+               (true (shows one "*lisp-scratch*<"))
+               (let ((shown (shown-in-client 1)))
+                 (true (search "*lisp-scratch*<" shown) "on a scratch buffer")
+                 (is equal '(1) (buffer-owners shown) "of its own"))
+               (is equal '() (buffer-owners "*lisp-scratch*") "every client's buffers stay so")
+               (is equal '() (buffer-owners "*org-scratch*"))
+               (is equal '(2) (buffer-owners "beta.txt") "the other client's stays its alone")))))))))
+
 (define-test (daemon client-ends-with-its-last-buffer)
   ;; with none kept, a client whose last buffer is killed goes as C-x C-c would send it, the daemon on; one with
   ;; another buffer left stays; one started with no files stays on its scratch buffer until a
@@ -1726,3 +1820,79 @@ thread, no client chosen to keep before or after."
           (true (shows none "alpha text"))
           (type-keys none "C-x k RET")
           (is equal '(0 nil) (client-ends none-runner)))))))
+
+(defun call-with-shared-file (check)
+  "Call CHECK with the fake screens of two clients of a test daemon in a
+project's folder, the first started on alpha.txt and beta.txt, the second on
+alpha.txt and gamma.txt, so that both have alpha.txt and show it."
+  (with-test-directory (dir)
+    (put-file (merge-pathnames ".project" dir) "")
+    (flet ((file (name) (namestring (put-file (merge-pathnames name dir) (format nil "~a text" (pathname-name name))))))
+      (let ((alpha (file "alpha.txt")) (beta (file "beta.txt")) (gamma (file "gamma.txt")))
+        (call-keeping-clients
+         :all
+         (lambda ()
+           (with-test-daemon (name)
+             (let* ((one (attach-test-client name :directory dir :files (list alpha beta) :width 200))
+                    (two (progn (true (shows one "alpha text"))
+                                (attach-test-client name :directory dir :files (list alpha gamma) :width 200))))
+               (true (shows two "alpha text"))
+               (is equal '(1 2) (sort (copy-list (buffer-owners "alpha.txt")) #'<) "both clients have it")
+               (funcall check one two)))))))))
+
+(define-test (daemon shared-buffer-left-by-one-client)
+  ;; C-x k of a file two clients have leaves it to the other, nothing asked though it is modified, the first
+  ;; client's window showing one of its own; killed then by the last to have it, it goes, asked about first
+  (call-with-shared-file
+   (lambda (one two)
+     (in-daemon (lambda () (tuatara.buffer:buffer-insert (tuatara.buffer:find-buffer "alpha.txt") 0 "changed ")))
+     (type-keys one "C-x k RET")
+     ;; a question would hold the daemon's editor, so it is put away before the daemon is looked at
+     (let ((asked (shows one "kill anyway" 2)))
+       (false asked "nothing asked")
+       (when asked
+         (type-keys one "C-g")
+         (true (wait-until (lambda () (not (showing-now one "kill anyway"))) 10))))
+     (true (wait-until (lambda () (equal '(2) (buffer-owners "alpha.txt"))) 10) "left to the second client")
+     (true (wait-until (lambda () (not (equal "alpha.txt" (shown-in-client 1)))) 10) "the first shows another")
+     (is equal '(1) (buffer-owners (shown-in-client 1)) "one of its own")
+     (is equal "alpha.txt" (shown-in-client 2) "the second still shows it")
+     (true (in-daemon (lambda () (tuatara.buffer:buffer-modified-p (tuatara.buffer:find-buffer "alpha.txt"))))
+           "its changes kept")
+     (type-keys two "C-x k RET")
+     (true (shows two "modified; kill anyway") "the last to have it is asked")
+     (type-keys two "y e s RET")
+     (true (wait-until (lambda () (eq :none (buffer-owners "alpha.txt"))) 10) "and kills it")
+     (true (wait-until (lambda () (equal '(2) (buffer-owners (shown-in-client 2)))) 10)
+           "the second shows one of its own"))))
+
+(define-test (daemon shared-buffer-left-from-the-buffer-list)
+  ;; D on a file two clients have in the buffer list leaves it to the other, as C-x k does
+  (call-with-shared-file
+   (lambda (one two)
+     (declare (ignore two))
+     (type-keys one "C-x C-b")
+     (true (shows one "This client"))
+     (in-daemon (lambda ()
+                  (let* ((list (tuatara.buffer:find-buffer "*Buffers*"))
+                         (alpha (tuatara.buffer:find-buffer "alpha.txt"))
+                         (entry (find alpha (tuatara.buffer:buffer-local list 'tuatara.defaults::list-entries)
+                                      :key (lambda (e) (and (consp e) (tuatara.defaults::entry-member e))))))
+                    (tuatara.defaults::list-goto-entry list entry))))
+     (type-keys one "D")
+     (true (shows one "Kill the buffer alpha.txt?") "asked about alpha.txt")
+     (type-keys one "y e s RET")
+     (true (wait-until (lambda () (equal '(2) (buffer-owners "alpha.txt"))) 10) "left to the second client")
+     (is equal "alpha.txt" (shown-in-client 2) "the second still shows it"))))
+
+(define-test (daemon shared-buffer-killed-for-every-client)
+  ;; C-u C-x p k kills the project's buffers whoever has them, a file both clients have among them
+  (call-with-shared-file
+   (lambda (one two)
+     (declare (ignore two))
+     (type-keys one "C-u C-x p k")
+     (true (shows one "of client 2") "asked once, saying how many each client has")
+     (type-keys one "y e s RET")
+     (true (wait-until (lambda () (eq :none (buffer-owners "alpha.txt"))) 10) "the shared file is killed")
+     (is eq :none (buffer-owners "beta.txt"))
+     (is eq :none (buffer-owners "gamma.txt")))))

@@ -46,10 +46,12 @@ rule goes on from, as a hash table)."
 ampersand) and those for Swedish, Norwegian, Danish, Finnish, Polish, German,
 French, Spanish, Italian and Latin letters.")
 
-(defvar *default-input-method* nil
+(define-setting *default-input-method* nil
   "The input method \\[toggle-input-method] turns on in a buffer that has had
-none on yet, such as \"swedish-postfix\"; NIL
-for it to ask. \\[set-input-method] makes the one chosen the default.")
+none on yet. \\[set-input-method] makes the one chosen the default.
+- text: an input method's name, such as \"swedish-postfix\".
+- nil: ask which (the standard)."
+  :values (or (member nil) string))
 
 (defun find-input-method (name)
   "The input method called NAME, or NIL."

@@ -51,10 +51,14 @@ The page and zoom are kept for the next time the PDF is opened."
   "Keys of a PDF's view that come before the modal keys: \\`C-s', which searches
 its pages.")
 
-(defvar *pdf-view-dark-pages* nil
-  "True to show a PDF's pages dark: white as the theme's background, black as
-its text, the colours between in proportion. \\<pdf-view-mode>\\[pdf-view-toggle-dark] turns it on and
-off while the editor runs.")
+(define-setting *pdf-view-dark-pages* nil
+  "Whether a PDF's pages are shown dark.
+White is shown as the theme's background, black as its text, the colours
+between in proportion. \\<pdf-view-mode>\\[pdf-view-toggle-dark] turns it on
+and off while the editor runs.
+- t: dark.
+- nil: as the PDF draws them."
+  :values boolean)
 
 (defparameter *pdf-view-text-limit* (* 64 1024 1024)
   "The most octets of a PDF's text its view takes out.")

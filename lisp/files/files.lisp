@@ -26,14 +26,17 @@
   "Seconds a save is waited for before it carries on in the background, with
 its progress in the mode line.")
 
-(defvar *reload-changed-files* nil
-  "True to have every buffer keep up with its file on disk by itself. What
-another program appends to the file is added to the buffer at once, even one
-with changes of its own. With point at the end, it stays at the end, as tail
--f has it. A file rewritten is read again when the buffer has no changes of
-its own, point and the window staying on the same text, and one undo takes
-that back. Off by default: the mode line and echo area say the file changed,
-and \\[revert-buffer] reads it again. \\[follow-file] chooses for one buffer.")
+(define-setting *reload-changed-files* nil
+  "Whether every buffer keeps up with its file on disk by itself.
+What another program appends to the file is added to the buffer at once, even
+one with changes of its own. With point at the end, it stays at the end, as
+tail -f has it. A file rewritten is read again when the buffer has no changes
+of its own, point and the window staying on the same text, and one undo takes
+that back. \\[follow-file] chooses for one buffer.
+- t: buffers keep up by themselves.
+- nil: the mode line and echo area say the file changed, and \\[revert-buffer]
+  reads it again. This is the standard."
+  :values boolean)
 
 (defvar *save-refusals* '()
   "Functions called with a buffer about to be saved: one returning a string
@@ -527,18 +530,26 @@ with LINE). Refused, saying so, while the file is still arriving
   (unless (wait-interruptibly (tuatara.runtime:job-thread job) :message words)
     (keyboard-quit-signal)))
 
-(defvar *safe-directories* '()
+(define-setting *safe-directories* '()
   "Directories whose files always open safely, as \\[find-file-safely] opens a
-file: read-only, with no major mode, hooks or version control, and nothing
-written beside them; for example '(\"~/Evidence/\"). However they are opened:
+file.
+A file opens read-only, with no major mode, hooks or version control, and
+nothing is written beside it. This holds however it is opened:
 \\[find-file], the files visited lately, a drop on the window, the command
-line. \\[end-safe-visit] opens one as usual after all.")
+line. \\[end-safe-visit] opens one as usual after all.
+- nil: no directory, as standard.
+- a list of directories' names, '(\"~/Evidence/\") for example."
+  :values (list-of folder))
 
-(defvar *open-binary-files-safely* t
-  "True to open safely, as \\[find-file-safely] does, a file that looks binary:
-one with a null (NUL) octet in its first 64 KB, as executables, archives and
-disk images have and text has not. \\[end-safe-visit] opens one as usual after
-all.")
+(define-setting *open-binary-files-safely* t
+  "Whether a file that looks binary opens safely, as \\[find-file-safely] opens
+it.
+A file looks binary when it has a null (NUL) octet in its first 64 KB, as
+executables, archives and disk images have and text has not.
+\\[end-safe-visit] opens one as usual after all.
+- t: such a file opens safely.
+- nil: it opens as any file."
+  :values boolean)
 
 
 (defun paths-common-directory (paths)

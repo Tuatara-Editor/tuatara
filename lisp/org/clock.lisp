@@ -11,9 +11,11 @@
 
 (in-package #:tuatara.defaults)
 
-(defvar *org-clock-into-drawer* t
-  "True for clock lines to go into a :LOGBOOK: drawer of their headline;
-NIL for them to go right under it.")
+(define-setting *org-clock-into-drawer* t
+  "Where clock lines go.
+- t: into a :LOGBOOK: drawer of their headline.
+- nil: right under the headline."
+  :values boolean)
 
 (defstruct (org-clock (:conc-name org-clock-))
   "The clock running: the BUFFER of the task, an anchor on the start of its

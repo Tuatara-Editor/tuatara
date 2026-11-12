@@ -277,3 +277,92 @@ not there), over those there. The names of the files."
         for file = (merge-pathnames target (uiop:ensure-directory-pathname directory))
         do (alexandria:write-string-into-file (page-text source) file :if-exists :supersede :external-format :utf-8)
         collect (namestring file)))
+
+;;; Completion of the options in bash
+
+(defparameter *completion-values*
+  '(("--frames" . ("1" "2" "3" "4" "5" "6" "7" "8" "9" "10" "11" "12" "13" "14" "15" "16"))
+    ("--dynamic-space-size" . :none))
+  "The values bash offers for an option taking one where it is not a file: the
+choices, or :NONE when nothing can be suggested.  Every other value an option
+takes is a file name.")
+
+(defun completion-options ()
+  "The options of *OPTION-HELP* that bash completes, each as a list of its
+name, the number of values that follow it and what they are (:FILES, :NONE or
+a list of choices).  An option written with an optional =NAME is a name only."
+  (let (options)
+    (dolist (entry *option-help*)
+      (loop for (flag argument) in (getf entry :flags)
+            unless (char= (char flag 0) #\+)
+              do (let ((name (bare-flag flag))
+                       (values (if (and argument (not (search "=" flag)))
+                                   (length (tuatara.text:split-words argument " "))
+                                   0)))
+                   (unless (find name options :key #'first :test #'string=)
+                     (push (list name values
+                                 (if (zerop values)
+                                     :none
+                                     (let ((known (assoc name *completion-values* :test #'string=)))
+                                       (if known (cdr known) :files))))
+                           options)))))
+    (nreverse options)))
+
+(defun completion-script ()
+  "The bash function that completes the arguments of tuatara, made from
+*OPTION-HELP*: the options, files after an option that takes one, the choices
+of an option that has them, and files after -- or for a plain argument."
+  (let ((options (completion-options)))
+    (with-output-to-string (out)
+      (flet ((line (control &rest arguments) (apply #'format out control arguments) (terpri out)))
+        (line "# bash completion for tuatara ~a, made from the program's own option list." (tuatara:version))
+        (line "_tuatara() {")
+        (line "  local cur=\"${COMP_WORDS[COMP_CWORD]}\" prev=\"${COMP_WORDS[COMP_CWORD-1]}\"")
+        (line "  local option=\"\" last=\"\" limit=$COMP_CWORD pending=0 i word")
+        (line "  COMPREPLY=()")
+        (line "  # bash splits --frames=4 into the words --frames, = and 4")
+        (line "  if [[ $cur == = ]]; then option=$prev; cur=; limit=$((COMP_CWORD - 1))")
+        (line "  elif [[ $prev == = ]]; then option=${COMP_WORDS[COMP_CWORD-2]}; limit=$((COMP_CWORD - 2)); fi")
+        (line "  for ((i = 1; i < limit; i++)); do")
+        (line "    word=${COMP_WORDS[i]}")
+        (line "    if [[ $word == -- ]]; then")
+        (line "      compopt -o filenames 2>/dev/null")
+        (line "      mapfile -t COMPREPLY < <(compgen -f -- \"$cur\")")
+        (line "      return")
+        (line "    fi")
+        (line "    if ((pending > 0)); then ((pending--)); continue; fi")
+        (line "    case $word in")
+        (dolist (option (remove-if (lambda (option) (zerop (second option))) options))
+          (line "      ~a) last=$word; pending=~d ;;" (first option) (second option)))
+        (line "    esac")
+        (line "  done")
+        (line "  if [[ -z $option ]] && ((pending > 0)); then option=$last; fi")
+        (line "  if [[ -z $option && $cur == -* ]]; then")
+        (line "    mapfile -t COMPREPLY < <(compgen -W \"~{~a~^ ~}\" -- \"$cur\")" (mapcar #'first options))
+        (line "    return")
+        (line "  fi")
+        (line "  case $option in")
+        (dolist (option options)
+          (let ((kind (third option)))
+            (unless (eq kind :files)
+              (line "    ~a)" (first option))
+              (if (eq kind :none)
+                  (line "      ;;")
+                  (progn (line "      mapfile -t COMPREPLY < <(compgen -W \"~{~a~^ ~}\" -- \"$cur\")" kind)
+                         (line "      ;;"))))))
+        (line "    *)")
+        (line "      compopt -o filenames 2>/dev/null")
+        (line "      mapfile -t COMPREPLY < <(compgen -f -- \"$cur\")")
+        (line "      ;;")
+        (line "  esac")
+        (line "}")
+        (line "complete -F _tuatara tuatara")))))
+
+(defun write-bash-completion (directory)
+  "Write the completion of tuatara's options for bash, the file tuatara, into
+DIRECTORY (made when it is not there), over the one there.  The name of the
+file."
+  (ensure-directories-exist directory)
+  (let ((file (merge-pathnames "tuatara" (uiop:ensure-directory-pathname directory))))
+    (alexandria:write-string-into-file (completion-script) file :if-exists :supersede :external-format :utf-8)
+    (namestring file)))

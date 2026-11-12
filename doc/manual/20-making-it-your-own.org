@@ -130,6 +130,15 @@ Tuatara keeps those things in memory and says so.
 (setf *state-directory* "/run/media/aroha/Data/tuatara/state/")
 #+end_src
 
+=*cache-directory*= is the same for the cache folder. It is =nil=, which
+means =~/.cache/tuatara/= (or =tuatara= inside =XDG_CACHE_HOME=), or the name
+of a folder. Files you open from outside leave copies in the cache, so a
+cache on an encrypted drive keeps those copies off the plain disk:
+
+#+begin_src lisp
+(setf *cache-directory* "/run/media/aroha/Data/tuatara/cache/")
+#+end_src
+
 *** What to copy to another computer
 
 To have your Tuatara on another computer, copy the configuration folder,
@@ -309,7 +318,9 @@ for commands, as other editors do. If that is you, turn modal editing off:
 Every buffer then takes the keys of its mode and the global keys. Typing puts
 letters in the text. The states are gone from the mode line. Every command
 is still there, to run with ~M-x~ or to bind to a key. The leader stays,
-under ~C-x SPC~.
+under ~C-x SPC~. The commands that selecting, cursors, spelling and replacing
+have in NORMAL state are under ~C-z~, on the same letters: ~C-z m f~ selects
+the function around the cursor, ~C-z t~ adds a cursor below.
 
 #+begin_try Try it, with modal editing off
 1. In the init file, press ~g e~ (non-modal: ~M->~) and ~o~, and type
@@ -579,9 +590,55 @@ Text that is written from right to left, such as Hebrew and Arabic, is
 shown in the order it is read. =text-direction-mode= is for the rare text
 where you want each line's letters in the order they are stored instead.
 
-The settings below say, in the init file, what every buffer has, which modes
-differ, how wide a centred column is and whether a wrapped line wraps at the
-fill column.
+The settings say the same in the init file. Each mode has a pair:
+=*global-NAME-mode*= for every buffer, and =*NAME-modes*= for the kinds of
+buffer that differ. The first is =t= or =nil=. The second is a list of
+=(MODE . VALUE)=, where MODE is the name of a major mode, with or without
+=-mode=, and VALUE is =t= or =nil=. A mode counts for the modes made from it,
+and the nearest one listed decides. For example, to wrap lines in Org notes
+and plain text but not in CSV files, whatever the rest do:
+
+#+begin_src lisp
+(setf *soft-wrap-modes* '((org-mode . t) (text-mode . t) (csv-mode . nil)))
+#+end_src
+
+The pairs, each with what it shows:
+
+- =*global-hl-line-mode*= and =*hl-line-modes*= paint the line the cursor is
+  on across the window. It is on for every buffer unless you set the first
+  to =nil=. To keep it off in CSV files only:
+  =(setf *hl-line-modes* '((csv-mode . nil)))=.
+- =*global-soft-wrap-mode*= and =*soft-wrap-modes*= wrap long lines onto
+  several rows. They are off unless set, except in help and the about
+  buffer, which wrap. =(setf *global-soft-wrap-mode* t)= wraps everywhere.
+- =*soft-wrap-at-fill-column*= says where a wrapped line breaks. With =t=,
+  the default, at the fill column or the window's edge, whichever is nearer.
+  With =nil= always at the window's edge, so on a wide window the lines
+  are long.
+- =*global-visual-line-mode*= and =*visual-line-modes*= draw a line down the
+  window after the fill column, the 80th column when it is 80. Nothing
+  wraps. Off unless set: =(setf *visual-line-modes* '((prog-mode . t)))=.
+- =*global-centred-text-mode*= and =*centred-text-modes*= show the text in a
+  column in the middle of the window. Off unless set:
+  =(setf *centred-text-modes* '((org-mode . t) (text-mode . t)))=.
+- =*centred-text-width*= is the width of that column, 80 by default. With
+  =(setf *centred-text-width* 70)= the text takes 70 columns and the margins
+  are blank.
+- =*global-cursor-column-mode*= and =*cursor-column-modes*= paint the column
+  the cursor is in down the window. Off unless set:
+  =(setf *cursor-column-modes* '((csv-mode . t)))= helps to read a table.
+- =*global-invisible-characters-mode*= and =*invisible-characters-modes*=
+  show characters that draw nothing as their codes, such as =<FEFF>= for a
+  byte-order mark. Off unless set, but always on in a file opened safely.
+  =(setf *global-invisible-characters-mode* t)= shows them everywhere.
+- =*global-text-direction-mode*= and =*text-direction-modes*= say how lines
+  of right-to-left text are shown. They take more than =t= and =nil=. The
+  default, =:auto=, shows the order read, each line starting at the side its
+  first letter is written from. =:right-to-left= and =:left-to-right= do the
+  same with every line starting at the side named. =nil= shows each line's
+  characters in the order stored. A file opened safely is shown in the order
+  stored. =(setf *text-direction-modes* '((csv-mode . nil)))= keeps CSV
+  files in the order stored.
 
 #+table: settings *global-hl-line-mode* *hl-line-modes* *global-soft-wrap-mode* *soft-wrap-modes* *soft-wrap-at-fill-column* *global-visual-line-mode* *visual-line-modes* *global-centred-text-mode* *centred-text-modes* *centred-text-width* *global-cursor-column-mode* *cursor-column-modes* *global-invisible-characters-mode* *invisible-characters-modes* *global-text-direction-mode* *text-direction-modes*
 
@@ -618,6 +675,15 @@ and weeks begin on Monday. =*calendar-months*= set to 12 shows a whole year.
 =*calendar-week-start-day*= set to 0 begins weeks on Sunday.
 =*calendar-months-per-row*= says how many months stand side by side. It is as
 many as fit when it is =nil=.
+
+=*calendar-mark-days*= says whether the days that have agenda entries are
+marked as soon as the calendar shows them. It is =t= by default. With =nil=
+the calendar opens without marks and ~m~ puts them on when you want them,
+which is quicker if you have a large agenda:
+
+#+begin_src lisp
+(setf *calendar-mark-days* nil)
+#+end_src
 
 #+begin_src lisp
 (setf *calendar-week-start-day* 0)
@@ -729,6 +795,34 @@ stops a language being coloured or parsed, in later sessions too.
 When Tuatara lists completions beside the cursor with ~C-M-i~, the faces
 below say how the list is drawn. In a buffer you can also have the entries
 of a directory listed as you type a path, after the slash.
+
+=*complete-paths*= is =t= by default: type =~/notes/= and the entries of that
+folder are listed beside the cursor. Typing narrows the list and ~RET~ puts
+the chosen one in. With =nil= nothing is listed. =*complete-paths-modes*=
+says it for kinds of buffer, in the form of the pairs of the section "How
+lines are shown", and wins over the setting. To list paths in code but not in
+Org notes:
+
+#+begin_src lisp
+(setf *complete-paths-modes* '((org-mode . nil) (prog-mode . t)))
+#+end_src
+
+When Tuatara lists files to choose from, it shows when each was changed.
+=*relative-age-limit*= is how many seconds back that counts as an age such
+as =5 min ago= or =3 days ago=. Older files show the date. The default is
+two weeks (1209600). With =0= every file shows its date:
+
+#+begin_src lisp
+(setf *relative-age-limit* 0)
+#+end_src
+
+=*preview-buffers*= is =nil= by default. With =t=, choosing a buffer with
+~C-x b~ shows the buffer under the cursor of the list in your window while
+you choose, and your own buffer comes back if you give up:
+
+#+begin_src lisp
+(setf *preview-buffers* t)
+#+end_src
 
 #+table: settings *complete-paths* *complete-paths-modes* *relative-age-limit* *preview-buffers*
 

@@ -1176,22 +1176,32 @@ worked out filter leaves, and lines of no entry. Also shown are the headings of
 sections with an entry shown, or with none at all unless the list says otherwise
 \(EMPTY-HEADINGS), and the lines that go with a heading shown
 \(DECORATION-ENTRY-P). But no line is shown under the heading of a section of
-FOLDED (its names, as LIST-FOLDED gives them), whose heading alone shows. An
-empty line of no entry, as between sections, is shown only between lines shown,
-one of a run."
+FOLDED (its names, as LIST-FOLDED gives them), whose heading alone shows, nor
+the heading of a section it holds; the heading of a section holding others
+shows when one of theirs does. An empty line of no entry, as between sections,
+is shown only between lines shown, one of a run."
   (let* ((entries (list-source-entries source))
          (shown (list-filtering-shown filtering))
          (first (list-source-first-line source))
          (keep (make-array (length entries) :element-type 'bit :initial-element 1)))
     (when shown
       ;; from the end, so that a heading knows whether an entry under it is shown
-      (let ((any nil) (under nil) (empty (list-filtering-empty-headings filtering)))
+      ;; a section held in another (:SECTION NAME PARENT) passes on to it what it holds
+      (let ((any nil) (under nil) (empty (list-filtering-empty-headings filtering))
+            (held (make-hash-table :test 'equal)))
         (loop for i from (1- (length entries)) downto 0
               for entry = (svref entries i)
               do (cond ((null entry))
                        ((decoration-entry-p filtering entry))
                        ((heading-entry-p filtering entry)
-                        (setf (sbit keep i) (if (or any (and empty (not under))) 1 0) any nil under nil))
+                        (let ((section (and (consp entry) (eq (first entry) :section) (rest entry))))
+                          (multiple-value-bind (kept holds) (gethash (first section) held)
+                            (when holds (setf any (or any kept) under t)))
+                          (setf (sbit keep i) (if (or any (and empty (not under))) 1 0))
+                          (when (second section)
+                            (setf (gethash (second section) held)
+                                  (or (gethash (second section) held) (= 1 (sbit keep i))))))
+                        (setf any nil under nil))
                        ((= 1 (sbit shown i)) (setf any t under t))
                        (t (setf (sbit keep i) 0 under t)))))
       ;; a line that goes with a heading shows as that heading does
@@ -1203,11 +1213,15 @@ one of a run."
                          ((heading-entry-p filtering entry) (when entry (setf heading-kept (sbit keep i)))))))))
     ;; a folded section's lines hidden, its heading kept: the list has them all while filters narrow it
     (when folded
-      (let ((hiding nil))
+      ;; a section held in a folded one is hidden, heading and all
+      (let ((hiding nil) (closed (make-hash-table :test 'equal)))
         (loop for i from 0 below (length entries)
               for entry = (svref entries i)
               do (cond ((and (consp entry) (eq (first entry) :section))
-                        (setf hiding (and (member (second entry) folded :test #'equal) t)))
+                        (let ((within (and (third entry) (gethash (third entry) closed))))
+                          (when within (setf (sbit keep i) 0))
+                          (setf hiding (or within (and (member (second entry) folded :test #'equal) t))
+                                (gethash (second entry) closed) hiding)))
                        ((and hiding (or entry (plusp (length (svref (list-source-entry-lines source) i)))))
                         (setf (sbit keep i) 0))))))
     (when (or shown folded)

@@ -4,7 +4,7 @@
 (in-package #:tuatara.tests)
 
 (define-test files-changed-on-disk
-  :description "The watcher hears of changes through inotify, not by looking every few seconds, and not of the editor's own saves; a file that only grew has just the new part added (tail -f); a file read again keeps point on the same text; with *reload-changed-files* or M-x follow-file buffers keep up by themselves; many files changed at once make one message.")
+  :description "The watcher hears of changes through inotify, not by looking every few seconds, and not of the editor's own saves. A file that only grew has just the new part added (tail -f). A file read again keeps point on the same text. With *reload-changed-files* or M-x follow-file buffers keep up by themselves. Many files changed at once make one message.")
 
 (defun append-on-disk (path text)
   "Append TEXT (a string, or octets) to the file at PATH, as a program writing a log does."

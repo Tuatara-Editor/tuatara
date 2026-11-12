@@ -456,15 +456,18 @@ nothing is."
                (and start (< start end)
                     (values (list (cons start end)) "the selection")))))))
 
-(defvar *split-limit* 100000
-  "The most places \\<normal>\\[split-selection] holds, or NIL for as many as the
-memory has room for, 100000 as standard. What is typed is written as it is
-typed only at the places in sight, so a key costs the same however many there
-are; holding the places, and writing the others when the typing ends, take
-about a second a million. Past it, the split holds the places in sight, and
-the others are written in the background once the verb is done at those.
-Raise it to hold more places at once, at the cost of 768 octets of heap for
-each (TUATARA_HEAP_MB sets the heap); lower it to keep the editor light.")
+(define-setting *split-limit* 100000
+  "The most places \\<normal>\\[split-selection] holds. What is typed is written
+as it is typed only at the places in sight, so a key costs the same however
+many there are; holding the places, and writing the others when the typing
+ends, take about a second a million. Past the limit, the split holds the
+places in sight, and the others are written in the background once the verb
+is done at those. Raise it to hold more places at once, at the cost of 768
+octets of heap for each (TUATARA_HEAP_MB sets the heap); lower it to keep the
+editor light.
+- a whole number, 0 or more: the most places; 100000 as standard.
+- nil: as many as the memory has room for."
+  :values (or (member nil) (integer 0 *)))
 
 (defvar *split-budget* nil
   "Octets of heap a split may plan to use, or NIL for a quarter of what is free

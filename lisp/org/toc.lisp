@@ -14,25 +14,34 @@
 
 (in-package #:tuatara.defaults)
 
-(defvar *org-toc-on-save* t
-  "True to make the table of contents of an Org file again each time it is
-saved, under its first headline tagged :TOC:; NIL to
-leave it to \\[toc-org-insert-toc].")
+(define-setting *org-toc-on-save* t
+  "Whether an Org file's table of contents is made again each time it is saved.
+The table goes under the file's first headline tagged :TOC:.
+- t: made again.
+- nil: left to \\[toc-org-insert-toc]."
+  :values boolean)
 
-(defvar *org-toc-max-depth* 2
-  "How deep the headlines of a table of contents go when its tag says nothing
-(:TOC:), 2 for those of one and two stars. A tag :TOC_3: says 3.")
+(define-setting *org-toc-max-depth* 2
+  "How deep the headlines of a table of contents go when its tag says nothing.
+That is a tag :TOC:; 2 is for headlines of one and two stars. A tag
+:TOC_3: says 3."
+  :values (integer 1 *))
 
-(defvar *org-toc-style* "gh"
-  "How a table of contents links to its headlines when its tag says nothing,
-\"gh\" for GitHub's anchors (#a-headline, which
-GitHub shows a README's headlines by), \"org\" for their titles. For one table,
-its tag says it, as :TOC_2_org: or :TOC_2_gh:.")
+(define-setting *org-toc-style* "gh"
+  "How a table of contents links to its headlines when its tag says nothing.
+For one table its tag says it, as :TOC_2_org: or :TOC_2_gh:.
+- \"gh\": GitHub's anchors (#a-headline), which GitHub shows a README's
+  headlines by.
+- \"org\": the headlines' titles."
+  :values (member "gh" "org"))
 
-(defvar *markdown-toc-on-save* t
-  "True to make the table of contents of a Markdown file again each time it is
-saved, under its first heading tagged :TOC: (## Contents <!-- :TOC: -->);
-NIL to leave it to \\[toc-org-insert-toc].")
+(define-setting *markdown-toc-on-save* t
+  "Whether a Markdown file's table of contents is made again each time it is saved.
+The table goes under the file's first heading tagged :TOC:
+(## Contents <!-- :TOC: -->).
+- t: made again.
+- nil: left to \\[toc-org-insert-toc]."
+  :values boolean)
 
 (defparameter *org-toc-largest* (* 8 1024 1024)
   "The largest Org or Markdown file whose table of contents is made again on

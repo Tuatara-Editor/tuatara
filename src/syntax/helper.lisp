@@ -112,11 +112,14 @@ helper of its own.")
     (declare (ignore buffer))
     nil))
 
-(defvar *syntax-helper-unconfined* nil
-  "True to have the grammars run, where there is no sandbox, for the files of
-projects you trust, in a program of their own that is not shut in. Files
-outside them are never parsed without the sandbox, whatever this says. NIL
-unless set: without the sandbox no text is parsed.")
+(define-setting *syntax-helper-unconfined* nil
+  "Whether the grammars run, where there is no sandbox, for the files of
+projects you trust, in a program of their own that is not shut in.
+Files outside those projects are never parsed without the sandbox, whatever
+this says.
+- t: they run, for those projects.
+- nil: without the sandbox no text is parsed (the standard)."
+  :values boolean)
 
 (defgeneric host-say-helper-refused (host trusted)
   (:documentation "Say, once, that text is not parsed because there is no sandbox: TRUSTED true

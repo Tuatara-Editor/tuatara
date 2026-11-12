@@ -12,9 +12,11 @@ with # is a comment, which git leaves out."
   :comment "#"
   :file-names ("COMMIT_EDITMSG" "MERGE_MSG" "TAG_EDITMSG" "SQUASH_MSG" "EDIT_DESCRIPTION" "NOTES_EDITMSG"))
 
-(defvar *git-commit-fill-column* 72
-  "The column a git message's lines are filled to: 72, as git recommends for
-the body; the summary on the first line is best kept to 50.")
+(define-setting *git-commit-fill-column* 72
+  "The column a git message's lines are filled to, 72 as git recommends for the
+body; the summary on the first line is best kept to 50.
+- a whole number: that column."
+  :values (integer 1 *))
 
 (defmethod mode-keeps-place-p ((mode git-commit-mode))
   "A git message is written afresh each time: it opens at its top, never where the last one was left."

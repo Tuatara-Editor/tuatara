@@ -86,6 +86,16 @@ the only buffer a client has, the client ends as if you had pressed ~C-x C-c~.
 The scratch buffer that every new client starts with does not count while you
 have typed nothing in it.
 
+Two clients can have the same buffer, when both opened the same file. ~C-x k~
+in one of them only takes the buffer from that client: its windows show
+another of its own buffers, and the other client keeps the buffer with any
+changes not saved, without a question. When the last client that has it kills
+it, the buffer goes, asking first about unsaved changes. A client that has
+ended does not count. ~D~ in the buffer list and ~C-x p k~ leave a shared
+buffer in the same way, while ~C-u C-x p k~ kills the project's buffers of
+every client. Letting go of a client's last buffer closes the client, as
+killing it does.
+
 *** More than one window of a client
 
 ~C-x 5 2~ opens another frame of the same client, with the same buffers. In a
@@ -117,26 +127,54 @@ belong to nobody, such as =*Messages*=. ~C-x C-b~ shows the list of chapter 7
 with a section for each client in place of the sections for projects, so you
 can see what each screen has open.
 
+A buffer you open or make in a client is that client's. The buffers the daemon
+had before its first client came, such as its =*lisp-scratch*= and
+=*org-scratch*=, are every client's and stay so. You can show them in any
+client, and they stay in the folder =Every client's=. Each client starts on a
+scratch buffer of its own instead, numbered when the name is taken
+(=*lisp-scratch*<2>=), and ~M-x org-scratch~ in a client shows its own
+=*org-scratch*=, made for it the first time.
+
 Figure 18.1 shows the list in a client that was started at two o'clock, with
-one client that has already ended.
+one client that has already ended. The client has files of two projects open,
+so its folder holds a section for each.
 
 #+caption: Figure 18.1. The buffer list of a daemon with two clients.
 #+name: fig-client-list
 #+begin_example
- ▾ This client: client 2 since 14:02, ~/notes (persistent)
-   >*  todo.org         1,044  Org     ~/notes/todo.org
-       *scratch*            0  Lisp
- ▸ client 3 since 14:40, ~/letters
- ▸ Ended 15:47 - client 1 since 14:02, ~/notes
- ▾ Every client's (1)
-       *Messages*       1,210  Text
+   MR  Name                    Size Mode             Filename/Process
+   --  ----                    ---- ----             ----------------
+▾ This client: client 2 since 14:02, ~/notes (3) (persistent)
+  ▾ notes (2)
+    >*   todo.org               1,044 Org              ~/notes/todo.org
+         ideas.org                310 Org              ~/notes/ideas.org
+
+  ▾ letters (1)
+         bank.txt                 880 Text             ~/letters/bank.txt
+
+▸ client 3 since 14:40, ~/letters (2)
+▸ Ended 15:47 — client 1 since 14:02, ~/notes (1)
+▾ Every client's (1)
+    %  *Messages*             1,210 Special
 #+end_example
 
 Your own client comes first, marked =This client=, with the folder it was
 started in. Other running clients follow, folded. The clients that have ended
 come after them in a faint colour, the last to end first. Their buffers are
 still in the daemon, and the list keeps them until you take them up or kill
-them. The last section holds the buffers every client is offered.
+them. The last section holds the buffers every client is offered, in one
+section whatever projects they are in.
+
+Within a client's folder, the buffers are in a section for each project, in the
+order of the list of chapter 7, each heading under the text of the client's
+and its buffers under the text of its own, as chapter 7 has them. A
+client whose buffers are all in one project, or all in none, shows them
+straight under its heading. ~TAB~ folds a project's section on its own. Folding
+the client folds its projects with it, and they come back as they were when you
+unfold it. ~D~ on a project's heading kills that client's buffers of the
+project, and the other clients keep theirs; ~D~ on the client's heading kills
+its whole folder. ~C-x p k~ kills your client's buffers of the project you are
+in, and ~C-u C-x p k~ those of every client, as chapter 7 says.
 
 On the heading of a client that has ended, ~RET~ takes its buffers up into
 your client. ~d~ there marks every buffer of that folder for deletion, and ~x~
@@ -148,7 +186,9 @@ face =:list-dim= is the faint colour of the ended clients.
 
 When the last buffer of a client is closed, the client closes. That would
 leave a daemon with no screen to show you. So one client may stay open, left
-on its scratch buffer. The setting =*client-kept-without-buffers*= says which:
+on a scratch buffer of its own, made for it when it has none. It never takes
+a buffer of another client or of the folder =Every client's=. The setting
+=*client-kept-without-buffers*= says which:
 
 | Value   | The client that stays                                |
 |---------+------------------------------------------------------|

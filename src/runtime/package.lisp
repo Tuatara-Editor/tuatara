@@ -19,6 +19,8 @@ their one runner, the running of hooks, and the reports of debug mode.")
            #:hook-function-name
            #:host-say-hook-failure #:*hook-failures-said*
            #:*secret-at-hand* #:refusal #:refuse
+           ;; settings and the values they take
+           #:define-setting #:setting-values #:setting-values-words #:setting-value-fault
            #:host-secret-buffer-p #:secret-buffer-p #:failure-words #:note-editor-busy
            #:start-hang-watch #:*hang-report-seconds* #:lock-fd #:unlock-fd #:open-rotated-log
            ;; work stopped at once

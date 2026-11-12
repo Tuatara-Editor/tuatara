@@ -23,18 +23,21 @@
 most people write, each grammar kept by tree-sitter's own projects, by the
 language's own, or used by many, and those Tuatara's own modes and lists use.")
 
-(defvar *grammars-on* '(:common)
-  "The languages whose grammars read text without asking: a file in such a
-language is coloured and parsed as it opens, and so is the text in it inside
-another file (a code block in a note or a Markdown file). A list of language
-names, as \\[check-health] lists them (yaml, nix, awk), and :COMMON for the
-languages most people write (the default, '(:common)). A grammar is code from
-outside Tuatara, run shut in; a file in a language whose grammar is not on
-asks whether to turn it on, and the answer is kept between sessions
-\(\\[turn-on-grammar] and \\[turn-off-grammar] change it later); text in such
-a language inside another file is left plain. A list without :COMMON keeps
-off every grammar not named, the common ones too. A file opened safely is
-never parsed, whatever this says.")
+(define-setting *grammars-on* '(:common)
+  "The languages whose grammars read text without asking.
+A file in such a language is coloured and parsed as it opens, and so is the
+text in it inside another file (a code block in a note or a Markdown file). A
+grammar is code from outside Tuatara, run shut in; a file in a language whose
+grammar is not on asks whether to turn it on, and the answer is kept between
+sessions (\\[turn-on-grammar] and \\[turn-off-grammar] change it later); text
+in such a language inside another file is left plain. A file opened safely is
+never parsed, whatever this says.
+- a list of language names, as \\[check-health] lists them (yaml, nix, awk).
+- :common in the list: the languages most people write. The standard is
+  '(:common).
+- a list without :common: every grammar not named stays off, the common ones
+  too."
+  :values (list-of "a language's name, or :common"))
 
 (defvar *grammar-answers-kept* 1000
   "How many answers to whether to turn a grammar on are remembered.")

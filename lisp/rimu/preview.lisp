@@ -20,22 +20,29 @@
 
 (in-package #:tuatara.defaults)
 
-(defvar *rimu-preview* t
-  "True for rimu lists to show the entry on the current line in a window
-beside the list, once point has rested on it *RIMU-PREVIEW-DELAY* seconds: the
-start of a file, a binary one in the hex view; the list of a directory; what a
-named pipe, a socket or a device is, never opening it.
-\\<rimu-mode>\\[list-toggle-preview] turns it on or off in one list.")
+(define-setting *rimu-preview* t
+  "Whether rimu lists show the entry on the current line in a window beside the
+list, once point has rested on it *RIMU-PREVIEW-DELAY* seconds.
+It shows the start of a file, a binary one in the hex view; the list of a
+directory; what a named pipe, a socket or a device is, never opening it.
+\\<rimu-mode>\\[list-toggle-preview] turns it on or off in one list.
+- t: the preview is shown.
+- nil: it is not."
+  :values boolean)
 
-(defvar *rimu-preview-delay* 0.1
-  "Seconds point rests on an entry of a rimu list before the preview shows it,
-so that moving over many lines quickly reads none of them, 0.1 as standard.
-A longer time reads fewer files as you move, which helps on a slow disk or a
-remote folder; a shorter one shows the preview at once and reads more.")
+(define-setting *rimu-preview-delay* 0.1
+  "Seconds point rests on an entry of a rimu list before the preview shows it.
+Moving over many lines quickly then reads none of them. A longer time reads
+fewer files as you move, which helps on a slow disk or a remote folder; a
+shorter one shows the preview at once and reads more.
+- a number of seconds: the time, 0.1 as standard."
+  :values (number 0 *))
 
-(defvar *rimu-preview-size* (expt 2 20)
-  "The most of a file rimu's preview shows, in octets from its start: 1 MB by
-default. The preview of a larger file shows its start, its name saying so.")
+(define-setting *rimu-preview-size* (expt 2 20)
+  "The most of a file rimu's preview shows, in octets from its start.
+The preview of a larger file shows its start, its name saying so.
+- a whole number of octets: the most, 1 MB as standard."
+  :values (integer 0 *))
 
 (defstruct (rimu-preview (:include side-preview) (:constructor make-rimu-preview (list-window)) (:copier nil))
   "The preview of a rimu list, a SIDE-PREVIEW whose SHOWN is the entry shown

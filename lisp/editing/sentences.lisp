@@ -59,14 +59,19 @@ as often as not: *EXTRA-SENTENCE-ABBREVIATIONS* adds them,
 beginning with a small letter counts capitalised too (e.g. and E.g.). Of an
 abbreviation of several words, only the last may have a full stop.")
 
-(defvar *extra-sentence-abbreviations* '()
+(define-setting *extra-sentence-abbreviations* '()
   "Abbreviations of your own whose full stop ends no sentence, added to
-Tuatara's (*SENTENCE-ABBREVIATIONS*), each written as typed: '(\"Ph.D.\"
-\"et al.\" \"Inc.\").")
+Tuatara's (*SENTENCE-ABBREVIATIONS*).
+- a list of text: each abbreviation written as typed, '(\"Ph.D.\" \"et al.\"
+  \"Inc.\")."
+  :values (list-of string))
 
-(defvar *removed-sentence-abbreviations* '()
+(define-setting *removed-sentence-abbreviations* '()
   "Abbreviations of Tuatara's (*SENTENCE-ABBREVIATIONS*) that should end a
-sentence after all, written as they are there: '(\"St.\" \"No.\").")
+sentence after all.
+- a list of text: each abbreviation written as it is there, '(\"St.\"
+  \"No.\")."
+  :values (list-of string))
 
 (defun sentence-abbreviations-in-force ()
   "The abbreviations whose full stop ends no sentence: Tuatara's

@@ -17,6 +17,8 @@
 (ensure-directories-exist "build/")
 ;; the manual pages, made from the program: build/man/
 (tuatara.terminal:write-man-pages "build/man/")
+;; the bash completion of the options, made the same way: build/completion/tuatara
+(tuatara.terminal:write-bash-completion "build/completion/")
 ;; every Lisp system the program carries and the folder of its sources (none
 ;; for those SBCL carries compiled), for tools/release.sh to give their licences
 (with-open-file (out "build/lisp-systems.tsv" :direction :output :if-exists :supersede)

@@ -26,9 +26,11 @@
 
 (in-package #:tuatara.defaults)
 
-(defvar *sort-fold-case* nil
-  "True to ignore the case of ASCII letters when sorting: \"b\" then sorts
-before \"C\".")
+(define-setting *sort-fold-case* nil
+  "Whether sorting ignores the case of ASCII letters.
+- t: ignore it; \"b\" sorts before \"C\".
+- nil: letters sort as they are written (the standard)."
+  :values boolean)
 
 (defvar *sort-numeric-base* 10
   "The base sort-numeric-fields reads numbers in, unless they begin with 0x.")

@@ -3,10 +3,12 @@
 
 (in-package #:tuatara.defaults)
 
-(defvar *user-full-name* nil
+(define-setting *user-full-name* nil
   "Your full name, as \"Ann Taranaki\": the author of an exported document
-with no #+author:, %author% in a note template and $AUTHOR in a snippet. NIL,
-as standard, for the name the system has for you.")
+with no #+author:, %author% in a note template and $AUTHOR in a snippet.
+- text: your name.
+- nil: the name the system has for you (the standard)."
+  :values (or (member nil) string))
 
 (defun user-full-name ()
   "Your name: *USER-FULL-NAME*, else the name the system has for you (the

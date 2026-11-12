@@ -3,7 +3,7 @@
 
 (defpackage #:tuatara.command
   (:use #:cl #:alexandria)
-  (:import-from #:tuatara.runtime #:refuse)
+  (:import-from #:tuatara.runtime #:refuse #:define-setting)
   (:import-from #:tuatara-user #:*use-system-clipboard* #:*cursor-shape* #:*cursor-colour* #:message #:current-buffer
                 #:*message-log-max* #:*mode-line-name-limit* #:*gui-title* #:place-buffers #:*split-height-threshold*
                 #:*split-width-threshold*
@@ -65,6 +65,7 @@ hooks, the minibuffer core, the modal state slot.")
            #:client-number #:client-directory #:client-environment #:client-began #:client-ended
            #:client-startup-buffers #:client-exit-code #:client-exit-words #:client-endings #:add-client #:end-client
            #:client-frames #:client-buffers #:client-sees-buffer-p #:buffer-clients #:join-client
+           #:keep-for-every-client #:buffer-for-every-client-p #:client-own-buffer-p
            #:*buffers-for-every-client* #:*client-end-functions* #:editor-idle-frontend #:idle-frame-p
            #:keep-idle-frame #:client-folder-words #:*client-variables* #:client-variable-p #:client-far-p
            #:*buffers-asked-about* #:buffer-held-by-question-p
@@ -75,7 +76,7 @@ hooks, the minibuffer core, the modal state slot.")
            #:place-buffers #:*buffer-places* #:*places* #:buffer-place #:buffer-place-p #:buffer-place-which
            #:buffer-place-place #:buffer-place-size #:buffer-place-keep #:buffer-place-select
            #:buffer-place-for #:buffer-place-fits-p #:buffer-mode-named-p #:display-buffer #:display-buffer-at
-           #:pop-to-buffer #:leave-window
+           #:pop-to-buffer #:leave-window #:replace-buffer-in-windows
            #:replacement-buffer #:new-buffer #:host-new-buffer #:abbreviated-path #:other-buffer #:buffers-in-use-order
            #:note-selected-buffer #:*buffer-order* #:live-buffer-p #:*split-height-threshold* #:*split-width-threshold*
            #:*window-divider*

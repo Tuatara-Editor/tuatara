@@ -6,7 +6,8 @@
 ;; symbol that file then defines
 (uiop:define-package #:tuatara.export
   (:use #:cl #:tuatara.command #:tuatara.modes #:tuatara.dates #:tuatara-user)
-  (:import-from #:tuatara.runtime #:jobs-of #:ignoring-errors-reported #:refusal #:refuse #:*secret-at-hand*)
+  (:import-from #:tuatara.runtime #:jobs-of #:ignoring-errors-reported #:refusal #:refuse #:*secret-at-hand*
+                #:define-setting)
   (:import-from #:tuatara.text #:word-char-p)
   (:import-from #:tuatara.defaults
                 #:*built-in-latex-templates* #:*export-languages* #:*org-macro-call-re*

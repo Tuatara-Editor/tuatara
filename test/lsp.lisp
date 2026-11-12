@@ -1779,7 +1779,8 @@ server counting ENCODING's units now and then, and check after each send that
 the server's text, made from what it was sent, is the buffer's (or, with
 SHADOW-LANGUAGE, the document of the note's blocks of that language); undo,
 redo and a whole text swapped among the edits. Returns how many changes went
-as ranges and how many whole."
+as ranges, and how many whole although the text was not swapped whole since
+it was sent before (a swap, or a swap undone or done again, is sent whole)."
   (let* ((buffer (tuatara.buffer:make-buffer (format nil "sync-~a" (random 1000000)) :text text))
          (server (server-taking-changes encoding))
          (doc (tuatara.lsp::make-lsp-doc buffer (or shadow-language 'python) "file:///tmp/sync.py"
@@ -1787,7 +1788,7 @@ as ranges and how many whole."
                                               (lambda (b &optional doc stretches)
                                                 (tuatara.lsp::org-blocks-shadow b shadow-language doc stretches)))))
          (tuatara.lsp::*lsp-doc-spec-functions* '())
-         (model nil) (ranges 0) (whole 0))
+         (model nil) (ranges 0) (whole 0) (sent nil))
     (flet ((expected () (let ((now (tuatara.buffer:buffer-string buffer)))
                           (if shadow-language (note-shadow-slowly now shadow-language) now)))
            (take (messages)
@@ -1797,7 +1798,12 @@ as ranges and how many whole."
                         (setf model (tuatara.text:json-get params "textDocument" "text")))
                        ((equal (tuatara.text:json-get message "method") "textDocument/didChange")
                         (let ((changes (tuatara.text:json-get params "contentChanges")))
-                          (if (every (lambda (c) (tuatara.text:json-get c "range")) changes) (incf ranges) (incf whole))
+                          (cond ((every (lambda (c) (tuatara.text:json-get c "range")) changes) (incf ranges))
+                                ((loop for at = sent then (tuatara.text:version-next at)
+                                       until (eq at (tuatara.buffer:buffer-version buffer))
+                                       never (tuatara.text:batch-swap
+                                              (tuatara.text:version-batch (tuatara.text:version-next at))))
+                                 (incf whole)))
                           (setf model (and model (lsp-applied model changes encoding))))))))))
       (unwind-protect
            (progn
@@ -1805,6 +1811,7 @@ as ranges and how many whole."
                    (tuatara.buffer:buffer-local buffer 'tuatara.lsp::lsp-docs) (list doc))
              (tuatara.lsp::lsp-open-document server doc)
              (take (messages-written server))
+             (setf sent (tuatara.buffer:buffer-version buffer))
              (is string= (expected) model)
              (dotimes (step 40)
                (let ((now (tuatara.buffer:buffer-string buffer)))
@@ -1820,6 +1827,7 @@ as ranges and how many whole."
                (when (or (zerop (random 3)) (= step 39))
                  (tuatara.lsp::lsp-send-text buffer)
                  (take (messages-written server))
+                 (setf sent (tuatara.buffer:buffer-version buffer))
                  (let ((expected (expected)))
                    (unless (string= expected model)
                      (is string= expected model "after step ~a, the server counting ~a" step encoding)
@@ -1838,8 +1846,9 @@ as ranges and how many whole."
   ;; a server counting octets or UTF-16 units, given what changed at each pause, has the buffer's
   ;; text: random edits of letters of up to four octets, CR LF, LF and carriage returns alone,
   ;; undone and done again; sent as ranges, lines ending at a carriage return alone as the
-  ;; server ends them
-  (let ((ranges 0) (whole 0))
+  ;; server ends them; the same sessions each time, so that how many go as ranges is not left to
+  ;; chance
+  (let ((ranges 0) (whole 0) (*random-state* (sb-ext:seed-random-state 1850)))
     (dotimes (round 40)
       (let ((*alphabet* (if (< round 20) (concatenate 'vector *note-pieces* (list (string #\Return)
                                                                                   (string #\Return))) *note-pieces*)))
@@ -1849,8 +1858,9 @@ as ranges and how many whole."
 
 (define-test (lsp block-changes-make-the-document)
   ;; the same for a note's Python blocks: blocks begun, ended, indented and escaped at random, the
-  ;; document of their code made by the server from what changed is the one the note has
-  (let ((ranges 0) (whole 0)
+  ;; document of their code made by the server from what changed is the one the note has; the
+  ;; same sessions each time
+  (let ((ranges 0) (whole 0) (*random-state* (sb-ext:seed-random-state 1851))
         (python (tuatara.defaults::org-src-language "python")))
     (dotimes (round 40)
       (let ((*alphabet* (if (< round 20) *note-pieces* (remove #\Return *note-pieces* :test #'find))))

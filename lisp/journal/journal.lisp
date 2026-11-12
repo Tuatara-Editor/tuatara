@@ -12,51 +12,73 @@
 
 (in-package #:tuatara.defaults)
 
-(defvar *journal-directory* nil
-  "The directory of your journal's entries: NIL, as standard, for journal/ in
-*FORMATTED-FILE-DIRECTORY* (such as ~/notes/journal/), or a directory
-of its own, such as \"~/journal/\".")
+(define-setting *journal-directory* nil
+  "The directory of your journal's entries.
+- nil: journal/ in *FORMATTED-FILE-DIRECTORY* (such as ~/notes/journal/),
+  as standard.
+- a directory's name: that directory, such as \"~/journal/\"."
+  :values (or (member nil) folder))
 
-(defvar *journal-keyword* "journal"
+(define-setting *journal-keyword* "journal"
   "The keyword in the formatted name of each journal entry, by which entries
-are told from your other files: journal, as standard.")
+are told from your other files.
+- text: the keyword, \"journal\" as standard."
+  :values string)
 
-(defvar *journal-title-format* :day-date-month-year
-  "The title of a new journal entry: :day (Friday), :day-date-month-year
-\(Friday 20 March 2026, as standard), :day-date-month-year-24h (Friday 20 March
-2026 13:39), :day-date-month-year-12h (Friday 20 March 2026 01:39 PM), a
-pattern in the % specifiers of FORMAT-TIME (\"Week %V, %A\"), \"\" for none,
-or NIL to be asked each time.")
+(define-setting *journal-title-format* :day-date-month-year
+  "The title of a new journal entry.
+- :day: the day's name (Friday).
+- :day-date-month-year: Friday 20 March 2026, as standard.
+- :day-date-month-year-24h: Friday 20 March 2026 13:39.
+- :day-date-month-year-12h: Friday 20 March 2026 01:39 PM.
+- a pattern in the % specifiers of FORMAT-TIME: the time in that pattern,
+  (\"Week %V, %A\").
+- \"\": no title.
+- nil: you are asked each time."
+  :values (or (member nil :day :day-date-month-year :day-date-month-year-24h
+                      :day-date-month-year-12h)
+              string))
 
-(defvar *journal-interval* :daily
-  "How long a journal entry lasts: :daily, :weekly
-\(the ISO week, from Monday), :monthly or :yearly. An entry is opened while
-it lasts; after, a new one is made.")
+(define-setting *journal-interval* :daily
+  "How long a journal entry lasts. An entry is opened while it lasts; after, a
+new one is made.
+- :daily: a day, as standard.
+- :weekly: the ISO week, from Monday.
+- :monthly: a month.
+- :yearly: a year."
+  :values (member :daily :weekly :monthly :yearly))
 
-(defvar *journal-file-type* nil
-  "The kind of file a new journal entry is: :org, :text or :markdown; NIL for
-*FORMATTED-FILE-TYPE*.")
+(define-setting *journal-file-type* nil
+  "The kind of file a new journal entry is.
+- :org, :text or :markdown: that kind.
+- nil: the kind *FORMATTED-FILE-TYPE* gives."
+  :values (member nil :org :text :markdown))
 
-(defvar *journal-file-name* nil
-  "How journal entries are named. NIL, as standard, is for formatted names
-\(20260320T133958--friday-20-march-2026__journal.org), with the header of
-their kind. For plain names it is the entry's date in a pattern of the %
-specifiers of FORMAT-TIME, such as \"%Y-%m-%d.org\" (2026-03-20.org)
-or \"%G/week-%V.md\" (%G the year the week counts in, so that no week is
-split at New Year). The file is then begun with its title alone (#+title: in
-Org, # in Markdown).")
+(define-setting *journal-file-name* nil
+  "How journal entries are named.
+- nil: formatted names (20260320T133958--friday-20-march-2026__journal.org),
+  with the header of their kind, as standard.
+- a pattern in the % specifiers of FORMAT-TIME: plain names, each the
+  entry's date in that pattern, such as \"%Y-%m-%d.org\" (2026-03-20.org) or
+  \"%G/week-%V.md\" (%G the year the week counts in, so that no week is split
+  at New Year). The file is then begun with its title alone (#+title: in
+  Org, # in Markdown)."
+  :values (or (member nil) string))
 
-(defvar *journal-org-header* "#+title:      {title}
+(define-setting *journal-org-header* "#+title:      {title}
 #+date:       {date}
 #+filetags:   {keywords}
 #+identifier: {identifier}
 
 "
   "The header a new journal entry in Org begins with, its name formatted:
-title, date, keywords and identifier lines, {title}, {date}, {keywords} and
-{identifier} standing for the entry's; NIL for the Org header of your other
-files with formatted names (*FORMATTED-FILE-TYPES*). Entries in Markdown or
-plain text have the header of their kind there.")
+title, date, keywords and identifier lines. Entries in Markdown or plain
+text have the header of their kind there.
+- text: the header, {title}, {date}, {keywords} and {identifier} standing
+  for the entry's.
+- nil: the Org header of your other files with formatted names
+  (*FORMATTED-FILE-TYPES*)."
+  :values (or (member nil) string))
 
 (defun journal-directory ()
   "The directory of the journal's entries, as a native name ending in /."

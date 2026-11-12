@@ -118,11 +118,13 @@ REMOTE-RIMU-SOURCE, is told when the folder is evidence."
       ((or tuatara.io:file-system-error tuatara.runtime:refusal) (condition)
         (make-rimu-listing directory (vector) nil (princ-to-string condition))))))
 
-(defvar *remote-preview-size-limit* (* 20 1000 1000)
-  "The most octets a file on another machine may hold to be shown in the
-preview of its list (\\<rimu-mode>\\[list-toggle-preview]), 20 MB by default: all
-of it has to come from the server first. The preview of a larger one says so.
-Raise it on a fast link to preview larger files; lower it on a slow one.")
+(define-setting *remote-preview-size-limit* (* 20 1000 1000)
+  "The most octets a file on another machine may hold to be shown in the preview
+of its list (\\<rimu-mode>\\[list-toggle-preview]).
+All of it has to come from the server first. The preview of a larger one says
+so. Raise it on a fast link to preview larger files; lower it on a slow one.
+- a whole number of octets: the limit, 20 MB as standard."
+  :values (integer 0 *))
 
 (defmethod rimu-source-listing ((source remote-rimu-source) directory)
   "The folder as the server lists it (REMOTE-RIMU-LISTING)."

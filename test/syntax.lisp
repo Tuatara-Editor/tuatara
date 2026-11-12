@@ -888,11 +888,11 @@ parsing thread records it, and its syntax, as two values."
 (defun call-without-sandbox (function)
   "Call FUNCTION with no sandbox to be had (bwrap not found), as on a system
 without bubblewrap, and the sandbox as it was after."
-  (let ((before tuatara-user:*sandbox-program*))
-    (setf tuatara-user:*sandbox-program* "/nonexistent/bwrap"
+  (let ((before tuatara.io::*bwrap-name*))
+    (setf tuatara.io::*bwrap-name* "/nonexistent/bwrap"
           tuatara.syntax::**refused-said** nil)
     (unwind-protect (funcall function)
-      (setf tuatara-user:*sandbox-program* before
+      (setf tuatara.io::*bwrap-name* before
             tuatara.syntax::**refused-said** nil)
       (tuatara.io:sandbox-status :again t))))
 

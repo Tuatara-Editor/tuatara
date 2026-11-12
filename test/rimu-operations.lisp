@@ -1589,7 +1589,8 @@ alone (made by 7z a -psecret -mhe=on, and without -mhe=on).")
     ;; taken: another name asked for
     (ops-session dir "g f b . t x t RET D y")
     (alexandria:write-string-into-file "new beta" (here dir "b.txt"))
-    (let ((f (ops-session dir (format nil "g t R y C-a C-k ~a C-j" (rimu-typed (namestring (here dir "b-old.txt")))))))
+    (let ((f (ops-session dir (format nil "g t R y C-a C-k ~a C-j" (rimu-typed (namestring (here dir "b-old.txt"))))
+                          :width 300)))
       (true (tuatara.frontend.fake:fake-frame-showing f "is taken; put it back as:"))
       (is string= "beta" (alexandria:read-file-into-string (here dir "b-old.txt"))))
     ;; D for good, X empties, asked twice; each thing counted once, its .trashinfo going with it

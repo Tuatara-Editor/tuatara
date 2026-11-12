@@ -18,6 +18,7 @@
   (:use #:cl #:tuatara.gtk)
   (:import-from #:tuatara.io #:null-pointer #:null-pointer-p #:sap-string)
   (:import-from #:tuatara.frontend #:make-event-queue #:queue-push #:queue-pop #:queue-empty-p)
+  (:import-from #:tuatara.runtime #:define-setting)
   (:import-from #:tuatara-user #:*gui-font* #:*gui-renderer* #:*gui-padding* #:*window-colours-from-desktop*)
   (:documentation "The GTK4 frontend: Tuatara in a window of its own, one drawing area painted with Pango and Cairo.")
   (:export #:gtk-frontend #:make-gtk-frontend #:run-in-window #:run-window-client #:show-in-window #:gdk-key
@@ -26,36 +27,47 @@
 
 (in-package #:tuatara.frontend.gtk)
 
-(defvar *gui-font* nil
-  "The font of Tuatara's window, as Pango reads it, \"Adwaita Mono 12\" for one;
-NIL for the desktop's monospace font. Set it in the init file.")
+(define-setting *gui-font* nil
+  "The font of Tuatara's window.
+Set it in the init file.
+- nil: the desktop's monospace font (the standard).
+- a font's name, as Pango reads it: that font, \"Adwaita Mono 12\" for one."
+  :values (or (member nil) string))
 
-(defvar *gui-padding* 8
-  "The room, in pixels, between the edges of Tuatara's window and its text, in
-the ground's colour. It is one number for all four sides, or a list. A list of
-two gives the top and bottom, then the right and left ((4 12) is 4 above and
-below, 12 at the sides). A list of three gives the top, the right and left,
-the bottom. A list of four gives the top, right, bottom and left, clockwise.
-Set it in the init file, or try values with \\[eval-expression] (setf
-*gui-padding* 12), which the window follows at once.")
+(define-setting *gui-padding* 8
+  "The room, in pixels, between the edges of Tuatara's window and its text.
+It is in the ground's colour. Set it in the init file, or try values with
+\\[eval-expression] (setf *gui-padding* 12), which the window follows at once.
+- a whole number: that room on all four sides (8 as standard).
+- a list of two: the top and bottom, then the right and left ((4 12) is 4
+  above and below, 12 at the sides).
+- a list of three: the top, the right and left, the bottom.
+- a list of four: the top, right, bottom and left, clockwise."
+  :values (or (integer 0 *) (list-of (integer 0 *))))
 
-(defvar *window-colours-from-desktop* nil
-  "True to paint text and ground the theme leaves without a colour (the
-terminal and plain themes in a window) in the colours of the desktop's GTK
-theme, following its light or dark style as it changes; NIL, as standard, for
-black text on a white ground, as a window with no theme shows it. Themes that
-give their own colours (ao-dark, ao-light) are not changed. Set it in the init
-file.")
+(define-setting *window-colours-from-desktop* nil
+  "Whether the window paints text and ground the theme leaves without a colour
+in the colours of the desktop's GTK theme.
+That is the terminal and plain themes in a window; the colours follow the
+theme's light or dark style as it changes. Themes that give their own
+colours (ao-dark, ao-light) are not changed. Set it in the init file.
+- t: the desktop's colours are used.
+- nil: black text on a white ground, as a window with no theme shows it (the
+  standard)."
+  :values boolean)
 
-(defvar *gui-renderer* :gl
-  "How Tuatara's window is drawn: :gl, by the graphics card through OpenGL, as
-standard; :vulkan, by the graphics card through Vulkan; :cairo, by the
-processor alone; NIL, as GTK chooses. Which is faster depends on the machine:
-\\[check-health], in the window, measures both and says which to use. Set it in the
-init file: when it asks for another way than the window opened with, Tuatara
-starts again at once, drawn that way; set later, from the next start.
-GSK_RENDERER in the environment, GTK's own name for it (gl, vulkan, cairo),
-goes before it.")
+(define-setting *gui-renderer* :gl
+  "How Tuatara's window is drawn.
+Which is faster depends on the machine: \\[check-health], in the window,
+measures both and says which to use. Set it in the init file: when it asks
+for another way than the window opened with, Tuatara starts again at once,
+drawn that way; set later, from the next start. GSK_RENDERER in the
+environment, GTK's own name for it (gl, vulkan, cairo), goes before it.
+- :gl: by the graphics card through OpenGL (the standard).
+- :vulkan: by the graphics card through Vulkan.
+- :cairo: by the processor alone.
+- nil: as GTK chooses."
+  :values (member :gl :vulkan :cairo nil))
 
 (defvar *window-renderer* nil
   "The way the window was opened to be drawn, as GSK_RENDERER names it (gl,

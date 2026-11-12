@@ -7,7 +7,7 @@
 (uiop:define-package #:tuatara.git
   (:use #:cl #:tuatara.command #:tuatara.modes #:tuatara.dates #:tuatara-user)
   (:import-from #:tuatara.io #:directory-name)
-  (:import-from #:tuatara.runtime #:reporting-errors #:ignoring-errors-reported #:refusal #:refuse)
+  (:import-from #:tuatara.runtime #:reporting-errors #:ignoring-errors-reported #:refusal #:refuse #:define-setting)
   (:import-from #:tuatara.defaults
                 #:*after-save-functions* #:*command-refusal-functions* #:*file-changing-commands* #:*global-keymap*
                 #:*made-text-keymap* #:*rimu-keymap* #:*trust-changed-functions*

@@ -61,11 +61,11 @@ for major modes, and the settings made for modes before it put back afterwards."
     (is string= "  abc" (session-text (nth-value 1 (run-keys "M-x t e x t - m o d e RET i TAB" :text "abc"))))
     (is string= "  abc" (session-text (nth-value 1 (run-keys "M-x o r g - m o d e RET i TAB" :text "abc"))))
     ;; other modes keep *tab-width*
-    (is string= "    abc" (session-text (nth-value 1 (run-keys "M-x l i s p - m o d e RET i M-i" :text "abc")))))
+    (is string= "    abc" (session-text (nth-value 1 (run-keys "M-x l i s p - m o d e RET i C-z TAB" :text "abc")))))
   (with-mode-tabs ((lisp-mode :tabs t))
     (is string=
         (format nil "~cabc" #\Tab)
-        (session-text (nth-value 1 (run-keys "M-x l i s p - m o d e RET i M-i" :text "abc"))))
+        (session-text (nth-value 1 (run-keys "M-x l i s p - m o d e RET i C-z TAB" :text "abc"))))
     (is string= "    abc" (session-text (nth-value 1 (run-keys "i TAB" :text "abc")))))
   ;; the nearest setting counts
   (with-mode-tabs ((text :width 2) (org :width 6))
@@ -77,12 +77,12 @@ for major modes, and the settings made for modes before it put back afterwards."
   ;; every language has spaces unless the init file asks for tabs: the
   ;; starter init file asks for them where a language's own tools require
   ;; them (a Makefile's recipes, Go's gofmt), a line each
-  (is string= "    abc" (session-text (nth-value 1 (run-keys "M-x m a k e f i l e - m o d e RET i M-i" :text "abc"))))
-  (is string= "    abc" (session-text (nth-value 1 (run-keys "M-x g o - m o d e RET i M-i" :text "abc"))))
+  (is string= "    abc" (session-text (nth-value 1 (run-keys "M-x m a k e f i l e - m o d e RET i C-z TAB" :text "abc"))))
+  (is string= "    abc" (session-text (nth-value 1 (run-keys "M-x g o - m o d e RET i C-z TAB" :text "abc"))))
   (with-mode-tabs ((makefile :tabs t))
     (is string=
         (format nil "~cabc" #\Tab)
-        (session-text (nth-value 1 (run-keys "M-x m a k e f i l e - m o d e RET i M-i" :text "abc")))))
+        (session-text (nth-value 1 (run-keys "M-x m a k e f i l e - m o d e RET i C-z TAB" :text "abc")))))
   ;; names are checked
   (fail (tuatara-user:set-tab-width 'no-such 4) error)
   (fail (tuatara-user:set-tab-width 'org 0) error)
@@ -179,9 +179,9 @@ for major modes, and the settings made for modes before it put back afterwards."
     (is string=
         (format nil "(progn~%  foo~%  bar)")
         (typed "M-x l i s p - m o d e RET i C-x h TAB" (format nil "(progn~%foo~%bar)")))
-    ;; where the mode does not indent, the tab stop; M-i there anywhere
+    ;; where the mode does not indent, the tab stop; C-z TAB there anywhere
     (is string= "    abc" (typed "M-x t e x t - m o d e RET i TAB" "abc"))
-    (is string= "(a) b" (typed "M-x l i s p - m o d e RET A M-i b" "(a)"))))
+    (is string= "(a) b" (typed "M-x l i s p - m o d e RET A C-z TAB b" "(a)"))))
 
 (define-test (tabs widths-kept-sensible)
   (let ((b (tuatara.buffer:make-buffer "*tab widths*" :text "")))

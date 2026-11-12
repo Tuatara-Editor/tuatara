@@ -45,20 +45,26 @@ read as the zip archive it is (*ZIP-KINDS*).")
   "The kinds of file (TUATARA.IO:OCTETS-KIND) that are zip archives, listed
 and unpacked as one.")
 
-(defvar *archive-seconds* (* 24 60 60)
-  "The seconds tar, 7-Zip or bsdtar may take to make, list or unpack one
-archive before it is ended: a day, for the largest; \\[stop-job] ends it
-sooner. Lower it to end a program that hangs sooner; raise it only for an
-archive that takes more than a day.")
+(define-setting *archive-seconds* (* 24 60 60)
+  "The seconds tar, 7-Zip or bsdtar may take to make, list or unpack one archive
+before it is ended.
+\\[stop-job] ends it sooner. Lower it to end a program that hangs sooner;
+raise it only for an archive that takes more than a day.
+- a number of seconds: the time allowed, a day as standard, for the largest
+  archives."
+  :values (number 0 *))
 
 (defparameter *archive-test-seconds* (* 60 60)
   "The seconds a password is tried on all of a locked archive before it is
 unpacked (EXTRACT-ARCHIVE) may take: an hour.")
 
-(defvar *archive-free-reserve* (* 1024 1024 1024)
-  "The octets left free on the drive an archive is unpacked onto (1 GB):
-unpacking stops before the drive has less, so that an archive holding far
-more than it takes up cannot fill the drive.")
+(define-setting *archive-free-reserve* (* 1024 1024 1024)
+  "The octets left free on the drive an archive is unpacked onto.
+Unpacking stops before the drive has less, so that an archive holding far more
+than it takes up cannot fill the drive.
+- a whole number of octets: the reserve, 1 GB as standard.
+- 0: no reserve is kept."
+  :values (integer 0 *))
 
 (defun archive-kind-of-name (path &key made)
   "The entry of *ARCHIVE-KINDS* the name of PATH ends as, and as a second
@@ -82,11 +88,13 @@ unpacked into by standard; with no ending to take away, the name and
                    (tuatara.io:native-file-stem path))))
     (if (string= stem name) (format nil "~a-extracted" name) stem)))
 
-(defvar *archive-listing-limit* (* 64 1024 1024)
-  "The most octets of an archive's list of contents shown (64 MB); a longer
-one is not shown, and that is said. Raise it to see the list of a very large
-archive, at the cost of the memory of the whole list; lower it to refuse such
-a list sooner.")
+(define-setting *archive-listing-limit* (* 64 1024 1024)
+  "The most octets of an archive's list of contents shown.
+A longer list is not shown, and that is said. Raise it to see the list of a
+very large archive, at the cost of the memory of the whole list; lower it to
+refuse such a list sooner.
+- a whole number of octets: the limit, 64 MB as standard."
+  :values (integer 0 *))
 
 (defun archive-environment ()
   "What the programs reading archives are given in their environment besides

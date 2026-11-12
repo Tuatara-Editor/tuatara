@@ -10,32 +10,44 @@
 
 (in-package #:tuatara.defaults)
 
-(defvar *pair-delimiters*
+(define-setting *pair-delimiters*
   '((#\{ . #\}) (#\[ . #\]) (#\( . #\)) (#\< . #\>)
     (#\" . #\") (#\' . #\') (#\` . #\`) (#\‘ . #\’) (#\“ . #\”)
     (#\« . #\») (#\‹ . #\›)
     (#\= . #\=) (#\* . #\*) (#\~ . #\~) (#\| . #\|) (#\\ . #\\)
     (#\/ . #\/) (#\: . #\:) (#\+ . #\+) (#\_ . #\_) (#\$ . #\$))
-  "The pairs of delimiters, each (OPEN . CLOSE); a character that both opens
-and closes is its own pair. They are what electric-pair-mode closes as they are
+  "The pairs of delimiters. They are what electric-pair-mode closes as they are
 typed (those *ELECTRIC-PAIR-TYPING* names), what \\[insert-pair] puts around the
-region, and what select-pair selects within and the wrap keys wrap with.")
+region, and what select-pair selects within and the wrap keys wrap with.
+- a list of (OPEN . CLOSE): each pair the characters that open and close it;
+  a character that both opens and closes is its own pair."
+  :values (list-of "(OPEN . CLOSE)"))
 
-(defvar *electric-pair-mode* nil
-  "True to close delimiters as they are typed: an opening one writes its closing
-half after point, a closing half typed where it stands steps over it, and
-\\[delete-backward-char] between an empty pair takes both. Off unless asked for,
-by \\[electric-pair-mode] or in the init file.")
+(define-setting *electric-pair-mode* nil
+  "Whether delimiters are closed as they are typed. An opening one writes its
+closing half after point, a closing half typed where it stands steps over it,
+and \\[delete-backward-char] between an empty pair takes both. Off unless asked
+for, by \\[electric-pair-mode] or in the init file.
+- t: close delimiters as they are typed.
+- nil: leave them (the standard)."
+  :values boolean)
 
-(defvar *electric-pair-typing* :safe
-  "Which delimiters close themselves as they are typed: :safe, the pairs of
-*PAIR-DELIMITERS* less those *ELECTRIC-PAIR-SAFE-EXCLUSIONS* names; :all, every
-one of them; or a list of the opening characters, taken as it is (an empty
-list pairs nothing).")
+(define-setting *electric-pair-typing* :safe
+  "Which delimiters close themselves as they are typed, once
+\\[electric-pair-mode] is on.
+- :safe: the pairs of *PAIR-DELIMITERS* less those
+  *ELECTRIC-PAIR-SAFE-EXCLUSIONS* names (the standard).
+- :all: every one of them.
+- a list of opening characters: those, taken as the list has them; an empty
+  list pairs nothing."
+  :values (or (member :safe :all) (list-of "an opening character")))
 
-(defvar *electric-pair-safe-exclusions* '(#\< #\' #\` #\= #\* #\~ #\| #\\ #\/ #\: #\+ #\_ #\$)
-  "The delimiters :safe leaves out: ordinary text far more often than a
-delimiter, such as the apostrophe in don't, a colon, less-than.")
+(define-setting *electric-pair-safe-exclusions* '(#\< #\' #\` #\= #\* #\~ #\| #\\ #\/ #\: #\+ #\_ #\$)
+  "The delimiters :safe leaves out of *ELECTRIC-PAIR-TYPING*: ordinary text far
+more often than a delimiter, such as the apostrophe in don't, a colon,
+less-than.
+- a list of characters: the opening characters left out."
+  :values (list-of "a character"))
 
 (defun buffer-char-before (buffer position)
   "The character before POSITION in BUFFER, or NIL at its start."

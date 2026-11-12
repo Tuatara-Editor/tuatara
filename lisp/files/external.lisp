@@ -14,24 +14,29 @@
 
 (in-package #:tuatara.defaults)
 
-(defvar *open-externally-program* "xdg-open"
-  "The program that opens a file in the desktop's own program for its kind,
-given the file's name: xdg-open, looked for on the PATH. A kind given its own
-program in *OPEN-EXTERNALLY-PROGRAMS* goes there instead.")
+(define-setting *open-externally-program* "xdg-open"
+  "The program that opens a file in the desktop's own program for its kind, given
+the file's name.
+It is looked for on the PATH. A kind given its own program in
+*OPEN-EXTERNALLY-PROGRAMS* goes there instead.
+- a program's name: xdg-open as standard."
+  :values string)
 
-(defvar *open-externally-programs* '()
-  "Programs to open files and addresses in instead of the one the desktop
-would choose (xdg-open), by Multipurpose Internet Mail Extensions (MIME) type
-as xdg-mime names them: a list of (TYPE . PROGRAM). TYPE is a MIME type,
-\"application/pdf\", or a group of them, \"video/*\"; for web and mail
-addresses in Org links, \"x-scheme-handler/https\" or
-\"x-scheme-handler/mailto\". PROGRAM is a program's name, looked for on the
-PATH, or its full path, or a list of it and the arguments to give before the
-file's name. A file's type is told by its contents, not its name
-(*KIND-MIME-TYPES*); the entry for the exact type wins over one for its group,
-and a type with none goes to the desktop's program. The program is run as it
-is, never by a shell. For example: '((\"application/pdf\" . \"zathura\")
-(\"video/*\" \"mpv\" \"--fs\")).")
+(define-setting *open-externally-programs* '()
+  "Programs to open files and addresses in instead of the one the desktop would
+choose (xdg-open), by Multipurpose Internet Mail Extensions (MIME) type as
+xdg-mime names them.
+A file's type is told by its contents, not its name (*KIND-MIME-TYPES*); the
+entry for the exact type wins over one for its group, and a type with none goes
+to the desktop's program. The program is run as it is, never by a shell. For
+example: '((\"application/pdf\" . \"zathura\") (\"video/*\" \"mpv\" \"--fs\")).
+- nil: the desktop's program for every type.
+- a list of (TYPE . PROGRAM): TYPE is a MIME type, \"application/pdf\", or a
+  group of them, \"video/*\"; for web and mail addresses in Org links,
+  \"x-scheme-handler/https\" or \"x-scheme-handler/mailto\". PROGRAM is a
+  program's name, looked for on the PATH, or its full path, or a list of it and
+  the arguments to give before the file's name."
+  :values (list-of "(TYPE . PROGRAM)"))
 
 (defparameter *kind-mime-types*
   '((:png "image/png") (:jpeg "image/jpeg") (:gif "image/gif") (:webp "image/webp") (:bmp "image/bmp")
@@ -124,23 +129,29 @@ Extensions (MIME) type TYPE with, is not found."
       (format nil "~a, the program for ~a in *open-externally-programs*, was not found" given type)
       (format nil "~a was not found: install xdg-utils to open files in the desktop's programs" given)))
 
-(defvar *open-externally-kinds*
+(define-setting *open-externally-kinds*
   '(:png :jpeg :gif :webp :bmp :tiff :raw :ico :heif :avif :jp2 :j2k :jxl :xcf :psd :pdf
     :mp4 :matroska :avi :mpeg :mp3 :ogg :flac :wav :aiff :midi
     :docx :xlsx :pptx :odt :ods :odp)
   "The kinds of file \\[open-externally] opens in the desktop's own program, as
-their first octets tell them (pictures, PDFs, sound and video, and Office
-documents, as standard): keywords as TUATARA.IO:OCTETS-KIND gives them, :png,
-:jpeg, :pdf, :docx and the like. Each is opened after asking, from a copy only
-you can read, never the file itself. An Office document can hold macros,
-which the program opening it may offer to run; answer no there. :svg is left
-out: an SVG image is a document that can hold a program, which a web browser,
-the program many desktops open it in, runs. Office documents of before 2007
-(:ole) are left out: the same kind is a mail item or an installer.")
+their first octets tell them.
+Pictures, PDFs, sound and video, and Office documents are the standard. Each is
+opened after asking, from a copy only you can read, never the file itself. An
+Office document can hold macros, which the program opening it may offer to run;
+answer no there. :svg is left out of the standard list: an SVG image is a
+document that can hold a program, which a web browser, the program many
+desktops open it in, runs. Office documents of before 2007 (:ole) are left out:
+the same kind is a mail item or an installer.
+- a list of keywords, as TUATARA.IO:OCTETS-KIND gives them: :png, :jpeg, :pdf,
+  :docx and the like."
+  :values (list-of "a keyword naming a kind of file"))
 
-(defvar *open-externally-ask* t
-  "True for \\[open-externally] to ask before opening a file in the desktop's
-own program, which reads it outside the sandbox; NIL to open it at once.")
+(define-setting *open-externally-ask* t
+  "Whether \\[open-externally] asks before opening a file in the desktop's own
+program, which reads it outside the sandbox.
+- t: it asks.
+- nil: it opens the file at once."
+  :values boolean)
 
 (defun file-kind (path)
   "What the file at PATH is by its first octets (TUATARA.IO:FILE-HEAD), as two

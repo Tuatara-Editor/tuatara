@@ -7,7 +7,8 @@
 # tuatara-syntax-helper, the program with tree-sitter in it that runs them),
 # terminal/ (the terminal library, its layout, Ghostty's license and in
 # terminal/licenses/ those of what the library compiles in), syntax/
-# (the grammars' rules), icons/, the license and the README; grammars/licenses/
+# (the grammars' rules), source/ (the Lisp sources, which help links to), icons/,
+# the license and the README; grammars/licenses/
 # holds each grammar's licence (tools/grammars.sh), man/ the manual pages
 # (tuatara.1, tuatara-init.5), licenses/ those of SBCL and
 # of the Lisp libraries the program carries. Beside it,
@@ -82,6 +83,9 @@ out="$root/build/release/tuatara"
 rm -rf "$out"
 mkdir -p "$out/grammars" "$out/terminal" "$out/syntax"
 cp "$program" "$out/"
+# the Lisp sources stand beside the program, for help's links to where a name is defined
+mkdir -p "$out/source"
+git archive HEAD lisp src frontends | tar -x -C "$out/source"
 # the sources go with the release (tuatara-sources.tar.zst, put together below)
 pack="$(mktemp -d)"
 top="$pack/tuatara-sources"
@@ -143,6 +147,8 @@ cp syntax/grammars.tsv "$out/syntax/"
 cp -r data/icons "$out/icons"
 # tuatara(1) and tuatara-init(5), made by the program just built (tools/build-image.lisp)
 cp -r "$work/src/build/man" "$out/man"
+# the completion of the options for bash, made by the same program
+cp -r "$work/src/build/completion" "$out/completion"
 cp LICENSE README.org "$out/"
 # nothing given to others names this machine, the program checked above
 named=0

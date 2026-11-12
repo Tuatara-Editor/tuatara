@@ -216,10 +216,14 @@ break too."
 
 ;;; Files dropped on the window
 
-(defvar *open-dropped-files-safely* nil
-  "True to open files dropped on the window safely, as
+(define-setting *open-dropped-files-safely* nil
+  "Whether files dropped on the window are opened safely, as
 \\[universal-argument] \\[find-file] does: read-only, no mode, nothing written
-beside them. For a window that files from sources not trusted are dropped on.")
+beside them. Set it for a window that files from sources not trusted are
+dropped on.
+- t: open them safely.
+- nil: open them as any file is (the standard)."
+  :values boolean)
 
 (defun visit-dropped (path)
   "Visit PATH, a file dropped on the window, as \\[find-file] does (safely

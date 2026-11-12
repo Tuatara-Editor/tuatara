@@ -404,10 +404,10 @@ of matches made in the background."
   (multiple-value-bind (f editor) (run-keys "r r % $ RET ; RET" :text (format nil "a~%b"))
     (declare (ignore f))
     (is string= (format nil "a;~%b;") (session-text editor)))
-  (multiple-value-bind (f editor) (run-keys "C-M-% % $ RET ; RET y y y" :text (format nil "a~%b"))
+  (multiple-value-bind (f editor) (run-keys "C-z r q % $ RET ; RET y y y" :text (format nil "a~%b"))
     (declare (ignore f))
     (is string= (format nil "a;~%b;") (session-text editor)))
-  (multiple-value-bind (f editor) (run-keys "C-M-% % ^ RET > RET n y" :text (format nil "a~%b"))
+  (multiple-value-bind (f editor) (run-keys "C-z r q % ^ RET > RET n y" :text (format nil "a~%b"))
     (declare (ignore f))
     (is string= (format nil "a~%>b") (session-text editor)))
   ;; with a region active, only within it
@@ -748,7 +748,7 @@ of matches made in the background."
     (declare (ignore f))
     (is string= "f_ b_ x" (session-text editor)))
   ;; query-replace-regexp with a group
-  (multiple-value-bind (f editor) (run-keys "C-M-% % ( \\ d ) RET < \\ 1 > RET !" :text "a1b2")
+  (multiple-value-bind (f editor) (run-keys "C-z r q % ( \\ d ) RET < \\ 1 > RET !" :text "a1b2")
     (declare (ignore f))
     (is string= "a<1>b<2>" (session-text editor))))
 
@@ -1051,7 +1051,7 @@ than holding the run."
   ;; \n in a replacement writes the buffer's own line end: a carriage return and a newline in a
   ;; Windows file, by r r here and in the background alike, and by the question that asks
   (dolist (keys (list (format nil "r r % ~a RET" (key-string ";/;\\n"))
-                      (format nil "C-M-% % ; RET ~a RET !" (key-string ";\\n"))))
+                      (format nil "C-z r q % ; RET ~a RET !" (key-string ";\\n"))))
     (uiop:with-temporary-file (:stream s :pathname file :type "txt")
       (write-string (format nil "a;b~c~%c~c~%" #\Return #\Return) s)
       (finish-output s)

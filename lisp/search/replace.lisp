@@ -3,7 +3,7 @@
 ;;;;
 ;;;; The two ways a replacement typed at the search prompt is carried out
 ;;;; (substitute.lisp): every match as one edit batch, or match by
-;;;; match with y n ! . q. There are no separate replace commands; M-%, C-M-%
+;;;; match with y n ! . q. There are no separate replace commands; M-%, C-z r q
 ;;;; and NORMAL state's r q and r r open the search prompt set up for replacing.
 
 (in-package #:tuatara.defaults)

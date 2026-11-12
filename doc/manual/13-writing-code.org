@@ -134,13 +134,13 @@ press ~C-g~.
 ~TAB~ indents the line the cursor is on. The cursor can be anywhere in the
 line. When the line is already right, ~TAB~ does something else: it completes
 the name before the cursor, as the section on language servers describes. The
-setting =*tab-always-indent*= says what ~TAB~ does. Its standard value,
+setting =*tab-always-indent*= says what ~TAB~ does. Its default,
 =:complete=, indents and then completes. With =t= it only indents. With =nil=
 it indents only while the cursor is in the blanks at the start of the line, and
 anywhere else it moves on to the next tab stop.
 
-To lay out more than one line, select them and press ~C-M-\~
-(=indent-region=). In NORMAL state ~>~ (=indent-selection-or-line=) does the
+To lay out more than one line, select them and press ~C-M-\~ (=indent-region=).
+In NORMAL state ~>~ (non-modal: ~C-z >~, =indent-selection-or-line=) does the
 same for the selected lines, or for the current line when nothing is selected.
 ~M-m~ (=back-to-indentation=) moves the cursor to the first character of the
 line that is not a blank.
@@ -156,8 +156,8 @@ you say otherwise, which keeps a file looking the same in every program. Some
 projects, a Makefile or a C project with its own style, use tab characters. For
 those, ~M-x indent-tabs-mode~ switches the buffer between tabs and spaces, and
 =*indent-tabs-mode*= sets the starting choice. ~M-x insert-tab~ puts in one tab
-character whatever the settings say, and ~M-i~ (=tab-to-tab-stop=) moves on to
-the next tab stop with spaces or a tab as the buffer wants.
+character whatever the settings say, and ~C-z TAB~ (=tab-to-tab-stop=) moves on
+to the next tab stop with spaces or a tab as the buffer wants.
 
 The init file has forms for one language at a time:
 
@@ -228,7 +228,7 @@ You comment out a line to stop the program running it without losing it, and
 you write a comment to say something to the next reader, which may be you in
 six months. Both are a single key.
 
-~C-x C-;~ (=toggle-comment-lines=) comments the current line. In NORMAL state
+~C-z C~ (=toggle-comment-lines=) comments the current line. In NORMAL state
 the single key ~C~ does the same. If you have selected lines, it comments every
 line the selection touches. If the lines are all commented already, it takes
 the comment marks away instead, so the same key switches the comment on and
@@ -241,12 +241,12 @@ can press the key again and again to comment a run of lines, use
 =toggle-comment-lines-ret=. It has no key. Give it one in your init file:
 
 #+begin_example
-(bind-key "C-x C-;" 'toggle-comment-lines-ret)
+(bind-key "C-z C" 'toggle-comment-lines-ret)
 (bind-key "C" 'toggle-comment-lines-ret :map :normal)
 #+end_example
 
 ~M-;~ (=comment-dwim=, "do what I mean") does the sensible thing for where you
-are. With lines selected it comments them as ~C-x C-;~ (modal: ~C~) does. On a
+are. With lines selected it comments them as ~C-z C~ (modal: ~C~) does. On a
 line with no comment it starts one at the end of the code, with the marker and a
 space, and leaves you in INSERT state ready to type the words. On a line that
 has a comment already it moves you into it. In Python it writes
@@ -269,6 +269,8 @@ not run. Tuatara helps in three ways.
 one, the bracket that pairs with it is lit in the =:paren-match= colour. A
 bracket with no partner, or the wrong kind, is lit in =:paren-mismatch=. It is
 on as standard, and ~M-x show-paren-mode~ turns it off and on in every buffer.
+To start every session with it off, put =(setf *show-paren-mode* nil)= in your
+init file.
 When you type a closing bracket whose partner is out of sight, the echo area
 tells you what it matches (=*blink-matching-paren*= controls that).
 
@@ -278,7 +280,7 @@ when it is already there steps over it, and ~DEL~ between an empty pair takes
 both away. It is off as standard. To turn it on for every session, put
 =(setf *electric-pair-mode* t)= in your init file. It does not pair everything,
 because some characters are usually plain text: the apostrophe in "don't", for
-example. =*electric-pair-typing*= says which are paired. Its standard value,
+example. =*electric-pair-typing*= says which are paired. Its default,
 =:safe=, pairs the delimiters of =*pair-delimiters*= except those in
 =*electric-pair-safe-exclusions*=. =:all= pairs every one.
 
@@ -371,15 +373,16 @@ arguments in the other order.
 
 *** Selecting by the code
 
-In NORMAL state the syntax tree grows and shrinks a selection for you. ~M-o~
+In every state the syntax tree grows and shrinks a selection for you. ~M-o~
 (=expand-selection=) selects the smallest piece around the cursor, and each
 press after that selects the next larger one: the word, the call, the
 statement, the function, the file. ~M-i~ (=shrink-selection=) goes back a step.
 ~M-n~ and ~M-p~ move the selection to the piece beside it, the next argument or
 the next statement. A count before ~M-o~ grows several steps at once.
 
-The ~m~ keys name a piece directly. ~m f~ selects the body of the function
-around the cursor and ~m F~ the whole function. ~m t~ and ~m T~ do the same for
+The ~m~ keys (non-modal: ~C-z m~ and the same letter) name a piece directly.
+~m f~ selects the body of the function around the cursor and ~m F~ the whole
+function. ~m t~ and ~m T~ do the same for
 a type, ~m r~ and ~m R~ for a parameter, and ~m y~ and ~m Y~ for a test. Which
 pieces a language has depends on its grammar. Where the language has none of
 the piece, the echo area says so.
@@ -561,6 +564,22 @@ end of a line, and ~C-c k~ runs the one on the current line. Their settings are
 =*lsp-inlay-hints*=, =*lsp-semantic-tokens*= and =*lsp-code-lenses*=, which say
 whether each is on as a file opens.
 
+The colours of ~C-c S~ come from =*lsp-semantic-faces*=, a list that pairs the
+name of a kind, as the server says it, with a face. =("function" . :function)=
+colours every name the server calls a function in the =:function= face. A kind
+the list lacks keeps the colour the mode gave it. Most kinds are there as
+standard: types, parameters, variables, properties, functions, methods, macros,
+keywords, strings, numbers and so on. To set macros apart in the colour of
+comments, say, add an entry in front of the others:
+
+#+begin_example
+(setf *lsp-semantic-faces*
+      (cons '("macro" . :comment) *lsp-semantic-faces*))
+#+end_example
+
+The faces are those of the theme, so the colours stay with it. Switch the
+colouring on for every file with =(setf *lsp-semantic-tokens* t)=.
+
 *** Formatting
 
 A /formatter/ is a program that sets code out as the language's community has
@@ -678,6 +697,25 @@ yours takes the place of Tuatara's.
 #+table: commands insert-snippet copy-snippet snippet-next-field snippet-previous-field
 
 #+table: settings *snippet-directories* *snippet-tab* *user-full-name*
+
+=*snippet-directories*= is the list of folders your snippets are in. Each
+folder holds a folder for each major mode, as described above. It is =nil= as
+standard, which means =snippets/= in your configuration folder, the folder
+named at the start of this section. To keep them with your notes, or to use a
+folder you share with someone, name it:
+
+#+begin_example
+(setf *snippet-directories* '("~/notes/snippets/"))
+#+end_example
+
+=*snippet-tab*= is =t=, so ~TAB~ puts in the snippet whose key stands before
+the cursor, as in the try-it above. With =nil= ~TAB~ never does that, and you
+choose a snippet with ~C-c y~ instead. Use it if a key you typed, =hdr=
+perhaps, is also a word you really write before pressing ~TAB~ to indent:
+
+#+begin_example
+(setf *snippet-tab* nil)
+#+end_example
 
 ** Running a build or the tests
 

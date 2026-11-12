@@ -16,10 +16,13 @@
 
 (in-package #:tuatara.defaults)
 
-(defvar *wipe-passes* 1
+(define-setting *wipe-passes* 1
   "How many times a file wiped is overwritten with random octets before it is
-deleted: once is enough for a disk that writes in place; more do not help one
-that does not (a copy-on-write file system, a solid-state drive).")
+deleted.
+Once is enough for a disk that writes in place; more do not help one that does
+not (a copy-on-write file system, a solid-state drive).
+- a whole number, 1 or more: the passes, 1 as standard."
+  :values (integer 1 *))
 
 (defun wipe-caveat (paths)
   "What wiping PATHS cannot promise, in a few words: a copy-on-write file

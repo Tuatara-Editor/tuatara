@@ -11,10 +11,12 @@
 
 (in-package #:tuatara.defaults)
 
-(defvar *org-log-checkboxes* t
-  "True to log when a list item's checkbox is ticked or cleared, in a
-:LOGBOOK: drawer under the item: - State \"DONE\" from \"TODO\" and the time,
-as a TODO headline's change of state is logged; NIL to log nothing.")
+(define-setting *org-log-checkboxes* t
+  "Whether ticking or clearing a list item's checkbox is logged.
+- t: logged in a :LOGBOOK: drawer under the item, - State \"DONE\" from
+  \"TODO\" and the time, as a TODO headline's change of state is logged.
+- nil: nothing logged."
+  :values boolean)
 
 (defun org-checkbox-item-at (tree text position)
   "The list item with a checkbox whose first line holds the character POSITION of TEXT, or NIL."
@@ -78,15 +80,18 @@ it and the item, and return true; else NIL."
           (funcall function parse position item)
           t)))))
 
-(defvar *org-todo-follows-checkboxes* t
-  "True for a TODO headline with a statistics cookie ([2/3], [66%]) to become
-done by itself once all it counts are done, its TODO sub-headlines (or, with
-none, the checkboxes right under it), with CLOSED: and the time, and not done
-again when one is not
-yet done; up the tree, a headline above with a cookie following in turn. A
-task whose keyword the TODO keys pass over (*org-todo-keywords-not-cycled*),
-such as one CANCELLED, is left as it is. NIL to leave the keyword to you; the
-cookies are kept up to date either way.")
+(define-setting *org-todo-follows-checkboxes* t
+  "Whether a TODO headline with a statistics cookie becomes done by itself.
+A statistics cookie is [2/3] or [66%]; the cookies are kept up to date either
+way.
+- t: the headline becomes done, with CLOSED: and the time, once all it counts
+  are done (its TODO sub-headlines or, with none, the checkboxes right under
+  it), and not done again when one is not yet done; up the tree, a headline
+  above with a cookie follows in turn. A task whose keyword the TODO keys pass
+  over (*org-todo-keywords-not-cycled*), such as one CANCELLED, is left as it
+  is.
+- nil: the keyword is left to you."
+  :values boolean)
 
 (defun org-summary-todo (buffer position)
   "After a checkbox or a sub-headline's TODO keyword changed at the character

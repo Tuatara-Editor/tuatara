@@ -9,7 +9,7 @@
   (:shadowing-import-from #:tuatara.defaults #:point)
   (:import-from #:tuatara.buffer #:buffer-read-only-p)
   (:import-from #:tuatara.runtime #:reporting-errors #:ignoring-errors-reported #:refusal #:refuse
-                #:run-hook-until-success)
+                #:run-hook-until-success #:define-setting)
   (:import-from #:tuatara.defaults
                 #:*after-save-functions* #:*before-save-functions* #:*code-file-extensions* #:*lsp-trusted*
                 #:*outside-work-functions* #:*places-in-force* #:*save-path* #:*save-then*

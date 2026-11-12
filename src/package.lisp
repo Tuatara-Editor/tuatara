@@ -111,7 +111,7 @@ available unqualified, and the public API of TUATARA is used.")
            #:*save-place-limit* #:*default-input-method* #:*input-method-keys* #:*mark-ring-max*
            #:*set-mark-command-repeat-pop*
            ;; the sandbox programs decoding files run in
-           #:*sandbox-program* #:*sandbox-seconds* #:*sandbox-memory* #:*sandbox-input-limit* #:*program-output-limit*
+           #:*sandbox* #:*sandbox-seconds* #:*sandbox-memory* #:*sandbox-input-limit* #:*program-output-limit*
            #:*folder-tree-depth-limit* #:*office-note-size-limit* #:*office-value-length-limit* #:*sandbox-total-memory*
            #:*sandbox-seccomp* #:*picture-memory* #:*pdf-view-dark-pages* #:*office-view-pages* #:*user-full-name*
            #:*open-externally-program* #:*open-externally-programs* #:*hex-view-binary-files* #:*open-externally-kinds*

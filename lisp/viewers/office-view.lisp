@@ -22,13 +22,16 @@
 
 (in-package #:tuatara.defaults)
 
-(defvar *office-view-pages* t
-  "True to show a Word document, an Excel workbook, a PowerPoint
-presentation (and the older and OpenDocument kinds of them) opened as its
-pages, drawn by LibreOffice shut in by the sandbox, when it is installed;
-\\<pdf-view-mode>\\[pdf-view-toggle-text] switches to it read as text. NIL to
-show the first three read as text always, by Tuatara itself, and to open the
-others as any file, LibreOffice never run.")
+(define-setting *office-view-pages* t
+  "Whether a Word document, an Excel workbook or a PowerPoint presentation (and
+the older and OpenDocument kinds of them) opens as its pages.
+The pages are drawn by LibreOffice shut in by the sandbox, when it is
+installed; \\<pdf-view-mode>\\[pdf-view-toggle-text] switches to it read as
+text.
+- t: shown as pages.
+- nil: the first three are shown read as text always, by Tuatara itself, and
+  the others open as any file, LibreOffice never run."
+  :values boolean)
 
 (defparameter *office-page-program* "soffice"
   "LibreOffice's program, which makes the PDF of an Office document's pages.")

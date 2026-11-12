@@ -75,16 +75,19 @@ selection, closes a list beside the cursor."
     (or (keymaps-lookup keymaps specs)
         (and (equal specs '((:escape))) (keymaps-lookup keymaps '((:ctrl #\g)))))))
 
-(defvar tuatara-user:*escape-quits* nil
-  "True to have Escape do what \\`C-g' does everywhere. It leaves INSERT state,
-closes a question, a list or a popup, stops a wait or work in the background,
-and drops a selection. NIL (the standard) is for Escape as a key of its own,
-which does what it is bound to (it closes a question typed in the
-minibuffer). It does what \\`C-g' does where it is bound to nothing (it leaves
-INSERT state, drops a selection), but does not end a question one key answers,
-a wait or work in the background. In a terminal, Escape quickly followed by
-another key arrives as Meta with that key, as terminals send the two alike.
-\\[quoted-insert] still takes Escape as itself.")
+(define-setting tuatara-user:*escape-quits* nil
+  "Whether Escape does what \\`C-g' does everywhere.
+In a terminal, Escape quickly followed by another key arrives as Meta with
+that key, as terminals send the two alike. \\[quoted-insert] still takes
+Escape as itself.
+- t: Escape leaves INSERT state, closes a question, a list or a popup, stops
+  a wait or work in the background, and drops a selection.
+- nil: Escape is a key of its own, which does what it is bound to (it closes
+  a question typed in the minibuffer). It does what \\`C-g' does where it is
+  bound to nothing (it leaves INSERT state, drops a selection), but does not
+  end a question one key answers, a wait or work in the background (the
+  standard)."
+  :values boolean)
 
 (defvar *keys-as-typed* nil
   "True while a key is read as it was typed, Escape as Escape whatever
@@ -469,13 +472,25 @@ KEYS) (DEFINE-REPEAT-KEYS).")
   "Commands the repeat command never repeats: the one that starts a count, and
 repeat itself, which the defaults add.")
 
-(defun define-repeat-keys (bindings)
+(defvar *repeat-after* (make-hash-table :test 'eq)
+  "For the keymap of a group of repeat keys made with an AFTER key
+(DEFINE-REPEAT-KEYS), the key spec its commands must have been run from.")
+
+(defvar *repeat-key-run* nil
+  "True while a command runs from one of the keys of a repeat keymap, so that
+its repeat keys stay on.")
+
+(defun define-repeat-keys (bindings &key after)
   "Make the commands of BINDINGS, a list of (KEY COMMAND), repeatable by their
 keys alone: once any of them has run from its key sequence, each of those KEYS
 runs its command straight away, until another key is pressed, which then does
-what it always does. Returns the keymap."
+what it always does. With AFTER, a key such as \"C-z\", this holds only for a
+command run by a key sequence that began with it, or by one of those keys
+themselves. Returns the keymap."
   (let* ((map (make-keymap :name "repeat"))
          (entry (cons map (mapcar #'first bindings))))
+    (when after
+      (setf (gethash map *repeat-after*) (first (tuatara.frontend:parse-key-sequence after))))
     (loop for (key command) in bindings
           do (define-key map key command)
              (setf (gethash command *repeat-maps*) entry))
@@ -500,9 +515,13 @@ taken down first."
           (editor-transient-exit editor) nil)
     (when exit (funcall exit))))
 
-(defvar *debug-on-error* nil
-  "True to show the calls under way when a command or an evaluation meets an
-error, in *Backtrace*; \\[toggle-debug-on-error] switches it.")
+(define-setting *debug-on-error* nil
+  "Whether a command or an evaluation that meets an error shows the calls under
+way, in *Backtrace*.
+\\[toggle-debug-on-error] switches it.
+- t: the calls under way are shown.
+- nil: only the error is said (the standard)."
+  :values boolean)
 
 (defgeneric host-show-backtrace (host condition calls)
   (:documentation "Show CALLS, those under way when CONDITION was signalled (a list of strings,
@@ -598,6 +617,13 @@ said and reported in debug mode, and the editor carries on; NIL then, else
 what FUNCTION returns."
   (call-with-guard (lambda () (apply function arguments)) what 'call-guarded))
 
+(defun repeat-keys-on-p (map)
+  "True when the repeat keys of the keymap MAP go on after the command that ran
+now: it has no AFTER key (DEFINE-REPEAT-KEYS), or was run from a key sequence
+beginning with it, or from a repeat key."
+  (let ((after (gethash map *repeat-after*)))
+    (or (null after) *repeat-key-run* (equal (first *this-command-keys*) after))))
+
 (defun run-command (editor command)
   "Run COMMAND (a symbol) with the editor context, catching errors into messages.
 An edit it makes in the buffer it runs in, reaching outside the part of it
@@ -663,7 +689,7 @@ a refusal) stops recorded keys that are playing."
               (not (funcall (editor-transient-keep editor) command)))
          (clear-transient-map editor)))
   (let ((entry (gethash command *repeat-maps*)))
-    (when entry
+    (when (and entry (repeat-keys-on-p (car entry)))
       (setf (editor-repeat-map editor) (car entry))
       (unless (editor-message editor)
         (echo "~a" (repeat-hint command)))))
@@ -750,7 +776,8 @@ count, and does nothing else."
     (when binding
       (setf (editor-this-key editor) key
             (editor-message editor) nil)
-      (run-command editor binding)
+      (let ((*repeat-key-run* t))
+        (run-command editor binding))
       (setf (editor-prefix-argument editor) nil)
       (return-from handle-key nil)))
   (when (editor-collecting-prefix editor)

@@ -986,9 +986,9 @@ stands around takes it off).")
       (tuatara.buffer:kill-buffer buffer))))
 
 (define-test (simple comment-key-stays-on-the-line)
-  ;; C-x C-; comments the line and stays; the command that moves on has no key, and is one that works at every cursor
+  ;; C-z C comments the line and stays; the command that moves on has no key, and is one that works at every cursor
   (is string= (format nil ";; a<POINT>~%b~%")
-      (text-with-marks (session-buffer (nth-value 1 (session-in :lisp-mode (format nil "a~%b~%") "C-x C-;"
+      (text-with-marks (session-buffer (nth-value 1 (session-in :lisp-mode (format nil "a~%b~%") "C-z C"
                                                                 :point 1 :width 100)))))
   (false (tuatara.command:where-is 'tuatara.defaults::toggle-comment-lines-ret (list tuatara.defaults::*global-keymap*)))
   (true (assoc 'tuatara.defaults::toggle-comment-lines-ret tuatara.defaults::*cursor-verbs*)))

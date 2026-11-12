@@ -33,23 +33,27 @@ control, a few loose notes, and the log of what the echo area said.
 #+caption: Figure 7.1. The buffer list, a line for each buffer.
 #+name: fig-buffer-list
 #+begin_example
- ▾ letters (3)
-   >*  council.txt        412  Text    ~/letters/council.txt
-       thanks.txt         190  Text    ~/letters/thanks.txt
-   D   old-draft.txt        0  Text    ~/letters/old-draft.txt
- ▾ No project (3)
-       shopping.txt        34  Text    ~/shopping.txt
-       notes.org         2,061 Org     ~/notes.org
-       *Messages*        1,210 Text
+   MR  Name                    Size Mode             Filename/Process
+   --  ----                    ---- ----             ----------------
+▾ letters (3)
+  >*   council.txt              412 Text             ~/letters/council.txt
+       thanks.txt               190 Text             ~/letters/thanks.txt
+  D    old-draft.txt              0 Text             ~/letters/old-draft.txt
+
+▾ No project (3)
+       shopping.txt              34 Text             ~/shopping.txt
+       notes.org              2,061 Org              ~/notes.org
+    %  *Messages*             1,210 Special
 #+end_example
 
-Each buffer has one line. The line gives the buffer's marks, its name, its
-size, its major mode (the kind of text it is, such as Text or Org) and the
-file it visits. The marks come first. A =>= means you marked the buffer for
-a command to act on. A =D= means you marked it for deletion. A =*= means it
-has changes that are not saved, and a =%= means it is read-only. In the figure,
-=council.txt= is marked and has unsaved changes, and =old-draft.txt= is
-marked for deletion.
+Each buffer has one line, starting under the text of its section's heading,
+the titles of the columns above in line with it. The line gives the buffer's
+marks, its name, its size, its major mode (the kind of text it is, such as
+Text or Org) and the file it visits. The marks come first. A =>= means you
+marked the buffer for a command to act on. A =D= means you marked it for
+deletion. A =*= means it has changes that are not saved, and a =%= means it is
+read-only. In the figure, =council.txt= is marked and has unsaved changes,
+and =old-draft.txt= is marked for deletion.
 
 The names of buffers that Tuatara made itself, such as =*Messages*=, are set
 apart in their own colour, as are read-only buffers, help buffers and marked
@@ -161,7 +165,9 @@ When Tuatara starts without a file, it shows one of them, chosen by
 =*auto-scratch-buffers*= holds, and makes them again when you kill your last
 buffer so that you are never left with an empty screen. If you have killed one
 and want it back, run =lisp-scratch= or =org-scratch= with ~M-x~; they make a
-new one when none is there.
+new one when none is there. In a client of the daemon of chapter 18 they show
+the client's own scratch buffer of that kind, and make one when the client has
+none, numbered when the name is taken (=*org-scratch*<2>=).
 
 #+table: commands lisp-scratch org-scratch
 
@@ -185,7 +191,19 @@ listings and the buffers standing in them. It says how many have unsaved
 changes and asks about each of those. It is the quick way to tidy up after
 you have finished the letters and want to start on something else. The same
 thing is done by pressing ~D~ on the heading of the project in the buffer
-list.
+list. In a daemon (chapter 18), where each client has buffers of its own,
+~C-x p k~ kills only your client's buffers of the project. ~C-u C-x p k~ kills
+those of every client, after a question saying how many each has: =Kill 5
+buffers of letters: 3 of client 2, 2 of client 3?= Without a daemon ~C-u~
+changes nothing.
+
+In a daemon two clients can have the same buffer, when both opened the same
+file. ~C-x k~ in one of them does not kill it then. Your client lets it go and
+shows one of its own buffers in its place, and the other client keeps it as it
+is, unsaved changes and all. Nothing is asked. The buffer is killed only by
+the last client that has it, with the usual question when it has unsaved
+changes. ~D~ in the buffer list and ~C-x p k~ work the same way. ~C-u C-x p k~
+kills it for every client.
 
 ~C-x s~ goes the other way. It saves every file buffer with unsaved changes,
 after asking once. It is handy after a rename that touched many files. Leaving
@@ -270,6 +288,23 @@ on, so you can bookmark a folder you visit often.
 
 #+table: settings *bookmark-set-asks-categories* *bookmarks-kept*
 
+=*bookmark-set-asks-categories*= is =t= as standard, so ~C-x m m~ asks for
+categories after the name. If you never sort your bookmarks, turn the question
+off and a bookmark is set with the name alone:
+
+#+begin_example
+(setf *bookmark-set-asks-categories* nil)
+#+end_example
+
+You can still give a bookmark categories later, with ~c~ in the manager.
+=*bookmarks-kept*= is the number of bookmarks, 1000 as standard, after which
+setting another says in the echo area that you have more than that. No
+bookmark is ever dropped, whatever the number. To be told sooner:
+
+#+begin_example
+(setf *bookmarks-kept* 200)
+#+end_example
+
 ** Registers
 
 A register is a place to keep text, a number or a position under a single
@@ -339,7 +374,16 @@ belongs to, with the newest first. It marks and acts as the buffer list
 does: ~RET~ recovers the copy on the line, after asking, and ~x~ and ~D~ delete
 copies.
 
-Auto-save is on as standard. A buffer larger than =*auto-save-size-limit*=
+Auto-save is on as standard, through =*auto-save*=. With =t= the changes of
+every buffer that visits a file are written now and then to a copy of their
+own, never to the file. If you want no copies at all, put this in your init
+file:
+
+#+begin_example
+(setf *auto-save* nil)
+#+end_example
+
+A buffer larger than =*auto-save-size-limit*=
 octets is not copied, because each copy is written whole. Files opened with
 care are never copied. =*auto-save-directory*= says where the copies go, and
 you can point it at a folder on another drive. =*auto-save-idle*= and

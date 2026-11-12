@@ -9,7 +9,7 @@
   (:use #:cl)
   (:import-from #:tuatara.defaults #:forwardable-path-p)
   (:documentation "Tuatara in the terminal: the entry point shared by tools/tui.lisp and the saved executable.")
-  (:export #:main #:image-toplevel #:*built-heap* #:*options* #:*option-help* #:*environment-help* #:*usage-forms* #:write-man-pages))
+  (:export #:main #:image-toplevel #:*built-heap* #:*options* #:*option-help* #:*environment-help* #:*usage-forms* #:write-man-pages #:write-bash-completion))
 
 (in-package #:tuatara.terminal)
 
@@ -242,11 +242,11 @@ License, version 3 or later.
             "$TUATARA_HEAP_MB megabytes")
      :why ("Use it to set the heap for one run; $TUATARA_HEAP_MB does for every run."
            "That variable says what raising or lowering it does.")))
-  "The options, in the order --help lists them, each a property list: :FLAGS,
+  "The options, in the order --help lists them, each a property list. :FLAGS,
 the ways of writing it, each (FLAG) or (FLAG ARGUMENT); :TEXT, what it does,
 as lines; :WHY, as lines, for an option with a choice: why someone would take
 it, what that gets past and what to expect, the cost included (an empty line
-starts a new paragraph; --help leaves it out, the manual page has it); :ONLY,
+starts a new paragraph; --help leaves it out, the manual page has it). :ONLY,
 :APPIMAGE for an option only the AppImage's launcher takes or :RUNTIME for one
 the program's runtime takes out of the command line before Tuatara sees it. The
 manual page is made from this table too.")

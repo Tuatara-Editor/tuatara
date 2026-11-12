@@ -15,10 +15,13 @@
 
 (in-package #:tuatara.defaults)
 
-(defvar *show-paren-mode* t
-  "True to show the bracket that pairs with the one at point: the one before
-point when it closes, else the one after it when it opens. T unless set;
-\\[show-paren-mode] switches it.")
+(define-setting *show-paren-mode* t
+  "Whether the bracket that pairs with the one at point is shown: the one before
+point when it closes, else the one after it when it opens. \\[show-paren-mode]
+switches it.
+- t: show it (the standard).
+- nil: show none."
+  :values boolean)
 
 (defparameter *show-paren-reach* (* 64 1024)
   "The most octets either side of a bracket looked through for its partner;
@@ -201,9 +204,12 @@ count, on when it is positive, off when it is zero or less."
   (setf *show-paren-mode* (switched-by-count *show-paren-mode*))
   (message "Show-Paren mode ~:[disabled~;enabled~]" *show-paren-mode*))
 
-(defvar *blink-matching-paren* t
-  "True to say, when a closing bracket is typed, what its partner is when it
-is out of sight (\"Matches (defun foo ()\"), or that it has none.")
+(define-setting *blink-matching-paren* t
+  "Whether typing a closing bracket says what its partner is when it is out of
+sight (\"Matches (defun foo ()\"), or that it has none.
+- t: say it (the standard).
+- nil: say nothing."
+  :values boolean)
 
 (defun open-bracket-line-text (buffer position)
   "What shows the opening bracket at POSITION of BUFFER: its line up to it

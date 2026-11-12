@@ -13,22 +13,29 @@
 
 (in-package #:tuatara.defaults)
 
-(defvar *latex-main-font* nil
-  "The font the enhanced export sets a document's text in, by its family's
-name as fontconfig knows it (\"Noto Serif\"); NIL for the first installed of
-Libertinus Serif, Noto Serif, Source Serif 4, Liberation Serif, DejaVu Serif.
-Used by the styles that ask for chosen fonts (the standard one, article).")
+(define-setting *latex-main-font* nil
+  "The font the enhanced export sets a document's text in.
+It is used by the styles that ask for chosen fonts (the standard one,
+article).
+- a family's name as fontconfig knows it: that font (\"Noto Serif\").
+- nil: the first installed of Libertinus Serif, Noto Serif, Source Serif 4,
+  Liberation Serif, DejaVu Serif."
+  :values (or (member nil) string))
 
-(defvar *latex-sans-font* nil
-  "The sans-serif font of the enhanced export, as *LATEX-MAIN-FONT*; NIL for
-the first installed of Libertinus Sans, Noto Sans, Source Sans 3, Liberation
-Sans, DejaVu Sans.")
+(define-setting *latex-sans-font* nil
+  "The sans-serif font of the enhanced export.
+- a family's name, as *LATEX-MAIN-FONT* takes it: that font.
+- nil: the first installed of Libertinus Sans, Noto Sans, Source Sans 3,
+  Liberation Sans, DejaVu Sans."
+  :values (or (member nil) string))
 
-(defvar *latex-mono-font* nil
-  "The fixed-width font the enhanced export sets code in, as
-*LATEX-MAIN-FONT*; NIL for your window's font (*gui-font*) when it is
-installed, else the first of JetBrains Mono, Cascadia Code, Noto Sans Mono,
-Source Code Pro, Liberation Mono, DejaVu Sans Mono.")
+(define-setting *latex-mono-font* nil
+  "The fixed-width font the enhanced export sets code in.
+- a family's name, as *LATEX-MAIN-FONT* takes it: that font.
+- nil: your window's font (*gui-font*) when it is installed, else the first
+  of JetBrains Mono, Cascadia Code, Noto Sans Mono, Source Code Pro,
+  Liberation Mono, DejaVu Sans Mono."
+  :values (or (member nil) string))
 
 (defparameter *latex-font-choices*
   '((:main "Libertinus Serif" "Noto Serif" "Source Serif 4" "Liberation Serif" "DejaVu Serif")

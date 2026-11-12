@@ -24,25 +24,35 @@
 
 (in-package #:tuatara.defaults)
 
-(defvar *gpg-program* "gpg"
-  "The GnuPG program that decrypts and encrypts .gpg files, by its full path,
-from the root (/opt/gnupg/bin/gpg), or by name, then looked for only in the
-system's own folders of programs (/usr/local/bin, /usr/bin, /bin), never in
-a folder of yours your PATH may name, nor in the folder the editor is in.")
+(define-setting *gpg-program* "gpg"
+  "The GnuPG program that decrypts and encrypts .gpg files.
+A name is looked for only in the system's own folders of programs
+(/usr/local/bin, /usr/bin, /bin), never in a folder of yours your PATH may
+name, nor in the folder the editor is in.
+- a full path from the root: /opt/gnupg/bin/gpg for example.
+- a name: gpg as standard."
+  :values file)
 
-(defvar *gpg-passphrase-from* :auto
-  "Who asks for a passphrase gpg needs. :AGENT is gpg-agent's pinentry in its
-own window; :TERMINAL, gpg-agent's pinentry in the terminal the editor shows
-in, lent to it while gpg runs; :MINIBUFFER, the minibuffer, what is typed
-shown as stars (gpg's loopback, the passphrase then passes through the
-editor); :AUTO, the agent's window in a desktop session, else the terminal,
-else the minibuffer. Pinentry keeps the passphrase out of the editor.")
+(define-setting *gpg-passphrase-from* :auto
+  "Who asks for a passphrase gpg needs.
+Pinentry keeps the passphrase out of the editor.
+- :agent: gpg-agent's pinentry in its own window.
+- :terminal: gpg-agent's pinentry in the terminal the editor shows in, lent to
+  it while gpg runs.
+- :minibuffer: the minibuffer, what is typed shown as stars (gpg's loopback,
+  the passphrase then passes through the editor).
+- :auto: the agent's window in a desktop session, else the terminal, else the
+  minibuffer."
+  :values (member :agent :terminal :minibuffer :auto))
 
-(defvar *gpg-loopback-warning* t
-  "When true, the minibuffer asking for a passphrase for gpg's loopback shows
-above it, while it asks, a window saying why it asks, how the passphrase goes
-and what that risks (the garbage collector's copies, memory not locked, no
-keyboard grab, a look-alike). NIL: the question alone, once you know them.")
+(define-setting *gpg-loopback-warning* t
+  "Whether the minibuffer asking for a passphrase for gpg's loopback shows a
+window above it, while it asks.
+The window says why it asks, how the passphrase goes and what that risks (the
+garbage collector's copies, memory not locked, no keyboard grab, a look-alike).
+- t: the window is shown.
+- nil: the question alone, once you know them."
+  :values boolean)
 
 (defun gpg-path ()
   "The gpg program found (*GPG-PROGRAM*), as TUATARA.IO:SYSTEM-PROGRAM finds

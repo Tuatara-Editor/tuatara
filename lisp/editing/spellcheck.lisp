@@ -11,13 +11,15 @@
 
 (in-package #:tuatara.defaults)
 
-(defvar *spellcheck-languages* nil
-  "The languages words are checked in, a list of names as enchant knows them,
-such as '(\"en_NZ\" \"sv_SE\"): a word is right when one of them takes it.
-NIL: the language of the system's locale (LC_ALL, LC_MESSAGES or LANG, as
-en_NZ.UTF-8), else en_US. \\[spellcheck-languages] sets them for one buffer.")
+(define-setting *spellcheck-languages* nil
+  "The languages words are checked in, as enchant knows them. A word is right
+when one of them takes it. \\[spellcheck-languages] sets them for one buffer.
+- a list of text: the languages' names, '(\"en_NZ\" \"sv_SE\").
+- nil: the language of the system's locale (LC_ALL, LC_MESSAGES or LANG, as
+  en_NZ.UTF-8), else en_US (the standard)."
+  :values (list-of string))
 
-(defvar *spellcheck-excluded-faces*
+(define-setting *spellcheck-excluded-faces*
   '(:org-code :org-verbatim :org-link :org-meta-line :org-block :org-block-begin-line :org-date
     :org-tag :org-property-value :org-special-keyword :org-drawer :org-macro :org-cite :org-footnote
     :org-formula :org-latex-and-related :org-document-info-keyword :org-checkbox :org-priority
@@ -29,16 +31,22 @@ en_NZ.UTF-8), else en_US. \\[spellcheck-languages] sets them for one buffer.")
     :variable :constant)
   "In text (Org, Markdown, LaTeX and the like), the faces whose words are not
 checked: code, links, dates, tags, keywords. A face counts for those named
-after it with a dot (:markup.raw for :markup.raw.block).")
+after it with a dot (:markup.raw for :markup.raw.block).
+- a list of faces' names: those whose words are left out."
+  :values (list-of "a face's name"))
 
-(defvar *spellcheck-comment-faces* '(:comment)
+(define-setting *spellcheck-comment-faces* '(:comment)
   "In code, the faces of comments, whose words are checked (unless
 *SPELLCHECK-MODES* says :strings): those named after them with a dot too
-\(:comment.documentation).")
+\(:comment.documentation).
+- a list of faces' names: :comment as standard."
+  :values (list-of "a face's name"))
 
-(defvar *spellcheck-string-faces* '(:string)
+(define-setting *spellcheck-string-faces* '(:string)
   "In code, the faces of strings, whose words are checked (unless
-*SPELLCHECK-MODES* says :comments): those named after them with a dot too.")
+*SPELLCHECK-MODES* says :comments): those named after them with a dot too.
+- a list of faces' names: :string as standard."
+  :values (list-of "a face's name"))
 
 (defun spellcheck-never-p (buffer)
   "True when BUFFER is never checked: opened safely, or shown as octets."
@@ -64,6 +72,11 @@ before."
   :what "mark the words spelt wrong"
   :example "'((org-mode . t) (prog-mode . :comments) (python-mode . :all) (csv-mode . nil))"
   :values ((t spellcheck-on-words) (:comments "comments") (:strings "strings") (:all "code, comments and strings"))
+  :values-doc "- nil: no words are marked.
+- t: every word in text, the words of comments and strings in code.
+- :comments: the words of comments only.
+- :strings: the words of strings only.
+- :all: every word, in code too."
   :unless (spellcheck-never-p "in a file opened safely or shown as octets"))
 
 (defun locale-language ()

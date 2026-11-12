@@ -781,11 +781,14 @@ from, the SELinux label, ACLs)."
 
 ;;; OpenPGP: who an encrypted file is for, read from its packets
 
-(defvar *metadata-look-up-key-owners* :ask
+(define-setting *metadata-look-up-key-owners* :ask
   "Whether M-x show-file-metadata looks up, in your own GnuPG keyring, whose the
-keys an encrypted file is for are, running gpg --list-keys (the file itself is
-never given to gpg): true looks them up, :ask asks each time, false (nil)
-never does, the keys then shown by their IDs alone.")
+keys an encrypted file is for are.
+It runs gpg --list-keys; the file itself is never given to gpg.
+- t: it looks them up.
+- :ask: it asks each time.
+- nil: it never does, the keys then shown by their IDs alone."
+  :values (member t :ask nil))
 
 (defvar *metadata-looking-up-keys* nil
   "True while the note being made looks up the owners of the keys an

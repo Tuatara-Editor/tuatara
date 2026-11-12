@@ -11,37 +11,55 @@
 
 ;;; Options
 
-(defvar *formatted-file-directory* "~/"
-  "The directory of your files with formatted names:
+(define-setting *formatted-file-directory* "~/"
+  "The directory of your files with formatted names.
 open-file-formatted lists those in it and its subdirectories,
 new-file-formatted makes new ones there, and the keywords in their names are
-offered for every new file with a formatted name. Your home directory unless
-set: (setf *formatted-file-directory* \"~/notes/\") in the init file.")
+offered for every new file with a formatted name.
+- a directory's name: your home directory unless set, (setf
+  *formatted-file-directory* \"~/notes/\") in the init file."
+  :values folder)
 
-(defvar *formatted-file-keywords* '()
-  "Keywords offered for a new file with a formatted name, besides the keywords
-in the names of the files in *FORMATTED-FILE-DIRECTORY*: none as standard.
+(define-setting *formatted-file-keywords* '()
+  "Keywords offered for a new file with a formatted name, besides the keywords in
+the names of the files in *FORMATTED-FILE-DIRECTORY*.
 Set your own in the init file: (setf *formatted-file-keywords* '(\"project\"
-\"garden\")).")
+\"garden\")).
+- nil: none besides those, as standard.
+- a list of texts: the keywords offered."
+  :values (list-of string))
 
-(defvar *formatted-file-sort-keywords* t
-  "True to put the keywords of a formatted name in alphabetical order.")
+(define-setting *formatted-file-sort-keywords* t
+  "Whether the keywords of a formatted name are put in alphabetical order.
+- t: in alphabetical order.
+- nil: as given."
+  :values boolean)
 
-(defvar *formatted-file-prompts* '(:title :subdirectory :keywords :file-type :template)
-  "What new-file-formatted asks for a new file, in this order: :title,
-:subdirectory (of *FORMATTED-FILE-DIRECTORY*), :keywords, :file-type (one of
-*FORMATTED-FILE-TYPES*; else *FORMATTED-FILE-TYPE* is used) and :template (blank,
-or one of your note templates' files, asked only when there are any).")
+(define-setting *formatted-file-prompts* '(:title :subdirectory :keywords :file-type :template)
+  "What new-file-formatted asks for a new file, in the order of the list.
+- :title: the title.
+- :subdirectory: the subdirectory, of *FORMATTED-FILE-DIRECTORY*.
+- :keywords: the keywords.
+- :file-type: one of *FORMATTED-FILE-TYPES*; when this is not asked,
+  *FORMATTED-FILE-TYPE* is used.
+- :template: blank, or one of your note templates' files, asked only when there
+  are any."
+  :values (list-of (member :title :subdirectory :keywords :file-type :template)))
 
-(defvar *formatted-file-extension* ""
-  "The end of a new file's name that find-file-formatted offers when it asks
-for one (New file EXTENSION): nothing typed there takes it. As \"org\" or
-\".org\"; \"\" (as standard) for none offered, when nothing typed gives a name
-with no end.")
+(define-setting *formatted-file-extension* ""
+  "The end of a new file's name that find-file-formatted offers when it asks for
+one (New file EXTENSION).
+Nothing typed there takes it.
+- text: as \"org\" or \".org\".
+- \"\" or nil: none offered, as standard, when nothing typed gives a name with
+  no end."
+  :values (or (member nil) string))
 
-(defvar *formatted-file-type* :org
-  "The kind of a new file when *FORMATTED-FILE-PROMPTS* does not ask, and the
-one offered first when it does: a name in *FORMATTED-FILE-TYPES*.")
+(define-setting *formatted-file-type* :org
+  "The kind of a new file when *FORMATTED-FILE-PROMPTS* does not ask, and the one
+offered first when it does.
+- a keyword: the name of a kind in *FORMATTED-FILE-TYPES*, :org as standard."
+  :values "a name in *FORMATTED-FILE-TYPES*")
 
 (defparameter *formatted-file-org-header*
   "#+title: {title}
@@ -78,22 +96,27 @@ identifier: {identifier}
 "
   "The header of a new Markdown file with a formatted name, as standard.")
 
-(defvar *formatted-file-types*
+(define-setting *formatted-file-types*
   (list (list :org ".org" :org *formatted-file-org-header*)
         (list :text ".txt" :text *formatted-file-text-header*)
         (list :markdown ".md" :markdown *formatted-file-markdown-header*)
         (list :org-encrypted ".org.gpg" :org *formatted-file-org-header*)
         (list :text-encrypted ".txt.gpg" :text *formatted-file-text-header*)
         (list :markdown-encrypted ".md.gpg" :markdown *formatted-file-markdown-header*))
-  "The kinds of files with formatted names, each (NAME EXTENSION STYLE HEADER):
-the end of the file's name, how its header writes the date and keywords, and
-the header a new file begins with. In HEADER, {title}, {date}, {keywords} and
-{identifier} stand for the file's own. STYLE :org writes the date [2026-09-27
-Sun 21:34] and the keywords :garden:project:; :text 2026-09-27 and garden
-project; :markdown 2026-09-27T21:34:46+02:00, [\"garden\", \"project\"],
-and the title and identifier in quotes. The kinds ending in .gpg are
-encrypted when saved, their text never written as it is; a name ending in
-.age is refused. SET-FORMATTED-FILE-HEADER changes a header.")
+  "The kinds of files with formatted names.
+The kinds ending in .gpg are encrypted when saved, their text never written as
+it is; a name ending in .age is refused. SET-FORMATTED-FILE-HEADER changes a
+header.
+- a list of (NAME EXTENSION STYLE HEADER): the end of the file's name, how its
+  header writes the date and keywords, and the header a new file begins with.
+  In HEADER, {title}, {date}, {keywords} and {identifier} stand for the file's
+  own.
+- STYLE :org: writes the date [2026-09-27 Sun 21:34] and the keywords
+  :garden:project:.
+- STYLE :text: writes 2026-09-27 and garden project.
+- STYLE :markdown: writes 2026-09-27T21:34:46+02:00, [\"garden\", \"project\"],
+  and the title and identifier in quotes."
+  :values (list-of "(NAME EXTENSION STYLE HEADER)"))
 
 (defun tuatara-user:set-formatted-file-header (kind header)
   "Make HEADER the header new files of KIND begin with, KIND a name in
@@ -825,9 +848,12 @@ when there are two or more."
           (formatted-template-text (assoc chosen templates :test #'string=)))
         (formatted-template-text (first templates)))))
 
-(defparameter *insert-file-limit* (* 16 1024 1024)
-  "The most octets \\[insert-formatted-note-template] reads from a file that is no note template;
-a larger file is refused, and said so.")
+(define-setting *insert-file-limit* (* 16 1024 1024)
+  "The most octets \\[insert-formatted-note-template] reads from a file that is
+no note template.
+A larger file is refused, and said so.
+- a whole number of octets: the limit, 16 MB as standard."
+  :values (integer 0 *))
 
 (defun read-file-text (path)
   "The text of the file at PATH, read as UTF-8 (an octet that is none as ?),

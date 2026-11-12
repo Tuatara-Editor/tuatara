@@ -36,8 +36,8 @@ manual say ~M-x~ and its name for it.
 A setting is a name that starts and ends with a star, such as
 =*mode-line-tuatara*=. Settings go in your init file, the file Tuatara reads
 when it starts, as in =(setf *mode-line-tuatara* nil)=. Each table of settings
-in this chapter gives the standard value, the one Tuatara has until you
-change it.
+in this chapter gives the default, the value Tuatara has until you change it.
+~C-h v~ shows a setting's value, the values it takes and what each does.
 
 Tuatara is a modal editor, which means a key can do different things
 depending on a state the editor is in. There are two states you will meet
@@ -55,6 +55,12 @@ key that has a partner of the other kind is followed by it in brackets, as in
 ~j~ (non-modal: ~C-n~) and ~C-n~ (modal: ~j~). To turn modal editing off, put
 =(setf *modal-editing* nil)= in your init file. Every key of the Non-modal
 column then does what the table says, and typing inserts text everywhere.
+
+Most letter keys of NORMAL state that have no Control or Alt key of their own
+are also under ~C-z~, in every state: ~m w~ selects a word, and ~C-z m w~ does
+the same with modal editing off. The Non-modal column gives them, as ~C-z m w~.
+A command that has a key in both states, such as ~w~ (non-modal: ~M-f~), is not
+under ~C-z~ a second time.
 
 ** The parts of the screen
 
@@ -231,7 +237,7 @@ drag a mode line up or down, or the line between two windows left or right.
 
 *** Settings
 
-| Setting                   | Standard | What it changes                     |
+| Setting                   | Default  | What it changes                     |
 |---------------------------+----------+-------------------------------------|
 | =*window-min-height*=     | =4=      | The fewest rows, mode line included, a window may be left with when it is split or made smaller. |
 | =*window-min-width*=      | =10=     | The fewest columns a window may be left with. |
@@ -300,7 +306,7 @@ terminal the font belongs to the terminal, and these commands say so.
 
 *** Settings
 
-| Setting                       | Standard         | What it changes         |
+| Setting                       | Default          | What it changes         |
 |-------------------------------+------------------+-------------------------|
 | =*startup-buffer*=            | ="*lisp-scratch*"= | The buffer shown when Tuatara starts without files, either ="*lisp-scratch*"= or ="*org-scratch*"=. |
 | =*auto-scratch-buffers*=      | =("*lisp-scratch*" "*org-scratch*")= | The scratch buffers made without being asked for. |
@@ -476,7 +482,7 @@ Clicking a window's mode line with the mouse selects that window.
 
 *** Settings
 
-| Setting                   | Standard | What it changes                     |
+| Setting                   | Default  | What it changes                     |
 |---------------------------+----------+-------------------------------------|
 | =*mode-line-tuatara*=     | =t=      | Writes TUATARA before the modal state. |
 | =*modal-editing*=         | =t=      | Modal editing on. With =nil= the mode line has no state and every key types. |
@@ -494,7 +500,7 @@ A face is a name for a way of drawing text: a colour, bold, and so on. The
 theme in force, ao-dark as standard, gives each face its look. Change one in
 your init file, for example =(set-face :mode-line-sign :fg "#e0a33a")=.
 
-| Face                    | Standard | What it paints                       |
+| Face                    | Default  | What it paints                       |
 |-------------------------+----------+--------------------------------------|
 | =:mode-line=            | theme    | The mode line of the selected window. |
 | =:mode-line-inactive=   | theme    | The mode lines of the other windows. |
@@ -546,7 +552,7 @@ is the place to look when a message went by too fast.
 
 *** Settings
 
-| Setting              | Standard | What it changes                          |
+| Setting              | Default  | What it changes                          |
 |----------------------+----------+------------------------------------------|
 | =*message-log-max*=  | =1000=   | Lines =*Messages*= keeps. The oldest go first. =nil= keeps none. |
 | =*lsp-hover-echo*=   | =t=      | Shows in the echo area what the thing under the cursor is, as a language server knows it. |
@@ -605,7 +611,7 @@ replaces it and ~RET~ takes it.
 
 *** Settings
 
-| Setting                | Standard | What it changes                        |
+| Setting                | Default  | What it changes                        |
 |------------------------+----------+----------------------------------------|
 | =*show-completion-count*= | =t=   | Shows the place of the selected choice and how many there are before the prompt. |
 | =*prompt-above-candidates*= | =t= | Shows the prompt above the list of choices. =nil= puts it on the last row, under them. |
@@ -613,7 +619,7 @@ replaces it and ~RET~ takes it.
 
 *** Faces
 
-| Face                  | Standard | What it paints                         |
+| Face                  | Default  | What it paints                         |
 |-----------------------+----------+----------------------------------------|
 | =:minibuffer-prompt=  | theme    | The prompt. |
 | =:cursor=             | theme    | The cursor in a window of Tuatara's own. |
@@ -677,7 +683,7 @@ as the folder that the files under it are in.
 The settings for the prompt, =*prompt-above-candidates*= and
 =*show-completion-count*=, are in the table in the section before this one.
 
-| Face                         | Standard | What it paints             |
+| Face                         | Default  | What it paints             |
 |------------------------------+----------+----------------------------|
 | =:completion-selected=       | theme    | The selected choice. |
 | =:completion-annotation=     | theme    | Notes beside choices. |
@@ -722,11 +728,11 @@ all=.
 
 *** Settings
 
-| Setting             | Standard | What it changes                         |
+| Setting             | Default  | What it changes                         |
 |---------------------+----------+-----------------------------------------|
 | =*key-hint-rows*=   | =nil=    | The most rows for the hints, the echo row included. =nil= takes all the room. |
 
-| Face                    | Standard | What it paints                     |
+| Face                    | Default  | What it paints                     |
 |-------------------------+----------+------------------------------------|
 | =:key-hint-key=         | theme    | The keys. |
 | =:key-hint-command=     | theme    | The command names. |
@@ -766,7 +772,7 @@ while the rest scrolls under it.
 
 *** Settings
 
-| Setting                        | Standard | What it changes              |
+| Setting                        | Default  | What it changes              |
 |--------------------------------+----------+------------------------------|
 | =*cursor-shape*=               | =:block= | The cursor's shape: =:block=, =:bar= or =:underline=. |
 | =*cursor-colour*=              | =nil=    | The cursor's colour. =nil= uses the text's colour. |
@@ -782,7 +788,7 @@ while the rest scrolls under it.
 | =*list-header-lock*=           | =nil=    | Keeps a header at the top wherever there is one. |
 | =*csv-header*=                 | =t=      | Takes a CSV's first line as its header. |
 
-| Face                | Standard | What it paints                          |
+| Face                | Default  | What it paints                          |
 |---------------------+----------+-----------------------------------------|
 | =:line-number=      | theme    | The line numbers. |
 | =:wrap-indicator=   | theme    | The mark beside a wrapped row. |

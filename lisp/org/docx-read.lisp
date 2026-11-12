@@ -43,15 +43,19 @@ octets together."
 document's text, styles, notes; a workbook's sheet; a slide); a picture is
 held only to *ZIP-LARGEST-ENTRY*.")
 
-(defparameter *office-note-size-limit* (* 16 1024 1024)
-  "The most characters a note read from a Word document, an Excel workbook, a
-PowerPoint presentation or an OpenDocument file may have: past them the rest
-of its text is left out, and the note says so, so that a file whose few
-octets stand for text copied many times cannot fill the memory.")
+(define-setting *office-note-size-limit* (* 16 1024 1024)
+  "The most characters a note read from an office file may have.
+Office files are Word documents, Excel workbooks, PowerPoint presentations and
+OpenDocument files. Past the limit the rest of the text is left out, and the
+note says so, so that a file whose few octets stand for text copied many times
+cannot fill the memory."
+  :values (integer 1 *))
 
-(defparameter *office-value-length-limit* 2000
-  "The most characters of one value an office file's note shows (a cell of a
-sheet or a table, a formula): a longer one is cut after a word, with ...")
+(define-setting *office-value-length-limit* 2000
+  "The most characters of one value an office file's note shows.
+A value is a cell of a sheet or a table, or a formula; a longer one is cut
+after a word, with ..."
+  :values (integer 1 *))
 
 (defvar *docx-in-change* nil
   "True while the text of a tracked change is read: a change within it is

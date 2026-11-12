@@ -6,8 +6,8 @@
 (define-test latex-languages
   :description "#+language: in an Org note sets the language of the PDF: polyglossia for xelatex and lualatex,
 babel for pdflatex, so that words are broken at the line ends by its rules and the contents and captions are
-named in it; a code the export does not know, or a program that cannot set it, is said once and the document
-keeps LaTeX's own; a template or #+latex_header: that loads polyglossia or babel itself is left alone; the
+named in it. A code the export does not know, or a program that cannot set it, is said once and the document
+keeps LaTeX's own. A template or #+latex_header: that loads polyglossia or babel itself is left alone. The
 Word export names its tables, pictures and contents in it. M-x check-health says which hyphenation patterns
 are installed.")
 

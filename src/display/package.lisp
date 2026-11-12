@@ -4,6 +4,7 @@
 (defpackage #:tuatara.display
   (:use #:cl #:alexandria)
   (:import-from #:tuatara-user #:*window-min-height* #:*window-min-width* #:*scroll-margin* #:*scroll-recenter*)
+  (:import-from #:tuatara.runtime #:define-setting)
   (:import-from #:tuatara.buffer #:hex-view-p)
   (:export #:buffer-header-line #:buffer-replacements-function)
   (:documentation "The layout engine producing glyph rows from snapshots and window state; faces,

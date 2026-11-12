@@ -45,18 +45,27 @@ keeps them; :ONLY and :EXCEPT may come more than once."
                        :roots (getf plist :roots)
                        :language-id (getf plist :language-id)))))
 
-(defvar *language-servers* '()
+(define-setting *language-servers* '()
   "The language servers of languages you choose yourself, in place of the
-language's usual ones: each (LANGUAGE SERVER...), LANGUAGE a symbol (python, rust),
-each SERVER a known server's name (\"basedpyright\") or a list of a program
-and its arguments ((\"my-server\" \"--stdio\")); (LANGUAGE) alone for none.
-All those installed run together, each for what it can do.")
+language's usual ones. All those installed run together, each for what it
+can do.
+- a list of (LANGUAGE SERVER...): LANGUAGE a symbol (python, rust), each
+  SERVER a known server's name (\"basedpyright\") or a list of a program and
+  its arguments ((\"my-server\" \"--stdio\")).
+- (LANGUAGE) alone: no server for that language.
+- nil: every language keeps its usual servers, as standard."
+  :values (list-of "(LANGUAGE SERVER...)"))
 
-(defvar *language-formatters* '()
+(define-setting *language-formatters* '()
   "The formatters of languages you choose yourself, in place of the language's
-usual one: each (LANGUAGE PROGRAM ARGUMENT...), the code given on its standard input and
-taken back laid out from its standard output; (LANGUAGE) alone for none, the
-language server or Tuatara's own indentation laying it out instead.")
+usual one. The code is given on its standard input and taken back laid out
+from its standard output.
+- a list of (LANGUAGE PROGRAM ARGUMENT...): that program, with those
+  arguments, formats that language.
+- (LANGUAGE) alone: no formatter for that language, the language server or
+  Tuatara's own indentation laying it out instead.
+- nil: every language keeps its usual formatter, as standard."
+  :values (list-of "(LANGUAGE PROGRAM ARGUMENT...)"))
 
 (defun language-key (language)
   "The name of LANGUAGE (a language, or a symbol or string naming one) in
@@ -74,12 +83,13 @@ is chosen for it, compared by name; NIL when it has none."
   (let ((name (language-key language)))
     (assoc name setting :test (lambda (a b) (and (symbolp b) (string-equal a (symbol-name b)))))))
 
-(defvar *lsp-languages* t
-  "The languages whose language servers are used: T, every language with a
-server installed; a list of languages, those alone, '(rust go python); or
-:NOT and languages, every one but those, '(:not markdown latex). A language
-left out has no server, its buffers and its source blocks in notes none,
-\\[lsp] saying so.")
+(define-setting *lsp-languages* t
+  "The languages whose language servers are used. A language left out has no
+server, its buffers and its source blocks in notes none, \\[lsp] saying so.
+- t: every language with a server installed, as standard.
+- a list of languages, '(rust go python): those alone.
+- :not and languages, '(:not markdown latex): every one but those."
+  :values (or (member t) (list-of "a language's name, or :not first")))
 
 (defun lsp-language-on-p (language)
   "True when *LSP-LANGUAGES* lets LANGUAGE's servers be used."

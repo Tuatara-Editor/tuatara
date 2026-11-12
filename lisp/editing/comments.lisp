@@ -236,9 +236,9 @@ key of its own. It puts the language's marker (;; in Lisp, // in Rust, # in
 shell scripts) at their smallest indentation or, where a comment has an end
 \(/* */ in CSS), each line between the two. A count comments as many lines,
 no further than the end of the buffer, or of the part shown when it is
-narrowed. To have \\`C-x C-;' or C in NORMAL state move on as this does, in
+narrowed. To have \\`C-z C' or C in NORMAL state move on as this does, in
 your init file:
-  (bind-key \"C-x C-;\" 'toggle-comment-lines-ret)
+  (bind-key \"C-z C\" 'toggle-comment-lines-ret)
   (bind-key \"C\" 'toggle-comment-lines-ret :map :normal)"
   (let* ((b (current-buffer))
          (active (and (tuatara.buffer:buffer-mark-active-p b)

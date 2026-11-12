@@ -17,32 +17,30 @@
 
 (in-package #:tuatara.defaults)
 
-(defvar *evidence-folders* '()
-  "The folders whose files are evidence: each opens safely however it is
-opened (read-only, no mode, hooks or version control run on it), and
-nothing is written in such a folder or below it, by saving, saving as,
-exporting, copying, moving, renaming, deleting or making folders, nor any
-of the editor's own files (backups, auto-saves, locks). The folder itself is
-not renamed, moved or deleted either, nor a folder holding one. Empty, as
-standard: no folder is evidence and nothing is looked at.
-
-Each entry takes one of three forms.
-  \"~/cases/*/evidence/\"   is a folder's path, * standing for any name of one
-                           folder, ** for any folders, none too.
-  (:name \"evidence\" :within \"~/cases/\")
-                           means every folder of that name, within the folder
-                           :within names (anywhere without it).
-  (:regex \"^[0-9]{4}-[0-9]{4}$\" :within \"~/cases/\" :then \"evidence\")
-                           means every folder within ~/cases/ whose whole name
-                           the regular expression matches (as searches read
-                           one), and the folder :then names inside it (that
-                           folder itself without :then).
-Names are compared without regard to case. A file is evidence when the
+(define-setting *evidence-folders* '()
+  "The folders whose files are evidence.
+Each opens safely however it is opened (read-only, no mode, hooks or version
+control run on it), and nothing is written in such a folder or below it, by
+saving, saving as, exporting, copying, moving, renaming, deleting or making
+folders, nor any of the editor's own files (backups, auto-saves, locks). The
+folder itself is not renamed, moved or deleted either, nor a folder holding
+one. Names are compared without regard to case. A file is evidence when the
 folder it really is in, links followed, is one of these or below one, and a
 drive mounted in a second place is evidence under both names. An entry that
 cannot be read is said in *Messages* and by \\[check-health], and left out.
 \\[describe-evidence] says whether a file is evidence and by which entry;
-\\[copy-from-evidence] copies files out of one, each checked by its SHA-256.")
+\\[copy-from-evidence] copies files out of one, each checked by its SHA-256.
+- nil: no folder is evidence and nothing is looked at, as standard.
+- a list of entries, each one of three forms.
+- \"~/cases/*/evidence/\": a folder's path, * standing for any name of one
+  folder, ** for any folders, none too.
+- (:name \"evidence\" :within \"~/cases/\"): every folder of that name, within
+  the folder :within names (anywhere without it).
+- (:regex \"^[0-9]{4}-[0-9]{4}$\" :within \"~/cases/\" :then \"evidence\"):
+  every folder within ~/cases/ whose whole name the regular expression matches
+  (as searches read one), and the folder :then names inside it (that folder
+  itself without :then)."
+  :values (list-of "a folder's path, (:name ...) or (:regex ...)"))
 
 ;;; The entries as read
 

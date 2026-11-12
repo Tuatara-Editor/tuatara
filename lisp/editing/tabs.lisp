@@ -4,7 +4,7 @@
 ;;;; A tab character reaches the next tab stop, the stops being every
 ;;;; *tab-width* columns. TAB indents the line where the major mode indents
 ;;;; (Lisp, Rust, C, shell scripts), and completes the name at point when the
-;;;; line was indented already (*tab-always-indent*); elsewhere, and M-i
+;;;; line was indented already (*tab-always-indent*); elsewhere, and C-z TAB
 ;;;; anywhere, it goes on to the next stop, putting spaces in, or a tab
 ;;;; character where *indent-tabs-mode* says so. Both are Emacs's settings
 ;;;; by Emacs's names, with 4 and spaces as the standard. Each can be set for a
@@ -15,18 +15,21 @@
 
 (in-package #:tuatara.defaults)
 
-(defvar *tab-width* 4
+(define-setting *tab-width* 4
   "The columns from one tab stop to the next: a tab character shows its text
 on at the next stop, and \\[indent-for-tab-command] goes on to it. For every
-buffer whose major mode has no width of its own (set-tab-width). A whole
-number from 1 to 64; 4 unless set.")
+buffer whose major mode has no width of its own (set-tab-width).
+- a whole number from 1 to 64: the columns. 4 as standard."
+  :values (integer 1 64))
 
-(defvar *indent-tabs-mode* nil
-  "True to put tab characters in where \\[indent-for-tab-command] and
-indentation go on to a tab stop, NIL to put spaces in; for every buffer whose
-major mode says nothing of its own (set-indent-tabs-mode). NIL unless set, so
-\\[indent-for-tab-command] puts spaces in; \\[quoted-insert] \\`TAB' puts a tab
-character in whatever this says.")
+(define-setting *indent-tabs-mode* nil
+  "Whether indentation puts tab characters in where \\[indent-for-tab-command]
+and indentation go on to a tab stop, for every buffer whose major mode says
+nothing of its own (set-indent-tabs-mode). \\[quoted-insert] \\`TAB' puts a tab
+character in whatever this says.
+- t: put tabs in.
+- nil: put spaces in (the standard)."
+  :values boolean)
 
 (defvar *mode-tab-widths* (make-hash-table :test 'eq)
   "The tab widths set for major modes (set-tab-width), by the mode's name.")
@@ -168,14 +171,17 @@ for \\`ESC'; NIL for any other key, a Meta one among them."
                (:backspace (code-char 127))
                (t nil))))))
 
-(defvar *tab-always-indent* :complete
+(define-setting *tab-always-indent* :complete
   "What \\[indent-for-tab-command] does where the major mode indents lines
-\(Lisp, Rust, C, shell scripts): :COMPLETE (the standard) indents the current
-line, and when that changes nothing completes the name at point, as
-\\<lisp-mode>\\[completion-at-point] does in Lisp. T only indents it, wherever
-point is. NIL indents it when point is in its leading blanks, else goes on to
-the next tab stop. Where the mode does not indent (text, Org, CSV),
-\\[indent-for-tab-command] goes on to the next tab stop.")
+\(Lisp, Rust, C, shell scripts). Where the mode does not indent (text, Org,
+CSV), it goes on to the next tab stop.
+- :complete: indent the current line, and when that changes nothing complete
+  the name at point, as \\<lisp-mode>\\[completion-at-point] does in Lisp (the
+  standard).
+- t: only indent it, wherever point is.
+- nil: indent it when point is in its leading blanks, else go on to the next
+  tab stop."
+  :values (member :complete t nil))
 
 (define-command indent-region ()
   "Indent each line the selection touches as its major mode indents it; the

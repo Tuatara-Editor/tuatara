@@ -108,20 +108,19 @@ cursor, or on as many characters as the number you gave first.
 If the kill ring is empty, ~p~ says so and changes nothing.
 
 #+begin_try Try it, with a letter
-1. Press ~C-x C-f~, type =~/letter.txt= and press ~RET~. Press ~i~ and type
-   four lines: =Dear Hana,=, =See you at Easter.=,
-   =Thanks for the weekend in Raglan.= and =Love, Aroha=, each followed by
-   ~RET~ except the last. Press ~C-g~ to go back to NORMAL state.
-2. The thanks should come before the other line. Press ~g g j j~ to go to the
-   third line, then ~V~ to select it and ~d~ to cut it. The line is gone.
-3. Press ~k~ (non-modal: ~C-p~) to go up, ~g h~ (non-modal: ~C-a~) to go to the
-   start of the line, then ~p~. The thanks line is pasted above
-   =See you at Easter.= Press ~u~ (non-modal: ~C-/~) to undo it.
-4. Press ~V~, then ~y~. The echo area says =Copied=. Press ~g g p~. The copy
-   is pasted above =Dear Hana,=. Press ~u~ to undo it.
-5. Press ~g g D~. The text of the first line is cut and the line stays,
-   empty. Press ~u~ to bring it back. The text that ~D~ (non-modal: ~C-k~) cut
-   is on the kill ring, and ~p~ would paste it.
+1. 1. Press ~C-x C-f~, type =~/letter.txt= and press ~RET~. Press ~i~ and type
+   four lines: =Dear Hana,=, =See you at Easter.=, =Thanks for the weekend in
+   Raglan.= and =Love, Aroha=, each followed by ~RET~ except the last. Press
+   ~C-g~ to go back to NORMAL state. 2. The thanks should come before the other
+   line. Press ~g g j j~ to go to the third line, then ~V~ (non-modal: ~C-z V~)
+   to select it and ~d~ to cut it. The line is gone. 3. Press ~k~ (non-modal:
+   ~C-p~) to go up, ~g h~ (non-modal: ~C-a~) to go to the start of the line,
+   then ~p~. The thanks line is pasted above =See you at Easter.= Press ~u~
+   (non-modal: ~C-/~) to undo it. 4. Press ~V~, then ~y~. The echo area says
+   =Copied=. Press ~g g p~. The copy is pasted above =Dear Hana,=. Press ~u~ to
+   undo it. 5. Press ~g g D~. The text of the first line is cut and the line
+   stays, empty. Press ~u~ to bring it back. The text that ~D~ (non-modal:
+   ~C-k~) cut is on the kill ring, and ~p~ would paste it.
 #+end_try
 
 ** The system clipboard and the primary selection
@@ -152,7 +151,7 @@ not sent, and neither is any text from an encrypted file, and with
 
 *** Settings
 
-| Setting                   | Standard      | What it changes                  |
+| Setting                   | Default       | What it changes                  |
 |---------------------------+---------------+----------------------------------|
 | =*use-system-clipboard*=  | =t=           | Whether cuts and copies go on the system clipboard, and whether a paste takes in what another program copied. =nil= keeps them in Tuatara. |
 | =*clipboard-size-limit*=  | =8388608=     | The most characters a cut may have and still go on the clipboard and the primary selection. That is 8 MB. A larger cut stays in the buffer's own text. |
@@ -214,25 +213,24 @@ until ~y~, ~d~ or ~p~ uses them. ~C-g~ leaves them as they are, and ~c~ does
 not act on them.
 
 #+begin_try Try it, with a shopping list
-1. Open =~/shopping.txt= from the first try, or make a new file with six
+1. 1. Open =~/shopping.txt= from the first try, or make a new file with six
    lines: =eggs=, =bread=, =milk=, =apples=, =tea=, =butter=. Press ~C-g~ so
-   that you are in NORMAL state.
-2. Press ~g g j~ to go to =bread=, then ~m l~. The line changes colour and
-   the echo area says =Banked this line (1 total)=, then what to do next.
-3. Press ~j j j~ to go to =tea=, then ~m l~ again. Now two lines are banked.
-4. Press ~m u~ on =tea=. It leaves the bank. Press ~m l~ to bank it again.
-5. Press ~d~. Both lines are cut together and leave the bank, and the echo
-   area says =Deleted 2 lines=.
-6. Press ~g g p~. =bread= and =tea= are pasted above =eggs=, as one cut. Press
-   ~C-x C-s~ to save.
+   that you are in NORMAL state. 2. Press ~g g j~ to go to =bread=, then ~m l~
+   (non-modal: ~C-z m l~). The line changes colour and the echo area says
+   =Banked this line (1 total)=, then what to do next. 3. Press ~j j j~ to go to
+   =tea=, then ~m l~ again. Now two lines are banked. 4. Press ~m u~ on =tea=.
+   It leaves the bank. Press ~m l~ to bank it again. 5. Press ~d~. Both lines
+   are cut together and leave the bank, and the echo area says =Deleted 2
+   lines=. 6. Press ~g g p~. =bread= and =tea= are pasted above =eggs=, as one
+   cut. Press ~C-x C-s~ to save.
 #+end_try
 
-| Modal                 | Non-modal | Command                | What it does                   |
-|-----------------------+-----------+------------------------+--------------------------------|
-| ~m l~                 | none      | =bank-lines=           | Banks the line, or the lines the selection touches, and drops the selection. On lines that are all banked already it takes them out again, and on lines partly banked it banks the rest. A number banks that many lines from the cursor. A line whose end a fold hides is banked with all that the fold hides. Lines a search filter hides are not banked. |
-| ~m u~                 | none      | =bank-release-line=    | Takes the line at the cursor out of the bank and keeps the others. |
-| ~m U~                 | none      | =bank-release-section= | Takes out the whole run of banked lines the cursor is on, the lines beside each other at once. Banked lines elsewhere stay. |
-| ~m DEL~, ~m <delete>~ | none      | =bank-clear=           | Lets go of every banked line in the buffer. The text is not changed. |
+| Modal                 | Non-modal                     | Command                | What it does                   |
+|-----------------------+-------------------------------+------------------------+--------------------------------|
+| ~m l~                 | ~C-z m l~                     | =bank-lines=           | Banks the line, or the lines the selection touches, and drops the selection. On lines that are all banked already it takes them out again, and on lines partly banked it banks the rest. A number banks that many lines from the cursor. A line whose end a fold hides is banked with all that the fold hides. Lines a search filter hides are not banked. |
+| ~m u~                 | ~C-z m u~                     | =bank-release-line=    | Takes the line at the cursor out of the bank and keeps the others. |
+| ~m U~                 | ~C-z m U~                     | =bank-release-section= | Takes out the whole run of banked lines the cursor is on, the lines beside each other at once. Banked lines elsewhere stay. |
+| ~m DEL~, ~m <delete>~ | ~C-z m DEL~, ~C-z m <delete>~ | =bank-clear=           | Lets go of every banked line in the buffer. The text is not changed. |
 
 With lines banked, ~y~ copies them as one cut and ~d~ cuts them as one cut and
 one change, so that one ~u~ (non-modal: ~C-/~) puts them back. ~p~ puts the
@@ -242,7 +240,7 @@ and the echo area gives its size.
 
 *** Faces
 
-| Face             | Standard | What it paints                            |
+| Face             | Default  | What it paints                            |
 |------------------+----------+-------------------------------------------|
 | =:banked-line=   | theme    | The banked lines, across the full width of the window. |
 

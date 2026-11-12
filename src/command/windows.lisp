@@ -230,14 +230,18 @@ makes them, DESCRIBE-BUFFER-PLACES lists them.")
 (defparameter *places* '(:here :other :below :beside :bottom :top :left :right :right-or-alone :nowhere)
   "The places PLACE-BUFFERS knows.")
 
-(defvar *split-height-threshold* 80
+(define-setting *split-height-threshold* 80
   "The fewest rows a window must have for a buffer shown in another window to
-split it into one above the other; a lone window is split so whenever it has
-room.")
+split it into one above the other.
+A lone window is split so whenever it has room.
+- a whole number, 0 or more: the rows; 80 as standard."
+  :values (integer 0 *))
 
-(defvar *split-width-threshold* 160
+(define-setting *split-width-threshold* 160
   "The fewest columns a window must have for a buffer shown in another window
-to split it into two side by side.")
+to split it into two side by side.
+- a whole number, 0 or more: the columns; 160 as standard."
+  :values (integer 0 *))
 
 (defun place-buffers (which place &key size keep select)
   "Show the buffers WHICH names in PLACE when a command shows one of them in
@@ -370,10 +374,12 @@ whose name begins with a space; a new one (NEW-BUFFER) when there is none."
 (defun replacement-buffer (window &optional except)
   "The buffer to show in WINDOW instead of its own: the one it showed before,
 else one no window shows, else any other; never EXCEPT, the buffer being
-killed. A new one (NEW-BUFFER) when there is none."
+killed. In a client of an editor running in the background, only one of the
+client's own (CLIENT-OWN-BUFFER-P). A new one (NEW-BUFFER) when there is none."
   (let ((own (tuatara.display:window-buffer window))
-        (shown (mapcar #'tuatara.display:window-buffer (editor-windows))))
-    (flet ((usable (b) (and (not (eq b own)) (not (eq b except)))))
+        (shown (mapcar #'tuatara.display:window-buffer (editor-windows)))
+        (client (current-client)))
+    (flet ((usable (b) (and (not (eq b own)) (not (eq b except)) (client-own-buffer-p client b))))
       (or (find-if (lambda (b) (and (usable b) (live-buffer-p b)))
                    (mapcar #'first (tuatara.display:window-history window)))
           (find-if (lambda (b) (and (usable b) (not (member b shown)))) tuatara.buffer:*buffers*)
@@ -561,14 +567,17 @@ buffer it showed before."
                                                  (replacement-buffer window)))
           (fit-windows *editor*)))))
 
-(defun replace-buffer-in-windows (buffer)
+(defun replace-buffer-in-windows (buffer &optional client)
   "BUFFER is being killed: close the windows made or kept for it (all but the
 last), show another buffer in the other windows showing it, and forget it in
-every window's history, in every frame. Runs from the kill-buffer functions."
-  (setf *buffer-order* (delete buffer *buffer-order*))
+every window's history, in every frame. Runs from the kill-buffer functions.
+With CLIENT, BUFFER stays and only CLIENT's frames give it up, as when CLIENT
+leaves a buffer other clients have too."
+  (unless client
+    (setf *buffer-order* (delete buffer *buffer-order*)))
   (let ((editor *editor*))
     (when (and editor (editor-window editor))
-      (dolist (frame (editor-frames editor))
+      (dolist (frame (if client (client-frames editor client) (editor-frames editor)))
         (call-in-frame
          editor frame
          (lambda ()

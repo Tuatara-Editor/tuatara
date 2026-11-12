@@ -64,10 +64,11 @@ in it, in order. And PARENT."
   "The start of the text whose objects are being parsed: as a line's start to
 what begins there, nothing before it seen.")
 
-(defparameter *org-depth-limit* 200
-  "The most elements and objects of Org text the parser reads one within
-another: what lies deeper is read as plain text, so that a file made of
-nothing but nesting cannot exhaust the parser.")
+(define-setting *org-depth-limit* 200
+  "The most elements and objects of Org text the parser reads one within another.
+What lies deeper is read as plain text, so that a file made of nothing but
+nesting cannot exhaust the parser."
+  :values (integer 1 *))
 
 (defvar *org-depth* 0
   "How many elements and objects the parser is within.")
@@ -83,11 +84,12 @@ FOUND): the last search for the closing NEEDLE (\\), @@, ]], )}}}) went from
 FROM and found it first at FOUND, or, FOUND NIL, not before the stretch's end
 \(ORG-SEARCH-CLOSE).")
 
-(defvar *org-standard-todo-keywords* '(("TODO" "WAIT") . ("DONE" "CANCELLED"))
-  "The TODO keywords of an Org file with no #+TODO: line of its own, as
-\(NOT-DONE . DONE): TODO and WAIT for tasks open, DONE and CANCELLED for
-tasks closed. A file's #+TODO: line, such as #+TODO: TODO NEXT | DONE, sets
-its own instead.")
+(define-setting *org-standard-todo-keywords* '(("TODO" "WAIT") . ("DONE" "CANCELLED"))
+  "The TODO keywords of an Org file with no #+TODO: line of its own.
+They are (NOT-DONE . DONE): TODO and WAIT for tasks open, DONE and CANCELLED
+for tasks closed. A file's #+TODO: line, such as #+TODO: TODO NEXT | DONE,
+sets its own instead."
+  :values "(NOT-DONE . DONE), each a list of keywords as text")
 
 (defparameter *org-cancel-keywords* '("CANCELLED" "CANCELED")
   "The done keywords that cancel a task rather than finish it, in the order

@@ -86,19 +86,24 @@ headline, (START . END) as ORG-FOLD-RANGE has them; NIL when there is none."
     (find-if (lambda (fold) (and (<= (car fold) start) (>= (cdr fold) end)))
              (tuatara.display:buffer-folds (org-parse-buffer parse)))))
 
-(defvar *org-cycle-hide-drawers* t
-  "True for drawers (:LOGBOOK:, :PROPERTIES:) and a task's notes
-\(ORG-NOTES-RANGE) to stay folded when \\`TAB' shows a headline's or an
-item's children or all of it; \\`TAB' on a drawer's line, or on the first of
-the notes, opens it. NIL to show them with the rest.")
+(define-setting *org-cycle-hide-drawers* t
+  "Whether drawers and a task's notes stay folded as \\`TAB' shows the rest.
+Drawers are :LOGBOOK: and :PROPERTIES:; the notes are ORG-NOTES-RANGE.
+- t: they stay folded when \\`TAB' shows a headline's or an item's children
+  or all of it; \\`TAB' on a drawer's line, or on the first of the notes,
+  opens it.
+- nil: they are shown with the rest."
+  :values boolean)
 
-(defvar *org-fold-metadata* t
-  "True for an Org file to open with what is kept of each task folded: its
-drawers (:PROPERTIES:, :LOGBOOK:) and its notes (- State \"DONE\" ...,
-- Note taken on ..., CLOCK: lines) each to one line, those of headings and
-list items alike; its SCHEDULED: and DEADLINE: shown. \\`TAB' on the line
-opens it. A file's #+STARTUP: showdrawers keeps them open, hidedrawers folds
-them whatever this says. NIL to open every file with them shown.")
+(define-setting *org-fold-metadata* t
+  "Whether an Org file opens with what is kept of each task folded.
+What is kept is its drawers (:PROPERTIES:, :LOGBOOK:) and its notes (- State
+\"DONE\" ..., - Note taken on ..., CLOCK: lines), of headings and list items
+alike; its SCHEDULED: and DEADLINE: are shown either way. A file's #+STARTUP:
+showdrawers keeps them open, hidedrawers folds them whatever this says.
+- t: each folded to one line; \\`TAB' on the line opens it.
+- nil: every file opens with them shown."
+  :values boolean)
 
 (defparameter *org-note-line-re*
   (cl-ppcre:create-scanner
@@ -333,10 +338,12 @@ True when it did; NIL, nothing done, when the subtree is longer than
                                 collect (range (tuatara.buffer:buffer-line-end buffer child) (or (first more) end)))))
       t)))
 
-(defvar *org-cycle-include-plain-lists* t
-  "True for \\`TAB' on a list item with sub-items or text under its first line
-to fold it, as on a headline: folded, then its sub-items, then all of it;
-NIL for \\`TAB' there to indent.")
+(define-setting *org-cycle-include-plain-lists* t
+  "What \\`TAB' does on a list item with sub-items or text under its first line.
+- t: folds it as on a headline, folded first, then its sub-items, then all
+  of it.
+- nil: indents."
+  :values boolean)
 
 (defun org-item-on-line (tree position)
   "The list item of TREE beginning at the character POSITION (a line's start), or NIL."

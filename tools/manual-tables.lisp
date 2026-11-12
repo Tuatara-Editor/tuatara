@@ -96,17 +96,19 @@ buffer to a major mode."
   (uiop:string-prefix-p "Switch the current buffer to " (third row)))
 
 (defun value-words (symbol)
-  "The standard value of the setting SYMBOL, short enough for a table."
+  "The default value of the setting SYMBOL, short enough for a table."
   (let* ((*print-case* :downcase) (*print-pretty* nil) (*package* (find-package :tuatara-user))
          (words (prin1-to-string (symbol-value symbol))))
     (cell (if (> (length words) 40) (format nil "~a..." (subseq words 0 40)) words))))
 
 (defun setting-rows ()
-  "Rows (NAME STANDARD WORDS) for every setting, sorted by name."
+  "Rows (NAME DEFAULT VALUES WORDS) for every setting, sorted by name: VALUES
+the values it takes in words, empty when its definition does not say them."
   (sort (let ((rows '()))
           (do-external-symbols (symbol :tuatara-user)
             (when (boundp symbol)
               (push (list (string-downcase symbol) (value-words symbol)
+                          (cell (or (tuatara.runtime:setting-values-words symbol) ""))
                           (sentence (documentation symbol 'variable)))
                     rows)))
           rows)
@@ -151,11 +153,11 @@ table."
 
 (defparameter *kinds*
   '(("commands" "commands" ("Modal" "Non-modal" "Command" "What it does") :keys-first)
-    ("settings" "settings" ("Setting" "Standard" "What it changes") :setting)
+    ("settings" "settings" ("Setting" "Default" "Values" "What it changes") :setting)
     ("faces" "faces" ("Face" "What it paints") :face)
     ("all-commands" "commands" ("Modal" "Non-modal" "Command" "What it does") :keys-first)
     ("mode-commands" "commands" ("Modal" "Non-modal" "Command" "What it does") :keys-first)
-    ("all-settings" "settings" ("Setting" "Standard" "What it changes") :setting)
+    ("all-settings" "settings" ("Setting" "Default" "Values" "What it changes") :setting)
     ("options" "options" ("Option" "What it does") :option))
   "The kinds of table a chapter can ask for with \"#+table: KIND NAME ...\", each
 (KIND SOURCE COLUMN-HEADS LAYOUT): the rows come from the source table SOURCE.
@@ -169,10 +171,10 @@ the order of the source; \"mode-commands\" those that switch to a major mode,
 
 (defun cells (layout row)
   "The cells of ROW, a row of a source table, as the table LAYOUT shows it."
-  (destructuring-bind (name second &optional third) row
+  (destructuring-bind (name second &optional third fourth) row
     (ecase layout
       (:keys-first (append second (list (code name) third)))
-      (:setting (list (code name) (code second) third))
+      (:setting (list (code name) (code second) third fourth))
       ((:face :option) (list (code name) second)))))
 
 (defun kind-rows (kind table)

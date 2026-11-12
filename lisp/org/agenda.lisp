@@ -32,11 +32,16 @@ active timestamps (a group), one active timestamp, or a timestamp by rule.")
   "A CLOSED: or CLOCK: and the inactive timestamp after it: CLOSED a group when
 it is that, the timestamp the second.")
 
-(defvar *org-agenda-files* '("~/org/agenda.org")
-  "The files the agenda reads: each a file, a folder (every .org file in it,
-those whose names begin with a dot left out) or a pattern of names in a
-folder, * for any characters and ? for one (\"~/notes/*.org\"), names
-beginning with a dot only for a pattern that does.")
+(define-setting *org-agenda-files* '("~/org/agenda.org")
+  "The files the agenda reads.
+Each is one of these:
+- a file.
+- a folder: every .org file in it, those whose names begin with a dot left
+  out.
+- a pattern of names in a folder, * for any characters and ? for one
+  (\"~/notes/*.org\"); names beginning with a dot only for a pattern that
+  does."
+  :values (list-of file))
 
 (defvar *org-agenda-file-functions* '()
   "Functions of no arguments, each giving a list of more files the agenda
@@ -76,18 +81,25 @@ each once."
       *org-agenda-files*
       (remove-duplicates (append *org-agenda-files* (org-agenda-files-added)) :test #'equal :from-end t)))
 
-(defvar *org-agenda-date-in-title* nil
-  "True to keep the dates written in a heading or a checkbox's line in its
-title on the agenda's days, as Org shows them; NIL takes them out there,
-the day and the time column saying them already (the TODO list and matches
-keep them).")
+(define-setting *org-agenda-date-in-title* nil
+  "Whether the agenda's days show the dates written in a heading's title.
+This holds for a heading or a checkbox's line; the TODO list and matches keep
+them either way.
+- t: the dates kept in the title.
+- nil: the dates taken out there, the day and the time column saying them
+  already."
+  :values boolean)
 
-(defvar *org-deadline-warning-days* 14
-  "How many days before its deadline a task is listed on today; a deadline's
-own -3d says otherwise.")
+(define-setting *org-deadline-warning-days* 14
+  "How many days before its deadline a task is listed on today.
+A deadline's own -3d says otherwise for it."
+  :values (integer 0 *))
 
-(defvar *org-agenda-log-mode* nil
-  "True for the agenda to list what was closed and clocked on each day too.")
+(define-setting *org-agenda-log-mode* nil
+  "Whether the agenda lists what was closed and clocked on each day too.
+- t: listed.
+- nil: not listed."
+  :values boolean)
 
 ;;; Days
 

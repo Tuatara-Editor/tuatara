@@ -24,11 +24,13 @@ is let go unread, said so.")
   "The most octets of messages waiting for a language server to read them: a
 server that leaves more unread has stopped reading, and is ended.")
 
-(defvar *lsp-wait* 2
-  "The seconds a command waits for a language server's answer it needs at once
-\(a completion, a definition), a key stopping the wait sooner, 2 as standard.
-Raise it for a slow server, one still indexing a large project; lower it to
-give up sooner on one that is slow.")
+(define-setting *lsp-wait* 2
+  "How long a command waits for a language server's answer it needs at once (a
+completion, a definition), a key stopping the wait sooner. Raise it for a
+slow server, one still indexing a large project; lower it to give up sooner
+on one that is slow.
+- a number: that many seconds, 2 as standard."
+  :values (number 0 *))
 
 (defvar *lsp-servers* '()
   "The language servers running, the most recently started first.")

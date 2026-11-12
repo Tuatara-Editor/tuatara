@@ -249,13 +249,16 @@ they are."
 
 ;;; TODO states
 
-(defvar *org-todo-keywords-not-cycled* '("CANCELLED" "CANCELED")
-  "The TODO keywords passed over as a task's keyword goes round to the next:
-by \\<org-mode>\\[org-todo], \\[org-shiftright] and \\[org-shiftleft], by RET on a task's
+(define-setting *org-todo-keywords-not-cycled* '("CANCELLED" "CANCELED")
+  "The TODO keywords passed over as a task's keyword goes round to the next.
+The keyword goes round by \\<org-mode>\\[org-todo], \\[org-shiftright] and \\[org-shiftleft], by RET on a task's
 headline and by the agenda's \\<org-agenda-mode>\\[org-agenda-todo]. With the standard
 keywords a task goes TODO, WAIT, DONE and none, never CANCELLED, which
 \\<org-mode>\\[org-cancel-task] sets. The keywords of a file's own #+TODO: line are
-passed over the same way; NIL for every keyword to take its turn.")
+passed over the same way.
+- a list of keywords: those passed over.
+- nil: every keyword takes its turn."
+  :values (list-of string))
 
 (defun org-keyword-sequence (text)
   "The TODO keywords of TEXT in the order they cycle: those not done, then
@@ -604,17 +607,20 @@ not, logged (*org-log-checkboxes*)."
     (org-set-todo 1)
     (org-todo-changed (current-buffer))))
 
-(defvar *org-return-cycles-todo* t
-  "True for \\<normal>\\[tuatara-normal-return] in NORMAL state on a headline's line with a
-TODO keyword to change it to the next, as \\[org-todo] does, but never to
-none: TODO to WAIT to DONE and round, or round the document's #+TODO:
-keywords, those of *org-todo-keywords-not-cycled* passed over (a link
-point is on is followed first). A task whose date repeats, made done, is
-done this time and goes on to its next. While a checkbox right under it is
-not ticked or a TODO under it not done, the keywords that are done are passed
-over: TODO to NEXT to WAIT and round with #+TODO: TODO NEXT WAIT | DONE; with
-none other to go to, it says what is open, and \\[org-todo] makes it done all
-the same. NIL to leave it to \\[org-todo].")
+(define-setting *org-return-cycles-todo* t
+  "Whether RET on a task's headline in NORMAL state changes its TODO keyword.
+- t: \\<normal>\\[tuatara-normal-return] in NORMAL state on a headline's line with a TODO
+  keyword changes it to the next, as \\[org-todo] does, but never to none,
+  going TODO to WAIT to DONE and round, or round the document's #+TODO: keywords,
+  those of *org-todo-keywords-not-cycled* passed over (a link point is on is
+  followed first). A task whose date repeats, made done, is done this time
+  and goes on to its next. While a checkbox right under it is not ticked or a
+  TODO under it not done, the keywords that are done are passed over: TODO to
+  NEXT to WAIT and round with #+TODO: TODO NEXT WAIT | DONE; with none other
+  to go to, it says what is open, and \\[org-todo] makes it done all the
+  same.
+- nil: the keyword is left to \\[org-todo]."
+  :values boolean)
 
 (defun org-open-under (headline)
   "What keeps HEADLINE from being done: how many of the checkboxes right under
@@ -857,10 +863,12 @@ ended, not moved on."
 
 ;;; Tags and notes
 
-(defvar *org-tags-column* 0
-  "Where \\[org-set-tags-command] and \\[org-align-tags] put a headline's
-tags: 0, one space after the headline's text; negative, so that they end at
-that column (-77 to end at the 77th); positive, so that they start there.")
+(define-setting *org-tags-column* 0
+  "Where \\[org-set-tags-command] and \\[org-align-tags] put a headline's tags.
+- 0: one space after the headline's text.
+- negative: ending at that column, -77 to end at the 77th.
+- positive: starting at that column."
+  :values integer)
 
 (defun org-tags-from-text (text)
   "The tags TEXT names, each once and in order, as written :work:urgent: or

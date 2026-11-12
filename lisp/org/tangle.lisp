@@ -22,11 +22,13 @@
   "The end of a file's name :tangle yes gives the code of each language: the
 Org file's name with it (notes.el); a language not here, its own name.")
 
-(defvar *code-files-make-folders* nil
-  "NIL for tangle-code-files to make the folders a file goes in only for blocks
-with :mkdirp yes, so that an Org file writes the same everywhere; true to make
-them for every block, as :mkdirp yes does (a block's :mkdirp no still says not
-to).")
+(define-setting *code-files-make-folders* nil
+  "Whether tangle-code-files makes the folders a file goes in.
+- nil: only for blocks with :mkdirp yes, so that an Org file writes the same
+  everywhere.
+- t: for every block, as :mkdirp yes does; a block's :mkdirp no still says
+  not to."
+  :values boolean)
 
 (defun org-keyword-arguments (text)
   "The settings TEXT gives as :KEY VALUE (:tangle ~/.bashrc :mkdirp yes), in

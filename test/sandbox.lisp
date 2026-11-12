@@ -125,10 +125,10 @@ as text, how it went, and what it said on its error output."
     (true (search "bubblewrap" detail))
     (true (search "/bwrap" path)))
   ;; turned off, or not there: nothing runs, and why is said
-  (let ((tuatara.io::*sandbox-program* nil))
+  (let ((tuatara.io::*sandbox* nil))
     (is eq :off (tuatara.io:sandbox-status))
     (is eq :unavailable (nth-value 1 (tuatara.io:sandbox-run "true" '()))))
-  (let ((tuatara.io::*sandbox-program* "no-such-sandbox-program"))
+  (let ((tuatara.io::*bwrap-name* "no-such-sandbox-program"))
     (multiple-value-bind (status detail) (tuatara.io:sandbox-status)
       (is eq :missing status)
       (true (search "no-such-sandbox-program not found" detail)))
@@ -141,14 +141,14 @@ as text, how it went, and what it said on its error output."
 
 (define-test (sandbox setting-changed-while-tried)
   ;; the setting changed while the sandbox is tried, as an init file read meanwhile does: what was tried is kept
-  (let ((tuatara.io::*sandbox-program* "bwrap"))
+  (let ((tuatara.io::*sandbox* t))
     (sb-int:encapsulate 'tuatara.io::version-text 'changed-meanwhile
                         (lambda (function &rest arguments)
-                          (setf tuatara.io::*sandbox-program* nil)
+                          (setf tuatara.io::*sandbox* nil)
                           (apply function arguments)))
     (unwind-protect (tuatara.io:sandbox-status :again t)
       (sb-int:unencapsulate 'tuatara.io::version-text 'changed-meanwhile))
-    (is eq nil tuatara.io::*sandbox-program*)
+    (is eq nil tuatara.io::*sandbox*)
     (is eq :off (tuatara.io:sandbox-status))
     (is eq :off (tuatara.io:sandbox-status-now))
     (is eq :unavailable (nth-value 1 (tuatara.io:sandbox-run "true" '()))))

@@ -38,15 +38,20 @@ not changed. The rows that go on from the one above are marked in the gutter
   :unless (soft-wrap-never-p "in the hex view, or a view laid out in columns or by the row, as the agenda is")
   :default-modes '((help-mode . t) (about-mode . t)))
 
-(defvar *soft-wrap-at-fill-column* t
-  "True to wrap long lines at the buffer's fill column (\\[set-fill-column],
-*FILL-COLUMN*), or at the window's edge when that is nearer; NIL to wrap at the
-window's edge always.")
+(define-setting *soft-wrap-at-fill-column* t
+  "Whether soft wrap wraps long lines at the buffer's fill column
+(\\[set-fill-column], *FILL-COLUMN*), or at the window's edge when that is
+nearer.
+- t: wrap at the fill column (the standard).
+- nil: wrap at the window's edge always."
+  :values boolean)
 
-(defvar *soft-wrap-indicator* "↪"
+(define-setting *soft-wrap-indicator* "↪"
   "What the gutter shows beside a row that goes on from the one above when
-lines wrap, in the :wrap-indicator face, where the line number would be; NIL
-for nothing.")
+lines wrap, in the :wrap-indicator face, where the line number would be.
+- text: the mark shown; \"↪\" as standard.
+- nil: nothing."
+  :values (or (member nil) string))
 
 (defun buffer-soft-wrap (buffer)
   "How BUFFER's long lines wrap, for the display: NIL for not at all, else at

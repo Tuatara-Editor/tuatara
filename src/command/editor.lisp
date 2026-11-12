@@ -517,10 +517,13 @@ unless SET-BUFFER or WITH-CURRENT-BUFFER made another current."
   "The selected window, the one commands act on."
   (editor-window *editor*))
 
-(defvar *message-log-max* 1000
-  "Lines the *Messages* buffer keeps of the messages shown, the oldest going
-first, 1000 as standard; NIL keeps none. Raise it to look back further, at the
-cost of the memory of those lines.")
+(define-setting *message-log-max* 1000
+  "The lines the *Messages* buffer keeps of the messages shown.
+The oldest go first. Raise it to look back further, at the cost of the
+memory of those lines.
+- a whole number, 0 or more: that many lines; 1000 as standard.
+- nil: none are kept."
+  :values (or (member nil) (integer 0 *)))
 
 (defun message-repeats (line)
   "LINE, a line of *Messages*, as the message it shows and how many times:

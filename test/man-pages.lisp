@@ -155,3 +155,70 @@ there is none."
         (let ((text (shown "tuatara-init.5")))
           (true (search "FILES KEPT" text))
           (true (search "recent-files" text)))))))
+
+(defun bash-completion-replies (script &rest words)
+  "What the completion in SCRIPT, a file of bash, offers for the command line WORDS, whose last word is the one being
+completed: a list of strings."
+  (let ((out (uiop:run-program
+              (append (list "bash" "-c"
+                            "source \"$1\"; shift; COMP_WORDS=(\"$@\"); COMP_CWORD=$(($# - 1)); _tuatara
+                             printf '%s\\n' \"${COMPREPLY[@]}\""
+                            "bash" (uiop:native-namestring script) "tuatara")
+                      words)
+              :output :string :error-output nil :ignore-error-status t
+              :directory (uiop:pathname-directory-pathname script))))
+    (remove "" (tuatara.text:split-words out (list #\Newline)) :test #'string=)))
+
+(define-test (man-pages bash-completion-has-every-option)
+  ;; every option of the table is in the script, and the script is valid bash
+  (with-test-directory (directory)
+    (let* ((script (tuatara.terminal:write-bash-completion directory))
+           (text (alexandria:read-file-into-string script :external-format :utf-8)))
+      (dolist (option tuatara.terminal:*options*)
+        (true (search option text) "~a is in the completion" option))
+      (dolist (entry tuatara.terminal:*option-help*)
+        (dolist (flag (getf entry :flags))
+          (unless (char= (char (first flag) 0) #\+)
+            (true (search (tuatara.terminal::bare-flag (first flag)) text) "~a is in the completion" (first flag)))))
+      (is = 0 (nth-value 2 (uiop:run-program (list "bash" "-n" script) :ignore-error-status t :error-output nil))))))
+
+(define-test (man-pages bash-completion-completes)
+  ;; run in bash with COMP_WORDS set: options by prefix, the choices of --frames, files for a file option, after
+  ;; --, and for a plain argument; nothing for a name
+  (with-test-directory (directory)
+    (put-file (merge-pathnames "notes.org" directory) "")
+    (put-file (merge-pathnames "init.lisp" directory) "")
+    (let ((script (tuatara.terminal:write-bash-completion directory)))
+      (flet ((replies (&rest words) (apply #'bash-completion-replies script words)))
+        (true (member "--daemon" (replies "--da") :test #'string=))
+        (true (member "--daemon-socket" (replies "--da") :test #'string=))
+        (false (member "--gui" (replies "--da") :test #'string=))
+        (true (member "--client" (replies "--c") :test #'string=))
+        (is equal '("1" "10" "11" "12" "13" "14" "15" "16") (replies "--frames" "1"))
+        (is equal '("1" "10" "11" "12" "13" "14" "15" "16") (replies "--frames" "=" "1"))
+        (is equal '("init.lisp") (replies "--config" "i"))
+        (is equal '("init.lisp") (replies "-c" "in"))
+        (is equal '("notes.org") (replies "--diff" "init.lisp" "n"))
+        (is equal '("notes.org") (replies "notes.o"))
+        (is equal '("notes.org") (replies "--" "--x" "notes.o"))
+        (false (replies "--daemon" "=" "w"))
+        ;; the values of --merge are all files, so an option is not offered among them
+        (is equal '("notes.org") (replies "--merge" "a" "b" "c" "n"))))))
+
+(define-test (man-pages bash-completion-removed-with-desktop)
+  ;; tools/install-desktop.sh --remove takes away the completion it put in the data folder of the run's own home
+  (with-test-directory (directory)
+    (let* ((home (merge-pathnames "home/" directory))
+           (data (merge-pathnames ".local/share/" home))
+           (completion (merge-pathnames "bash-completion/completions/tuatara" data))
+           (other (merge-pathnames "bash-completion/completions/other" data)))
+      (ensure-directories-exist completion)
+      (put-file completion "complete -F _tuatara tuatara")
+      (put-file other "")
+      (uiop:run-program (list "bash" (tools-script "install-desktop.sh") "--remove")
+                        :output nil :error-output nil
+                        :environment (list (format nil "HOME=~a" (uiop:native-namestring home))
+                                           (format nil "XDG_DATA_HOME=~a" (uiop:native-namestring data))
+                                           "PATH=/usr/bin:/bin"))
+      (false (probe-file completion))
+      (true (probe-file other)))))

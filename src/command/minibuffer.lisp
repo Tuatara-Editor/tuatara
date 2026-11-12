@@ -682,10 +682,13 @@ letter or a digit, then over the letters and digits before it."
     (loop while (and (plusp q) (tuatara.text:word-char-p (char text (1- q)))) do (decf q))
     (replace-minibuffer-text q p "" editor)))
 
-(defvar tuatara-user:*use-system-clipboard* t
-  "True to put what is killed or copied on the system clipboard as well, where
-other programs paste it from, and to paste what another program copied there
-since; NIL keeps killed text to the editor.")
+(define-setting tuatara-user:*use-system-clipboard* t
+  "Whether what is killed or copied goes on the system clipboard as well.
+Other programs paste it from there, and what another program copied there is
+pasted since.
+- t: the system clipboard is used (the standard).
+- nil: killed text stays with the editor."
+  :values boolean)
 
 (defun minibuffer-take-pasted (text)
   "Put TEXT at the minibuffer cursor, as pasted: in place of the text offered

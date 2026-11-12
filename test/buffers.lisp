@@ -159,15 +159,15 @@ list starts on its first line, on a screen WIDTH by HEIGHT."
                                (uiop:split-string (session-text editor) :separator '(#\Newline)))))
                (multiple-value-bind (f editor) (fresh-list-session "C-x C-b C-s t w o RET m m" :width 100 :height 16)
                  (declare (ignore f))
-                 (true (uiop:string-prefix-p ">" (line editor "one")))
-                 (true (uiop:string-prefix-p ">" (line editor "two"))))
+                 (true (uiop:string-prefix-p "  >" (line editor "one")))
+                 (true (uiop:string-prefix-p "  >" (line editor "two"))))
                (multiple-value-bind (f editor) (fresh-list-session "C-x C-b C-s o n e RET m k d" :width 100 :height 16)
                  (declare (ignore f))
-                 (true (uiop:string-prefix-p "D" (line editor "one"))))
+                 (true (uiop:string-prefix-p "  D" (line editor "one"))))
                (multiple-value-bind (f editor) (fresh-list-session "C-x C-b C-s t w o RET m m U" :width 100 :height 16)
                  (declare (ignore f))
-                 (false (uiop:string-prefix-p ">" (line editor "one")))
-                 (false (uiop:string-prefix-p ">" (line editor "two"))))
+                 (false (uiop:string-prefix-p "  >" (line editor "one")))
+                 (false (uiop:string-prefix-p "  >" (line editor "two"))))
                (multiple-value-bind (f editor) (fresh-list-session "C-x C-b C-s o n e RET m x" :width 100 :height 16)
                  (declare (ignore f))
                  (true (tuatara.buffer:find-buffer "one"))
@@ -211,13 +211,13 @@ list starts on its first line, on a screen WIDTH by HEIGHT."
                (fresh-list-session "C-x b n o t e s RET i x C-g C-x C-b" :width 100 :height 16)
              (let* ((text (session-text editor))
                     (lines (uiop:split-string text :separator '(#\Newline))))
-               (is string= (format nil " MR  ~18a ~9@a ~16a Filename/Process" "Name" "Size" "Mode") (first lines))
-               (is string= (format nil " --  ~18a ~9@a ~16a ----------------" "----" "----" "----") (second lines))
+               (is string= (format nil "   MR  ~18a ~9@a ~16a Filename/Process" "Name" "Size" "Mode") (first lines))
+               (is string= (format nil "   --  ~18a ~9@a ~16a ----------------" "----" "----" "----") (second lines))
                ;; the buffers in no project under their heading
                (true (uiop:string-prefix-p "▾ No project" (third lines)))
-               (true (uiop:string-prefix-p (format nil " *   ~18a ~9@a Fundamental" "notes" "6") (fourth lines)))
+               (true (uiop:string-prefix-p (format nil "   *   ~18a ~9@a Fundamental" "notes" "6") (fourth lines)))
                ;; read-only: %; a long name cut to its column
-               (true (uiop:string-prefix-p (format nil "  %  ~a ~9@a Fundamental" "a-name-longer-t..." "3")
+               (true (uiop:string-prefix-p (format nil "    %  ~a ~9@a Fundamental" "a-name-longer-t..." "3")
                                            (line-of text "a-name-longer")))
                ;; the sum at the end
                (true (search " buffers" (car (last lines 2))))
@@ -229,10 +229,10 @@ list starts on its first line, on a screen WIDTH by HEIGHT."
              (false (faces-on f "notes ")))
            ;; a name marked for deletion, and a marked one, each in a face of its own
            (multiple-value-bind (f editor) (fresh-list-session "C-x C-b C-s n o t e s RET d" :width 100 :height 16)
-             (true (uiop:string-prefix-p "D" (line-of (session-text editor) "notes")))
+             (true (uiop:string-prefix-p "  D" (line-of (session-text editor) "notes")))
              (true (member :list-deletion (faces-on f "notes "))))
            (multiple-value-bind (f editor) (fresh-list-session "C-x C-b C-s n o t e s RET m" :width 100 :height 16)
-             (true (uiop:string-prefix-p ">" (line-of (session-text editor) "notes")))
+             (true (uiop:string-prefix-p "  >" (line-of (session-text editor) "notes")))
              (true (member :list-marked (faces-on f "notes ")))))
       (dolist (b (list notes long)) (when (tuatara.buffer:live-buffer-p b) (tuatara.buffer:kill-buffer b)))
       (let ((l (tuatara.buffer:find-buffer "*Buffers*"))) (when l (tuatara.buffer:kill-buffer l))))))
@@ -392,7 +392,7 @@ list starts on its first line, on a screen WIDTH by HEIGHT."
   (let ((made (loop for name in '("one" "two" "three") collect (tuatara.buffer:make-buffer name :text "1"))))
     (unwind-protect
          (flet ((marked (editor)
-                  (count-if (lambda (l) (uiop:string-prefix-p ">" l))
+                  (count-if (lambda (l) (uiop:string-prefix-p "  >" l))
                             (uiop:split-string (session-text editor) :separator '(#\Newline)))))
            (is = 2 (marked (nth-value 1 (fresh-list-session "C-x C-b C-u 2 m" :width 100 :height 16))))
            (is = 0 (marked (nth-value 1 (fresh-list-session "C-x C-b C-u 2 m C-p C-p C-u 2 u" :width 100 :height 16)))))
@@ -406,7 +406,7 @@ list starts on its first line, on a screen WIDTH by HEIGHT."
   (let ((made (loop for name in '("one" "two" "three") collect (tuatara.buffer:make-buffer name :text "1"))))
     (unwind-protect
          (flet ((marked (keys sign)
-                  (count-if (lambda (l) (uiop:string-prefix-p sign l))
+                  (count-if (lambda (l) (uiop:string-prefix-p (concatenate 'string "  " sign) l))
                             (uiop:split-string (session-text (nth-value 1
                                                                         (fresh-list-session keys
                                                                                             :width 100
@@ -602,3 +602,309 @@ list starts on its first line, on a screen WIDTH by HEIGHT."
                       (documentation 'tuatara.defaults::*trash-columns* 'variable)))
     (true text)
     (false (and text (or (search "(* marked" text) (search "(* or D" text) (search "marks (*" text))) "~a" text)))
+
+(define-test (buffers sections-within-sections)
+  ;; a section may hold sections: each heading set in under its own, folded on its own, hidden with the one
+  ;; holding it, which counts what they hold; point on a line hidden goes to the outermost folded heading
+  (let ((list (tuatara.buffer:make-buffer (tuatara.buffer:unique-buffer-name "sections within sections") :text "")))
+    (labels ((draw (buffer)
+               (multiple-value-bind (entries pieces)
+                   (tuatara.defaults::sectioned-pieces
+                    buffer '((:a :sections ((:a . 1) "one" "two") ((:a . 2) "three")) (:b "four"))
+                    (lambda (section) (if (consp section) (format nil "A~d" (cdr section)) (string section)))
+                    (lambda (member section) (declare (ignore section)) (list (format nil "  ~a~%" member))))
+                 (tuatara.defaults::render-pieces buffer pieces :entries entries :redraw #'draw)))
+             (text () (tuatara.buffer:buffer-string list))
+             (goto (line) (setf (tuatara.buffer:buffer-point list) (tuatara.buffer:buffer-goto-line list line)))
+             (line () (tuatara.buffer:buffer-line-number list (tuatara.buffer:buffer-point list))))
+      (unwind-protect
+           (progn
+             (draw list)
+             (is string= (format nil "▾ A (3)~%  ▾ A1 (2)~%    one~%    two~%~%  ▾ A2 (1)~%    three~%~%▾ B (1)~%  four~%")
+                 (text))
+             (goto 6)
+             (is equal '(:a . 2) (tuatara.defaults::list-section-at list))
+             (is equal '(:section (:a . 2) :a)
+                 (tuatara.defaults::list-entry-at list (tuatara.buffer:buffer-goto-line list 5)))
+             ;; an inner section folds on its own
+             (tuatara.defaults::list-toggle-section list '(:a . 1))
+             (is string= (format nil "▾ A (3)~%  ▸ A1 (2)~%  ▾ A2 (1)~%    three~%~%▾ B (1)~%  four~%") (text))
+             ;; the outer folded hides them, point on a line of theirs going to its heading
+             (goto 3)
+             (is equal '(:a . 2) (tuatara.defaults::list-section-at list))
+             (tuatara.defaults::fold-list-sections list (cons :a (tuatara.defaults::list-folded list)))
+             (is string= (format nil "▸ A (3)~%▾ B (1)~%  four~%") (text))
+             (is = 0 (line))
+             ;; unfolded again, the inner keeps its fold
+             (tuatara.defaults::list-toggle-section list :a)
+             (is string= (format nil "▾ A (3)~%  ▸ A1 (2)~%  ▾ A2 (1)~%    three~%~%▾ B (1)~%  four~%") (text))
+             ;; every section, inner ones too, folded and unfolded together
+             (is equal '(:a (:a . 1) (:a . 2) :b) (tuatara.buffer:buffer-local list 'tuatara.defaults::list-sections))
+             (is equal '("one" "two" "three") (tuatara.defaults::section-members
+                                               '((:a :sections ((:a . 1) "one" "two") ((:a . 2) "three"))) :a))
+             (is equal '("three") (tuatara.defaults::section-members
+                                   '((:a :sections ((:a . 1) "one" "two") ((:a . 2) "three"))) '(:a . 2))))
+        (tuatara.buffer:kill-buffer list)))))
+
+(define-test (buffers marks-kept-within-sections)
+  ;; a table in sections within sections keeps the marks of their members over a redraw and a fold
+  (let ((list (tuatara.buffer:make-buffer (tuatara.buffer:unique-buffer-name "marks within sections") :text ""))
+        (columns '((" M" :width 2) ("Name"))))
+    (labels ((draw (buffer)
+               (tuatara.defaults::render-table-list
+                buffer columns '((:a :sections ((:a . 1) "one" "two") ((:a . 2) "three")) (:b "four"))
+                (lambda (item mark section)
+                  (declare (ignore section))
+                  (list (tuatara.defaults::list-mark-sign mark) item))
+                :sections t :section-title (lambda (section) (princ-to-string section)) :redraw #'draw :point :keep))
+             (row (name)
+               (find-if (lambda (line) (search name line))
+                        (uiop:split-string (tuatara.buffer:buffer-string list) :separator '(#\Newline)))))
+      (unwind-protect
+           (progn
+             (draw list)
+             (tuatara.defaults::set-entry-mark list "three" :marked)
+             (tuatara.defaults::set-entry-mark list "four" :deletion)
+             (draw list)
+             (true (uiop:string-prefix-p "    >" (row "three")))
+             (is eq :marked (tuatara.defaults::entry-mark list "three"))
+             (is eq :deletion (tuatara.defaults::entry-mark list "four"))
+             (tuatara.defaults::list-toggle-section list :a)
+             (false (row "three"))
+             (tuatara.defaults::list-toggle-section list :a)
+             (true (uiop:string-prefix-p "    >" (row "three")))
+             (is eq :marked (tuatara.defaults::entry-mark list "three")))
+        (tuatara.buffer:kill-buffer list)))))
+
+(define-test (buffers sections-of-one-level-as-before)
+  ;; a list of one level is drawn as it always was, piece by piece, its entries the same
+  (let ((list (tuatara.buffer:make-buffer (tuatara.buffer:unique-buffer-name "one level") :text "")))
+    (unwind-protect
+         (multiple-value-bind (entries pieces)
+             (tuatara.defaults::sectioned-pieces list '((:a "one" "two") (:b "three"))
+                                                 #'string-downcase
+                                                 (lambda (member section)
+                                                   (declare (ignore section))
+                                                   (list (format nil "  ~a~%" member))))
+           (is equal '((:section :a) (:member "one" :a) (:member "two" :a) nil (:section :b) (:member "three" :b))
+               entries)
+           (is equal (list '("▾ a (2)" . :heading) (string #\Newline) (format nil "  one~%") (format nil "  two~%")
+                           (string #\Newline) '("▾ b (1)" . :heading) (string #\Newline) (format nil "  three~%"))
+               pieces)
+           (is equal '(:a :b) (tuatara.buffer:buffer-local list 'tuatara.defaults::list-sections))
+           (is equal '() (tuatara.buffer:buffer-local list 'tuatara.defaults::list-section-parents)))
+      (tuatara.buffer:kill-buffer list))))
+
+;;; A daemon's list: a folder for each client, a section for each project within
+
+(defun as-daemon-client (client others)
+  "A step of RUN-KEYS making its editor one running in the background (its
+idle frontend another fake one), its frame CLIENT's, CLIENT and OTHERS among
+its clients."
+  (lambda ()
+    (let ((editor tuatara.command:*editor*))
+      (setf (tuatara.command:editor-idle-frontend editor) (tuatara.frontend.fake:make-fake-frontend)
+            (tuatara.command:editor-clients editor)
+            (append (tuatara.command:editor-clients editor) (cons client others))
+            (tuatara.command:frame-client (tuatara.command::editor-frame editor)) client))))
+
+(defun call-with-two-clients-projects (function)
+  "Call FUNCTION with a function that opens the files of two projects, one
+and two, for two clients of a daemon (a.txt, b.txt of one and c.txt of two
+client 2's, d.txt and e.txt of one client 3's), the two clients, and the
+root of project one. The files' buffers are killed after, no client left to
+end."
+  (with-test-directory (dir)
+    (let ((one (merge-pathnames "one/" dir)) (two (merge-pathnames "two/" dir))
+          (c2 (tuatara.command:make-client :number 2 :remote t))
+          (c3 (tuatara.command:make-client :number 3 :remote t))
+          (tuatara.defaults::*clients-without-buffers* '())
+          (tuatara.defaults::*client-chosen-to-keep* nil))
+      (ensure-directories-exist (merge-pathnames ".git/" one))
+      (ensure-directories-exist (merge-pathnames ".git/" two))
+      (flet ((open-files ()
+               (loop for (folder name client) in (list (list one "a.txt" c2) (list one "b.txt" c2)
+                                                       (list two "c.txt" c2) (list one "d.txt" c3)
+                                                       (list one "e.txt" c3))
+                     for path = (merge-pathnames name folder)
+                     do (unless (probe-file path) (alexandria:write-string-into-file "x" path))
+                        (let ((b (or (tuatara.buffer:find-buffer name)
+                                     (tuatara.io:visit-file (tuatara.io:native path)))))
+                          (setf (tuatara.buffer:buffer-local b :clients) (list client))))))
+        (open-files)
+        (funcall function #'open-files c2 c3
+                 (tuatara.defaults::buffer-project (tuatara.buffer:find-buffer "a.txt")))))))
+
+(define-test (buffers client-folders-hold-projects)
+  ;; in a daemon's list each client's folder holds a section for each project, set in under it; a client
+  ;; whose buffers are all in one project shows them straight under its heading
+  (call-with-two-clients-projects
+   (lambda (open-files c2 c3 one)
+     (declare (ignore open-files))
+     (let ((sections nil))
+       (multiple-value-bind (f editor)
+           (fresh-list-session (list (as-daemon-client c2 (list c3)) "C-x C-b"
+                                     (lambda ()
+                                       (setf sections (tuatara.defaults::buffer-sections
+                                                       (tuatara.defaults::buffers-in-order
+                                                        (tuatara.command:current-buffer))))
+                                       (tuatara.defaults::list-toggle-section (tuatara.command:current-buffer) c3)))
+                               :width 120 :height 30)
+         (declare (ignore f))
+         (let* ((lines (uiop:split-string (session-text editor) :separator '(#\Newline)))
+                (mine (position-if (lambda (l) (uiop:string-prefix-p "▾ This client: client 2" l)) lines))
+                (other (position-if (lambda (l) (uiop:string-prefix-p "▾ client 3" l)) lines)))
+           (true mine)
+           (true other)
+           (when (and mine other)
+             (is string= "  ▾ one (2)" (string-right-trim " " (find-if (lambda (l) (search "▾ one" l)) lines)))
+             (true (find-if (lambda (l) (uiop:string-prefix-p "  ▾ two (1)" l)) lines))
+             (true (< mine (position-if (lambda (l) (search "▾ one" l)) lines) other))
+             ;; client 3's buffers straight under its heading
+             (true (search "d.txt" (concatenate 'string (nth (1+ other) lines) (nth (+ 2 other) lines))))
+             (false (find-if (lambda (l) (search "▾ one" l)) lines :start other)))))
+       ;; the folders as BUFFER-SECTIONS gives them: client 2's holds a section for each project, keyed by
+       ;; the client and the root; client 3's its buffers
+       (let ((mine (assoc c2 sections)) (other (assoc c3 sections)))
+         (is eq :sections (second mine))
+         (true (find (cons c2 one) (cddr mine) :key #'car :test #'equal))
+         (is = 2 (length (cddr mine)))
+         (is equal '("d.txt" "e.txt")
+             (sort (mapcar #'tuatara.buffer:buffer-name (cdr other)) #'string<)))))))
+
+(define-test (buffers project-of-a-client-killed)
+  ;; D on a project's heading within a client's folder kills that client's buffers of the project alone;
+  ;; C-x p k from a file does the same, and C-u C-x p k kills the project's buffers of every client,
+  ;; asking with how many each has
+  (call-with-two-clients-projects
+   (lambda (open-files c2 c3 one)
+     (flet ((live (name) (tuatara.buffer:find-buffer name)))
+       (fresh-list-session (list (as-daemon-client c2 (list c3)) "C-x C-b"
+                                 (lambda ()
+                                   (tuatara.defaults::list-goto-entry (tuatara.command:current-buffer)
+                                                                      (list :section (cons c2 one) c2)))
+                                 "D y e s RET")
+                           :width 120 :height 30)
+       (false (live "a.txt"))
+       (false (live "b.txt"))
+       (true (live "c.txt"))
+       (true (live "d.txt"))
+       (true (live "e.txt"))
+       ;; from a file of the project: this client's alone
+       (funcall open-files)
+       (run-keys (list (as-daemon-client c2 (list c3)) "C-x b a . t x t RET C-x p k y e s RET")
+                 :text "" :width 120 :height 24)
+       (false (live "a.txt"))
+       (false (live "b.txt"))
+       (true (live "d.txt"))
+       ;; with C-u, every client's, the question saying how many each has
+       (funcall open-files)
+       (let ((f (run-keys (list (as-daemon-client c2 (list c3)) "C-x b a . t x t RET C-u C-x p k y e s RET")
+                          :text "" :width 120 :height 24)))
+         (true (tuatara.frontend.fake:fake-frame-showing f "Kill 4 buffers of one: 2 of client 2, 2 of client 3?")))
+       (dolist (name '("a.txt" "b.txt" "d.txt" "e.txt")) (false (live name) "~a killed" name))
+       (true (live "c.txt"))
+       ;; without a daemon C-u is as without it: every buffer of the project
+       (funcall open-files)
+       (dolist (name '("a.txt" "b.txt" "c.txt" "d.txt" "e.txt"))
+         (setf (tuatara.buffer:buffer-local (live name) :clients) nil))
+       (run-keys "C-x b a . t x t RET C-u C-x p k y e s RET" :text "" :width 120 :height 24)
+       (dolist (name '("a.txt" "b.txt" "d.txt" "e.txt")) (false (live name) "~a killed" name))
+       (true (live "c.txt"))))))
+
+(defun buffer-row-text (b &optional mark)
+  "The line the buffer list shows for the buffer B marked MARK, as a section
+at the top shows it, without its line end."
+  (string-right-trim '(#\Newline)
+                     (tuatara.defaults::pieces-text
+                      (tuatara.defaults::table-row-pieces tuatara.defaults::*buffers-columns*
+                                                          (tuatara.defaults::buffer-cells b mark)))))
+
+(define-test (buffers rows-start-under-their-heading)
+  ;; a section's rows start under the text of its heading, at any depth: without a daemon two columns in,
+  ;; under a project's heading in a daemon's client folder four
+  (call-with-two-clients-projects
+   (lambda (open-files c2 c3 one)
+     (declare (ignore open-files one))
+     (flet ((lines (editor) (uiop:split-string (session-text editor) :separator '(#\Newline)))
+            (a () (tuatara.buffer:find-buffer "a.txt")))
+       ;; one level, no daemon: the row two columns in, under the heading's text
+       (dolist (name '("a.txt" "b.txt" "c.txt" "d.txt" "e.txt"))
+         (setf (tuatara.buffer:buffer-local (tuatara.buffer:find-buffer name) :clients) nil))
+       (multiple-value-bind (f editor) (fresh-list-session "C-x C-b" :width 120 :height 30)
+         (declare (ignore f))
+         (let ((lines (lines editor)))
+           (true (find "▾ one (4)" lines :test #'string= :key (lambda (l) (string-right-trim " " l))))
+           ;; the titles over the columns set in as the rows are, a row's first cell under its heading's text
+           (true (uiop:string-prefix-p "   MR " (first lines)))
+           (true (find (concatenate 'string "  " (buffer-row-text (a))) lines :test #'string=))))
+       ;; in a daemon: the heading of a project two columns in, its rows under its text
+       (setf (tuatara.buffer:buffer-local (a) :clients) (list c2))
+       (dolist (name '("b.txt" "c.txt"))
+         (setf (tuatara.buffer:buffer-local (tuatara.buffer:find-buffer name) :clients) (list c2)))
+       (dolist (name '("d.txt" "e.txt"))
+         (setf (tuatara.buffer:buffer-local (tuatara.buffer:find-buffer name) :clients) (list c3)))
+       (multiple-value-bind (f editor)
+           (fresh-list-session (list (as-daemon-client c2 (list c3)) "C-x C-b") :width 120 :height 30)
+         (declare (ignore f))
+         (let* ((lines (lines editor))
+                (heading (position "  ▾ one (2)" lines :test #'string= :key (lambda (l) (string-right-trim " " l)))))
+           (true heading)
+           (when heading
+             (true (find (concatenate 'string "    " (buffer-row-text (a))) lines :test #'string= :start heading)
+                   "~{~a~%~}" lines))))))))
+
+(define-test (buffers indented-row-marked-and-visited)
+  ;; a row set in under a project's heading is marked and opened as any row, its mark shown in its own column
+  (call-with-two-clients-projects
+   (lambda (open-files c2 c3 one)
+     (declare (ignore open-files))
+     (let ((a (tuatara.buffer:find-buffer "a.txt")) (indent nil) (marked nil) (row nil))
+       (multiple-value-bind (f editor)
+           (fresh-list-session (list (as-daemon-client c2 (list c3)) "C-x C-b"
+                                     (lambda ()
+                                       (let ((list (tuatara.command:current-buffer)))
+                                         (tuatara.defaults::list-goto-entry list (list :member a (cons c2 one)))
+                                         (setf indent (tuatara.defaults::row-indent
+                                                       list (tuatara.buffer:buffer-point list)))))
+                                     "m"
+                                     (lambda ()
+                                       (let ((list (tuatara.command:current-buffer)))
+                                         (setf marked (tuatara.defaults::entry-mark list a)
+                                               row (find-if (lambda (l) (search "a.txt" l))
+                                                            (uiop:split-string (tuatara.buffer:buffer-string list)
+                                                                               :separator '(#\Newline))))
+                                         (tuatara.defaults::list-goto-entry list (list :member a (cons c2 one)))))
+                                     "RET")
+                               :width 120 :height 30)
+         (declare (ignore f))
+         (is = 2 indent)
+         (is eq :marked marked)
+         (is string= (concatenate 'string "    " (buffer-row-text a :marked)) row)
+         (is string= "a.txt" (current-name editor)))))))
+
+(define-test (buffers every-clients-folder-stays-one)
+  ;; the buffers every client is offered stay in one folder, whatever projects they are in
+  (call-with-two-clients-projects
+   (lambda (open-files c2 c3 one)
+     (declare (ignore open-files one))
+     (dolist (name '("a.txt" "c.txt"))
+       (setf (tuatara.buffer:buffer-local (tuatara.buffer:find-buffer name) :clients) nil))
+     (let ((sections nil))
+       (multiple-value-bind (f editor)
+           (fresh-list-session (list (as-daemon-client c2 (list c3)) "C-x C-b"
+                                     (lambda ()
+                                       (setf sections (tuatara.defaults::buffer-sections
+                                                       (tuatara.defaults::buffers-in-order
+                                                        (tuatara.command:current-buffer))))))
+                               :width 120 :height 30)
+         (declare (ignore f))
+         (let* ((lines (uiop:split-string (session-text editor) :separator '(#\Newline)))
+                (everyone (position-if (lambda (l) (uiop:string-prefix-p "▾ Every client's" l)) lines)))
+           (true everyone)
+           (when everyone
+             (false (find-if (lambda (l) (search "  ▾ " l)) lines :start everyone)))))
+       (let ((folder (cdr (assoc :everyone sections))))
+         (false (eq :sections (first folder)))
+         (true (member "a.txt" folder :key #'tuatara.buffer:buffer-name :test #'string=))
+         (true (member "c.txt" folder :key #'tuatara.buffer:buffer-name :test #'string=)))))))

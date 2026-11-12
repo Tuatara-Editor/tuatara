@@ -11,21 +11,30 @@
 
 (in-package #:tuatara.defaults)
 
-(defvar *calendar-week-start-day* 1
-  "The day a week begins on in the calendar: 0 Sunday, 1 Monday (as
-standard), up to 6 Saturday.")
+(define-setting *calendar-week-start-day* 1
+  "The day a week begins on in the calendar.
+- 0: Sunday.
+- 1: Monday, as standard.
+- 2 to 5: Tuesday to Friday.
+- 6: Saturday."
+  :values (integer 0 6))
 
-(defvar *calendar-months* 3
-  "How many months the calendar shows: three as standard, the
-month point is in among them, as many before it as after (one more after for
-an even number); twelve for a year; NIL for as many as fit side by side in its
-window (*CALENDAR-MONTHS-PER-ROW*, or the window's width).")
+(define-setting *calendar-months* 3
+  "How many months the calendar shows. When there are several, the month point
+is in is among them, as many before it as after (one more after for an even
+number).
+- a whole number: that many months, three as standard; twelve for a year.
+- nil: as many as fit side by side in its window (*CALENDAR-MONTHS-PER-ROW*,
+  or the window's width)."
+  :values (or (member nil) (integer 1 *)))
 
-(defvar *calendar-months-per-row* nil
+(define-setting *calendar-months-per-row* nil
   "How many months the calendar shows side by side, the rest of
-*CALENDAR-MONTHS* in rows of them below, a blank line between: NIL, as
-standard, for as many as its window's width holds (three in 80 columns, four
-in 105), a number for that many.")
+*CALENDAR-MONTHS* in rows of them below, a blank line between.
+- nil: as many as its window's width holds (three in 80 columns, four in
+  105), as standard.
+- a whole number: that many."
+  :values (or (member nil) (integer 1 *)))
 
 (defvar *calendar-mark-functions* '()
   "What marks days in the calendar, functions called on the editor's thread
@@ -41,9 +50,12 @@ asked for by its own key and named WHAT when a day is marked for more than
 one (the journal's days, :calendar-journal, opened by
 CALENDAR-JOURNAL-ENTRY, named \"journal entry\").")
 
-(defvar *calendar-mark-days* t
-  "True for the calendar to mark the days *CALENDAR-MARK-FUNCTIONS* name (the
-days with agenda entries) as soon as it shows them; NIL to wait for \\<calendar-mode>\\[calendar-mark-days].")
+(define-setting *calendar-mark-days* t
+  "Whether the calendar marks the days *CALENDAR-MARK-FUNCTIONS* name (the days
+with agenda entries) as soon as it shows them.
+- t: it marks them at once.
+- nil: it waits for \\<calendar-mode>\\[calendar-mark-days]."
+  :values boolean)
 
 (defparameter *calendar-weekend-days* '(0 6)
   "The days of the weekend, by WEEKDAY's numbers: Sunday and Saturday, shown

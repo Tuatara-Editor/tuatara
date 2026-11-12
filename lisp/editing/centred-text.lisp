@@ -13,10 +13,12 @@
 
 (in-package #:tuatara.defaults)
 
-(defvar *centred-text-width* 80
-  "How many columns of text a buffer shows when its text is centred
-\(\\[centred-text-mode]): the column's width, the rest of the window blank
-margins either side. Set it in the init file.")
+(define-setting *centred-text-width* 80
+  "How many columns of text a buffer shows when its text is centred with
+\\[centred-text-mode]. The rest of the window is blank margins either side.
+Set it in the init file.
+- a whole number, 1 or more: the width of the column of text, in columns."
+  :values (integer 1 *))
 
 (define-display-toggle centred-text "Centred text"
   "Show the text of the current buffer in a column of *CENTRED-TEXT-WIDTH*

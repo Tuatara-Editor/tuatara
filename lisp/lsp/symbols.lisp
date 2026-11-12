@@ -80,10 +80,13 @@ knows them, in *xref*: RET goes to one."
 
 ;;; The file's names, for the outline
 
-(defvar *lsp-outline* t
-  "True for \\[buffer-outline] to list a file's names as its language server
-knows them (functions, types, their fields and methods, nested), where it has
-one that does; else as the mode finds its headings.")
+(define-setting *lsp-outline* t
+  "Whether \\[buffer-outline] lists a file's names as its language server knows
+them (functions, types, their fields and methods, nested), where it has one
+that does.
+- t: it does.
+- nil: it lists the headings the mode finds."
+  :values boolean)
 
 (defun document-symbol-headings (doc server symbols)
   "SYMBOLS, the names SERVER gives for DOC (DocumentSymbols, nested, or

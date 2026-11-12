@@ -3,8 +3,8 @@
 
 * Files
 
-Opening, saving and keeping track of the files on your disk, and on other
-machines.
+Opening, saving and keeping track of the files on your disk and on other
+machines, and keeping private ones encrypted.
 
 Chapter 1 explained that Tuatara shows a file in a buffer: a copy of the text
 that you change freely, kept apart from the file until you save. This chapter
@@ -12,9 +12,10 @@ is about the file end of that. It shows how to open a file, how to make a new
 one, and what happens when you save. It explains what to do when the file has
 changed on disk behind your back, and how to give a file a new name. It also
 covers the way Tuatara handles line endings and letters from other languages,
-the file names that say what a file holds, and files that live on another
-machine. It ends with the ways of opening a file from outside Tuatara: with
-another program, and from the command line.
+the file names that say what a file holds, files that live on another
+machine, and files you keep encrypted so that nobody else can read them. It
+ends with the ways of opening a file from outside Tuatara: with another
+program, and from the command line.
 
 The folders that hold files are the subject of chapter 10, and very large
 files of chapter 11. Files from a source you do not trust are in chapter 12.
@@ -63,6 +64,17 @@ file manager and drop them on it. Each one opens in the window it was dropped
 on. If you want these opened safely, which is the careful way described in
 chapter 12, set =*open-dropped-files-safely*=. With ~C-u~ before ~C-x C-f~ a
 file opens safely too. ~M-x find-file-safely~ does the same.
+
+=*last-used-first*= is =t=. The questions that ask for a file or a folder then
+start in the folder you chose from last time, whichever of them it was, and
+list first what you chose there. If you opened =~/letters/council.txt=, the
+next ~C-x C-f~ starts in =~/letters/=, with =council.txt= at the top. Folders
+come before files either way. A file opened safely is never remembered. To
+start in the folder of the buffer you are in, as many editors do:
+
+#+begin_example
+(setf *last-used-first* nil)
+#+end_example
 
 ~M-x show-file-name~ says in the echo area which file the buffer you are in
 shows, with its folder. You use it when two files have the same name and you
@@ -440,6 +452,63 @@ in a folder listing. Use it to put a whole month of letters under =done=.
 The other commands that work on these files, such as searching their text and
 writing links between them, are described with Org in chapter 14.
 
+*** Settings for new files
+
+=*formatted-file-keywords*= lists keywords to offer when you make a file, in
+addition to those already in the names of your files. It is empty as
+standard. A list of your own saves typing the same words again:
+
+#+begin_example
+(setf *formatted-file-keywords* '("project" "garden" "house"))
+#+end_example
+
+=*formatted-file-sort-keywords*= is =t= as standard, which is why =house,
+recipe= came out as =__house_recipe= above whatever the order you typed. With
+=nil= the keywords stay as you gave them, so =recipe, house= gives
+=__recipe_house=:
+
+#+begin_example
+(setf *formatted-file-sort-keywords* nil)
+#+end_example
+
+=*formatted-file-prompts*= is the list of questions ~C-x n n~ asks, in the
+order of the list. The five it knows are =:title=, =:subdirectory=,
+=:keywords=, =:file-type= and =:template=. The last asks for one of your note
+templates, or a blank file, and only when you have templates. A question left
+out is not asked. To ask for the title and the keywords only:
+
+#+begin_example
+(setf *formatted-file-prompts* '(:title :keywords))
+#+end_example
+
+=*formatted-file-type*= is the kind of file made when the list does not ask
+for =:file-type=, and the one offered first when it does. It is =:org= as
+standard. The other kinds that come with Tuatara are =:text= (a =.txt= file),
+=:markdown= (a =.md= file) and the same three ending in =-encrypted= (=.gpg=,
+encrypted when saved). To make Markdown notes without being asked:
+
+#+begin_example
+(setf *formatted-file-prompts* '(:title :keywords))
+(setf *formatted-file-type* :markdown)
+#+end_example
+
+=*formatted-file-types*= is the list of kinds. Each entry has four parts: the
+kind's name, the end of the file's name, the style in which its header writes
+the date and keywords (=:org=, =:text= or =:markdown=), and the header a new
+file begins with. In the header, ={title}=, ={date}=, ={keywords}= and
+={identifier}= stand for the file's own. To add a kind for plain notes ending
+in =.note=, with a short header:
+
+#+begin_example
+(setf *formatted-file-types*
+      (append *formatted-file-types*
+              (list (list :note ".note" :text
+                          (format nil "{title}~%{date}~2%")))))
+#+end_example
+
+A name ending in =.age= is refused. To change the header of a kind that
+exists, use =set-formatted-file-header= in the init file.
+
 ** Files on another machine
 
 A file on a server can be opened as if it were here. Write the machine's name
@@ -596,6 +665,123 @@ These steps need a machine you can reach with ssh. Use your own name for
 
 #+table: settings *remote-seconds* *remote-preview-size-limit*
 
+** Encrypted files
+
+Some of your own files should be read by nobody else. Tuatara uses GnuPG (the
+program =gpg=) to encrypt and sign them. Encrypting turns text into something that only a key or a
+passphrase can turn back. Signing adds a mark that shows who wrote a file and
+that it has not been changed since.
+
+*** A file that ends in .gpg
+
+A file whose name ends in =.gpg= opens decrypted. The text on disk stays
+encrypted. The decrypted text lives in memory only. It is never auto-saved, and
+it is not placed on the system clipboard unless you ask for that. Each save
+encrypts it again. If the file is encrypted to a passphrase and not to a key,
+gpg-agent's prompt asks at once. When the minibuffer is what asks (next
+section), the buffer waits until you press ~RET~ first.
+~M-x gpg-decrypt-with-passphrase~ is the same.
+
+Whom a file is encrypted to is a choice for each save.
+~M-x gpg-choose-encryption-keys~ chooses again, between keys and a passphrase,
+and the next save uses the new choice. ~M-x gpg-lock~ makes gpg-agent forget
+every passphrase it keeps, so the next file you open asks again. It does not
+close buffers you already have open: kill those too, if you want their text gone
+from memory.
+
+*** The passphrase prompt
+
+Who asks for the passphrase is the setting =*gpg-passphrase-from*=. As it comes
+(=:auto=), gpg-agent's own window asks on a desktop, its prompt in the terminal
+asks if Tuatara runs in one, and the minibuffer asks last. Either of the first
+two keeps the passphrase out of Tuatara altogether. The minibuffer is the
+fallback. It shows stars as you type, and the passphrase then passes through the
+editor. Each character is wiped from memory as it is typed or deleted, and at
+once if you give up with ~C-g~. Still, the editor's memory is not locked, a
+look-alike program could ask in its place, and the garbage collector may have
+copied text before it was wiped. So when the minibuffer asks, a window above it
+says what that risks. =*gpg-loopback-warning*= is true as it comes. Turn it off
+only when you know the risks by heart.
+
+Which gpg runs is not left to chance. Tuatara runs the program found in the
+system's own folders (=/usr/local/bin=, =/usr/bin=, =/bin=), never one that a
+folder on your =PATH= might hold. =*gpg-program*= names a different one, by a
+full path from the root. Before each run Tuatara also checks that the folder gpg
+takes its keys and options from (=~/.gnupg=, or the folder =GNUPGHOME= names) is
+yours, is not a link, and cannot be written by others. If the check fails, gpg
+is not run, and the message says which folder is wrong and why.
+
+*** Encrypting and decrypting
+
+~M-x gpg-encrypt-file~ encrypts the file shown, or the one on the line of a
+folder list, into =FILE.gpg=. It asks whom to encrypt to in the minibuffer: your
+keys, or a passphrase, with commas between several. It then offers to wipe the
+original. Say no if you are not sure, since a wiped file cannot be recovered and
+a solid state disk may keep old copies anyway. ~M-x wipe-file~ does that wipe by
+itself. ~M-x gpg-decrypt-file~ writes a decrypted copy to a file you name, after
+warning you that its text is then on disk. To read an encrypted file, open the
+=.gpg= file instead.
+
+You can also encrypt part of a buffer. Select some text and use
+~M-x gpg-encrypt-region~. The text becomes a block that starts with
+=-----BEGIN PGP MESSAGE-----=. This is useful for one paragraph of a note that
+you still want to share as plain text. ~M-x gpg-decrypt-region~ turns the block
+under the cursor, or the nearest one, back into text in place. The buffer is
+then kept from the disk as an encrypted file is: no auto-save, no clipboard. A
+save asks before writing the decrypted text unencrypted, so a habit of pressing
+~C-x C-s~ does not leave it on the disk.
+
+~M-x gpg-copy-to-clipboard~ is the one way out. It puts the text you copied last
+on the system clipboard, even if it came from an encrypted file. Other programs,
+and clipboard managers, can read it and keep it.
+
+*** Signing and checking
+
+~M-x gpg-sign-file~ signs a file with your key. It asks which kind: a detached
+signature, =FILE.sig=, which leaves the file as it is; clear-signed text,
+=FILE.asc=; or a signed file, =FILE.gpg=. ~M-x gpg-sign-region~ clear-signs the
+selected text in place. ~M-x gpg-verify-file~ and ~M-x gpg-verify-region~ check
+a signature. They say who signed, when, and how far that key is trusted.
+
+Read the answer for what it says. A good signature tells you the text has not
+changed since that key signed it. It does not tell you the text is safe, and it
+tells you who signed only as far as you trust the key.
+
+*** Keys
+
+~M-x gpg-list-keys~ opens a list of your keys and those you have of others. The
+list fills in as gpg answers. ~M-x gpg-keys-details~ shows one key's
+fingerprint, names and expiry. ~M-x gpg-import-keys~ and
+~M-x gpg-import-keys-region~ add keys from a file or from selected text.
+~M-x gpg-keys-export~ writes the public part of marked keys to a file, and
+~M-x gpg-keys-insert~ puts it at the cursor in the buffer the list was opened
+from. The folder list (chapter 10) has keys for the same jobs on files.
+
+#+begin_try Try it, with an encrypted note
+1. In a terminal, make a note:
+   =printf 'The alarm code is 4411.\n' > ~/code.txt=.
+2. Open it with ~C-x C-f~. Press ~M-x gpg-encrypt-file~ and ~RET~. Choose a
+   passphrase, press ~RET~ for no more, and give a passphrase twice. When it
+   asks about wiping the original, answer =n=.
+3. Open =~/code.txt.gpg= with ~C-x C-f~. Give the passphrase if asked; gpg-agent
+   may still hold it. The text appears. No auto-save copy of it is made.
+4. Press ~i~, add a line, press ~C-g~ and ~C-x C-s~. Give the passphrase twice.
+   The file on disk is encrypted again. In a terminal, =cat ~/code.txt.gpg=
+   shows nothing readable.
+5. Press ~M-x gpg-lock~, kill the buffer with ~C-x k~ and open the file again.
+   You are asked for the passphrase once more.
+6. Open =~/code.txt= and select its line. Press ~M-x gpg-encrypt-region~, choose
+   a passphrase and give it twice. The line becomes a block. Put the cursor in
+   it and press ~M-x gpg-decrypt-region~. Press ~C-x C-s~: Tuatara asks whether
+   to save the text decrypted. Answer =n= and press ~RET~.
+#+end_try
+
+*** Commands and settings
+
+#+table: commands gpg-encrypt-file gpg-decrypt-file gpg-encrypt-region gpg-decrypt-region gpg-decrypt-with-passphrase gpg-choose-encryption-keys gpg-copy-to-clipboard gpg-lock wipe-file gpg-sign-file gpg-sign-region gpg-verify-file gpg-verify-region gpg-import-keys gpg-import-keys-region gpg-list-keys gpg-keys-details gpg-keys-export gpg-keys-insert
+
+#+table: settings *gpg-program* *gpg-passphrase-from* *gpg-loopback-warning*
+
 ** Opening a file with another program
 
 Tuatara shows text, and also pictures, PDFs and some office documents. There is
@@ -649,6 +835,11 @@ for every file in that command. ~--hex~ opens them in the hex view instead of as
 text. A single =-= reads what another program sends: =ls | tuatara -= shows the
 output in a buffer called =*stdin*=. After =--=, every word is a file, so
 =tuatara -- -odd.txt= opens a file named =-odd.txt=.
+
+In bash, pressing ~TAB~ after =tuatara -= completes the options, and after an
+option that takes a file, or after a plain word, the file names. The
+distribution packages install this completion, and the AppImage does with
+=--install-desktop=. Both need the bash-completion package of the system.
 
 The table at the end of this section lists every option, as ~tuatara --help~
 does. The ones that start the daemon, make a client, compare files or merge

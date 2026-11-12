@@ -13,11 +13,14 @@
   "The key that makes the candidates of a question as tall as the frame has
 room for, or as tall as usual again.")
 
-(defvar *key-hint-rows* nil
-  "Most rows the key hints take after a prefix key (\\`C-x', \\`SPC'), the echo
-row under them included, or NIL for as many as the frame has room for, as a
-menu takes; where they do not all fit, the last row ends in ... and \\`C-h'
-after the prefix lists every key under it (*PREFIX-HELP-KEY*).")
+(define-setting *key-hint-rows* nil
+  "The most rows the key hints take after a prefix key (\\`C-x', \\`SPC').
+The echo row under them is included. Where they do not all fit, the last row
+ends in ... and \\`C-h' after the prefix lists every key under it
+\(*PREFIX-HELP-KEY*).
+- nil: as many as the frame has room for, as a menu takes (the standard).
+- a whole number, 1 or more: that many rows at most."
+  :values (or (member nil) (integer 1 *)))
 
 (defun panel-room (editor rows tall)
   "The most rows the panel takes for what it shows: ROWS, or when TALL all
@@ -281,9 +284,11 @@ UNAVAILABLE, whose commands cannot run here, :key-hint-unavailable."
                  (append (butlast rows) (list (cons (format nil "~a  ~a" last note) (rest (car (last rows)))))))
                 (t (append (lay-out (1- max-rows)) (list (list note nil '()))))))))))
 
-(defvar *prompt-above-candidates* t
-  "True to show the prompt of a completing read above its candidates, the list
-reading down from it; NIL to show it on the bottom row, under them.")
+(define-setting *prompt-above-candidates* t
+  "Whether the prompt of a completing read is shown above its candidates.
+- t: above them, the list reading down from it (the standard).
+- nil: on the bottom row, under them."
+  :values boolean)
 
 (defparameter *group-line-character* (code-char #x2500)
   "The character the line beside a group's title is drawn with: ─.")
@@ -639,12 +644,15 @@ typed; the key hints under a pending prefix key; else the echo row."
                                   collect (list row nil (spans-within spans start (+ start (length row)))))))
                  (values (append head (list (echo-row editor))) (length head))))))))
 
-(defvar *show-completion-count* t
-  "True to show before the prompt of a completing read the place of the
-selected candidate and how many there are, as they change with what is typed:
-3/120 (*/0 when nothing matches and the text typed can be taken, !/0 when it
-cannot); before a search's, the match the cursor is at and how many there
-are.")
+(define-setting *show-completion-count* t
+  "Whether a completing read shows the place of the selected candidate and how
+many there are, before the prompt.
+They change with what is typed: 3/120 (*/0 when nothing matches and the text
+typed can be taken, !/0 when it cannot). Before a search's prompt it is the
+match the cursor is at and how many there are.
+- t: they are shown (the standard).
+- nil: they are not."
+  :values boolean)
 
 (defun completion-count-prefix (editor)
   "What the minibuffer row shows before the prompt, in a place six columns

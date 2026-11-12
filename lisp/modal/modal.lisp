@@ -35,15 +35,18 @@ was indented with."
       (tuatara-normal)
       (progn (line-selection-clear) (keyboard-quit))))
 
-(defvar *insert-escape-keys* nil
-  "NIL, or a string of two characters, \"jk\" say: typed one right after the
-other in INSERT state, they leave it for NORMAL state as
-\\<insert>\\[tuatara-normal] does, and neither stays in the text. The first is
-typed into the text at once, like any key, and taken out again when the second
-follows within a fifth of a second; slower, both stay. It acts on plain typing
-in editing buffers, not in the minibuffer, in a terminal, nor at cursors or
-places; recorded keys play it back as they were typed, a pair counting as
-quick however long the recording took. NIL: off.")
+(define-setting *insert-escape-keys* nil
+  "Two keys that leave INSERT state for NORMAL state when typed one right after
+the other. Neither stays in the text. The first is typed into the text at
+once, like any key, and taken out again when the second follows within a fifth
+of a second; slower, both stay. It acts on plain typing in editing buffers,
+not in the minibuffer, in a terminal, nor at cursors or places; recorded keys
+play it back as they were typed, a pair counting as quick however long the
+recording took.
+- text: two characters, \"jk\" say, that do what
+  \\<insert>\\[tuatara-normal] does in INSERT state.
+- nil: off (the standard)."
+  :values (or (member nil) string))
 
 (defparameter *insert-escape-window* 200
   "Milliseconds in which the second of *INSERT-ESCAPE-KEYS* must follow the first.")
@@ -167,12 +170,13 @@ always in the hex view, nothing, so that it changes no text."
   "Do nothing: NORMAL state keeps BACKSPACE and DELETE inert in editing buffers."
   nil)
 
-(defvar *tuatara-normal-tab-modes* '(org-mode)
-  "The major modes, by name, where \\<normal>\\[tuatara-normal-tab] in NORMAL state does what \\`TAB' does in
-the mode, the modes derived from them too; in the others it does nothing, as
-the keys that would type do nothing there. Org's alone unless set:
-(setf *tuatara-normal-tab-modes* '()) makes \\[tuatara-normal-tab] do nothing in NORMAL
-state everywhere.")
+(define-setting *tuatara-normal-tab-modes* '(org-mode)
+  "The major modes where \\<normal>\\[tuatara-normal-tab] in NORMAL state does
+what \\`TAB' does in the mode, the modes derived from them too. In the others
+it does nothing, as the keys that would type do nothing there.
+- a list of major modes' names: those modes; (org-mode) as standard.
+- nil: \\[tuatara-normal-tab] does nothing in NORMAL state anywhere."
+  :values (list-of "a major mode's name"))
 
 (define-command tuatara-normal-tab ()
   "\\<normal>\\[tuatara-normal-tab] in NORMAL state: in a buffer whose major mode is one of
@@ -228,29 +232,44 @@ state alone, [N]; *mode-line-tuatara* says which as Tuatara starts."
   (setf *mode-line-tuatara* (not *mode-line-tuatara*))
   (message "The mode line's state ~:[alone~;after TUATARA~]" *mode-line-tuatara*))
 
-(defvar *tuatara-normal-cursor-shape* nil
-  "The cursor's shape in NORMAL state: :block, :bar or :underline; NIL (as
-standard) for *CURSOR-SHAPE*.")
+(define-setting *tuatara-normal-cursor-shape* nil
+  "The cursor's shape in NORMAL state.
+- :block, :bar or :underline: that shape.
+- nil: *CURSOR-SHAPE* (the standard)."
+  :values (member nil :block :bar :underline))
 
-(defvar *tuatara-normal-cursor-colour* nil
-  "The cursor's colour in NORMAL state, as faces take colours; NIL (as
-standard) for *CURSOR-COLOUR*.")
+(define-setting *tuatara-normal-cursor-colour* nil
+  "The cursor's colour in NORMAL state.
+- a colour: as faces take colours, a name such as :red, a number 0-255 or
+  \"#rrggbb\".
+- nil: *CURSOR-COLOUR* (the standard)."
+  :values "a colour name such as :red, a number 0-255 or \"#rrggbb\", or nil")
 
-(defvar *tuatara-insert-cursor-shape* nil
-  "The cursor's shape in INSERT state, while typing: :block, :bar or
-:underline; NIL (as standard) for *CURSOR-SHAPE*.")
+(define-setting *tuatara-insert-cursor-shape* nil
+  "The cursor's shape in INSERT state, while typing.
+- :block, :bar or :underline: that shape.
+- nil: *CURSOR-SHAPE* (the standard)."
+  :values (member nil :block :bar :underline))
 
-(defvar *tuatara-insert-cursor-colour* nil
-  "The cursor's colour in INSERT state, as faces take colours; NIL (as
-standard) for *CURSOR-COLOUR*.")
+(define-setting *tuatara-insert-cursor-colour* nil
+  "The cursor's colour in INSERT state.
+- a colour: as faces take colours, a name such as :red, a number 0-255 or
+  \"#rrggbb\".
+- nil: *CURSOR-COLOUR* (the standard)."
+  :values "a colour name such as :red, a number 0-255 or \"#rrggbb\", or nil")
 
-(defvar *tuatara-support-cursor-shape* nil
-  "The cursor's shape in support buffers (lists, help, *Messages*): :block,
-:bar or :underline; NIL (as standard) for *CURSOR-SHAPE*.")
+(define-setting *tuatara-support-cursor-shape* nil
+  "The cursor's shape in support buffers (lists, help, *Messages*).
+- :block, :bar or :underline: that shape.
+- nil: *CURSOR-SHAPE* (the standard)."
+  :values (member nil :block :bar :underline))
 
-(defvar *tuatara-support-cursor-colour* nil
-  "The cursor's colour in support buffers, as faces take colours; NIL (as
-standard) for *CURSOR-COLOUR*.")
+(define-setting *tuatara-support-cursor-colour* nil
+  "The cursor's colour in support buffers.
+- a colour: as faces take colours, a name such as :red, a number 0-255 or
+  \"#rrggbb\".
+- nil: *CURSOR-COLOUR* (the standard)."
+  :values "a colour name such as :red, a number 0-255 or \"#rrggbb\", or nil")
 
 (defun modal-cursor-shape (editor)
   "The cursor's shape and colour in the current buffer's modal state, as set
@@ -310,12 +329,24 @@ the syntax tree (*TUATARA-SYNTAX-BINDINGS*).")
     ("m c" select-comment-inside) ("m C" select-comment)
     ("m y" select-test-inside) ("m Y" select-test)
     ("m e" select-entry-inside) ("m E" select-entry)
-    ("m x" select-element-inside) ("m X" select-element)
-    ("M-o" expand-selection) ("M-i" shrink-selection)
-    ("M-n" select-next-sibling) ("M-p" select-previous-sibling))
+    ("m x" select-element-inside) ("m X" select-element))
   "The NORMAL state bindings that select by the syntax tree: the function,
-type, parameter, comment, test, entry or element around point, and the piece
-of syntax around the selection, inside it or beside it.")
+type, parameter, comment, test, entry or element around point, inside it or
+all of it.")
+
+(defparameter *non-modal-keys-left-out*
+  '(backward-char forward-char next-line previous-line forward-word backward-word forward-sexp backward-sexp
+    beginning-of-buffer end-of-buffer beginning-of-line end-of-line goto-line recenter
+    join-selected-lines delete-selection-or-char kill-line copy-selection-or-char yank-over-selection
+    yank-rectangle undo redo start-selection select-whole-buffer rectangle-mark-mode
+    fill-paragraph delete-other-windows describe-bindings
+    tuatara-open-below tuatara-open-above
+    tuatara-insert tuatara-insert-after tuatara-insert-line-start tuatara-insert-line-end tuatara-change
+    tuatara-normal-return tuatara-normal-inert tuatara-normal-tab)
+  "The commands of NORMAL state's keys that have no key under \\`C-z'. Most
+have a key of their own in every state (\\[forward-word], \\[undo],
+\\[copy-selection-or-char]); the others belong to modal editing alone: they
+enter INSERT state, or are keys that do nothing in the other states.")
 
 (defparameter *tuatara-prose-keys*
   '(;; move
@@ -359,12 +390,14 @@ keys it had once). What it had has keys under C-x and C-c
 \\`SPC' in place of the key (\\`t' +toggle); the init file relabels them with
 bind-key's :label.")
 
-(defvar *leader-key* "SPC"
+(define-setting *leader-key* "SPC"
   "The key that opens the leader's keys (bind-key's :map :leader) in NORMAL and
-support states, in lists and in the calendar: SPC, or another written as
-bind-key writes keys (\",\", \"C-c SPC\"). The key it was on is freed. Read
-once the init file is. \\`C-x SPC' opens them in every buffer and state,
-whatever this is.")
+support states, in lists and in the calendar. The key it was on is freed.
+Read once the init file is. \\`C-x SPC' opens them in every buffer and state,
+whatever this is.
+- text: a key written as bind-key writes it, \"SPC\" as standard, or
+  \",\" or \"C-c SPC\"."
+  :values string)
 
 (defvar *leader-key-in-force* nil
   "The key the leader's keys are on now (*LEADER-KEY* once the init file is read).")
@@ -460,9 +493,32 @@ binds it to, when it binds one."
       (when (and command (not (keymap-p command)))
         (define-key keymap key command)))))
 
+(defparameter *non-modal-repeat-keys*
+  '((("t" add-cursor-below) ("T" add-cursor-above))
+    (("J" select-next-line) ("K" select-previous-line))
+    (("n" spellcheck-next) ("p" spellcheck-previous))
+    (("." repeat)))
+  "The keys that, right after one of their commands run from \\`C-z', run it
+again by themselves, each group on its own: \\`t'
+and \\`T' add a cursor below or above, \\`J' and \\`K' select a line, \\`n' and
+\\`p' go to the next or previous misspelt word, \\`.' repeats.")
+
+(defun install-non-modal-keys ()
+  "Bind under \\`C-z', in every state, the keys of NORMAL state (*TUATARA-NORMAL-BINDINGS*
+and *TUATARA-SYNTAX-BINDINGS*) whose commands have no key of their own outside
+it (*NON-MODAL-KEYS-LEFT-OUT*): \\`C-z m f' selects the function around point as
+\\`m f' does, \\`C-z f' splits the selection. Also bind the keys that go on with
+such a command by themselves (*NON-MODAL-REPEAT-KEYS*)."
+  (loop for (keys command) in (append *tuatara-normal-bindings* *tuatara-syntax-bindings*)
+        unless (member command *non-modal-keys-left-out*)
+          do (define-key *global-keymap* (concatenate 'string "C-z " keys) command))
+  (dolist (group *non-modal-repeat-keys*)
+    (define-repeat-keys group :after "C-z")))
+
 (defun install-tuatara-modal-keys ()
   "Bind the NORMAL, INSERT and support keys, the calendar's, and the leader."
   (define-keys *tuatara-normal-keymap* (append *tuatara-normal-bindings* *tuatara-syntax-bindings*))
+  (install-non-modal-keys)
   (define-key *tuatara-insert-keymap* "C-g" 'tuatara-normal)
   ;; support buffers read and select as NORMAL state does
   (copy-normal-keys *tuatara-prose-keys* *tuatara-support-keymap*)
@@ -519,14 +575,20 @@ from another buffer, shown in NORMAL state."
   "Bind every delimiter of *PAIR-DELIMITERS*, both halves, to
 wrap-selection-with-key in NORMAL state, where no key of its own is: a key that
 already does something (\\<normal>\\[indent-selection-or-line] indents,
-\\[goto-line] goes to a line) is not taken."
-  (bind-free-delimiter-keys *tuatara-normal-keymap* 'wrap-selection-with-key))
+\\[goto-line] goes to a line) is not taken. Each is a key under \\`C-z' too."
+  (bind-free-delimiter-keys *tuatara-normal-keymap* 'wrap-selection-with-key)
+  (let ((prefix (first (tuatara.frontend:parse-key-sequence "C-z"))))
+    (loop for (spec . binding) in (keymap-entries *tuatara-normal-keymap*)
+          when (eq binding 'wrap-selection-with-key)
+            do (define-key *global-keymap* (list prefix spec) binding))))
 
-(defvar *input-method-keys* '()
-  "Input methods of your own under the leader's i, each (KEY LABEL METHOD):
-KEY a key, LABEL what it is called, METHOD an input method's name
-\\(\\[set-input-method] lists them), such as '((\"s\" \"swedish\" \"swedish-postfix\")).
-Each becomes a command, input-method-LABEL, on its key; & . and - are taken.")
+(define-setting *input-method-keys* '()
+  "Input methods of your own under the leader's i. Each becomes a command,
+input-method-LABEL, on its key; & . and - are taken.
+- a list of (KEY LABEL METHOD): KEY a key, LABEL what it is called, METHOD an
+  input method's name (\\[set-input-method] lists them), such as '((\"s\"
+  \"swedish\" \"swedish-postfix\"))."
+  :values (list-of "(KEY LABEL METHOD)"))
 
 (defparameter *input-method-own-keys* '("&" "." "-")
   "The keys under the leader's i that are Tuatara's own.")

@@ -195,7 +195,7 @@ count goes the other way.
 
 *** Settings
 
-| Setting                          | Standard | What it changes                |
+| Setting                          | Default  | What it changes                |
 |----------------------------------+----------+--------------------------------|
 | =*sentence-end-double-space*=    | =nil=    | Set to =t= for two spaces after the end of a sentence. Filling keeps the two spaces too. |
 | =*extra-sentence-abbreviations*= | =()=     | Abbreviations of your own whose full stop ends no sentence, as in =(setf *extra-sentence-abbreviations* '("Ph.D." "Inc."))=. |
@@ -265,8 +265,8 @@ makes the count negative, so ~C-u - 2 w~ moves back two words, as ~b~
 (non-modal: ~M-b~) would. A number you type after ~C-u C-u~ starts a new count
 of its own.
 
-~.~ in NORMAL state runs the last command again, with the count it had. Press
-~.~ after ~C-u 3 j~ and the cursor goes three more lines down.
+~.~ (non-modal: ~C-z .~) runs the last command again, with the count it had.
+Press ~.~ after ~C-u 3 j~ and the cursor goes three more lines down.
 
 Other chapters use the same count for other things, such as how many times to
 insert a character. The count is always taken by the key that follows it.
@@ -286,7 +286,7 @@ insert a character. The count is always taken by the key that follows it.
 | Modal | Non-modal | Command              | What it does                            |
 |-------+-----------+----------------------+-----------------------------------------|
 | none  | ~C-u~     | =universal-argument= | Starts a count. Alone it is 4, twice it is 16, digits give a number and a minus sign negates. |
-| ~.~   | none      | =repeat=             | Runs the last command again with its count. |
+| ~.~   | ~C-z .~   | =repeat=             | Runs the last command again with its count. |
 
 ** Marks and going back
 
@@ -300,10 +300,11 @@ Tuatara also keeps a global mark ring, with the marks of the buffers you set
 marks in.
 
 Tuatara keeps a second list as well: the places the cursor was at before each
-move, ten for each buffer. ~S~ goes back to the place before the cursor's last
-move, and ~S~ again goes further back, round the list. It is meant for taking
-back a key that jumped to the wrong place. The echo area says =Position 2 of
-7= so you know how far back you are. A count before ~S~ skips that many places.
+move, ten for each buffer. ~S~ (non-modal: ~C-z S~) goes back to the place
+before the cursor's last move, and ~S~ again goes further back, round the list.
+It is meant for taking back a key that jumped to the wrong place. The echo area
+says =Position 2 of 7= so you know how far back you are. A count before ~S~
+skips that many places.
 
 Registers and bookmarks keep a place for longer. A register (~C-x r p~, then a
 character) keeps the place until Tuatara quits, and ~C-x r j~ with the same
@@ -330,7 +331,7 @@ its name.
 
 | Modal | Non-modal               | Command                   | What it does                      |
 |-------+-------------------------+---------------------------+-----------------------------------|
-| ~S~   | none                    | =jump-back=               | Goes to a place the cursor was before, and further back each time you press it. |
+| ~S~   | ~C-z S~                 | =jump-back=               | Goes to a place the cursor was before, and further back each time you press it. |
 | none  | ~C-SPC~                 | =set-mark-command=        | Sets the mark at the cursor and shows the region. Pressed again at once, it hides the region, and once more shows it. With ~C-u~, goes back to the mark, as =pop-to-mark-command= does. |
 | none  | ~C-u C-SPC~             | =pop-to-mark-command=     | Goes to the mark and takes the mark before it from the ring, so the next press goes further back. |
 | none  | ~C-x C-SPC~             | =pop-global-mark=         | Goes to the newest mark of the global ring, in its buffer, and so back through the buffers where you set marks. |
@@ -343,14 +344,14 @@ its name.
 
 *** Settings
 
-| Setting                          | Standard | What it changes                |
+| Setting                          | Default  | What it changes                |
 |----------------------------------+----------+--------------------------------|
 | =*mark-ring-max*=                | =16=     | How many marks each buffer keeps, and the global ring. The oldest goes first. |
 | =*set-mark-command-repeat-pop*=  | =nil=    | Set to =t= for ~C-SPC~ pressed right after ~C-u C-SPC~ to go on back to the mark before, instead of setting a mark. |
 
 *** Faces
 
-| Face       | Standard | What it paints                                  |
+| Face       | Default  | What it paints                                  |
 |------------+----------+-------------------------------------------------|
 | =:region=  | theme    | The text between the mark and the cursor.       |
 

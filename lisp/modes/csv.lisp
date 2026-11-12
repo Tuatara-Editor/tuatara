@@ -96,21 +96,24 @@ comma when none does. True as a second value when one does."
     (let ((best (reduce (lambda (a b) (if (> (cdr b) (cdr a)) b a)) counts)))
       (if (plusp (cdr best)) (values (car best) t) 44))))
 
-(defvar *csv-separator* :detect
-  "What separates the fields of the files CSV mode shows. :DETECT, the
-default, takes whichever of comma, semicolon, tab and pipe the first line of
-each file has most of (a comma while it has none, until one is typed there, in
-an empty file, or one made empty). A character, such as #\\, #\\; or #\\Tab, is
-taken always, whatever the file holds. Files ending in .tsv or .tab are
-separated by tabs. \\<csv-mode>\\[csv-define-separator] sets the separator for
-one buffer.")
+(define-setting *csv-separator* :detect
+  "What separates the fields of the files CSV mode shows. Files ending in .tsv
+or .tab are separated by tabs. \\<csv-mode>\\[csv-define-separator] sets the
+separator for one buffer.
+- :detect: whichever of comma, semicolon, tab and pipe the first line of
+  each file has most of, as standard (a comma while it has none, until one
+  is typed there, in an empty file, or one made empty).
+- a character, such as #\\, #\; or #\\Tab: that one, always, whatever the
+  file holds."
+  :values (or (member :detect) "a character"))
 
-(defvar *csv-header* t
-  "True when the first line of the files CSV mode shows is their header,
-naming the columns: always shown by search filters, never deleted by
-\\[list-keep-records], its names offered for a column. NIL takes it as a
-record like the rest, the columns offered by their numbers.
-\\[list-toggle-header] says so for one buffer.")
+(define-setting *csv-header* t
+  "Whether the first line of the files CSV mode shows is their header, naming
+the columns. \\[list-toggle-header] says so for one buffer.
+- t: it is the header, always shown by search filters, never deleted by
+  \\[list-keep-records], its names offered for a column.
+- nil: it is a record like the rest, the columns offered by their numbers."
+  :values boolean)
 
 (defparameter *csv-separator-names*
   '(("comma" . #\,) ("semicolon" . #\;) ("tab" . #\Tab) ("pipe" . #\|) ("colon" . #\:) ("space" . #\Space))

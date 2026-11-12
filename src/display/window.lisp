@@ -760,17 +760,22 @@ there are fewer."
                    (if (< end size) (setf line (1+ end)) (return)))))
     line))
 
-(defvar *scroll-margin* 0
-  "How many rows a window keeps between point and its top and bottom edges:
-moving point nearer an edge scrolls the window, as long as there is text
+(define-setting *scroll-margin* 0
+  "How many rows a window keeps between point and its top and bottom edges.
+Moving point nearer an edge scrolls the window, as long as there is text
 beyond that edge. At most what leaves a row for point between the two
-margins.")
+margins is kept.
+- a whole number, 0 or more: the rows; 0 as standard."
+  :values (integer 0 *))
 
-(defvar *scroll-recenter* nil
-  "True to put point's line in the middle of the window whenever point leaves
-the window or comes within *SCROLL-MARGIN* rows of its edge, as \\[recenter]
-does; NIL to scroll only as far as keeps point in view, that many rows from
-the edge.")
+(define-setting *scroll-recenter* nil
+  "Whether point's line goes to the middle of the window when point leaves it.
+It applies whenever point leaves the window or comes within *SCROLL-MARGIN*
+rows of its edge, as \\[recenter] does.
+- t: point's line is put in the middle.
+- nil: the window scrolls only as far as keeps point in view, that many rows
+  from the edge (the standard)."
+  :values boolean)
 
 (defun window-scroll-margin (window)
   "How many rows WINDOW keeps between point and its top and bottom edges:

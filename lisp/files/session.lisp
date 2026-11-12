@@ -18,15 +18,22 @@
 
 (in-package #:tuatara.defaults)
 
-(defvar *keep-session* nil
-  "True for the editor to keep its session: the files and directories open and
-how the windows show them, written as it stops (and now and then while it
-runs), opened again as it was when it starts without files.")
+(define-setting *keep-session* nil
+  "Whether the editor keeps its session: the files and directories open and how
+the windows show them.
+The session is written as the editor stops (and now and then while it runs),
+and opened again as it was when it starts without files.
+- t: kept.
+- nil: not kept."
+  :values boolean)
 
-(defvar *keep-session-interval* 30
-  "Seconds between the writings of the session while the editor runs, when it
-has changed (*KEEP-SESSION*), 30 as standard: what a crash can lose. Lower it
-to lose less; raise it where writing is slow, as on a drive that sleeps.")
+(define-setting *keep-session-interval* 30
+  "Seconds between the writings of the session while the editor runs, when it has
+changed (*KEEP-SESSION*).
+It is what a crash can lose. Lower it to lose less; raise it where writing is
+slow, as on a drive that sleeps.
+- a number of seconds: the time between writings, 30 as standard."
+  :values (number 0 *))
 
 (defvar *session-name* "session"
   "The name of the file in the state folder the session is kept in: session,

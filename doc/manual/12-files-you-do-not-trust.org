@@ -3,8 +3,7 @@
 
 * Files you do not trust
 
-Looking at a file without letting anything in it happen, and keeping private
-text private.
+Looking at a file without letting anything in it happen.
 
 Most files you open come from you. Some do not: an attachment from an email you
 were not expecting, a folder a client sent, a download, a disk someone handed
@@ -12,9 +11,8 @@ you. You want to read these, and you do not want to find out what they do. This
 chapter is about reading a file without running or changing anything. It starts
 with the safe way to open one file. It goes on to folders whose files are always
 opened that way, to the programs that decode pictures and PDFs behind a wall,
-and to git repositories you only look at. The last part is about the opposite
-problem: a file that you trust but that nobody else should read, which you keep
-encrypted.
+and to git repositories you only look at. The opposite problem, a file you
+trust that nobody else should read, is in chapter 9: you keep it encrypted.
 
 Be modest about what this gives you. The safeguards stop Tuatara itself from
 acting on a file and from changing it. They do not make a file harmless to the
@@ -353,11 +351,16 @@ Language grammars run in it too, where a sandbox exists. Without a sandbox, the
 setting =*syntax-helper-unconfined*= decides whether the grammars of projects
 you trust run on their own without one.
 
-Press ~M-x check-health~ to see whether =bwrap= was found and which version. If
-it was not, or if you set =*sandbox-program*= to nothing, Tuatara does not
-decode: pictures and PDFs are shown as bytes and text. Your files are not at
-risk for that reason. Exports to PDF still work, and say that LaTeX ran without
-a wall.
+Press ~M-x check-health~ to see whether =bwrap= was found and which version.
+Tuatara looks for it on the PATH, so a =bwrap= installed somewhere of your own
+is found when its folder is on the PATH. If it was not found, or if you set
+=*sandbox*= to =nil=, Tuatara does not decode: pictures and PDFs are shown as
+bytes and text. Your files are not at risk for that reason. Exports to PDF
+still work, and say that LaTeX ran without a wall.
+
+#+begin_example
+(setf *sandbox* nil)
+#+end_example
 
 The limits are settings. A decoder gets 10 seconds (=*sandbox-seconds*=) and 1
 GB of memory (=*sandbox-memory*=). All the decoders working on one file may use
@@ -386,7 +389,7 @@ decoder of yours fails because of it.
 
 #+table: commands check-health
 
-#+table: settings *sandbox-program* *sandbox-seconds* *sandbox-memory* *sandbox-total-memory* *sandbox-input-limit* *sandbox-seccomp* *format-in-sandbox* *syntax-helper-unconfined*
+#+table: settings *sandbox* *sandbox-seconds* *sandbox-memory* *sandbox-total-memory* *sandbox-input-limit* *sandbox-seccomp* *format-in-sandbox* *syntax-helper-unconfined*
 
 ** Repositories you only look at
 
@@ -447,121 +450,3 @@ a terminal inside the repository and run its build script, you have trusted it.
 #+table: settings *lsp-trusted-projects*
 
 #+table: faces :mode-line-look-only :git-look-only
-
-** Encrypted files
-
-Everything above is about protecting you from a file. This part is about
-protecting a file from other people. Tuatara uses GnuPG (the program =gpg=) to
-encrypt and sign. Encrypting turns text into something that only a key or a
-passphrase can turn back. Signing adds a mark that shows who wrote a file and
-that it has not been changed since.
-
-*** A file that ends in .gpg
-
-A file whose name ends in =.gpg= opens decrypted. The text on disk stays
-encrypted. The decrypted text lives in memory only. It is never auto-saved, and
-it is not placed on the system clipboard unless you ask for that. Each save
-encrypts it again. If the file is encrypted to a passphrase and not to a key,
-gpg-agent's prompt asks at once. When the minibuffer is what asks (next
-section), the buffer waits until you press ~RET~ first.
-~M-x gpg-decrypt-with-passphrase~ is the same.
-
-Whom a file is encrypted to is a choice for each save.
-~M-x gpg-choose-encryption-keys~ chooses again, between keys and a passphrase,
-and the next save uses the new choice. ~M-x gpg-lock~ makes gpg-agent forget
-every passphrase it keeps, so the next file you open asks again. It does not
-close buffers you already have open: kill those too, if you want their text gone
-from memory.
-
-*** The passphrase prompt
-
-Who asks for the passphrase is the setting =*gpg-passphrase-from*=. As it comes
-(=:auto=), gpg-agent's own window asks on a desktop, its prompt in the terminal
-asks if Tuatara runs in one, and the minibuffer asks last. Either of the first
-two keeps the passphrase out of Tuatara altogether. The minibuffer is the
-fallback. It shows stars as you type, and the passphrase then passes through the
-editor. Each character is wiped from memory as it is typed or deleted, and at
-once if you give up with ~C-g~. Still, the editor's memory is not locked, a
-look-alike program could ask in its place, and the garbage collector may have
-copied text before it was wiped. So when the minibuffer asks, a window above it
-says what that risks. =*gpg-loopback-warning*= is true as it comes. Turn it off
-only when you know the risks by heart.
-
-Which gpg runs is not left to chance. Tuatara runs the program found in the
-system's own folders (=/usr/local/bin=, =/usr/bin=, =/bin=), never one that a
-folder on your =PATH= might hold. =*gpg-program*= names a different one, by a
-full path from the root. Before each run Tuatara also checks that the folder gpg
-takes its keys and options from (=~/.gnupg=, or the folder =GNUPGHOME= names) is
-yours, is not a link, and cannot be written by others. If the check fails, gpg
-is not run, and the message says which folder is wrong and why.
-
-*** Encrypting and decrypting
-
-~M-x gpg-encrypt-file~ encrypts the file shown, or the one on the line of a
-folder list, into =FILE.gpg=. It asks whom to encrypt to in the minibuffer: your
-keys, or a passphrase, with commas between several. It then offers to wipe the
-original. Say no if you are not sure, since a wiped file cannot be recovered and
-a solid state disk may keep old copies anyway. ~M-x wipe-file~ does that wipe by
-itself. ~M-x gpg-decrypt-file~ writes a decrypted copy to a file you name, after
-warning you that its text is then on disk. To read an encrypted file, open the
-=.gpg= file instead.
-
-You can also encrypt part of a buffer. Select some text and use
-~M-x gpg-encrypt-region~. The text becomes a block that starts with
-=-----BEGIN PGP MESSAGE-----=. This is useful for one paragraph of a note that
-you still want to share as plain text. ~M-x gpg-decrypt-region~ turns the block
-under the cursor, or the nearest one, back into text in place. The buffer is
-then kept from the disk as an encrypted file is: no auto-save, no clipboard. A
-save asks before writing the decrypted text unencrypted, so a habit of pressing
-~C-x C-s~ does not leave it on the disk.
-
-~M-x gpg-copy-to-clipboard~ is the one way out. It puts the text you copied last
-on the system clipboard, even if it came from an encrypted file. Other programs,
-and clipboard managers, can read it and keep it.
-
-*** Signing and checking
-
-~M-x gpg-sign-file~ signs a file with your key. It asks which kind: a detached
-signature, =FILE.sig=, which leaves the file as it is; clear-signed text,
-=FILE.asc=; or a signed file, =FILE.gpg=. ~M-x gpg-sign-region~ clear-signs the
-selected text in place. ~M-x gpg-verify-file~ and ~M-x gpg-verify-region~ check
-a signature. They say who signed, when, and how far that key is trusted.
-
-Read the answer for what it says. A good signature tells you the text has not
-changed since that key signed it. It does not tell you the text is safe, and it
-tells you who signed only as far as you trust the key.
-
-*** Keys
-
-~M-x gpg-list-keys~ opens a list of your keys and those you have of others. The
-list fills in as gpg answers. ~M-x gpg-keys-details~ shows one key's
-fingerprint, names and expiry. ~M-x gpg-import-keys~ and
-~M-x gpg-import-keys-region~ add keys from a file or from selected text.
-~M-x gpg-keys-export~ writes the public part of marked keys to a file, and
-~M-x gpg-keys-insert~ puts it at the cursor in the buffer the list was opened
-from. The folder list (chapter 10) has keys for the same jobs on files.
-
-#+begin_try Try it, with an encrypted note
-1. In a terminal, make a note:
-   =printf 'The alarm code is 4411.\n' > ~/code.txt=.
-2. Open it with ~C-x C-f~. Press ~M-x gpg-encrypt-file~ and ~RET~. Choose a
-   passphrase, press ~RET~ for no more, and give a passphrase twice. When it
-   asks about wiping the original, answer =n=.
-3. Open =~/code.txt.gpg= with ~C-x C-f~. Give the passphrase if asked; gpg-agent
-   may still hold it. The text appears. No auto-save copy of it is made.
-4. Press ~i~, add a line, press ~C-g~ and ~C-x C-s~. Give the passphrase twice.
-   The file on disk is encrypted again. In a terminal, =cat ~/code.txt.gpg=
-   shows nothing readable.
-5. Press ~M-x gpg-lock~, kill the buffer with ~C-x k~ and open the file again.
-   You are asked for the passphrase once more.
-6. Open =~/code.txt= and select its line. Press ~M-x gpg-encrypt-region~, choose
-   a passphrase and give it twice. The line becomes a block. Put the cursor in
-   it and press ~M-x gpg-decrypt-region~. Press ~C-x C-s~: Tuatara asks whether
-   to save the text decrypted. Answer =n= and press ~RET~.
-#+end_try
-
-*** Commands and settings
-
-#+table: commands gpg-encrypt-file gpg-decrypt-file gpg-encrypt-region gpg-decrypt-region gpg-decrypt-with-passphrase gpg-choose-encryption-keys gpg-copy-to-clipboard gpg-lock wipe-file gpg-sign-file gpg-sign-region gpg-verify-file gpg-verify-region gpg-import-keys gpg-import-keys-region gpg-list-keys gpg-keys-details gpg-keys-export gpg-keys-insert
-
-#+table: settings *gpg-program* *gpg-passphrase-from* *gpg-loopback-warning*

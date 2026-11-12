@@ -45,10 +45,12 @@
 
 (in-package #:tuatara.io)
 
-(defvar *save-in-place* nil
-  "True to save a large file by writing only what changed into the file
-itself, where that is quicker than writing it whole. NIL, as standard, writes
-every save as a new file put in the old one's place.
+(define-setting *save-in-place* nil
+  "Whether a large file is saved by writing only what changed into the file
+itself, where that is quicker than writing it whole.
+- t: it is saved so.
+- nil: every save is written as a new file put in the old one's place
+  (the standard).
 
 It is used on ext4 and the other file systems that cannot share blocks
 between files (all but btrfs, XFS, bcachefs and ZFS, where a new file costs
@@ -74,7 +76,8 @@ inodes), a new file may be made under the old name and be given the old one's
 number by the system. It is told apart from the old file only by its times.
 With NIL, every program finds the old file or the new one. A file opened
 safely, or in an evidence folder, is never written, so never put back
-either.")
+either."
+  :values boolean)
 
 (defvar *in-place-most* 2/3
   "The most a save in place writes, journal and changes together, as a share

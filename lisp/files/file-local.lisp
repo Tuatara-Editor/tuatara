@@ -20,11 +20,14 @@
 
 (in-package #:tuatara.defaults)
 
-(defvar *file-local-variables* t
-  "True for a file's own settings (-*- mode: org -*- on its first line, a Local Variables block near its end) to
-be taken as it is opened, namely its major
-mode, tab width, tabs or spaces, fill column and spaces between sentences,
-and those a package takes; nothing else.")
+(define-setting *file-local-variables* t
+  "Whether a file's own settings are taken as it is opened.
+They are -*- mode: org -*- on its first line and a Local Variables block near
+its end. Taken are its major mode, tab width, tabs or spaces, fill column and
+spaces between sentences, and those a package takes; nothing else.
+- t: taken.
+- nil: ignored."
+  :values boolean)
 
 (defvar *file-local-setting-functions* '()
   "Functions a package adds to take more of a file's own settings: each called

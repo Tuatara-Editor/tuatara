@@ -10,18 +10,27 @@
 
 (in-package #:tuatara.defaults)
 
-(defvar *org-notify-tag* "notify"
-  "The tag of the agenda's entries told on the desktop as their time comes
-\(a heading's own or one it takes from those above it); NIL tells none.")
+(define-setting *org-notify-tag* "notify"
+  "The tag of the agenda's entries told on the desktop as their time comes.
+The tag is a heading's own or one it takes from those above it.
+- text: the tag.
+- nil: no entry is told."
+  :values (or (member nil) string))
 
-(defvar *org-notify-before* 10
-  "How many minutes before its time an entry tagged :notify: is told, as
-well as when the time comes; 0 or NIL for only then. An entry's NOTIFY_BEFORE
-property says otherwise for it.")
+(define-setting *org-notify-before* 10
+  "How many minutes before its time an entry tagged :notify: is told.
+It is told when the time comes as well. An entry's NOTIFY_BEFORE property
+says otherwise for it.
+- a whole number: that many minutes before; 0 for only when the time comes.
+- nil: only when the time comes."
+  :values (or (member nil) (integer 0 *)))
 
-(defvar *org-notify-day-time* "08:00"
-  "When an entry tagged :notify: with a date and no time of day is told on
-that day, or as Tuatara starts when that is later; NIL never tells them.")
+(define-setting *org-notify-day-time* "08:00"
+  "When an entry tagged :notify: with a date and no time of day is told.
+- a time of day as text, \"08:00\": at that time of the day, or as Tuatara
+  starts when that is later.
+- nil: such entries are never told."
+  :values (or (member nil) string))
 
 (sb-ext:defglobal **org-notify-sent** (make-hash-table :test 'equal :synchronized t)
   "The notifications told so far, by what tells them apart: (FILE TITLE DAY

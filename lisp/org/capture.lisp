@@ -11,11 +11,13 @@
 
 (in-package #:tuatara.defaults)
 
-(defvar *capture-template-directories* nil
-  "The folders your capture templates are in, a template a file, as
-\\[org-capture] offers them with Tuatara's own (t, n, j, m); NIL, as standard,
-for capture-templates/ in your configuration folder
-\(~/.config/tuatara/capture-templates/, XDG_CONFIG_HOME's when it is set).
+(define-setting *capture-template-directories* nil
+  "The folders your capture templates are in, a template a file.
+\\[org-capture] offers them with Tuatara's own (t, n, j, m).
+- a list of folders: those folders.
+- nil, as standard: capture-templates/ in your configuration folder
+  (~/.config/tuatara/capture-templates/, XDG_CONFIG_HOME's when it is set).
+
 One of yours with the key of one of Tuatara's takes its place. A file's head names it, then its
 text follows after # --:
 
@@ -32,9 +34,11 @@ The key is the character that chooses it. Where the text is filed:
                                        the end of what is under it; the
                                        heading made at the file's end when it
                                        has none such
+
   # file: FILE and # outline: A / B    under the heading of FILE whose titles
                                        from the top are A then B (\\[org-refile]'s)
   # file: FILE alone                   at FILE's end
+
 FILE written *org-agenda-files* is the first of the files the agenda reads:
 that file, or agenda.org in the first folder (or a pattern's folder) named.
   # journal: t                         at the end of today's journal entry
@@ -47,14 +51,17 @@ it goes under, with these filled in:
   %U  [2026-10-06 Tue 14:03]          %u  [2026-10-06 Tue]
   %T  <2026-10-06 Tue 14:03>          %t  <2026-10-06 Tue>
   %a  a link to where you captured from (as \\[org-store-link] makes it)
+
   %^{Prompt}       asked for          %^{Prompt|one|two}  chosen among
   %^g  tags asked for, with the tags used in the target and the agenda
+
   %^t, %^T  a date asked for as \\[org-time-stamp] asks it (fri 10:00, +3d,
        every week 10:00), written as an active timestamp, <2026-10-30 Fri 10:00>;
        several days chosen in the calendar, a timestamp each, a run a range
   %<%H:%M>  the time as the pattern says (format-time's %-specifiers)
   %%  a %
-\\[org-capture-template-copy] makes one of Tuatara's yours to change.")
+\\[org-capture-template-copy] makes one of Tuatara's yours to change."
+  :values (list-of folder))
 
 (defparameter *built-in-capture-templates* (built-in-data-files "capture-templates/")
   "Tuatara's own capture templates, each (FILE-NAME TEXT): a TODO for the

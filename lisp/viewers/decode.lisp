@@ -15,7 +15,7 @@
 (in-package #:tuatara.defaults)
 
 (defparameter *decoding-carried-settings*
-  '(tuatara-user:*sandbox-program* tuatara-user:*sandbox-seconds* tuatara-user:*sandbox-memory*
+  '(tuatara-user:*sandbox* tuatara.io::*bwrap-name* tuatara-user:*sandbox-seconds* tuatara-user:*sandbox-memory*
     tuatara-user:*sandbox-total-memory* tuatara-user:*sandbox-input-limit* *pdf-decoders* *pdf-text-pages*
     *image-decoders* *magick-largest-side* *picture-memory* *image-view-largest*)
   "The settings that decoding reads, carried to the thread that draws a PDF's
@@ -117,7 +117,7 @@ in the background."
   (case status
     (:missing "no sandbox, bwrap not found (M-x check-health)")
     (:broken "the sandbox cannot run (M-x check-health)")
-    (t "decoding is off (*sandbox-program*)")))
+    (t "decoding is off (*sandbox*)")))
 
 (defun decoder-arguments (arguments values)
   "ARGUMENTS of a decoding program as it is run: each keyword among them
@@ -308,14 +308,17 @@ TUATARA.IO:SANDBOX-RUN's :FILES and :ENVIRONMENT.")
 words (64KP, 65,536 pixels); a larger one is refused before its pixels are
 made.")
 
-(defvar *picture-memory* (* 4 1024 1024 1024)
-  "The most memory the program drawing a large picture is given (4 GB): a
-picture's own size, read from its file, tells how much it needs (about 32
+(define-setting *picture-memory* (* 4 1024 1024 1024)
+  "The most memory the program drawing a large picture is given.
+A picture's own size, read from its file, tells how much it needs (about 32
 octets a pixel, a hundred-megapixel PNG some 3.9 GB), never less than
-*SANDBOX-MEMORY*; one needing more than this is not drawn, and says so. A
-JPEG needs little whatever its size, decoded at a fraction of it. A JPEG 2000
-or JPEG XL picture is given time for its size (PICTURE-SECONDS), so this
-bounds that too.")
+*SANDBOX-MEMORY*; one needing more than this is not drawn, and says so. A JPEG
+needs little whatever its size, decoded at a fraction of it. A JPEG 2000 or
+JPEG XL picture is given time for its size (PICTURE-SECONDS), so this bounds
+that too.
+- a whole number of octets: the most, 4 GB as standard.
+- nil: no most; a picture is given what it needs."
+  :values (or (member nil) (integer 0 *)))
 
 (defun picture-pixels (fd head)
   "How many pixels the picture open as file descriptor (FD), whose first

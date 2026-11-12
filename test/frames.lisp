@@ -4,7 +4,7 @@
 (in-package #:tuatara.tests)
 
 (define-test frames
-  :description "An editor with several frames sharing one queue of events: each event runs in its frame, which holds its own last command, repeat keys and keys recorded; work begun in a frame says its messages there; killing a buffer and keeping windows in place hold in every frame; the list of frames is replaced, never changed; the frames of one terminal take turns on it, the one shown named in the mode line, the others never painted.")
+  :description "An editor with several frames sharing one queue of events: each event runs in its frame, which holds its own last command, repeat keys and keys recorded. Work begun in a frame says its messages there. Killing a buffer and keeping windows in place hold in every frame. The list of frames is replaced, never changed. The frames of one terminal take turns on it, the one shown named in the mode line, the others never painted.")
 
 (defun run-frames (typing &key (count (1+ (reduce #'max typing :key #'first))) (text "") (width 40) (height 8))
   "Run a session of an editor with COUNT frames, each painted by a fake

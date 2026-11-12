@@ -279,7 +279,7 @@ and zooms kept for the next time."
           (tuatara.buffer:kill-buffer buffer)))
       ;; no sandbox: the octets, and why
       (pdf-forget)
-      (let ((tuatara-user:*sandbox-program* nil))
+      (let ((tuatara-user:*sandbox* nil))
         (multiple-value-bind (f editor) (pdf-session file nil nil :cell-pixels '(10 20))
           (true (tuatara.frontend.fake:fake-frame-showing f "report.pdf opens as octets: decoding is off"))
           (let ((buffer (tuatara.display:window-buffer (tuatara.command:editor-window editor))))

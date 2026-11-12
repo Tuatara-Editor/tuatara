@@ -14,18 +14,24 @@
 
 (in-package #:tuatara.lsp)
 
-(defvar *lsp-diagnostics-display* :box
-  "How what a language server found where the cursor rests is said: :box, in a
-box under the cursor; :echo, in the echo area; NIL, not at all (the list of
-\\[lsp-diagnostics] still has it).")
+(define-setting *lsp-diagnostics-display* :box
+  "How what a language server found where the cursor rests is said.
+- :box: in a box under the cursor, as standard.
+- :echo: in the echo area.
+- nil: not at all; the list of \\[lsp-diagnostics] still has it."
+  :values (member :box :echo nil))
 
-(defvar *lsp-diagnostics-style* :wave
-  "How the text a language server finds something wrong in is marked: :wave,
-errors and warnings underlined wavy, information and hints dotted; :dotted,
-all dotted; :line, all with a straight line; :background, the text on a
-ground of its kind's colour (the theme's error, warning and information
-grounds), not underlined. The colours stay the theme's (:diagnostic-error
-and the rest, set-face changing them).")
+(define-setting *lsp-diagnostics-style* :wave
+  "How the text a language server finds something wrong in is marked. The
+colours stay the theme's (:diagnostic-error and the rest, set-face changing
+them).
+- :wave: errors and warnings underlined wavy, information and hints dotted,
+  as standard.
+- :dotted: all dotted.
+- :line: all with a straight line.
+- :background: the text on a ground of its kind's colour (the theme's
+  error, warning and information grounds), not underlined."
+  :values (member :wave :dotted :line :background))
 
 (defvar *diagnostics-style-shown* :wave
   "The *LSP-DIAGNOSTICS-STYLE* the diagnostic faces are underlined in now.")

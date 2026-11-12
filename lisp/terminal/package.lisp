@@ -8,7 +8,8 @@
   (:use #:cl #:tuatara.command #:tuatara.modes #:tuatara.dates #:tuatara-user)
   (:shadowing-import-from #:tuatara.defaults #:point)
   (:import-from #:tuatara.buffer #:lf-newlines)
-  (:import-from #:tuatara.runtime #:foreign-library-p #:foreign-call #:ignoring-errors-reported #:refuse)
+  (:import-from #:tuatara.runtime #:foreign-library-p #:foreign-call #:ignoring-errors-reported #:refuse
+                #:define-setting)
   (:import-from #:tuatara.text #:whole-number)
   (:import-from #:tuatara.defaults
                 #:address-scheme #:centred-text #:choose-display #:cursor-column #:decode-picture #:evidence-path-p

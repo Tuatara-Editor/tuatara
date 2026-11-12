@@ -5,10 +5,10 @@
 
 (define-test encrypted
   :description "A .gpg file opens decrypted (to a key, or with a passphrase asked in the minibuffer and
-shown as stars) in its text's mode, and saves encrypted to the same, only the encrypted octets on disk;
-a new one asks whom to encrypt it to in the list of keys (m marks, RET saves, nothing marked does
-nothing); a safe visit never decrypts; its text is never auto-saved, kept in the session, written to a
-scratch file, given to the clipboard unasked, nor exported unasked; no core dump while one is open.")
+shown as stars) in its text's mode, and saves encrypted to the same, only the encrypted octets on disk.
+A new one asks whom to encrypt it to in the list of keys (m marks, RET saves, nothing marked does
+nothing). A safe visit never decrypts. Its text is never auto-saved, kept in the session, written to a
+scratch file, given to the clipboard unasked, nor exported unasked. No core dump while one is open.")
 
 (defun gpg-test-key ()
   "The ID of the tests' own key, made the first time in the tests' own keyring (GNUPGHOME), with no passphrase."

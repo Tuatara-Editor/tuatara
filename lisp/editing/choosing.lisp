@@ -5,10 +5,13 @@
 
 ;;; What is shown beside files among completion candidates
 
-(defvar *relative-age-limit* (* 14 24 60 60)
+(define-setting *relative-age-limit* (* 14 24 60 60)
   "Seconds within which the last change of a file among completion candidates
-is shown as an age (5 min ago, 3 days ago); older ones show the date, and with
-0 every one does.")
+is shown as an age (5 min ago, 3 days ago); older ones show the date.
+- 0: every file shows its date.
+- a whole number above 0: files changed within that many seconds show an age.
+  14 days (1209600) as standard."
+  :values (integer 0 *))
 
 (defun age-words (mtime &optional (now (get-universal-time)))
   "When a file last changed, MTIME (a STAMP-MTIME, in nanoseconds), in words
@@ -69,35 +72,51 @@ when it last changed."
 
 ;;; Previews while choosing
 
-(defvar *preview-files* nil
-  "True to show, while you choose a file with \\[find-file] (and the other ways
-of finding a file) or \\[find-recent-file], the file selected in the window you are in,
-opened safely: read-only, no mode or hook run on it, its times untouched, a
-binary one in the hex view; what the window showed comes back when the
-question ends. NIL, as standard, to show nothing until a file is chosen.")
+(define-setting *preview-files* nil
+  "Whether choosing a file shows the selected file in the window you are in.
+That is while you choose a file with \\[find-file] (and the other ways of
+finding a file) or \\[find-recent-file]. The file is opened safely: read-only,
+no mode or hook run on it, its times untouched, a binary one in the hex view;
+what the window showed comes back when the question ends.
+- t: show the file selected.
+- nil: show nothing until a file is chosen (the standard)."
+  :values boolean)
 
-(defvar *preview-formatted-files* nil
-  "True to show, while you choose one of your files with formatted names with
-\\[open-file-formatted], the file selected in the window you are in, opened
-safely, as *PREVIEW-FILES* shows files. NIL, as standard, for none.")
+(define-setting *preview-formatted-files* nil
+  "Whether choosing one of your files with formatted names shows the selected
+file in the window you are in. That is while you choose with
+\\[open-file-formatted]. The file is opened safely, as *PREVIEW-FILES* shows
+files.
+- t: show the file selected.
+- nil: show none (the standard)."
+  :values boolean)
 
-(defvar *preview-formatted-search* nil
-  "True to show, while you search your files with formatted names with
-\\[search-in-formatted], the file of the line selected in the window you are in, at
-that line, opened safely, as *PREVIEW-FILES* shows files. NIL, as standard,
-for none.")
+(define-setting *preview-formatted-search* nil
+  "Whether searching your files with formatted names shows the line selected in
+the window you are in. That is while you search with \\[search-in-formatted];
+the file of the selected line is shown at that line, opened safely, as
+*PREVIEW-FILES* shows files.
+- t: show the line selected.
+- nil: show none (the standard)."
+  :values boolean)
 
-(defvar *preview-file-search* nil
-  "True to show, while you search the files of a project or a directory with
-\\[search-in-files], the file of the line selected in the window you are in, at
-that line, opened safely, as *PREVIEW-FILES* shows files. NIL, as standard,
-for none.")
+(define-setting *preview-file-search* nil
+  "Whether searching the files of a project or a directory shows the line
+selected in the window you are in. That is while you search with
+\\[search-in-files]; the file of the selected line is shown at that line,
+opened safely, as *PREVIEW-FILES* shows files.
+- t: show the line selected.
+- nil: show none (the standard)."
+  :values boolean)
 
-(defvar *preview-buffers* nil
-  "True to show, while you choose a buffer with \\[switch-to-buffer] (and
-\\[switch-to-buffer-other-window], and every other question for a buffer), the
-buffer selected in the window you are in, what it showed coming back when the
-question ends. NIL, as standard, for none.")
+(define-setting *preview-buffers* nil
+  "Whether choosing a buffer shows the selected buffer in the window you are in.
+That is while you choose with \\[switch-to-buffer] (and
+\\[switch-to-buffer-other-window], and every other question for a buffer);
+what the window showed comes back when the question ends.
+- t: show the buffer selected.
+- nil: show none (the standard)."
+  :values boolean)
 
 (defun preview-file-buffer (path made)
   "The buffer to preview the file at PATH in: the one visiting it already, or

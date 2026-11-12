@@ -13,12 +13,15 @@
 
 (in-package #:tuatara.defaults)
 
-(defvar *org-startup-indented* t
-  "True for Org files to open in the indented view (\\[org-indent-mode]), as
-they do: each line shown indented by the level of the headline it is under, a
-headline's stars but the last hidden, the file itself as it is; NIL for them
-to open as they are written. #+STARTUP: indent and noindent in a file say
-otherwise for it, \\[org-indent-mode] for the buffer.")
+(define-setting *org-startup-indented* t
+  "Whether Org files open in the indented view (\\[org-indent-mode]).
+In the indented view each line is shown indented by the level of the headline
+it is under and a headline's stars but the last are hidden; the file itself
+stays as it is. #+STARTUP: indent and noindent in a file say otherwise for
+it, \\[org-indent-mode] for the buffer.
+- t: in the indented view.
+- nil: as they are written."
+  :values boolean)
 
 (defparameter *org-startup-read-limit* (* 1024 1024)
   "How far into an Org buffer, in octets, its #+STARTUP: lines are looked for.")
@@ -72,48 +75,64 @@ Complexity: O(the octets read)."
 CHOICES, as the last such word says in Org; NIL when none is."
   (find-if (lambda (word) (member word choices :test #'string=)) options :from-end t))
 
-(defvar *org-bullets* '("◉" "○" "✸" "✿")
-  "The signs Org headlines show in place of their last star, by level, the
-first for the first level and round again past the last;
-NIL to show the stars. The file keeps its stars.")
+(define-setting *org-bullets* '("◉" "○" "✸" "✿")
+  "The signs Org headlines show in place of their last star, by level.
+The file keeps its stars.
+- a list of signs: the first for the first level, and round again past the
+  last.
+- nil: the stars shown."
+  :values (list-of string))
 
-(defvar *org-list-bullets* nil
-  "The signs list items show in place of their bullets, each (BULLET . SIGN),
-such as '((\"-\" . \"•\") (\"+\" . \"◦\") (\"*\" . \"▸\"));
-NIL, as by default, to show the bullets as written. Numbered items keep their
-numbers; the file keeps its bullets.")
+(define-setting *org-list-bullets* nil
+  "The signs list items show in place of their bullets.
+Numbered items keep their numbers; the file keeps its bullets.
+- a list of (BULLET . SIGN): each bullet shown as its sign, as in
+  '((\"-\" . \"•\") (\"+\" . \"◦\") (\"*\" . \"▸\")).
+- nil, as standard: the bullets shown as written."
+  :values (list-of "(BULLET . SIGN)"))
 
-(defvar *org-checkbox-signs* nil
-  "The signs list items' checkboxes show, each (CHECKBOX . SIGN), such as
-'((\"[ ]\" . \"☐\") (\"[-]\" . \"◐\") (\"[X]\" . \"☑\")), each followed by a space,
-so that a sign drawn wider than one column shows whole; NIL, as by default,
-to show them as written. \\[org-ctrl-c-ctrl-c] ticks them as before; the file keeps [ ], [-]
-and [X].")
+(define-setting *org-checkbox-signs* nil
+  "The signs list items' checkboxes show.
+\\[org-ctrl-c-ctrl-c] ticks them as before; the file keeps [ ], [-] and [X].
+- a list of (CHECKBOX . SIGN): each checkbox shown as its sign followed by a
+  space, so that a sign drawn wider than one column shows whole, as in
+  '((\"[ ]\" . \"☐\") (\"[-]\" . \"◐\") (\"[X]\" . \"☑\")).
+- nil, as standard: the checkboxes shown as written."
+  :values (list-of "(CHECKBOX . SIGN)"))
 
-(defvar *org-hide-leading-stars* t
-  "True to hide a headline's stars but the last, with *ORG-BULLETS* or in the
-indented view; NIL to show them faint
-\(the :org-leading-stars face).")
+(define-setting *org-hide-leading-stars* t
+  "Whether a headline's stars but the last are hidden.
+This is with *ORG-BULLETS* or in the indented view.
+- t: hidden.
+- nil: shown faint (the :org-leading-stars face)."
+  :values boolean)
 
 (defun org-indented-p (buffer)
   "True when BUFFER, an Org buffer, is shown in the indented view."
   (tuatara.buffer:buffer-local buffer 'org-indent))
 
-(defvar *org-link-descriptive* t
-  "True for Org links to be shown as their labels, [[target][label]] as label
-and [[target]] as target, and entities as their characters, \\dollar{} as $;
-NIL to show them as written. \\[org-toggle-link-display] changes it for a buffer.")
+(define-setting *org-link-descriptive* t
+  "Whether Org links are shown as their labels.
+\\[org-toggle-link-display] changes it for a buffer.
+- t: [[target][label]] shown as label and [[target]] as target, and
+  entities as their characters, \\dollar{} as $.
+- nil: shown as written."
+  :values boolean)
 
-(defvar *org-log-done* :time
-  "What is noted when a task is done: :TIME (as standard) a CLOSED: line with
-the time, which the agenda's log mode lists; NIL nothing.")
+(define-setting *org-log-done* :time
+  "What is noted when a task is done.
+- :time, as standard: a CLOSED: line with the time, which the agenda's log
+  mode lists.
+- nil: nothing."
+  :values (member :time nil))
 
-(defvar *org-todo-keyword-faces* '(("WAIT" . :org-wait) ("CANCELLED" . :org-cancelled) ("CANCELED" . :org-cancelled))
-  "The TODO keywords with a face of their own, each (KEYWORD . FACE), in an
-Org file's headlines and in the agenda: WAIT in :org-wait, CANCELLED in
-:org-cancelled. Any other keyword is in :org-todo while its task is open and
-in :org-done once it is closed. Add your own:
-\(push '(\"NEXT\" . :org-wait) *org-todo-keyword-faces*).")
+(define-setting *org-todo-keyword-faces* '(("WAIT" . :org-wait) ("CANCELLED" . :org-cancelled) ("CANCELED" . :org-cancelled))
+  "The TODO keywords with a face of their own, each (KEYWORD . FACE).
+The faces are used in an Org file's headlines and in the agenda: WAIT in
+:org-wait, CANCELLED in :org-cancelled. Any other keyword is in :org-todo
+while its task is open and in :org-done once it is closed. Add your own:
+(push '(\"NEXT\" . :org-wait) *org-todo-keyword-faces*)."
+  :values (list-of "(KEYWORD . FACE)"))
 
 (defun org-todo-keyword-face (keyword done)
   "The face of the TODO keyword KEYWORD, of a task closed when DONE is true:
@@ -121,15 +140,19 @@ its own in *ORG-TODO-KEYWORD-FACES*, else :org-done or :org-todo."
   (or (cdr (assoc keyword *org-todo-keyword-faces* :test #'string=))
       (if done :org-done :org-todo)))
 
-(defvar *org-log-into-drawer* t
-  "True for the notes logged of a task (a change of state, a repeat, a
-reschedule, a note taken) to go into the entry's :LOGBOOK: drawer, where
-they fold with it (*ORG-FOLD-METADATA*); NIL for them to go right after its
-planning line and properties, outside any drawer.")
+(define-setting *org-log-into-drawer* t
+  "Where the notes logged of a task go.
+The notes are a change of state, a repeat, a reschedule and a note taken.
+- t: into the entry's :LOGBOOK: drawer, where they fold with it
+  (*ORG-FOLD-METADATA*).
+- nil: right after its planning line and properties, outside any drawer."
+  :values boolean)
 
-(defvar *org-log-repeat* :time
-  "What Org notes when a task that repeats is done: :TIME the change of state
-and LAST_REPEAT with the time; NIL nothing.")
+(define-setting *org-log-repeat* :time
+  "What Org notes when a task that repeats is done.
+- :time: the change of state, and LAST_REPEAT with the time.
+- nil: nothing."
+  :values (member :time nil))
 
 ;;; The parse of a buffer, kept up
 
@@ -602,16 +625,17 @@ eighth the first again."
   "The source blocks among the rows being coloured, each (LANGUAGE FROM TO),
 FROM and TO the octets of their code.")
 
-(defvar *org-src-languages*
+(define-setting *org-src-languages*
   '(("emacs-lisp" . "elisp") ("C++" . "cpp") ("sqlite" . "sql") ("spec" . "rpmspec")
     ("sshclientconfig" . "ssh_client_config") ("conf" . "ini") ("desktop" . "ini") ("ash" . "bash")
     ("dash" . "bash") ("ksh" . "bash") ("mksh" . "bash") ("posix" . "bash") ("screen" . "bash")
     ("text" . nil) ("fundamental" . nil) ("calc" . nil))
-  "The language each name a source block is given (#+begin_src emacs-lisp)
-means, where Org's name is not the language's own: each (NAME . LANGUAGE),
-LANGUAGE NIL for none. Any other
-name is the language of that name, else the one a file ending in .NAME is in.
-Add your own: (push '(\"kitty\" . \"ini\") *org-src-languages*).")
+  "The language each name a source block is given means, each (NAME . LANGUAGE).
+This is for names Org gives that are not the language's own
+(#+begin_src emacs-lisp); LANGUAGE nil for none. Any other name is the
+language of that name, else the one a file ending in .NAME is in. Add your
+own: (push '(\"kitty\" . \"ini\") *org-src-languages*)."
+  :values (list-of "(NAME . LANGUAGE)"))
 
 (defparameter *org-face-kinds*
   '((:org-level-1 . "markup.heading") (:org-level-2 . "markup.heading") (:org-level-3 . "markup.heading")

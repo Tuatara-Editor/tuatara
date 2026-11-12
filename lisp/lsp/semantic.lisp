@@ -10,14 +10,17 @@
 
 (in-package #:tuatara.lsp)
 
-(defvar *lsp-semantic-tokens* nil
-  "True for code to be coloured as its language server sees it: each name in
-the face *LSP-SEMANTIC-FACES* gives its kind, over the mode's colours.")
+(define-setting *lsp-semantic-tokens* nil
+  "Whether code is coloured as its language server sees it: each name in the
+face *LSP-SEMANTIC-FACES* gives its kind, over the mode's colours.
+- t: it is.
+- nil: the mode's colours alone, as standard."
+  :values boolean)
 
 (defvar *lsp-most-tokens* 200000
   "The most semantic tokens kept for one buffer.")
 
-(defvar *lsp-semantic-faces*
+(define-setting *lsp-semantic-faces*
   '(("namespace" . :namespace) ("type" . :type) ("class" . :type) ("enum" . :type) ("interface" . :type)
     ("struct" . :type) ("typeParameter" . :type) ("builtinType" . :type) ("typeAlias" . :type)
     ("parameter" . :variable.parameter) ("variable" . :variable) ("property" . :property)
@@ -29,9 +32,11 @@ the face *LSP-SEMANTIC-FACES* gives its kind, over the mode's colours.")
     ("comment" . :comment) ("string" . :string) ("number" . :constant.numeric) ("regexp" . :string.regexp)
     ("operator" . :operator) ("decorator" . :attribute) ("attribute" . :attribute) ("lifetime" . :label)
     ("label" . :label) ("escapeSequence" . :constant.character.escape))
-  "The face each kind of name a language server tells apart is coloured in,
-as (KIND . FACE), KIND as the server names it; a kind not here keeps the
-mode's colour.")
+  "The face each kind of name a language server tells apart is coloured in; a
+kind not listed keeps the mode's colour.
+- a list of (KIND . FACE): KIND as the server names it (\"function\"), FACE
+  the face's name (:function)."
+  :values (list-of "(KIND . FACE)"))
 
 (defun lsp-token-kinds ()
   "The kinds of name a server is told the editor colours (*LSP-SEMANTIC-FACES*), as a vector."

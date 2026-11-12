@@ -8,12 +8,15 @@
 
 (in-package #:tuatara.packages)
 
-(defvar *package-check-signatures* t
-  "True to check who signed each version of a package, and take only those
-that M-x package-trust-again and the signers of a source (:signers) allow. NIL
-to check none: every version of every source is taken, signed by any key, a
-key your keyring lacks or no one, and nothing is remembered of who signed it.
-Only for a machine where the sources are trusted by other means.")
+(define-setting *package-check-signatures* t
+  "Whether a package's versions are taken only when signed by a key you trust.
+- t: who signed each version is checked, and only those that M-x
+  package-trust-again and the signers of a source (:signers) allow are taken.
+- nil: nothing is checked. Every version of every source is taken, signed by
+  any key, a key your keyring lacks or no one, and nothing is remembered of
+  who signed it. Only for a machine where the sources are trusted by other
+  means."
+  :values boolean)
 
 (defun trust-line (entry)
   "The line of the trust file for ENTRY, (WHERE SIGNER NAME KEY)."

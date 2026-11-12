@@ -10,23 +10,30 @@
 
 (in-package #:tuatara.defaults)
 
-(defvar *search-files-limit* (* 128 1024 1024)
-  "The most octets of text kept in memory for a search of many files
-\(\\[search-in-files], \\[search-in-formatted]) and for each directory of
-*INDEXED-DIRECTORIES* (and on disk with it, *INDEXES-KEPT-ON-DISK*): 128 MB as
-standard. Text files that do not fit are not left out but searched from disk
-at each search, a piece at a time, their lines coming after the others: memory
-stays at this, and a search of them takes longer, about a second for each 1.5
-GB on a fast disk, against a quarter of that kept in memory. Raise it to keep
-more in memory, (* 4 1024 1024 1024) for 4 GB.")
+(define-setting *search-files-limit* (* 128 1024 1024)
+  "The most octets of text kept in memory for a search of many files.
+It holds for \\[search-in-files] and \\[search-in-formatted] and for each
+directory of *INDEXED-DIRECTORIES* (and on disk with it,
+*INDEXES-KEPT-ON-DISK*). Text files that do not fit are not left out but
+searched from disk at each search, a piece at a time, their lines coming
+after the others: memory stays at this, and a search of them takes longer,
+about a second for each 1.5 GB on a fast disk, against a quarter of that kept
+in memory. Raise it to keep more in memory, (* 4 1024 1024 1024) for 4 GB.
+- a whole number, 0 or more: the octets; 128 MB as standard."
+  :values (integer 0 *))
 
-(defvar *search-files-min-input* 3
-  "How many characters search-in-files and search-in-formatted wait for before searching.")
+(define-setting *search-files-min-input* 3
+  "How many characters search-in-files and search-in-formatted wait for before
+searching.
+- a whole number, 0 or more: the characters; 3 as standard."
+  :values (integer 0 *))
 
-(defvar *search-files-lines-limit* 2000
-  "The most matching lines search-in-files and search-in-formatted list, 2000
-as standard. Raise it to see more of a pattern that matches widely, at the
-cost of time and memory to list them; lower it for a quicker list.")
+(define-setting *search-files-lines-limit* 2000
+  "The most matching lines search-in-files and search-in-formatted list.
+Raise it to see more of a pattern that matches widely, at the cost of time
+and memory to list them; lower it for a quicker list.
+- a whole number, 1 or more: the lines; 2000 as standard."
+  :values (integer 1 *))
 
 (defstruct (file-corpus (:constructor make-file-corpus (rope paths starts root)) (:copier nil))
   "The text of files read for searching: ROPE holds them one after another,
@@ -792,11 +799,13 @@ file of the line selected is shown meanwhile, at that line, opened safely
           (when reading (stop-gathering reading))
           (when searching (stop-gathering searching)))))))
 
-(defvar *project-root-markers* '(".git" ".project")
-  "The names of the files or directories that mark the root of a project:
-\\[search-in-files] searches all of the project a buffer's file is in, from the
-nearest directory above the file holding one of them. Your home directory, and
-those above it, are never a project's root.")
+(define-setting *project-root-markers* '(".git" ".project")
+  "The names of the files or directories that mark the root of a project.
+\\[search-in-files] searches all of the project a buffer's file is in, from
+the nearest directory above the file holding one of them. Your home
+directory, and those above it, are never a project's root.
+- a list of names: the markers; (\".git\" \".project\") as standard."
+  :values (list-of string))
 
 (defun project-root (directory)
   "The root of the project DIRECTORY is in: the nearest directory from it up

@@ -13,15 +13,21 @@
 
 (in-package #:tuatara.lsp)
 
-(defvar *lsp-watch-files* t
-  "True for language servers that ask to be told of their project's files
-changed on disk, made or deleted, by programs other than the editor, to be
-told.")
+(define-setting *lsp-watch-files* t
+  "Whether language servers that ask to be told of their project's files
+changed on disk, made or deleted, by programs other than the editor, are
+told.
+- t: they are told.
+- nil: they are not."
+  :values boolean)
 
-(defvar *lsp-watch-skipped* '("target" "node_modules" "__pycache__" "_build" "zig-out" "zig-cache" "dist")
+(define-setting *lsp-watch-skipped* '("target" "node_modules" "__pycache__" "_build" "zig-out" "zig-cache" "dist")
   "The folders of a project whose files are never watched for its language
-servers, by name (hidden folders, whose names begin with a dot, never are):
-what a build makes.")
+servers (hidden folders, whose names begin with a dot, never are): what a
+build makes.
+- a list of texts: the folders' names, \"target\", \"node_modules\",
+  \"__pycache__\", \"_build\", \"zig-out\", \"zig-cache\" and \"dist\" as standard."
+  :values (list-of string))
 
 (defvar *lsp-watched-most* 5000
   "The most folders of one project watched for its language servers.")

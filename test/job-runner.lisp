@@ -5,9 +5,9 @@
 
 (define-test job-runner
   :description "Every kind of job runs on one runner: M-x stop-job stops each with one question, each
-says how it stopped or failed in one form, one question before a kill or an exit names every job,
-a list's files copied light P in the mode line and are listed with the agenda and the
-calendar's marks, and a job whose work runs out of memory ends as failed.")
+says how it stopped or failed in one form, one question before a kill or an exit names every job. A
+list's files copied light P in the mode line and are listed with the agenda and the calendar's
+marks. A job whose work runs out of memory ends as failed.")
 
 (defun job-kinds ()
   "Each kind of job, as (NAME MAKE STOP-QUESTION STOPPED): MAKE a function of a

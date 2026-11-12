@@ -1,7 +1,7 @@
 #+title: Tuatara manual: chapters
 
 Each chapter covers every command, setting and face of its subject, with its
-keys and standard values. The last two list every name, generated from the
+keys and defaults. The last two list every name, generated from the
 source.
 
 tools/manual-tables.sh fills the tables into doc/manual/generated/, read in

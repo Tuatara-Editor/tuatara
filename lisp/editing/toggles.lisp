@@ -117,10 +117,24 @@ lines of at most 78 columns, as a docstring is written."
                 ((> (+ column 1 (length word)) 78) (terpri out) (setf column 0))
                 (t (write-char #\Space out) (incf column)))
           (write-string word out)
-          (incf column (length word)))))))
+          (incf column (length word))))))
+
+  (defun modes-docstring (what example global command default-modes values-doc)
+    "The docstring of the modes list of a display toggle that WHAT describes:
+EXAMPLE a list of modes, GLOBAL the name of its global setting, COMMAND the
+name of its command, DEFAULT-MODES the modes counting when a mode has no
+entry, and VALUES-DOC the list of values that ends it."
+    (format nil "~a~%~a"
+            (filled-docstring "Major modes whose buffers ~a, or not: a list of (MODE . VALUE), MODE a major ~
+                               mode's name, with or without -mode, for example ~a. A mode counts for the modes ~
+                               made from it, the nearest one listed deciding; it says more than ~a, and a ~
+                               buffer's own \\[~(~a~)] more than either.~@[ Without an entry for a mode, these ~
+                               count: ~{~(~s~)~^, ~}.~] VALUE is one of these."
+                              what example global command default-modes)
+            values-doc)))
 
 (defmacro define-display-toggle (name label doc &key command lookup global default global-doc
-                                                     what example (values '((t "on"))) mode-line unless where default-modes)
+                                                     what example (values '((t "on"))) values-doc mode-line unless where default-modes)
   "Define NAME, a way of showing a buffer's text that is switched on and off:
 LOOKUP, a function of a buffer (the current one unless given) true where it
 is on, or the value it takes there of VALUES: the buffer's own choice, made
@@ -138,7 +152,9 @@ every buffer (SWITCH-DISPLAY); each says LABEL and what it did. WHAT says in
 a few words what it does, as \"wrap long lines at a word's edge\", and
 EXAMPLE gives an example of the list of modes, for the documentation. VALUES,
 each (VALUE WORD), are what it is when on, the first the one COMMAND switches
-to; one, T and on, unless given. WORD is said after LABEL once it is set: words,
+to; one, T and on, unless given. VALUES-DOC, when there are others, lists
+what each does, a line \"- VALUE: what it does.\" for NIL and each, for the
+documentation of both settings. WORD is said after LABEL once it is set: words,
 or the name of a function of the buffer (NIL when set for every buffer) that
 returns them, where what it does differs from buffer to buffer. MODE-LINE is the word the mode line shows
 while it is on, or NIL for none. Defined by a package (its Lisp package uses
@@ -150,26 +166,28 @@ package's name."
          (modes (intern (format nil "*~a-MODES*" (symbol-name name))))
          (modes (if package-p (tuatara.packages:claim-package-setting (symbol-name modes) *package*) modes))
          (global (if package-p (tuatara.packages:claim-package-setting (symbol-name global) *package*) global))
-         (setting (if package-p 'tuatara.packages:define-package-setting 'defvar))
+         (setting (if package-p 'tuatara.packages:define-package-setting 'define-setting))
          (global-command (intern (format nil "GLOBAL-~a" (symbol-name command))))
          (key (intern (symbol-name name) :keyword))
          (valued (not (equal values '((t "on")))))
          (what-capital (concatenate 'string (string-upcase (subseq what 0 1)) (subseq what 1)))
-         (count-doc "with a count, on when it is positive, off when it is zero or less."))
+         (count-doc "with a count, on when it is positive, off when it is zero or less.")
+         (values-doc (cond (values-doc)
+                           (valued (error "~a takes values but gives no VALUES-DOC" name))
+                           (t (format nil "- t: ~a.~%- nil: not." what)))))
     `(progn
        (,setting ,global ,default
-         ,(or global-doc
-              (filled-docstring "True to ~a, in every buffer (~:[NIL~;T~] unless set); a buffer's own \\[~(~a~)], ~
-                           and the list for its major mode in ~a, say otherwise for it. Set it in the init file; ~
-                           \\[~(~a~)] switches it while the editor runs."
-                      what default command modes global-command)))
+         ,(format nil "~a~%~a"
+                  (or global-doc
+                      (filled-docstring "Whether to ~a, in every buffer (~:[nil~;t~] unless set); a buffer's own ~
+                                         \\[~(~a~)], and the list for its major mode in ~a, say otherwise for it. ~
+                                         Set it in the init file; \\[~(~a~)] switches it while the editor runs."
+                                        what default command modes global-command))
+                  values-doc)
+         :values ,(if valued `(member nil ,@(mapcar #'first values)) 'boolean))
        (,setting ,modes '()
-         ,(filled-docstring "Major modes whose buffers ~a, or not: a list of (MODE . ~:[ON), ON true or NIL~;~:*VALUE), ~
-                       VALUE NIL or one of ~{~(~s~)~^, ~}~], MODE a major mode's name, with or without -mode, for ~
-                       example ~a. A mode counts for the modes made from it, the nearest one listed deciding; ~
-                       it says more than ~a, and a buffer's own \\[~(~a~)] more than either.~@[ Without an entry ~
-                       for a mode, these count: ~{~(~s~)~^, ~}.~]"
-                  what (and valued (mapcar #'first values)) example global command default-modes))
+         ,(modes-docstring what example global command default-modes values-doc)
+         :values (list-of "(MODE . VALUE)"))
        (defun ,lookup (&optional (buffer (current-buffer)))
          ,(filled-docstring "True when BUFFER (the current buffer unless given) is set to ~a, as it chose for ~
                              itself with \\[~(~a~)], ~@[else ~a, ~]else as ~a says of its major mode, else as ~a says~
@@ -196,12 +214,14 @@ package's name."
 
 ;;; The characters that draw nothing, shown as their codes
 
-(defvar *invisible-characters-when-safe* t
-  "True to show the characters that draw nothing as their codes (<FEFF>,
-<200B>) in every file opened safely (\\[find-file-safely]) that has not
-chosen otherwise with \\[invisible-characters-mode]; NIL to leave those
-buffers to *INVISIBLE-CHARACTERS-MODES* and *GLOBAL-INVISIBLE-CHARACTERS-MODE*
-as any other. T unless set.")
+(define-setting *invisible-characters-when-safe* t
+  "Whether a file opened safely (\\[find-file-safely]) shows the characters that
+draw nothing as their codes (<FEFF>, <200B>), unless the buffer chose
+otherwise with \\[invisible-characters-mode].
+- t: show them (the standard).
+- nil: leave those buffers to *INVISIBLE-CHARACTERS-MODES* and
+  *GLOBAL-INVISIBLE-CHARACTERS-MODE*, as any other."
+  :values boolean)
 
 (defun invisible-characters-safe-p (buffer)
   "True when BUFFER shows the characters that draw nothing as their codes for
@@ -231,11 +251,13 @@ the character as ever. The mode line says Invisible while it is on."
 
 ;;; Right-to-left text, shown in the order it is read
 
-(defvar *text-direction-when-safe* nil
-  "True to show right-to-left text in the order it is read in a file opened
-safely (\\[find-file-safely]) too; NIL to show it there in the order it is
-stored, unless the buffer chose otherwise with \\[text-direction-mode]. NIL
-unless set.")
+(define-setting *text-direction-when-safe* nil
+  "Whether a file opened safely (\\[find-file-safely]) shows right-to-left text
+in the order it is read, unless the buffer chose otherwise with
+\\[text-direction-mode].
+- t: show it in the order it is read.
+- nil: show it in the order it is stored (the standard)."
+  :values boolean)
 
 (defun text-direction-as-stored-p (buffer)
   "True when BUFFER shows its text in the order stored unless it chose
@@ -272,15 +294,18 @@ right-to-left letters in the :stored-order face."
   :global *global-text-direction-mode* :default :auto
   :global-doc "How lines holding right-to-left text are shown in buffers that
 have not chosen, and whose major mode *TEXT-DIRECTION-MODES* says nothing of.
-:AUTO (the default) shows them in the order they are read, each line from left
-to right or from right to left as its first letter is written. :RIGHT-TO-LEFT
-or :LEFT-TO-RIGHT reads every line in that direction, whatever its first
-letter. NIL shows the characters in the order they are stored. Set it in the
-init file; \\[text-direction-mode] still chooses for one buffer, and
-\\[global-text-direction-mode] switches it while the editor runs."
+Set it in the init file; \\[text-direction-mode] still chooses for one buffer,
+and \\[global-text-direction-mode] switches it while the editor runs."
   :what "show right-to-left text in the order it is read"
   :example "'((org-mode . :right-to-left) (csv-mode . nil))"
   :values ((:auto "in the order read") (:right-to-left "right to left") (:left-to-right "left to right"))
+  :values-doc "- :auto: the order they are read, each line from left to right or
+  from right to left as its first letter is written (the default).
+- :right-to-left: the order they are read, every line from right to left,
+  whatever its first letter.
+- :left-to-right: the order they are read, every line from left to right,
+  whatever its first letter.
+- nil: the characters in the order they are stored."
   :where (text-direction-as-stored-p
           "in the order stored in a file opened safely (*text-direction-when-safe*) or in a terminal that turns text round itself"
           nil))

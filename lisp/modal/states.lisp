@@ -38,16 +38,21 @@ yours alone, empty until your init file gives it keys (bind-key with :map
 :leader); the starter init file lists some, commented out, each a command with
 a key of its own under C-x or C-c too.")
 
-(defvar *modal-editing* t
-  "True for Tuatara's modal editing: NORMAL and INSERT states in editing
-buffers, NORMAL's reading keys in support buffers, the leader on \\`SPC'. NIL
-turns it off: every buffer then takes the keys of its mode and the global
-keys, typing inserts, and every command is still there to bind
-or run with \\[execute-extended-command].")
+(define-setting *modal-editing* t
+  "Whether Tuatara's modal editing is on: NORMAL and INSERT states in editing
+buffers, NORMAL's reading keys in support buffers, the leader on \\`SPC'.
+- t: it is on (the standard).
+- nil: it is off. Every buffer then takes the keys of its mode and the global
+  keys, typing inserts, and every command is still there to bind or run with
+  \\[execute-extended-command]."
+  :values boolean)
 
-(defvar *mode-line-tuatara* t
-  "True to write TUATARA before the modal state in the mode line, TUATARA[N];
-NIL for the state alone, [N]. \\[toggle-mode-line-tuatara] switches it.")
+(define-setting *mode-line-tuatara* t
+  "Whether the mode line writes TUATARA before the modal state.
+\\[toggle-mode-line-tuatara] switches it.
+- t: TUATARA[N] (the standard).
+- nil: the state alone, [N]."
+  :values boolean)
 
 (defun buffer-modal-class (&optional (buffer (current-buffer)))
   "How the modal editing treats BUFFER: :editing (NORMAL and INSERT), :support

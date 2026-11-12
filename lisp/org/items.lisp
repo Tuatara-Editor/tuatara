@@ -158,11 +158,13 @@ the task's keyword."
 clear it, and bring up to date what depends on it."
   (org-set-checkbox parse position item (if (eq (org-property item :checkbox) 'on) 'off 'on)))
 
-(defvar *org-return-cycles-checkboxes* t
-  "True for \\<normal>\\[tuatara-normal-return] in NORMAL state anywhere on a list item's line
-with a checkbox to cycle it, [ ] to [-] to [X] and round, the counts above
-brought up to date (a link point is on is followed first); NIL to leave it to
-\\[org-ctrl-c-ctrl-c].")
+(define-setting *org-return-cycles-checkboxes* t
+  "Whether RET on a list item's line in NORMAL state cycles its checkbox.
+- t: \\<normal>\\[tuatara-normal-return] in NORMAL state anywhere on a list item's line
+  with a checkbox cycles it, [ ] to [-] to [X] and round, the counts above
+  brought up to date (a link point is on is followed first).
+- nil: the checkbox is left to \\[org-ctrl-c-ctrl-c]."
+  :values boolean)
 
 (defparameter *org-checkbox-cycle* '((off . trans) (trans . on) (on . off))
   "How \\<normal>\\[tuatara-normal-return] cycles a checkbox: for each state, the state after it.")
@@ -309,10 +311,12 @@ parse is behind its text."
                         (cl-ppcre:scan "^\\*+ " text :start line-start))
                    '("heading at point" "C-t" "C-q" "C-s" "C-d" "C-w" "C-z" "C-x")))))))))
 
-(defvar *org-complete-checkboxes* t
-  "True for [ typed right after a list item's bullet and its space (- [) to
-make it a checkbox at once, - [ ] with point after the space, ready for the
-item's text; NIL to type [ as anywhere else.")
+(define-setting *org-complete-checkboxes* t
+  "Whether [ typed right after a list item's bullet makes a checkbox.
+- t: [ typed after the bullet and its space (- [) makes it a checkbox at
+  once, - [ ] with point after the space, ready for the item's text.
+- nil: [ is typed as anywhere else."
+  :values boolean)
 
 (defun org-checkbox-typed (buffer char)
   "After CHAR was typed into BUFFER: when it is [ right after a list item's

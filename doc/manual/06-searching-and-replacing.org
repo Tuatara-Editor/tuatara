@@ -190,10 +190,10 @@ begins with =%= searches the whole buffer instead.
 
 ** Replacing
 
-Replacing uses the same prompt as searching. In NORMAL state press ~r r~. The
-prompt reads =Regex replace on this line:=. Type the pattern, then ~RET~, which
-types the =/= for you, then the new text, then ~RET~. You can also type it all
-on one line as =pattern/new text=.
+Replacing uses the same prompt as searching. In NORMAL state press ~r r~
+(non-modal: ~C-z r r~). The prompt reads =Regex replace on this line:=. Type the
+pattern, then ~RET~, which types the =/= for you, then the new text, then ~RET~.
+You can also type it all on one line as =pattern/new text=.
 
 What gets changed depends on what is selected. With nothing selected, only
 the line the cursor is on, and only the first match on it. With a selection,
@@ -229,7 +229,7 @@ with a capital gets a capital. So =%tui/kokako= turns Tui into Kokako.
 
 *** Replacing with questions
 
-~r q~ (non-modal: ~C-M-%~) replaces a regular expression and asks about each
+~r q~ (non-modal: ~C-z r q~) replaces a regular expression and asks about each
 match, with =Query replacing ... with ...:= and the keys =y n ! . q=:
 
 | Modal | Non-modal | Does                                     |
@@ -241,7 +241,7 @@ match, with =Query replacing ... with ...:= and the keys =y n ! . q=:
 | none  | ~q~       | Stop                                     |
 
 ~M-%~ is the same for plain text, with no special characters to think about.
-~C-M-%~ is another key for ~r q~, and it works in every state.
+~C-z r q~ is the key for ~r q~ in every state.
 
 When you want to be sure of each change, use the question form. When a
 change is plain and mechanical, use ~r r~ and look at the preview.
@@ -259,7 +259,7 @@ the commands. They are described under searching, above.
 3. Press ~r r~ and type =%tui/kea=, ~RET~. Every tui of the whole letter
    changes, and the third one keeps its capital: =Kea are rare=. The echo area
    says =Replaced 3 occurrences on 1 line=. Press ~u~.
-4. Press ~r q~ (non-modal: ~C-M-%~), type =%tui/kea=, ~RET~. Press ~y~ at the
+4. Press ~r q~ (non-modal: ~C-z r q~), type =%tui/kea=, ~RET~. Press ~y~ at the
    first, ~n~ at the second and ~!~ at the third. Only the first and the last
    were changed. Press ~u~.
 5. Press ~r r~ and type =%(\w+) at (\w+)/\2 at \1=, ~RET~. Look at what

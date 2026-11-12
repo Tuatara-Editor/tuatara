@@ -42,6 +42,9 @@ files whose names begin with a number."
   "The title of a chapter from its PARTS: that of its first heading, as HTML."
   (third (first (getf parts :headings))))
 
+(defparameter *contents-depth* 2
+  "How deep the contents column goes under a chapter: its sections and theirs.")
+
 (defun contents-list (entries &key (front t))
   "The manual's contents as a list of chapters, each with its sections under it,
 ENTRIES its (CHAPTER . PARTS) in order: all of them in every page, for the
@@ -57,7 +60,7 @@ FRONT, the contents page itself comes first, as 0 Contents."
                      (tuatara.defaults::org-html-contents
                       (loop for (level number title id) in (rest (getf parts :headings))
                             collect (list (1- level) number title id))
-                      :page (page-name chapter) :depth 2)))
+                      :page (page-name chapter) :depth *contents-depth*)))
     (write-string "</ol>" out)))
 
 (defun here-marked (contents stem)
@@ -78,6 +81,59 @@ each (CHAPTER . PARTS) or NIL, and up to the contents."
                  <span>Up: <a href=\"index.html\">Contents</a></span></div>"
             end (link "Previous" previous) (link "Next" next))))
 
+(defparameter *heading-starts* (cl-ppcre:create-scanner "<h[1-6] id=\"([^\"]*)\"")
+  "Where a heading of a chapter's HTML begins, with its id.")
+
+(defparameter *entities* '(("amp" . "&") ("lt" . "<") ("gt" . ">") ("quot" . "\"") ("nbsp" . " ")
+                           ("ndash" . "–") ("mdash" . "—"))
+  "The entities a page of the manual may hold by name, and the characters they stand for.")
+
+(defun plain-text (html)
+  "The words of HTML, a piece of a page, as a reader sees them: no tags, entities
+spelled out, in lower case, every run of spaces one space."
+  (let* ((text (cl-ppcre:regex-replace-all "<[^>]*>" html " "))
+         (text (cl-ppcre:regex-replace-all
+                "&(#[0-9]+|[a-z]+);" text
+                (lambda (match name)
+                  (if (char= (char name 0) #\#)
+                      (string (code-char (parse-integer name :start 1)))
+                      (or (cdr (assoc name *entities* :test #'string=)) match)))
+                :simple-calls t)))
+    (string-downcase (string-trim " " (cl-ppcre:regex-replace-all "\\s+" text " ")))))
+
+(defun section-texts (chapter parts)
+  "The text a reader finds under each entry of the contents column for CHAPTER,
+PARTS its HTML, as a list of (KEY . TEXT). KEY is the page's name without its
+ending for the chapter's opening, and that name, # and the heading's id for a
+section. A heading too deep for the column adds its text to the one above."
+  (let* ((stem (getf chapter :stem))
+         (listed (loop for (level nil nil id) in (rest (getf parts :headings))
+                       when (<= (1- level) *contents-depth*) collect id))
+         (body (getf parts :body))
+         (starts (list (cons 0 nil)))
+         (texts '())
+         (key stem))
+    (cl-ppcre:do-scans (start end group-starts group-ends *heading-starts* body)
+      (push (cons start (subseq body (aref group-starts 0) (aref group-ends 0))) starts))
+    (loop for ((start . id) next) on (nreverse starts)
+          for piece = (plain-text (subseq body start (if next (car next) (length body))))
+          do (when (member id listed :test #'equal)
+               (setf key (format nil "~a#~a" stem id)))
+             (if (and texts (string= (car (first texts)) key))
+                 (setf (cdr (first texts)) (format nil "~a ~a" (cdr (first texts)) piece))
+                 (push (cons key piece) texts)))
+    (nreverse texts)))
+
+(defun text-index (entries)
+  "The line of script that hands the contents filter the text under each entry
+of the column, for every chapter of ENTRIES, so that a word found only in the
+text still finds its heading."
+  (let ((index (make-hash-table :test 'equal)))
+    (loop for (chapter . parts) in entries
+          do (loop for (key . text) in (section-texts chapter parts)
+                   do (setf (gethash key index) text)))
+    (format nil "window.tuataraManualText = ~a;~%" (tuatara.text:json-write index))))
+
 (defun write-file (path text)
   "Write TEXT, a string, as the whole of the file at PATH, in UTF-8."
   (alexandria:write-string-into-file text path :if-exists :supersede :external-format :utf-8))
@@ -92,7 +148,7 @@ button that changes between light and dark colours."
 <small>for version ~a</small>
 <p class=\"tools\">~:[<a href=\"all.html\">All on one page</a>~;<a href=\"index.html\">By chapter</a>~]
 <button type=\"button\" class=\"theme\" hidden>Dark</button></p>
-<input type=\"search\" placeholder=\"Find a heading\" aria-label=\"Find a heading\">
+<input type=\"search\" placeholder=\"Search the manual\" aria-label=\"Search the manual\">
 ~a
 </nav>
 <main>
@@ -106,9 +162,14 @@ button that changes between light and dark colours."
                                                                :icon "tuatara.png")))
 
 (defparameter *manual-style*
-  "body, code, kbd, pre, input, button { font-family: \"Cascadia Code\", \"Cascadia Mono\", \"JetBrains Mono\",
-  \"Fira Code\", \"Source Code Pro\", \"DejaVu Sans Mono\", ui-monospace, monospace; }
+  ":root { --mono: \"Cascadia Code\", \"Cascadia Mono\", \"JetBrains Mono\", \"Fira Code\", \"Source Code Pro\",
+  \"DejaVu Sans Mono\", ui-monospace, monospace; --head: var(--mono); }
+body, code, kbd, pre, input, button { font-family: var(--mono); }
 nav.contents a, .node a { text-decoration: none; }
+nav.toc li.here > a, nav.toc a.in-view { color: var(--accent); font-weight: 700; }
+main article h1, main article h2 { font-weight: 700; }
+main article h3, main article h4, main article h5 { font-weight: 600; }
+main article h2 { border-bottom: 3px solid var(--accent); padding-bottom: 4px; }
 nav.toc .tools { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; margin: 0 0 14px;
   font-size: 14px; }
 nav.toc .tools a { color: var(--accent); }
@@ -127,19 +188,22 @@ section.chapter + section.chapter { border-top: 1px solid var(--rule); margin-to
   section.chapter + section.chapter { break-before: page; border-top: 0; margin-top: 0; }
 }
 "
-  "The manual's own rules after the export's stylesheet: every text in a monospaced font, the first of
-these the reader has, as the pages load no font from elsewhere; links in the contents not underlined;
-the contents column kept in view on a wide screen, the colour button; and on paper the text alone,
-each chapter of the whole manual from a new page.")
+  "The manual's own rules after the export's stylesheet: every text in a monospaced font, the
+headings, the contents column and the captions too, the first of these the reader has, as the pages
+load no font from elsewhere. Links in the contents are not underlined. The headings of the text are
+bold, and a section's has a rule in the link colour under it, to be found while scrolling. The
+section being read is marked in the column as the current chapter is, and on the whole manual its
+chapter too. The contents column is kept in view on a wide screen, and so is the colour button. On
+paper the text is alone, each chapter of the whole manual from a new page.")
 
 (defparameter *one-page-ids* (cl-ppcre:create-scanner "\\b(id|href)=\"(#?)([^\"]*)\"")
   "An id or href attribute of a chapter's HTML, with any # its value begins with.")
 
 (defun on-one-page (html &optional stem)
   "HTML, a chapter's body (STEM its page's name) or the contents (no STEM), with its ids and links
-made fit for the whole manual on one page: each id and link within the page given STEM and two
-hyphens in front, as the chapters share names of headings; a link to a chapter's page made a link
-to that chapter's section, and to a heading in it, to that heading there."
+made fit for the whole manual on one page. Each id and link within the page is given STEM and two
+hyphens in front, as the chapters share names of headings. A link to a chapter's page is made a link
+to that chapter's section, and one to a heading in it, to that heading there."
   (cl-ppcre:regex-replace-all
    *one-page-ids* html
    (lambda (match attribute hash value)
@@ -177,8 +241,9 @@ VERSION: to print at once or search through with a browser's find."
 
 (defun run-html (tree)
   "Write the manual under TREE as web pages to build/manual/: a page for each
-chapter, index.html, all.html with every chapter on one page, and the
-stylesheet, nothing loaded from elsewhere."
+chapter, index.html, all.html with every chapter on one page, the stylesheet,
+and the script with the text of every section for the contents filter, nothing
+loaded from elsewhere."
   (let* ((out (merge-pathnames "build/manual/" tree))
          (version (asdf:component-version (asdf:find-system :tuatara)))
          (chapters (chapter-texts tree))
@@ -187,7 +252,10 @@ stylesheet, nothing loaded from elsewhere."
     (ensure-directories-exist out)
     (write-file (merge-pathnames "manual.css" out)
                 (concatenate 'string (tuatara.defaults::org-html-stylesheet :chosen t) *manual-style*))
-    (uiop:copy-file (merge-pathnames "doc/manual/manual.js" tree) (merge-pathnames "manual.js" out))
+    (write-file (merge-pathnames "manual.js" out)
+                (concatenate 'string (text-index entries)
+                             (uiop:read-file-string (merge-pathnames "doc/manual/manual.js" tree)
+                                                    :external-format :utf-8)))
     (uiop:copy-file (merge-pathnames "data/icons/hicolor/32x32/apps/tuatara.png" tree)
                     (merge-pathnames "tuatara.png" out))
     (loop for (previous entry next) on (cons nil entries)

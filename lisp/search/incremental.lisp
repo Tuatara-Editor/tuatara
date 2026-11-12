@@ -7,7 +7,7 @@
 ;;;; Typed as vim's :s, pattern/replacement/flags replaces on RET instead
 ;;;; (substitute.lisp); the matches it will replace are the ones
 ;;;; highlighted. A region limits a search to itself unless the string starts
-;;;; with %; M-%, C-M-% and NORMAL state's r q and r r open this same prompt set up for
+;;;; with %; M-%, C-z r q and NORMAL state's r q and r r open this same prompt set up for
 ;;;; replacing. On a file of many gigabytes a search runs in parallel and
 ;;;; gives way as soon as another key is typed.
 
@@ -114,16 +114,19 @@ background, the editor answering keys and drawing meanwhile. While recorded
 keys are played a search runs on the editor's thread until it ends or
 \\`C-g' is typed.")
 
-(defvar *typing-pause* 1/2
-  "Seconds without a key typed before work over a text too large to go through
-at each key starts while a pattern is typed: the count of a search's matches
+(define-setting *typing-pause* 1/2
+  "The seconds without a key typed before work over a text too large to go
+through at each key starts.
+It applies while a pattern is typed: the count of a search's matches
 \(\\[regex-search-forward]) and a filter being typed (\\[search-filter-regex]),
 its lines in the window shown at once. Typing so stays quick on a text of
 gigabytes, the count and the rest coming a moment after the last key; on a
 smaller text they come as each key is typed. How large is too large the
 editor finds out from the counts it made (COUNT-TIMED). A buffer's changes
-are sent to its language servers that long after typing in it stops, and
-what they find brought up to date then.")
+are sent to its language servers that long after typing in it stops, and what
+they find brought up to date then.
+- a number, 0 or more: the seconds; 1/2 as standard."
+  :values (number 0 *))
 
 (defvar *count-at-once-seconds* 1/100
   "The longest a count of a pattern's matches may be expected to take and still

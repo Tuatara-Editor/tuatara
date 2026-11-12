@@ -6,11 +6,11 @@
 (define-test metadata
   :description "M-x show-file-metadata shows what the system knows of a file (kind by contents, size,
 permissions, owner, its four times, SHA-256, extended attributes) and what it says of itself, read
-by Tuatara alone: a photograph's EXIF and GPS position and thumbnail in JPEG, PNG, WebP, TIFF and
-HEIF; PNG text; XMP and its edit history; a PDF's information, saves and what could act in it, from
-an object stream too; MP3 and FLAC tags; an MP4's times and place; an Office file's account of
-itself. Files made to mislead or loop are read as far as they make sense, never hanging; the file's
-access time is left alone.")
+by Tuatara alone. These are a photograph's EXIF and GPS position and thumbnail in JPEG, PNG, WebP,
+TIFF and HEIF; PNG text; XMP and its edit history; a PDF's information, saves and what could act in
+it, from an object stream too; MP3 and FLAC tags; an MP4's times and place; an Office file's
+account of itself. Files made to mislead or loop are read as far as they make sense, never hanging;
+the file's access time is left alone.")
 
 ;;; Test files, built here
 

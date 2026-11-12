@@ -75,12 +75,57 @@ indented view. ~M-x org-indent-mode~ turns it off for the buffer, so that you
 see the file as it is, and on again.
 
 If you would rather see the stars always, set =*org-startup-indented*= to
-=nil= in your init file. A single note can say so for itself with the line
-=#+STARTUP: noindent=, and =#+STARTUP: indent= asks for the indented view.
-=*org-bullets*= holds the signs that stand for the stars, one for each level,
-and =nil= there shows the stars themselves. Lines like =#+STARTUP:= are read
-when the file is opened. After you change one, kill the buffer with ~C-x k~
-and open the file again.
+=nil= in your init file. It is =t= as standard, which opens every Org file in
+the indented view; at =nil= a file opens as it is written, and ~M-x
+org-indent-mode~ still turns the indented view on for a buffer. A single note
+can say so for itself with the line =#+STARTUP: noindent=, and =#+STARTUP:
+indent= asks for the indented view. The line wins over the setting.
+
+#+begin_example
+ t (standard)        nil
+
+ ◉ Garden            * Garden
+   ○ Beds            ** Beds
+     ○ Tomatoes      *** Tomatoes
+#+end_example
+
+=*org-bullets*= holds the signs that stand for the stars, one for each level.
+As standard it is =("◉" "○" "✸" "✿")=: a first-level heading shows =◉=, a
+second-level one =○=, a third-level one =✸=, a fourth-level one =✿=, and the
+fifth starts the round again with =◉=. Any list of signs works, of any length,
+and =nil= shows the stars themselves. To have a plain dot for the first
+three levels:
+
+#+begin_example
+(setf *org-bullets* '("•" "◦" "▪"))
+#+end_example
+
+Lines like =#+STARTUP:= are read when the file is opened. After you change
+one, kill the buffer with ~C-x k~ and open the file again.
+
+With the indented view or =*org-bullets*=, the stars before the last one of
+a heading are hidden, and that is =*org-hide-leading-stars*=, =t= as
+standard. Set it to =nil= and they are shown, faint, in front of the sign:
+
+#+begin_example
+ t (standard)        nil
+
+ ◉ Garden            ◉ Garden
+ ○ Beds              * ○ Beds
+ ○ Tomatoes          ** ○ Tomatoes
+#+end_example
+
+The init-file line is =(setf *org-hide-leading-stars* nil)=. It helps when
+you count levels by the stars. A note that is shown with the stars as they
+are written (=#+STARTUP: noindent= with =*org-bullets*= =nil=) shows all of
+them either way.
+
+Org text can nest: a list in a list in a quote block, emphasis inside a link
+label. The parser follows that down only as far as =*org-depth-limit*=,
+200 as standard. Text nested deeper is read as plain words, so that a file
+made of nothing but nesting cannot bring the editor to a stop. No real note
+comes near it. A lower number such as =(setf *org-depth-limit* 50)= is for
+someone who opens files from strangers and wants the parser held tighter.
 
 #+table: commands org-mode org-indent-mode
 
@@ -175,6 +220,41 @@ buffer to its subtree, as chapter 7 explains.
 6. Press ~M-RET~, then ~i~, and type =Carrots=. Press ~C-g~.
 #+end_try
 
+The records Org keeps are the drawers and the notes it writes under a task
+(=- State "DONE" ...=, =- Note taken on ...= and =CLOCK:= lines), under
+headings and list items alike. Three settings say how they are folded.
+
+=*org-fold-metadata*= is =t= as standard: a file opens with each of these
+folded to one line, so a task shows its title, its =SCHEDULED:= and
+=DEADLINE:= lines (those are always shown) and a single line with dots for
+the rest. ~TAB~ on that line opens it. With =nil= every file opens with them
+all shown, which is what you want when you are reading the log of a project
+rather than its tasks. A note can decide for itself: =#+STARTUP: showdrawers=
+opens them whatever the setting says, and =#+STARTUP: hidedrawers= folds
+them.
+
+#+begin_example
+ t (standard)                    nil
+
+ ◉ TODO Paint the fence          ◉ TODO Paint the fence
+   SCHEDULED: <2026-11-14 Sat>     SCHEDULED: <2026-11-14 Sat>
+   :LOGBOOK:...                    :LOGBOOK:
+                                   - Note taken on [2026-11-10 Tue 09:12]
+                                     Bought the paint.
+                                   :END:
+#+end_example
+
+=*org-cycle-hide-drawers*= is about ~TAB~ on a heading or an item. At =t=,
+the standard, the second and third press show the headings and text but
+leave the drawers and notes folded, so cycling does not unfold the log of
+every task under it. =(setf *org-cycle-hide-drawers* nil)= makes ~TAB~ show
+them with the rest.
+
+=*org-cycle-include-plain-lists*= is =t= as standard, and ~TAB~ on a list
+item that has sub-items or more lines folds it, as on a heading: folded,
+then its sub-items, then all. At =nil= ~TAB~ on an item indents it, as in a
+plain text file, and an item is folded only as part of its heading.
+
 #+table: commands org-cycle org-global-cycle org-meta-return org-insert-todo-heading org-metadown org-metaup org-metaleft org-metaright org-shiftmetaleft org-shiftmetaright org-move-subtree-down org-move-subtree-up org-do-promote org-do-demote org-promote-subtree org-demote-subtree
 
 #+table: settings *org-cycle-hide-drawers* *org-fold-metadata* *org-cycle-include-plain-lists*
@@ -214,9 +294,22 @@ An item that starts with =[ ]= has a checkbox, something to tick off. You do
 not have to type all of it. Type the hyphen, a space and =[=, and Tuatara
 completes the box and leaves the cursor after it.
 
+=*org-complete-checkboxes*= is the setting behind that. At =t=, the standard,
+typing =[= right after the bullet and its space (=- [=) makes the whole box,
+=- [ ]=, and leaves the cursor after it, ready for the words. At =nil= the
+bracket is typed like any other character and you write the box yourself.
+
 ~C-c C-c~ on the item's line ticks the box, which then reads =[X]=, or clears
 it again. In NORMAL state ~RET~ on the line goes round three states: empty,
 =[-]= for half done, and ticked.
+
+=*org-return-cycles-checkboxes*= is the setting for ~RET~. At =t=, the
+standard, ~RET~ in NORMAL state on an item with a box goes round the three
+states and brings the counts above it up to date. A link under the cursor is
+followed first. Set it to =nil= with =(setf *org-return-cycles-checkboxes*
+nil)= and ~RET~ does not touch the box, and ~C-c C-c~ is the one way to tick
+it. That suits you if you press ~RET~ in lists mainly to follow links or to
+move down.
 
 Put =[/]= at the end of the heading above the list, or at the end of an item
 that has sub-items, and Org counts for you. It shows how many boxes are
@@ -225,7 +318,20 @@ current as you tick. =[%]= shows a percentage instead.
 
 When you tick a box, Tuatara notes the time in a small drawer under the item.
 That lets the agenda show later what you finished on which day. If you do not
-want these notes, set =*org-log-checkboxes*= to =nil=.
+want these notes, set =*org-log-checkboxes*= to =nil=. It is =t= as standard.
+At =t= the note is the same kind of line a task's change of state leaves, the
+old and the new state with the time; at =nil= the box changes and nothing is
+written. With =(setf *org-log-checkboxes* nil)=, ticking =bread= leaves:
+
+#+begin_example
+ t (standard)                      nil
+
+ - [X] bread                       - [X] bread
+   :LOGBOOK:
+   - State "DONE" from "TODO"
+     [2026-10-13 Tue 10:00]
+   :END:
+#+end_example
 
 #+begin_try Try it, with a shopping list
 1. Press ~C-x C-f~, type =~/shopping.org= and press ~RET~. Press ~i~ and type
@@ -247,6 +353,28 @@ want these notes, set =*org-log-checkboxes*= to =nil=.
 The signs can be prettier than the plain text. =*org-list-bullets*= and
 =*org-checkbox-signs*= name a character to show for each bullet and each
 state of a box. The file itself keeps the plain marks.
+
+=*org-list-bullets*= is =nil= as standard, and the bullets are shown as
+written. Give it a list of pairs, a bullet and the sign to show for it.
+Numbered items keep their numbers. =*org-checkbox-signs*= is the same for the
+three boxes, =[ ]=, =[-]= and =[X]=, and it is =nil= as standard too. A sign is
+shown with a space after it, so that one drawn wider than a column is not cut.
+~C-c C-c~ ticks the box as before, and ~C-c -~ still changes the bullet. With
+
+#+begin_example
+(setf *org-list-bullets* '(("-" . "•") ("+" . "◦"))
+      *org-checkbox-signs* '(("[ ]" . "☐") ("[-]" . "◐") ("[X]" . "☑")))
+#+end_example
+
+the list of the shopping note reads:
+
+#+begin_example
+ as written            shown
+
+ - [X] bread           • ☑ bread
+ - [ ] eggs            • ☐ eggs
+ + [-] milk            ◦ ◐ milk
+#+end_example
 
 #+table: commands org-ctrl-c-ctrl-c org-ctrl-c-minus org-cycle-list-bullet org-return
 
@@ -287,7 +415,9 @@ When a task becomes =DONE=, Tuatara writes a line under it that says when:
 
 The agenda can list what you closed on each day from these lines. Taking
 =DONE= away again removes the line. Set =*org-log-done*= to =nil= if you want
-nothing written.
+nothing written. It is =:time= as standard, the line with the time, and =nil=
+is the only other value; =(setf *org-log-done* nil)= leaves a closed task
+without it, so the agenda's log mode does not list it.
 
 *** Tasks with parts
 
@@ -297,6 +427,25 @@ task becomes =DONE= by itself, and it becomes =TODO= again if you reopen one.
 While a part is still open, ~RET~ passes over the closed keywords, so a task
 is not marked done by accident with work left under it. ~C-c C-t~ still lets
 you close it if you mean to.
+
+The task follows its parts by =*org-todo-follows-checkboxes*=, =t= as
+standard. It applies to a =TODO= heading with a count, =[2/3]= or =[66%]=, and
+the count is its sub-tasks, or, when it has none, the checkboxes right under
+it. When everything counted is done, the heading becomes =DONE= and gets its
+=CLOSED:= line. When you reopen one part it goes back to =TODO=. A task above
+it that has a count follows in turn. A task whose keyword is one of those
+left out of the round (=CANCELLED=) is not changed.
+
+#+begin_example
+,* TODO Pack for the trip [2/3]        ,* DONE Pack for the trip [3/3]
+  CLOSED: ...                            CLOSED: [2026-11-11 Wed 18:20]
+- [X] Tent                             - [X] Tent
+- [X] Stove                            - [X] Stove
+- [ ] Torch                            - [X] Torch
+#+end_example
+
+The counts keep up to date either way. If you want to close a task yourself
+whatever its parts say, set =(setf *org-todo-follows-checkboxes* nil)=.
 
 *** Notes on a task
 
@@ -315,9 +464,48 @@ bar are open and those after it are closed:
 ,#+TODO: TODO NEXT WAIT | DONE CANCELLED
 #+end_example
 
+Two settings shape the round that ~C-c C-t~, ~S-<right>~ and ~RET~ make.
+=*org-todo-keywords-not-cycled*= lists the keywords the round passes over.
+Its standard is =("CANCELLED" "CANCELED")=, which is why the round is none,
+=TODO=, =WAIT=, =DONE= and none again, and why ~C-c C-x C~ is the way to
+cancel. It applies to the keywords of a file's own =#+TODO:= line too, and
+to the agenda's key for a task. With =(setf *org-todo-keywords-not-cycled*
+'("CANCELLED" "SOMEDAY"))=, a note with =#+TODO: TODO NEXT | DONE SOMEDAY
+CANCELLED= goes TODO, NEXT, DONE and round, and =SOMEDAY= is only set by hand.
+With =nil= every keyword takes its turn.
+
+=*org-return-cycles-todo*= is =t= as standard: ~RET~ in NORMAL state on a
+task's headline gives it the next keyword in that round, never none. Where
+the date of a task repeats, making it done leaves it open with its next date.
+While a checkbox right under the task is not ticked or a task under it is
+not done, the done keywords are passed over, so that ~RET~ does not close
+work that is still open; with nothing else to go to, the echo area says what
+is open, and ~C-c C-t~ still closes it. With =nil=, ~RET~ leaves the
+keyword alone and ~C-c C-t~ is the way to change it.
+
 To change the keywords for every file that has no such line, set
-=*org-standard-todo-keywords*= in your init file. =*org-todo-keyword-faces*=
-gives a keyword a colour of its own.
+=*org-standard-todo-keywords*= in your init file. It is a pair, the keywords
+of tasks still open and then those of tasks closed. The standard is
+=(("TODO" "WAIT") "DONE" "CANCELLED")=: =TODO= and =WAIT= are open, =DONE=
+and =CANCELLED= are closed. A file's own =#+TODO:= line takes its place for
+that file. For keywords like those of the example above everywhere:
+
+#+begin_example
+(setf *org-standard-todo-keywords* '(("TODO" "NEXT" "WAIT") "DONE" "CANCELLED"))
+#+end_example
+
+=*org-todo-keyword-faces*= gives a keyword a face of its own, in the headlines
+and in the agenda. It is a list of pairs, a keyword and a face. As standard
+=WAIT= has =:org-wait= and =CANCELLED= has =:org-cancelled=, and the standard
+spelling =CANCELED= too. A keyword not in the list is shown in =:org-todo=
+while its task is open and in =:org-done= once it is closed. To give =NEXT=
+the look of =WAIT=:
+
+#+begin_example
+(push '("NEXT" . :org-wait) *org-todo-keyword-faces*)
+#+end_example
+
+The colours of the faces come from your theme, chapter 2.
 
 *** Priorities
 
@@ -407,6 +595,23 @@ forward and back and ~j~ and ~k~ move a week. ~RET~ writes the day at the
 prompt, and a second ~RET~ accepts it. Between the two you can add a time,
 such as =14:00=.
 
+Two settings change this. =*org-read-date-in-calendar*= is =t= as it comes:
+the question begins in the calendar, so that ~h~, ~l~, ~j~ and ~k~ move at
+once. Set it to =nil= and the question begins at the prompt, as if you had
+already typed; every letter you type is then part of the date.
+=*org-read-date-popup-calendar*= is also =t=. It keeps the calendar below
+while you type, with the day you have written marked, and ~S-<left>~ and
+~S-<right>~ move that day by one while the prompt stays yours. Set it to
+=nil= to be asked with no calendar at all.
+
+#+begin_example
+(setf *org-read-date-in-calendar* nil)
+(setf *org-read-date-popup-calendar* nil)
+#+end_example
+
+With both set to =nil=, ~C-c C-d~ shows only the prompt, and you answer with
+words such as =+3d=.
+
 Or you can type, and Tuatara reads what you mean. The day it has understood
 is shown as you type, so you can see that it is right before you press
 ~RET~.
@@ -433,6 +638,34 @@ the next time, it becomes =TODO= again, and a note of when you last did it is
 kept under it. This is the way to keep track of the rubbish day, the rent
 and watering the lemon tree.
 
+Tuatara can also keep a record of each time a task is moved on. These
+settings take =:time= or =nil=. =*org-log-repeat*= is =:time= as it comes: a
+repeating task marked =DONE= gets a note of the change and a =LAST_REPEAT=
+property with the time. Set it to =nil= and the date moves on with no
+record. =*org-log-reschedule*= and =*org-log-redeadline*= are =nil=, so
+changing a scheduled date or a deadline leaves nothing behind. With =:time=
+the old date is written down, with the time you changed it:
+
+#+begin_example
+(setf *org-log-reschedule* :time)
+(setf *org-log-redeadline* :time)
+#+end_example
+
+#+begin_example
+,** TODO Clean the gutters
+   SCHEDULED: <2026-10-16 Fri>
+   :LOGBOOK:
+   - Rescheduled from "[2026-10-14 Wed]" on [2026-10-13 Tue 10:00]
+   :END:
+#+end_example
+
+A deadline puts =New deadline from= in the same place, and taking a date
+away puts =Not scheduled, was= or =Removed deadline, was=. Where all these
+notes go, and the notes of a change of state and of ~C-c C-z~, is said by
+=*org-log-into-drawer*=. As it comes, =t=, they go into the =:LOGBOOK:=
+drawer and fold away with it. With =nil= they are written right under the
+heading's planning line and properties, in plain sight.
+
 If you cannot remember how to say a repeat in words, press ~C-r~ at the date
 prompt. A menu opens where you choose the start, the time, how often and
 when it ends, and it shows in plain words what your choices come to. ~RET~
@@ -444,8 +677,15 @@ Give a heading the tag =notify= and Tuatara shows a notification on your
 desktop as its time comes, for as long as Tuatara is running. It tells you
 ten minutes before and again at the time. An entry with a date and no time is
 announced at eight in the morning. =*org-notify-before*= and
-=*org-notify-day-time*= change both. The notification is shown by the
-program =notify-send=, which chapter 8 mentions with the other notifications.
+=*org-notify-day-time*= change both. =*org-notify-before*= is the number of
+minutes, 10 as standard; =0= or =nil= tells only when the time comes, and a
+=NOTIFY_BEFORE= property on one entry says otherwise for it.
+=*org-notify-day-time*= is the time of day as text, ="08:00"= as standard, as
+in =(setf *org-notify-day-time* "07:30")=; =nil= means an entry with a date
+and no time is never announced. The tag itself is
+=*org-notify-tag*=: with =(setf *org-notify-tag* "remind")= it is the tag
+=remind= that Tuatara watches for, and =nil= turns the notifications off. The notification is shown by the program
+=notify-send=, which chapter 8 mentions with the other notifications.
 
 #+begin_try Try it, with a holiday plan
 1. Open =~/holiday.org= with ~C-x C-f~. Press ~i~ and type these four lines,
@@ -540,6 +780,67 @@ on Friday when it is due and on today as a warning.
 On today the agenda also draws a time grid when something has a time, with a
 line for the hour it is now, so that you see what is still ahead.
 
+*** What the agenda shows
+
+Several settings decide how much the agenda shows and how it looks.
+=*org-agenda-span*= is =:week= as it comes. It takes =:day=, =:week=,
+=:month=, =:year= or a number of days, so =(setf *org-agenda-span* 3)= opens
+on today and the two days after it. A week starts on the day
+=*org-agenda-start-on-weekday*= says: =1= for Monday as it comes, up to =6=
+for Saturday, =7= or =0= for Sunday, and =nil= for today, so that the week
+shown is the next seven days and not the calendar week.
+
+=*org-agenda-log-mode*= is what ~L~ turns on and off, and =nil= as it comes.
+With =(setf *org-agenda-log-mode* t)= every agenda opens with the tasks you
+closed and the time you clocked already listed.
+
+=*org-agenda-refresh-minutes*= is =10=, the ten minutes of the paragraph
+above. =(setf *org-agenda-refresh-minutes* 1)= keeps the clock line of the
+time grid close to true; =nil= draws the agenda again only after midnight and
+when a file changes.
+
+=*org-agenda-time-grid*= holds the lines drawn at the hours of the day. It is
+a list of four things: when to draw them, the times, the text that follows
+each time, and the line itself. As it comes, the grid is drawn for today and
+on a day's agenda, and only when that day has an entry with a time. The times
+are =800= to =2000= every two hours. Put =:weekly= in the first list to draw
+it on every day of a week, and take =:require-timed= out to draw it on days
+with nothing timed. =nil= draws no grid:
+
+#+begin_example
+(setf *org-agenda-time-grid* nil)
+#+end_example
+
+=*org-agenda-current-time-string*= is the line that marks the time now in the
+grid, =← now ───...= as it comes, after the time it is. Give it other text,
+or =nil= for no such line. With this line in your init file,
+=(setf *org-agenda-current-time-string* "now")=, at half past two it reads:
+
+#+begin_example
+  holiday:    14:00 ┄┄┄┄┄ Event:      Dentist in Motueka
+              14:30 ┄┄┄┄┄ now
+#+end_example
+
+The columns of a line can be changed too. =*org-agenda-category-width*= is
+the width of the first column, twelve as it comes; a longer file name is cut
+with =…=. =*org-agenda-untimed-text*= is what the time column says when an
+entry has no time, =all day= as it comes. =*org-agenda-event-kind-text*= is
+what the column of kinds says for a date in the text of a heading with no
+keyword, =Event:=, and =*org-agenda-task-kind-text*= the same for a date in
+the text of a task, =Task:=. For these three, a text is shown, =""= leaves
+the column empty but keeps the lines level, and =nil= leaves the column out
+altogether, so the heading moves left. If you want a compact agenda:
+
+#+begin_example
+(setf *org-agenda-category-width* 8
+      *org-agenda-untimed-text* nil
+      *org-agenda-event-kind-text* nil)
+#+end_example
+
+=*org-agenda-date-in-title*= is =nil=: a date written in a heading, such as
+=Dentist <2026-10-15 Thu 14:00>=, is taken out of the title on the agenda,
+because the day and the time column already say it. =t= leaves it in.
+
 *** Moving about
 
 ~j~ and ~k~ move from line to line. ~l~ shows the next week and ~h~ the one
@@ -573,7 +874,14 @@ the entry of the line the cursor is on, and change it in its file.
 The usual keys from the file, such as ~C-c C-t~ and ~C-c C-q~, work in the
 agenda too. Changes made from the agenda are in the files' buffers and are
 not on disk until you press ~s~. If you want them saved as they are made,
-name the files in =*org-agenda-autosave-files*=.
+name the files in =*org-agenda-autosave-files*=. It is =nil= as standard, no
+file. =t= saves every agenda file at once, and a list names some, as
+=*org-agenda-files*= does, files, folders or patterns. A change is a keyword,
+a date, tags, a note or the clock. For one file:
+
+#+begin_example
+(setf *org-agenda-autosave-files* '("~/notes/agenda.org"))
+#+end_example
 
 ~L~ turns on log mode. The agenda then also lists, on each day, the tasks you
 closed and the time you clocked. It is a pleasant way to see on a Friday
@@ -692,6 +1000,17 @@ org-capture-template-copy~, which copies one of Tuatara's there for you to
 change. A template of yours with the same key as one of Tuatara's replaces
 it.
 
+=*capture-template-directories*= says where those folders are. It is =nil=
+as it comes, which means =capture-templates= in your configuration folder.
+Give it a list to read the templates from other folders, such as one you
+share with others:
+
+#+begin_example
+(setf *capture-template-directories* '("~/org/templates/"))
+#+end_example
+
+The templates are then read from there, and Tuatara's four are still offered.
+
 #+table: commands org-capture org-capture-finalize org-capture-refile org-capture-kill org-capture-template-copy
 
 #+table: settings *capture-template-directories*
@@ -708,7 +1027,16 @@ you chose, one level below it.
 With ~C-u~ first, the command goes to the heading you choose and moves
 nothing. That makes it a quick way to get anywhere in your agenda files.
 The same key works on a line in the agenda. =*org-refile-targets*= says
-which files are offered and how deep their headings go.
+which files are offered and how deep their headings go. It is a list of
+pairs, where to look and how many levels. Where is =:agenda-files=, the files
+of =*org-agenda-files*=, =:this-file=, the file of the entry, or the name of
+a file. The standard is =((:agenda-files . 3) (:this-file . 3))=, headings
+down to =***= in both. To offer another file, and only the top two levels of
+the agenda files:
+
+#+begin_example
+(setf *org-refile-targets* '((:agenda-files . 2) ("~/notes/archive.org" . 3)))
+#+end_example
 
 #+table: commands org-refile
 
@@ -731,6 +1059,10 @@ time you stopped and how long that was:
 #+begin_example
 CLOCK: [2026-10-13 Tue 10:00]--[2026-10-13 Tue 10:45] =>  0:45
 #+end_example
+
+=*org-clock-into-drawer*= is =t=, so the lines are kept in the =:LOGBOOK:=
+drawer and fold away with it. With =(setf *org-clock-into-drawer* nil)= the
+=CLOCK:= lines are written right under the heading instead.
 
 ~C-x a j~ takes you to the task that is being clocked, from wherever you
 are. ~C-c C-x C-q~ stops the clock and removes its line, for when you
@@ -855,6 +1187,13 @@ column the table does not have.
    The total becomes 745. Save with ~C-x C-s~.
 #+end_try
 
+A formula can contain brackets inside brackets, signs and powers.
+=*org-formula-depth-limit*= is how deep they may nest, 200 as standard. A
+formula nested deeper is refused and its field shows =#ERROR=, rather than
+the editor following it down without end. You will not meet it in a budget;
+lowering it, =(setf *org-formula-depth-limit* 20)=, only matters for tables
+from people you do not trust.
+
 #+table: commands org-table-align org-table-insert-hline org-shiftmetadown org-shiftmetaup org-table-recalculate org-table-eval-formula
 
 #+table: settings *org-formula-depth-limit*
@@ -896,10 +1235,27 @@ lets you change it.
 ~C-x a l~ works in any file. Under an Org heading it remembers the heading.
 In a file that is not Org it remembers the line.
 
+=*org-link-descriptive*= is the setting for what is shown. At =t=, the
+standard, =[[target][words]]= shows as the words and =[[target]]= as its
+target. Entities show as their characters, =\dollar{}= as =$=. At =nil=
+every link is shown as written. ~C-c C-x L~ switches it for the buffer you are
+in. To have links as written whenever a file opens, put
+=(setf *org-link-descriptive* nil)= in your init file; a note can also say
+=#+STARTUP: literallinks=.
+
+#+begin_example
+ t (standard)            nil
+
+ the holiday plan        [[file:holiday.org][the holiday plan]]
+#+end_example
+
 To follow a link, press ~RET~ on it in NORMAL state, or ~C-c C-o~ in either
 state. A link to a web page or a mail address opens in your desktop's
 program, and Tuatara asks before it does that. If you would rather ~RET~ did
-not follow links, set =*org-return-follows-link*= to =nil=.
+not follow links, set =*org-return-follows-link*= to =nil=. It is =t= as
+standard. At =nil=, ~RET~ on a link does what it does anywhere else, breaking
+the line, or going to the next row in a table, and ~C-c C-o~ is the way to
+follow it. =(setf *org-return-follows-link* nil)= in your init file does it.
 
 Two more commands write a link that stands for a set of notes, the files
 with formatted names of chapter 9 whose names match a pattern. Following
@@ -941,7 +1297,22 @@ echo "Water the beds at dawn"
 
 The code in a source block is coloured as it would be in a file of that
 language. Org's name for a language is sometimes different from Tuatara's.
-=*org-src-languages*= maps one to the other, and you can add your own.
+=*org-src-languages*= maps one to the other, and you can add your own. It is a
+list of pairs, the name written after =#+begin_src= and the language it
+means. As standard it holds =emacs-lisp= for =elisp=, =C++= for =cpp=,
+=sqlite= for =sql=, =ksh= and the other shells for =bash=, =conf= and
+=desktop= for =ini=, and a few more. Three are paired with =nil=, =text=,
+=fundamental= and =calc=: those blocks are not coloured. A name that is not in
+the list is looked up as a language of that name, and failing that as the
+language of a file ending in that name, so that =#+begin_src toml= needs no
+entry. If you write =kitty= for the configuration of a terminal that is
+really =ini=, add it to your init file:
+
+#+begin_example
+(push '("kitty" . "ini") *org-src-languages*)
+#+end_example
+
+A block begun =#+begin_src kitty= is then coloured as =ini=.
 
 *** Writing the code out to files
 
@@ -961,6 +1332,14 @@ files and says which are new and which would change, and asks. This suits
 settings files well: the note says why each setting is there, and the file
 the program reads is made from it.
 
+A file name with folders in it, such as =:tangle ~/.config/foot/foot.ini=,
+needs the folders to exist. A block with =:mkdirp yes= makes them as it is
+written, and one with =:mkdirp no= never does. For a block that says nothing,
+=*code-files-make-folders*= decides: =nil=, the standard, makes none, so a
+note writes the same on every machine and a mistyped folder is an error and
+not a new folder; =t= makes them for every block. A tangled note that always
+writes into folders you want made takes =(setf *code-files-make-folders* t)=.
+
 *** A table of contents
 
 Tag a heading =TOC= and Tuatara keeps a table of contents under it, a list
@@ -978,6 +1357,55 @@ that link to this one, or the text of the matching files themselves. ~C-c
 C-c~ on a block's first line, or ~C-c C-x C-u~ anywhere in it, writes it
 again from how things stand now. ~M-x org-update-all-dblocks~ does that for
 every such block in the buffer.
+
+The tag has three parts, each of which can be left out. =TOC_3= says how
+deep, and without a number it is =*org-toc-max-depth*=, 2 as standard. The
+part after the number says how the links are written, and without it that is
+=*org-toc-style*=, ="gh"= as standard. =TOC_2_org= is a table two levels
+deep in the =org= style. =*org-toc-on-save*= is =t= as standard, so the table
+is made again as the note is saved. At =nil= it is made only by ~M-x
+toc-org-insert-toc~.
+
+The two styles write the same list with different links. Take this note:
+
+#+begin_example
+,* Contents :TOC:
+,* Garden plan
+,** Vegetables
+,** Fruit & nuts
+,* Tools
+#+end_example
+
+With the =gh= style (=:TOC:=, or =:TOC_2_gh:=) the table under =Contents= is
+
+#+begin_example
+- [[#garden-plan][Garden plan]]
+  - [[#vegetables][Vegetables]]
+  - [[#fruit--nuts][Fruit & nuts]]
+- [[#tools][Tools]]
+#+end_example
+
+and with the =org= style (=:TOC_2_org:=)
+
+#+begin_example
+- [[Garden plan][Garden plan]]
+  - [[Vegetables][Vegetables]]
+  - [[Fruit & nuts][Fruit & nuts]]
+- [[Tools][Tools]]
+#+end_example
+
+Choose =gh= for a file that is also read on GitHub, a README above all.
+GitHub makes the anchor of a heading by a fixed rule (lower case, spaces
+as dashes, other signs dropped, =-1= for a second heading of the same name),
+and the =gh= links follow that rule, so they work on the web page as well as
+in Tuatara. Choose =org= for a note that stays in Org: the link is the
+heading's title, as you would write one yourself, it reads the same in the
+file, and it needs no anchor rule to be right. Two headings with one title
+lead to the first with =org=, where =gh= keeps them apart. To use =org=
+everywhere, =(setf *org-toc-style* "org")=; for one table, name it in its tag.
+Both follow ~RET~ on the link. Headings tagged =noexport=, those under a
+=COMMENT= heading, and keywords, priorities and tags in the titles are left
+out of either.
 
 #+table: commands tangle-code-files toc-org-insert-toc org-dynamic-block-insert-dblock org-dblock-update org-update-all-dblocks insert-formatted-links-block insert-formatted-missing-links-block insert-formatted-backlinks-block insert-formatted-files-block insert-formatted-files-as-headings-block insert-formatted-sequence-block
 
@@ -1013,7 +1441,10 @@ A few lines at the top say what the document is.
 #+end_example
 
 The title, author and date are printed at the head of the document. Without
-an =#+author:= line, the name in =*user-full-name*= is used. The =#+options:=
+an =#+author:= line, the name in =*user-full-name*= is used. It is =nil= as
+standard, and the document then has no author. Give it your name as you want
+it printed, =(setf *user-full-name* "Aroha Ngata")=. The same name fills
+=%author%= in a note template and =$AUTHOR= in a snippet. The =#+options:=
 line here leaves out the table of contents and the numbers before headings,
 which suits a letter. Leave the line out and a report gets both. A heading
 tagged =noexport= is left out of the document with everything under it,
@@ -1139,10 +1570,40 @@ A note template is the other half: the lines a new note of some kind starts
 with, such as the =#+template:= line and the headings every report has.
 ~C-x i~ reads one into the buffer.
 
+The programs that make the PDF are in =*latex-engines*=, which is
+=("xelatex" "lualatex")= as standard. They are tried in that order, and when
+one fails the next is tried. A name is looked for on the PATH and then in
+TeX Live's own folders; a full path, =~/texlive/bin/xelatex= for one
+installed elsewhere, works too. A note or a LaTeX file that names its program
+in its first line (=#+latex_compiler: lualatex= in Org, or =%!TEX program =
+lualatex= in LaTeX) has that one tried first when it is in the list.
+=(setf *latex-engines* '("lualatex"))= tries only that one.
+
 The fonts of the enhanced export are =*latex-main-font*= for the text,
 =*latex-sans-font*= and =*latex-mono-font*=. Each is the name of a font
-family installed on your machine. Left alone, Tuatara picks an installed
-font for each.
+family installed on your machine, as the system's font list gives it, or
+=nil=, the standard. At =nil= Tuatara picks the first of a list that is
+installed. For the text that is Libertinus Serif, Noto Serif, Source Serif 4,
+Liberation Serif, DejaVu Serif. For the sans-serif it is Libertinus Sans, Noto
+Sans, Source Sans 3, Liberation Sans, DejaVu Sans. For code it is the font of
+your window, =*gui-font*=, when it is installed, else JetBrains Mono, Cascadia
+Code, Noto Sans Mono, Source Code Pro, Liberation Mono, DejaVu Sans Mono. The
+styles that ask for chosen fonts, the standard one among them, use these
+three. To set a document in Noto Serif with code in Cascadia Code:
+
+#+begin_example
+(setf *latex-main-font* "Noto Serif"
+      *latex-mono-font* "Cascadia Code")
+#+end_example
+
+The text of the PDF is then in Noto Serif, its headings (in the sans-serif
+face) are as before, and a source block is in Cascadia Code.
+
+A template that shows a logo gets it from the folder =*logos-directory*=
+names. At =nil=, the standard, that is =logos/= in your configuration folder,
+=~/.config/tuatara/logos/=. A note's =#+logo: firm.pdf= line is looked for
+there. If your pictures are kept elsewhere,
+=(setf *logos-directory* "~/Pictures/logos")=.
 
 *** Hiding names
 
@@ -1151,6 +1612,14 @@ or put the cursor on it, press ~C-c m~ and choose =R=. The name is wrapped
 in a mark and shown in its own colour. In the PDF and in the Word document
 a black box stands where the name was, and the name is nowhere in the file.
 ~C-c M~ takes the mark away again.
+
+The mark is =R= for a name. In your own LaTeX files the commands that hide
+their argument are those in =*latex-redaction-commands*=, ="R"=, ="D"= and
+="redact"= as standard, written without the backslash, so that =\R{John
+Otago}= is hidden text. =export-check-redactions= and the PDF export look
+for them in a LaTeX file just as they do for the marks of a note. If your
+templates call it =\hide{...}=, add it:
+=(setf *latex-redaction-commands* '("R" "D" "redact" "hide"))=.
 
 A box is of little use if the same name stands in plain text two pages
 later. ~M-x export-check-redactions~ looks for every hidden text that also
@@ -1165,6 +1634,20 @@ it names. A note that someone sent you could name files of yours that way.
 So the export takes files only from the note's own folder and the folders
 in it, and says what it left out. =*export-trusted-folders*= names further
 folders you allow. Chapter 12 has more on files you do not trust.
+
+The folder of your note templates is always allowed. =*export-trusted-folders*=
+is =nil= as standard, no other. Give it a list of folders, with =~= standing
+for your home folder, when setup files are shared by notes that are kept in
+folders of their own:
+
+#+begin_example
+(setf *export-trusted-folders* '("~/notes/latex/"))
+#+end_example
+
+A note in =~/notes/work/= that says =#+SETUPFILE: ~/notes/latex/house.org= is
+then exported with that file. Without the line the export leaves the file out
+and, when it is done, says =house.org= was left out. Allow only folders you
+wrote yourself, since whoever sends you a note can name any file in them.
 
 #+table: commands org-export-latex-pdf-enhanced org-export-latex-pdf-enhanced-buffer org-export-latex-pdf-enhanced-xdg org-export-latex-enhanced org-export-docx org-export-docx-xdg org-export-html
 

@@ -15,12 +15,12 @@
   (namestring (asdf:system-relative-pathname :tuatara "test/ssh-stand-in.py")))
 
 (defmacro with-stand-in-ssh ((dir log bin &key (version "10.2p1")) &body body)
-  "Run BODY with DIR bound to a new test folder, the home folder \"there\";
-LOG to the file the stand-in for ssh writes the command lines it is given
-in; BIN to the folder first on the PATH of the commands it runs there; and
-*SSH-PROGRAM* to the stand-in, saying it is OpenSSH VERSION; ssh-agent and ssh-add are the
-stand-in's too, writing to LOG.agent and LOG.add. The ssh configuration it
-reads is ssh_config in DIR, when the test writes one."
+  "Run BODY with DIR bound to a new test folder, the home folder \"there\".
+LOG is bound to the file the stand-in for ssh writes the command lines it is
+given in; BIN to the folder first on the PATH of the commands it runs there;
+and *SSH-PROGRAM* to the stand-in, saying it is OpenSSH VERSION. The stand-in
+has ssh-agent and ssh-add too, writing to LOG.agent and LOG.add. The ssh
+configuration it reads is ssh_config in DIR, when the test writes one."
   `(with-test-directory (,dir)
      (let* ((,log (namestring (merge-pathnames "ssh.log" ,dir)))
             (,bin (namestring (ensure-directories-exist (merge-pathnames "bin/" ,dir)))))

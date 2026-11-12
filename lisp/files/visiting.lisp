@@ -16,17 +16,20 @@ as \\[find-file] finds one, by the file and not the name it was opened by
   (let ((expanded (ignoring-errors-reported ("expanding ~a" path) (tuatara.io:expand-path path))))
     (and expanded (tuatara.io:buffer-for-file expanded :except except))))
 
-(defvar *last-used-first* t
-  "True for the questions that choose a file or a folder (\\[find-file], \\[rimu]
-and the rest) to start in the folder of the path chosen last in any of them,
-and to list first, in each folder, what was chosen there last (or something
-in it), TAB then going the way last gone; the others follow in order of
-name. As you type, what was chosen there lately comes first among the names
-matching as closely. NIL for questions starting in the folder of the current
-buffer, their lists in order of name alone; either way the folders come
-first, then the files, each in order of name, numbers by their value (file2
-before file10), case not counted. A path opened safely, or in one of
-*SAFE-DIRECTORIES*, is never remembered so.")
+(define-setting *last-used-first* t
+  "Whether the questions that choose a file or a folder (\\[find-file], \\[rimu]
+and the rest) start where you chose last.
+Either way the folders come first, then the files, each in order of name,
+numbers by their value (file2 before file10), case not counted. A path opened
+safely, or in one of *SAFE-DIRECTORIES*, is never remembered so.
+- t: they start in the folder of the path chosen last in any of them, and list
+  first, in each folder, what was chosen there last (or something in it), TAB
+  then going the way last gone; the others follow in order of name. As you
+  type, what was chosen there lately comes first among the names matching as
+  closely.
+- nil: they start in the folder of the current buffer, their lists in order of
+  name alone."
+  :values boolean)
 
 (defvar *chosen-paths-kept* 1000
   "How many files and directories chosen in the questions for them are kept,
@@ -753,12 +756,15 @@ the octets do."
       (file-view-octets native what)
       t)))
 
-(defvar *hex-view-binary-files* t
-  "True to show a file that looks binary in the hex view (\\[hex-mode]) when it
-is opened: one with a null (NUL) octet in its first 64 KB, as executables,
-archives and disk images have and text has not. Pictures and PDFs shown as
-such keep their views; \\[hex-mode] shows any file as text again. NIL to show
-them as text.")
+(define-setting *hex-view-binary-files* t
+  "Whether a file that looks binary is shown in the hex view (\\[hex-mode]) when
+it is opened.
+A file looks binary when it has a null (NUL) octet in its first 64 KB, as
+executables, archives and disk images have and text has not. Pictures and PDFs
+shown as such keep their views; \\[hex-mode] shows any file as text again.
+- t: shown in the hex view.
+- nil: shown as text."
+  :values boolean)
 
 (defun show-binary-in-hex (buffer)
   "Show BUFFER, a file just opened, in the hex view when its file looks binary

@@ -16,13 +16,15 @@
 
 (in-package #:tuatara.defaults)
 
-(defvar *remote-seconds* 30
-  "Seconds a server reached for its files (/ssh:HOST:/path) has to answer
-each request, and ssh to connect: past them the connection is closed and the
-work in hand fails, saying so. The work itself runs in the background, so
-that the editor never waits on a server. Raise it for a slow link or a busy
-server, at the price of waiting that long before a dead connection is
-noticed; lower it to learn of one sooner.")
+(define-setting *remote-seconds* 30
+  "Seconds a server reached for its files (/ssh:HOST:/path) has to answer each
+request, and ssh to connect.
+Past them the connection is closed and the work in hand fails, saying so. The
+work itself runs in the background, so that the editor never waits on a server.
+Raise it for a slow link or a busy server, at the price of waiting that long
+before a dead connection is noticed; lower it to learn of one sooner.
+- a number of seconds: the time allowed, 30 as standard."
+  :values (number 0 *))
 
 (defparameter *sftp-types*
   '((:init 1) (:version 2) (:open 3) (:close 4) (:read 5) (:write 6) (:lstat 7) (:fstat 8) (:setstat 9)

@@ -15,64 +15,99 @@
 
 ;;; Settings
 
-(defvar *rimu-details* nil
-  "True for rimu to show the details of each entry before its name: its inode
-number, as ls -i does, then as ls -l does its permissions, links, owner,
-group, size and when it last changed, and after the name where a symbolic
-link leads. \\<rimu-mode>\\[rimu-toggle-details] shows or hides them in one list;
-*RIMU-HIDDEN-COLUMNS* leaves some of them out.")
+(define-setting *rimu-details* nil
+  "Whether rimu shows the details of each entry before its name.
+The details are its inode number, as ls -i does, then as ls -l does its
+permissions, links, owner, group, size and when it last changed, and after the
+name where a symbolic link leads. \\<rimu-mode>\\[rimu-toggle-details] shows or
+hides them in one list; *RIMU-HIDDEN-COLUMNS* leaves some of them out.
+- t: shown.
+- nil: not shown, as standard."
+  :values boolean)
 
-(defvar *rimu-permissions* :symbolic
-  "How rimu's details write each entry's permissions: :SYMBOLIC, as ls -l
-does, drwxr-xr-x; :OCTAL, its kind's letter and the number chmod takes,
-d755, -644, -4755 with the set-user, set-group or sticky bit.")
+(define-setting *rimu-permissions* :symbolic
+  "How rimu's details write each entry's permissions.
+- :symbolic: as ls -l does, drwxr-xr-x.
+- :octal: its kind's letter and the number chmod takes, d755, -644, -4755 with
+  the set-user, set-group or sticky bit."
+  :values (member :symbolic :octal))
 
-(defvar *rimu-hidden-columns* '()
-  "The columns rimu's lists never show, however they are asked for: among the
-details :INODE, :PERMISSIONS, :LINKS, :OWNER, :GROUP, :SIZE and :TIME, and
-the columns of their own :SIZES (directories' sizes) and :GIT (the last
-commits). (setf *rimu-hidden-columns* '(:inode :group)) shows the details
-without the inode numbers and groups.")
+(define-setting *rimu-hidden-columns* '()
+  "The columns rimu's lists never show, however they are asked for.
+(setf *rimu-hidden-columns* '(:inode :group)) shows the details without the
+inode numbers and groups.
+- nil: none hidden, as standard.
+- a list of keywords: :inode, :permissions, :links, :owner, :group, :size and
+  :time among the details, and the columns of their own, :sizes (directories'
+  sizes) and :git (the last commits)."
+  :values (list-of (member :inode :permissions :links :owner :group :size :time :sizes :git)))
 
-(defvar *rimu-dotfiles* nil
-  "True for rimu to show the entries whose names start with a dot, . and ..
-among them. \\<rimu-mode>\\[rimu-toggle-dotfiles] shows or hides them in one list.")
+(define-setting *rimu-dotfiles* nil
+  "Whether rimu shows the entries whose names start with a dot, . and .. among
+them.
+\\<rimu-mode>\\[rimu-toggle-dotfiles] shows or hides them in one list.
+- t: shown.
+- nil: hidden."
+  :values boolean)
 
-(defvar *rimu-directory-sizes* nil
-  "True for rimu's lists to show each entry's size before its name, a
-directory's with everything under it; NIL, as standard, to show them only on
-\\<rimu-mode>\\[rimu-toggle-sizes] in a list.")
+(define-setting *rimu-directory-sizes* nil
+  "Whether rimu's lists show each entry's size before its name, a directory's with
+everything under it.
+- t: shown.
+- nil: shown only on \\<rimu-mode>\\[rimu-toggle-sizes] in a list, as
+  standard."
+  :values boolean)
 
-(defvar *rimu-git-info* nil
-  "True for rimu's lists to show, after each name, the entry's last commit in
-git's history: when it was made and the first line of its message. NIL, as standard, to show it only on
-\\<rimu-mode>\\[rimu-toggle-git] in a list.")
+(define-setting *rimu-git-info* nil
+  "Whether rimu's lists show, after each name, the entry's last commit in git's
+history.
+It is when it was made and the first line of its message.
+- t: shown.
+- nil: shown only on \\<rimu-mode>\\[rimu-toggle-git] in a list, as standard."
+  :values boolean)
 
-(defvar *rimu-sort* :name
-  "The order rimu lists entries in: :NAME, by name, octet by octet as ls
-orders names in the C locale (capitals before small letters); :TIME, those
-changed last first. \\<rimu-mode>\\[rimu-toggle-sort] switches between them in one list.")
+(define-setting *rimu-sort* :name
+  "The order rimu lists entries in.
+\\<rimu-mode>\\[rimu-toggle-sort] switches between them in one list.
+- :name: by name, octet by octet as ls orders names in the C locale (capitals
+  before small letters).
+- :time: those changed last first."
+  :values (member :name :time))
 
-(defvar *rimu-directories-first* t
-  "True for rimu to list directories, and the symbolic links that lead to
-directories, before everything else, as ls --group-directories-first does.")
+(define-setting *rimu-directories-first* t
+  "Whether rimu lists directories, and the symbolic links that lead to
+directories, before everything else, as ls --group-directories-first does.
+- t: directories first.
+- nil: all in one order."
+  :values boolean)
 
-(defvar *rimu-ignored-extensions* '(".o" ".so" ".a" ".fasl" ".elc" ".pyc" ".pyo" ".class" "~" "#")
-  "Endings of names rimu shows set back, in the :list-dim face: compiled
-files, backups (~) and the files some editors save as you type (#).")
+(define-setting *rimu-ignored-extensions* '(".o" ".so" ".a" ".fasl" ".elc" ".pyc" ".pyo" ".class" "~" "#")
+  "Endings of names rimu shows set back, in the :list-dim face.
+The standard ones are compiled files, backups (~) and the files some editors
+save as you type (#).
+- a list of texts: the endings set back.
+- nil: no name is set back."
+  :values (list-of string))
 
-(defvar *rimu-follow-changes* t
-  "True for rimu's lists to be read again by themselves when their directory
-changes on disk: a file made, deleted, renamed or finished being written by
-another program, many at once as one; NIL to read one again only with
-\\<rimu-mode>\\[revert-buffer].")
+(define-setting *rimu-follow-changes* t
+  "Whether rimu's lists are read again by themselves when their directory changes
+on disk.
+A change is a file made, deleted, renamed or finished being written by another
+program, many at once as one.
+- t: read again by themselves.
+- nil: read again only with \\<rimu-mode>\\[revert-buffer]."
+  :values boolean)
 
-(defvar *rimu-reuse-lists* t
-  "True for a folder a bookmark goes to (\\[bookmark-jump]), or a list goes to
-across a project's edge, to be listed in a rimu list there is of its project,
-moved there, the one used last (for a folder in no project, one in none): a
-list of its own only when there is none. NIL to list it in a list of its own.
-A list listing that folder already is the one shown either way.")
+(define-setting *rimu-reuse-lists* t
+  "Whether a folder a bookmark goes to (\\[bookmark-jump]), or a list goes to
+across a project's edge, is listed in a rimu list that already belongs to its
+project.
+A list listing that folder already is the one shown either way.
+- t: it is listed in the list there is of its project, moved there, the one
+  used last (for a folder in no project, one in none); a list of its own only
+  when there is none.
+- nil: it is listed in a list of its own."
+  :values boolean)
 
 (defparameter *rimu-read-wait* 0.2
   "Seconds a command waits for a directory to be read and laid out before

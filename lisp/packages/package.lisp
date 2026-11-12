@@ -9,7 +9,7 @@
   ;; a parameter of this name, apart from Common Lisp's function
   (:shadow #:compile)
   (:import-from #:tuatara.io #:directory-name)
-  (:import-from #:tuatara.runtime #:reporting-errors #:ignoring-errors-reported #:refusal #:refuse)
+  (:import-from #:tuatara.runtime #:reporting-errors #:ignoring-errors-reported #:refusal #:refuse #:define-setting)
   (:import-from #:tuatara.git
                 #:*git-safety* #:git-failure-words #:git-hash-p #:git-network-environment #:run-git-program)
   (:import-from #:tuatara.defaults

@@ -144,7 +144,7 @@ Returns the frontend and the editor."
     (let ((file (merge-pathnames "photo.png" dir)))
       (alexandria:write-byte-vector-into-file *tiny-png* file)
       (image-forget)
-      (let ((tuatara-user:*sandbox-program* nil))
+      (let ((tuatara-user:*sandbox* nil))
         (multiple-value-bind (f editor) (image-session file nil :cell-pixels '(10 20))
           (true (tuatara.frontend.fake:fake-frame-showing f "photo.png opens as octets: decoding is off"))
           (let ((buffer (tuatara.display:window-buffer (tuatara.command:editor-window editor))))
@@ -216,7 +216,7 @@ Returns the frontend and the editor."
               (true (<= 150 (aref pixels (+ at 2)) 156) "blue ~d" (aref pixels (+ at 2))))))
         ;; nothing to decode it with: no picture, and why
         (unwind-protect
-             (let ((tuatara-user:*sandbox-program* nil))
+             (let ((tuatara-user:*sandbox* nil))
                (tuatara.io:sandbox-status :again t)
                (multiple-value-bind (image notes) (tuatara:decode-picture octets :jpeg 64 48)
                  (false image)

@@ -354,6 +354,40 @@ the list."
                                     :test #'string=))))
                 :width 100 :height 20))))
 
+(define-test (search-filters folded-sections-within-sections)
+  ;; a list of sections within sections narrowed by filters: a heading shows when one under it shows, and a
+  ;; section folded hides those it holds, headings and all
+  (let ((list nil))
+    (labels ((draw (buffer)
+               (multiple-value-bind (entries pieces)
+                   (tuatara.defaults::sectioned-pieces
+                    buffer '((:food :sections ((:food . :fruit) "apple" "banana") ((:food . :nuts) "walnut" "pecan"))
+                             (:roots "kumara"))
+                    (lambda (section) (string-downcase (symbol-name (if (consp section) (cdr section) section))))
+                    (lambda (member section)
+                      (declare (ignore section))
+                      (list (format nil "  ~a~%" member))))
+                 (tuatara.defaults::render-pieces buffer pieces :entries entries :redraw #'draw :point :keep)))
+             (lines ()
+               (rest (remove ""
+                             (uiop:split-string (tuatara.buffer:buffer-string list) :separator '(#\Newline))
+                             :test #'string=))))
+      (run-keys (list (lambda ()
+                        (setf list (tuatara.command:current-buffer))
+                        (tuatara.modes:set-major-mode list 'tuatara.defaults::sectioned-list-mode)
+                        (draw list))
+                      "C-x / s a p p RET"
+                      (lambda ()
+                        (is equal '("▾ food (4)" "  ▾ fruit (2)" "    apple") (lines))
+                        (tuatara.defaults::list-toggle-section list :food))
+                      (lambda ()
+                        (is equal '("▸ food (4)") (lines))
+                        (tuatara.defaults::list-toggle-section list :food)
+                        (tuatara.defaults::list-toggle-section list '(:food . :fruit)))
+                      (lambda ()
+                        (is equal '("▾ food (4)" "  ▸ fruit (2)") (lines))))
+                :width 100 :height 20))))
+
 (define-test (search-filters lines-going-with-headings)
   ;; a list may hide a heading with nothing under it, and give lines that go with their heading, never matched nor
   ;; counted

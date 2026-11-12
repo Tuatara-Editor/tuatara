@@ -27,26 +27,39 @@
 
 (in-package #:tuatara.git)
 
-(defvar *git-log-length* 200
-  "How many commits \\[git-log] lists.")
+(define-setting *git-log-length* 200
+  "How many commits \\[git-log] lists.
+- a whole number: that many commits, 200 as standard."
+  :values (integer 1 *))
 
-(defvar *git-recent-commits* 10
-  "How many of the latest commits \\[git] shows.")
+(define-setting *git-recent-commits* 10
+  "How many of the latest commits \\[git] shows.
+- a whole number: that many commits, 10 as standard."
+  :values (integer 0 *))
 
-(defvar *git-diff-lines* 1000
-  "How many lines of a file's changes \\[git-toggle-diff] shows under it at first,
-and how many more each \\[git-toggle-diff] on the line after them shows.")
+(define-setting *git-diff-lines* 1000
+  "How many lines of a file's changes \\[git-toggle-diff] shows under it at
+first, and how many more each \\[git-toggle-diff] on the line after them
+shows.
+- a whole number: that many lines, 1000 as standard."
+  :values (integer 1 *))
 
-(defvar *git-section-lines* 1000
+(define-setting *git-section-lines* 1000
   "How many files each section of a status (\\[git]) lists at first, and how
-many more each \\[git-toggle-diff] on the line after them lists.")
+many more each \\[git-toggle-diff] on the line after them lists.
+- a whole number: that many files, 1000 as standard."
+  :values (integer 1 *))
 
-(defvar *git-menus* :slim
-  "How much the git menus (branch, worktree ...) show: :SLIM the actions
-*GIT-SLIM-ACTIONS* names, the ones most used, :FULL every one. \\<git-status-mode>\\[git-toggle-full-menus]
-in a status switches between them for that status.")
+(define-setting *git-menus* :slim
+  "How much the git menus (branch, worktree ...) show.
+\\<git-status-mode>\\[git-toggle-full-menus] in a status switches between
+the two for that status.
+- :slim: the actions *GIT-SLIM-ACTIONS* names, the ones most used, as
+  standard.
+- :full: every action."
+  :values (member :slim :full))
 
-(defvar *git-slim-actions*
+(define-setting *git-slim-actions*
   '(git-commit git-commit-amend git-commit-reword git-commit-extend
     git-checkout git-branch-and-checkout git-branch-rename git-branch-delete
     git-worktree-branch git-worktree-status git-worktree-delete
@@ -67,8 +80,10 @@ in a status switches between them for that status.")
     git-stage-file git-unstage-file git-stage-hunk git-unstage-hunk git-diff-file git-blame git-rewind
     git-format-patch git-apply-patch git-am git-am-continue git-am-abort git-notes-edit
     git-subtree-add git-subtree-pull git-subtree-push git-sparse-set git-sparse-disable)
-  "The actions the slim git menus show (*GIT-MENUS*), by command: push one to
-show it too, or take one away.")
+  "The actions the slim git menus show (*GIT-MENUS*).
+- a list of command names: those actions. Push one to show it too, or take
+  one away."
+  :values (list-of function))
 
 ;;; Git in the background
 
@@ -1038,12 +1053,15 @@ changes."
                             (when (live-buffer-p buffer) (setf (tuatara.buffer:buffer-local buffer 'git-reading) nil)))
                    :quiet t :buffer buffer)))
 
-(defvar *git-watch-seconds* 2
-  "The least time, in seconds, between two readings of a status on the screen
-when git changes its repository, from a terminal too (GIT-WATCH-TICK), or NIL
-for a status never to follow it: then \\<git-status-mode>\\[revert-buffer] reads it again.
-A shorter time shows changes made elsewhere sooner and reads the status more
-often, which takes longer in a large repository; NIL reads it only when asked.")
+(define-setting *git-watch-seconds* 2
+  "The least time between two readings of a status on the screen when git
+changes its repository, from a terminal too (GIT-WATCH-TICK). A shorter time
+shows changes made elsewhere sooner and reads the status more often, which
+takes longer in a large repository.
+- a number: that many seconds, 2 as standard.
+- nil: a status never follows the repository; \\<git-status-mode>\\[revert-buffer]
+  reads it again, and it is read only when asked."
+  :values (or (member nil) (number 0 *)))
 
 (defun git-statuses-shown ()
   "The statuses shown in the editor's windows, each once."

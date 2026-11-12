@@ -281,9 +281,11 @@ strings beginning @ or $), names, operators and brackets."
                           (t (org-formula-fail "~a is not understood in a formula" c))))))))
     (nreverse tokens)))
 
-(defparameter *org-formula-depth-limit* 200
-  "The most a formula's parts may be nested, within brackets, signs and
-powers: a formula nested deeper is refused.")
+(define-setting *org-formula-depth-limit* 200
+  "The most a formula's parts may be nested.
+Parts nest within brackets, signs and powers; a formula nested deeper is
+refused."
+  :values (integer 1 *))
 
 (defun org-formula-parse (text)
   "TEXT, a formula's right-hand side, read into a tree to work out: numbers,

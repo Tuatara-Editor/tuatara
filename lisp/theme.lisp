@@ -778,19 +778,28 @@ init file changes it with (load-theme 'name).")
   "The theme used when the display has no colours (fewer than eight), whatever
 else was chosen, since colours would not show there.")
 
-(defvar tuatara-user:*dark-theme* 'ao-dark
-  "The dark theme toggle-light-dark-theme switches to. Set it in the init file,
-for example (setf *dark-theme* 'terminal).")
+(define-setting tuatara-user:*dark-theme* 'ao-dark
+  "The dark theme toggle-light-dark-theme switches to, and the one used while
+the desktop is dark (*FOLLOW-DESKTOP-STYLE*). Set it in the init file, for
+example (setf *dark-theme* 'terminal).
+- a theme's name: ao-dark as standard."
+  :values "a theme's name")
 
-(defvar tuatara-user:*light-theme* 'ao-light
-  "The light theme toggle-light-dark-theme switches to. Set it in the init file.")
+(define-setting tuatara-user:*light-theme* 'ao-light
+  "The light theme toggle-light-dark-theme switches to, and the one used while
+the desktop is light (*FOLLOW-DESKTOP-STYLE*). Set it in the init file.
+- a theme's name: ao-light as standard."
+  :values "a theme's name")
 
-(defvar tuatara-user:*follow-desktop-style* t
-  "True to have the window's theme follow the desktop's light or dark style:
-*dark-theme* while it is dark, *light-theme* while it is light, switching when
-the desktop does. It stops once a theme is chosen: (load-theme 'name) in the
-init file, or \\[load-theme] or toggle-light-dark-theme. A terminal says
-nothing of the desktop's style, so there the theme stays as it is.")
+(define-setting tuatara-user:*follow-desktop-style* t
+  "Whether the window's theme follows the desktop's light or dark style, which
+it stops doing once a theme is chosen: (load-theme 'name) in the init file,
+or \\[load-theme] or toggle-light-dark-theme. A terminal says nothing of the
+desktop's style, so there the theme stays as it is.
+- t: *DARK-THEME* while the desktop is dark, *LIGHT-THEME* while it is
+  light, switching when the desktop does.
+- nil: the theme does not follow the desktop."
+  :values boolean)
 
 (defvar *theme-chosen* nil
   "True once a theme was chosen by name, in the init file or with a command:

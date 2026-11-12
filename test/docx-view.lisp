@@ -4,10 +4,10 @@
 (in-package #:tuatara.tests)
 
 (define-test docx-view
-  :description "Zip archives are unpacked, stored and deflated, within limits, damaged ones refused; XML is
-read with no entity of a DTD expanded and no nesting past the limit; a Word document is read as an Org
+  :description "Zip archives are unpacked, stored and deflated, within limits, damaged ones refused. XML is
+read with no entity of a DTD expanded and no nesting past the limit. A Word document is read as an Org
 note: what it says of itself, macros, embedded files and outside links named, headings, lists, tables,
-markup, links, footnotes, comments, tracked changes and hidden text; visited where pages are not drawn,
+markup, links, footnotes, comments, tracked changes and hidden text. Visited where pages are not drawn,
 it is read as text, read only, in Org mode.")
 
 (defun deflated-zip ()

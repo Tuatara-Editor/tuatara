@@ -6,9 +6,9 @@
 (define-test conflicts
   :description "A file shown that holds whole conflicts (<<<<<<<, ||||||| and a base where there
 is one, =======, >>>>>>>) has them painted, a face for each side, the base and the marker lines,
-and Conflicts N in the mode line; C-c ^ n and p go between them, u keeps the first side, l the
-second, a both, b the base, = shows the sides' differences; each one step to undo, point going
-on to the next, and when none is left it says how to stage the file. A lone ======= is no
+and Conflicts N in the mode line. C-c ^ n and p go between them, u keeps the first side, l the
+second, a both, b the base, = shows the sides' differences. Each takes one step to undo, point
+going on to the next, and when none is left it says how to stage the file. A lone ======= is no
 conflict. The git status lists the files in conflict under Unmerged files; RET there goes to the
 first conflict.")
 

@@ -15,12 +15,15 @@
 
 (in-package #:tuatara.defaults)
 
-(defvar *lsp-trusted-projects* '()
-  "Folders whose projects you trust to run their own programs: their language
-servers start by themselves as their files are opened, git runs the
-programs they name for themselves (hooks, filters), and \\[compile] runs their
-build commands without asking. Besides those trusted when
-asked (kept between sessions). Names of folders, ~ for your home folder.")
+(define-setting *lsp-trusted-projects* '()
+  "Folders whose projects you trust to run their own programs.
+Their language servers start by themselves as their files are opened, git runs
+the programs they name for themselves (hooks, filters), and \\[compile] runs
+their build commands without asking. These are besides the folders trusted when
+asked (kept between sessions).
+- nil: none, as standard.
+- a list of folders' names, ~ for your home folder."
+  :values (list-of folder))
 
 (defvar *lsp-trusted-kept* 500
   "How many projects trusted when asked are remembered, and how many looked

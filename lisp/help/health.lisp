@@ -272,10 +272,21 @@ COLUMN (TUATARA.DISPLAY:FILL-WORDS)."
 editor's own buffers, never a file's."
   (subtypep name 'special-mode))
 
+(defun setting-faults ()
+  "A sentence for each setting whose value is not one of those it declares
+it takes (SETTING-VALUE-FAULT), in the order of their names. The values are
+only looked at: none is refused or set back."
+  (let ((faults '()))
+    (do-external-symbols (symbol :tuatara-user)
+      (let ((fault (setting-value-fault symbol)))
+        (when fault (push (format nil "~a." fault) faults))))
+    (sort faults #'string<)))
+
 (defun health-problems (languages grammars results &optional sandbox)
   "What failed among LANGUAGES, GRAMMARS and RESULTS, and the SANDBOX tried
-(as HEALTH-CHECK keeps it), as a list of sentences."
-  (let ((problems '()))
+(as HEALTH-CHECK keeps it), and the settings holding a value they do not
+take (SETTING-FAULTS), as a list of sentences."
+  (let ((problems (reverse (setting-faults))))
     (destructuring-bind (&optional status detail &rest rest) sandbox
       (declare (ignore rest))
       (case status
@@ -549,7 +560,8 @@ For each language, whether its tree-sitter grammar is found, and whether each
 set of its rules is there and works (colours, indentation, selection, other
 languages inside it, local names, definitions), with its formatter and
 language server; then each major mode with its language, comment marker, tabs
-and the files it is chosen for; then what failed, and why. Where the init file
+and the files it is chosen for; then what failed, and why, settings holding
+a value they do not take among it. Where the init file
 and grammars are, how the editor reaches the clipboard, and whether the
 sandbox that shuts in the programs decoding files works (bubblewrap, bwrap:
 no network, no file but the one decoded), and which programs decode which

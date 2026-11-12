@@ -345,7 +345,7 @@ were evaluated from in this session."
                       (offset (sb-introspect:definition-source-character-offset source))
                       (form-path (sb-introspect:definition-source-form-path source))
                       (file (and path (ignoring-errors-reported ("naming the file of ~s" symbol)
-                                        (namestring (translate-logical-pathname path)))))
+                                        (source-file-here (namestring (translate-logical-pathname path))))))
                       (description (ignoring-errors-reported ("describing a definition of ~s" symbol)
                                      (sb-introspect::definition-source-description source)))
                       (key (list file offset form-path description)))

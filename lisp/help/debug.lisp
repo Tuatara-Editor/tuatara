@@ -13,14 +13,20 @@
 
 (in-package #:tuatara.defaults)
 
-(defvar *debug-mode* nil
-  "True to start the editor with debug mode on, as \\[debug-mode] switches it:
-what the editor's parts do is reported in *Debug*. Set it in the init file.")
+(define-setting *debug-mode* nil
+  "Whether the editor starts with debug mode on, as \\[debug-mode] switches it.
+Set it in the init file.
+- t: what the editor's parts do is reported in *Debug*.
+- nil: debug mode starts off, as standard."
+  :values boolean)
 
-(defvar *debug-log-limit* 10000
-  "The lines *Debug* keeps, the oldest going first, 10000 as standard; NIL
-keeps them all, and the buffer then grows for as long as debug mode is on.
-Raise it to look back further; the debug log on disk is not cut by it.")
+(define-setting *debug-log-limit* 10000
+  "The lines *Debug* keeps, the oldest going first. Raise it to look back
+further; the debug log on disk is not cut by it.
+- a whole number: that many lines, 10000 as standard.
+- nil: all of them are kept, and the buffer grows for as long as debug mode
+  is on."
+  :values (or (member nil) (integer 1 *)))
 
 (defun debug-buffer ()
   "The *Debug* buffer, made when there is none: read-only, shown where

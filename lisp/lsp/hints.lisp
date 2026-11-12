@@ -14,9 +14,12 @@
 
 (in-package #:tuatara.lsp)
 
-(defvar *lsp-inlay-hints* t
-  "True for language servers' inlay hints to be shown within the code: the
-types of bindings, the names of the parameters arguments go to.")
+(define-setting *lsp-inlay-hints* t
+  "Whether language servers' inlay hints are shown within the code: the types
+of bindings, the names of the parameters arguments go to.
+- t: they are shown.
+- nil: they are not."
+  :values boolean)
 
 (defvar *lsp-most-hints* 5000
   "The most inlay hints kept for one buffer.")
@@ -125,9 +128,12 @@ the types of bindings, the names of the parameters arguments go to."
 
 ;;; Code lenses
 
-(defvar *lsp-code-lenses* nil
-  "True for what language servers say of lines (3 references, Run test) to be
-shown faint at each line's end.")
+(define-setting *lsp-code-lenses* nil
+  "Whether what language servers say of lines (3 references, Run test) is shown
+faint at each line's end.
+- t: it is shown.
+- nil: it is not, as standard."
+  :values boolean)
 
 (defun lens-title (lens)
   "What LENS, a code lens, says: its command's title."

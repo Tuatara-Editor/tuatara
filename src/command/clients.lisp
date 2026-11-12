@@ -56,14 +56,35 @@ carried by ssh (TUATARA.FRONTEND:REQUEST-FAR)."
 everyone's."
   (tuatara.buffer:buffer-local buffer :clients))
 
+(defun keep-for-every-client (buffers)
+  "Make each of BUFFERS no client has every client's for good: shown in a
+client, it stays in the buffer list's folder of every client's and is not
+taken into the client's own (BUFFER-FOR-EVERY-CLIENT-P). An editor running in
+the background does this to the buffers it has before its first client comes."
+  (dolist (buffer buffers)
+    (unless (buffer-clients buffer)
+      (setf (tuatara.buffer:buffer-local buffer :every-client) t))))
+
+(defun buffer-for-every-client-p (buffer)
+  "True when BUFFER is every client's whoever shows it: one of
+*BUFFERS-FOR-EVERY-CLIENT*, or one kept so (KEEP-FOR-EVERY-CLIENT)."
+  (or (tuatara.buffer:buffer-local buffer :every-client)
+      (and (member (tuatara.buffer:buffer-name buffer) *buffers-for-every-client* :test #'string=) t)))
+
 (defun join-client (buffer client)
   "Make BUFFER, shown in a frame of CLIENT, one of CLIENT's buffers too. The
 one who started an editor of its own has every buffer already, as do the
-buffers every client is offered (*BUFFERS-FOR-EVERY-CLIENT*). Nothing is made
-for a buffer that is CLIENT's already."
+buffers every client is offered (BUFFER-FOR-EVERY-CLIENT-P): they stay every
+client's. Nothing is made for a buffer that is CLIENT's already."
   (when (and client (client-remote client) (not (client-ended client)) (not (member client (buffer-clients buffer)))
-             (not (member (tuatara.buffer:buffer-name buffer) *buffers-for-every-client* :test #'string=)))
+             (not (buffer-for-every-client-p buffer)))
     (setf (tuatara.buffer:buffer-local buffer :clients) (cons client (buffer-clients buffer)))))
+
+(defun client-own-buffer-p (client buffer)
+  "True when BUFFER is CLIENT's own: CLIENT is one of those who have it
+\(BUFFER-CLIENTS), or the one who started an editor of its own, who has
+every buffer. A buffer every client is offered is no client's own."
+  (or (null client) (not (client-remote client)) (and (member client (buffer-clients buffer)) t)))
 
 (defun client-sees-buffer-p (client buffer)
   "True when BUFFER is offered to CLIENT where buffers are chosen from (the

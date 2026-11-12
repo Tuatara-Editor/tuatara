@@ -11,11 +11,14 @@
 
 (in-package #:tuatara.defaults)
 
-(defvar *word-completion-keep-case* t
-  "True to find words that start with what is typed whatever the case, and to
-keep the case typed: with \"foo\" typed, a word Foobar is put in as foobar, and
-with \"FOO\" typed, it is put in as FOOBAR. NIL to find only words that start
-with exactly what is typed, put in as they are.")
+(define-setting *word-completion-keep-case* t
+  "Whether word completion finds words whatever the case typed, and keeps the
+case typed: with \"foo\" typed, a word Foobar is put in as foobar, and with
+\"FOO\" typed, it is put in as FOOBAR.
+- t: find words whatever the case, and keep the case typed (the standard).
+- nil: find only words that start with exactly what is typed, put in as they
+  are."
+  :values boolean)
 
 (defparameter *word-completion-reach* 65536
   "The octets read either side of point in the buffer a word is completed in.")

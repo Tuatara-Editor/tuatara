@@ -3,16 +3,26 @@
 
 (in-package #:tuatara.command)
 
-(defvar *cursor-shape* :block
-  "The cursor's shape: :block, :bar (a line before the character) or
-:underline, in the window and the terminal alike, unless the modal state has
-its own (*TUATARA-INSERT-CURSOR-SHAPE* and the rest). :block unless set.")
+(define-setting *cursor-shape* :block
+  "The cursor's shape, in the window and the terminal alike.
+The modal state can have its own (*TUATARA-INSERT-CURSOR-SHAPE* and the
+rest).
+- :block: a block over the character (the standard).
+- :bar: a line before the character.
+- :underline: a line under the character."
+  :values (member :block :bar :underline))
 
-(defvar *cursor-colour* nil
-  "The cursor's colour, as faces take colours: a name such as :red, a number
-0-255, or \"#rrggbb\"; NIL (as standard) for the colour of the text, the
-character under a block then in the colour of the ground. The modal states can
-have their own (*TUATARA-INSERT-CURSOR-COLOUR* and the rest).")
+(define-setting *cursor-colour* nil
+  "The cursor's colour.
+The modal states can have their own (*TUATARA-INSERT-CURSOR-COLOUR* and the
+rest).
+- nil: the colour of the text, the character under a block then in the colour
+  of the ground (the standard).
+- a name such as :red: that colour, as faces take colours.
+- a number from 0 to 255: that colour of the 256-colour palette.
+- \"#rrggbb\": that colour, as red, green and blue in two hexadecimal digits
+  each."
+  :values (or (member nil) (integer 0 255) string "a colour name such as :red"))
 
 (defvar *cursor-colour-functions* '()
   "Functions of the editor that may colour the cursor for the moment, the
@@ -343,11 +353,14 @@ it: the home directory written ~, a / at the end."
       (abbreviated-path (buffer-directory buffer))
       (shown-default-directory)))
 
-(defvar *mode-line-name-limit* nil
-  "The most columns a buffer's name takes in the mode line, or NIL for as many
-as it has: a longer name keeps its start and its end, … standing for its
-middle. Whatever this says, a name is cut so that the mode line shows whole in
-its window, all but the directory at its end, down to 12 columns.")
+(define-setting *mode-line-name-limit* nil
+  "The most columns a buffer's name takes in the mode line.
+A longer name keeps its start and its end, … standing for its middle.
+Whatever this says, a name is cut so that the mode line shows whole in its
+window, all but the directory at its end, down to 12 columns.
+- nil: as many as it has (the standard).
+- a whole number, 1 or more: that many columns."
+  :values (or (member nil) (integer 1 *)))
 
 (defun mode-line-name (name room)
   "NAME as the mode line shows it with ROOM columns for it: whole when it fits
@@ -979,10 +992,14 @@ columns wide on a row drawn large; kept inside the window."
                (max column (1- (tuatara.display:window-text-width window)))))
         column)))
 
-(defvar *gui-title* "~a - Tuatara"
-  "The title of the window tuatara --gui opens, where the desktop names it: a
-format control given the name of the buffer the selected window shows. \"~a\"
-shows the name alone.")
+(define-setting *gui-title* "~a - Tuatara"
+  "The title of the window tuatara --gui opens, where the desktop names it.
+It is a format control given the name of the buffer the selected window
+shows.
+- \"~a - Tuatara\": the buffer's name, a dash, Tuatara (the standard).
+- \"~a\": the buffer's name alone.
+- any other text: that text, ~a standing for the buffer's name."
+  :values string)
 
 (defvar *title-functions* '()
   "Functions of the editor returning text to show before the window's title

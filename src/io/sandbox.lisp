@@ -36,36 +36,58 @@
 
 (in-package #:tuatara.io)
 
-(defvar *sandbox-program* "bwrap"
-  "The program that shuts in the programs decoding files for the editor, and
-LaTeX making PDFs: bubblewrap, named bwrap, looked for on the PATH (or a full
-path to it). NIL turns decoding off: images, PDFs and the like are then shown
-as octets and text only; PDFs are still made of Org and LaTeX files, LaTeX
-then not shut in, and each export says so.")
+(define-setting *sandbox* t
+  "Whether the programs decoding files for the editor, and LaTeX making PDFs,
+run shut in, by bubblewrap (bwrap) found on the PATH.
+- t: shut in (the standard). Without bwrap nothing is decoded, and M-x
+  check-health says why.
+- nil: decoding is off. Images, PDFs and the like are then shown as octets
+  and text only; PDFs are still made of Org and LaTeX files, LaTeX then not
+  shut in, and each export says so."
+  :values boolean)
 
-(defvar *sandbox-seconds* 10
+(defparameter *bwrap-name* "bwrap"
+  "The name of bubblewrap's program, looked for on the PATH while *SANDBOX* is
+true.")
+
+(defun sandbox-program ()
+  "The program that shuts programs in: bubblewrap's name (*BWRAP-NAME*) while
+*SANDBOX* is true, else NIL."
+  (and *sandbox* *bwrap-name*))
+
+(define-setting *sandbox-seconds* 10
   "The seconds a program decoding a file may run before it is ended, and the
-processor time it may take, 10 as standard. Raise it for a file that takes
-long to decode, such as a large picture; lower it to end a program stuck on a
-damaged file sooner. A file whose program is ended is not shown.")
+processor time it may take.
+Raise it for a file that takes long to decode, such as a large picture;
+lower it to end a program stuck on a damaged file sooner. A file whose
+program is ended is not shown.
+- a number, 1 or more: the seconds allowed; 10 as standard."
+  :values (number 1 *))
 
-(defvar *sandbox-memory* (* 1024 1024 1024)
-  "The octets of memory a program decoding a file may take (1 GB); NIL for no
-limit. Raise it for a decoder that needs more; lower it on a small machine, so
-that a damaged file cannot take memory from the rest. A program that needs
-more than this fails, and the file is not decoded.")
+(define-setting *sandbox-memory* (* 1024 1024 1024)
+  "The memory a program decoding a file may take.
+Raise it for a decoder that needs more; lower it on a small machine, so that
+a damaged file cannot take memory from the rest. A program that needs more
+than this fails, and the file is not decoded.
+- a whole number, 1 or more: the octets allowed; 1 GB as standard.
+- nil: no limit."
+  :values (or (member nil) (integer 1 *)))
 
-(defvar *sandbox-input-limit* (* 1024 1024 1024)
-  "The largest file a program decoding files is given (1 GB): it gets a copy
-in memory, which a larger file, or one claiming a huge size with nothing in
-it, would fill. A larger one is not decoded, and why is said; NIL for no
-limit.")
+(define-setting *sandbox-input-limit* (* 1024 1024 1024)
+  "The largest file a program decoding files is given.
+It gets a copy in memory, which a larger file, or one claiming a huge size
+with nothing in it, would fill. A larger one is not decoded, and why is said.
+- a whole number, 1 or more: the octets allowed; 1 GB as standard.
+- nil: no limit."
+  :values (or (member nil) (integer 1 *)))
 
-(defvar *sandbox-total-memory* (* 2 1024 1024 1024)
-  "The octets of memory all the programs decoding one file may take together
-(2 GB), where the system can hold them to it (systemd-run, a scope of the
-user's own); NIL for no such limit, each program still held to
-*SANDBOX-MEMORY*.")
+(define-setting *sandbox-total-memory* (* 2 1024 1024 1024)
+  "The memory all the programs decoding one file may take together.
+It holds where the system can hold them to it (systemd-run, a scope of the
+user's own); each program is still held to *SANDBOX-MEMORY*.
+- a whole number, 1 or more: the octets allowed; 2 GB as standard.
+- nil: no such limit."
+  :values (or (member nil) (integer 1 *)))
 
 (defparameter *sandbox-path* "/usr/local/bin:/usr/bin:/bin"
   "Where a program in the sandbox is looked for: the system's own directories
@@ -83,10 +105,12 @@ scratch /tmp.")
   "The processes and threads a program in the sandbox may have at once, it
 and all it starts counted together (only those in the sandbox).")
 
-(defvar *sandbox-seccomp* t
-  "True to have the kernel refuse a program decoding a file the system calls no
-decoder needs (see the file's header), on x86-64 and AArch64; NIL to leave
-them to it, the rest of the sandbox kept.")
+(define-setting *sandbox-seccomp* t
+  "Whether the kernel refuses a program decoding a file the system calls no
+decoder needs (see the file's header), on x86-64 and AArch64.
+- t: it refuses them (the standard).
+- nil: they are left to the program, the rest of the sandbox kept."
+  :values boolean)
 
 (sb-ext:defglobal **sandbox-state** nil
   "What was found when the sandbox was last tried (SANDBOX-STATUS), as a list
@@ -151,12 +175,14 @@ the system's own folders of programs (SANDBOX-FIND-PROGRAM)."
   (let ((setpriv (sandbox-find-program "setpriv")))
     (and setpriv (list* setpriv "--pdeathsig" "KILL" "--" program arguments))))
 
-(defparameter *program-output-limit* (* 64 1024 1024)
-  "The most octets PROGRAM-OUTPUT takes of what a program writes (64 MB):
-one that writes more, a clipboard of a huge copy or a program gone wrong, is
-stopped and its output not taken, so that it cannot fill memory. Raise it to
-take more through such a program, at the cost of that memory; lower it on a
-small machine.")
+(define-setting *program-output-limit* (* 64 1024 1024)
+  "The most octets PROGRAM-OUTPUT takes of what a program writes.
+A program that writes more, a clipboard of a huge copy or a program gone
+wrong, is stopped and its output not taken, so that it cannot fill memory.
+Raise it to take more through such a program, at the cost of that memory;
+lower it on a small machine.
+- a whole number, 1 or more: the octets allowed; 64 MB as standard."
+  :values (integer 1 *))
 
 (defparameter *program-end-grace* 2
   "The seconds a program no longer wanted has to end once asked to (SIGTERM),
@@ -989,7 +1015,7 @@ another, or later: each number compared in turn, one left out counted 0."
 
 (defun bwrap-version-at-least-p (major minor)
   "True when the bwrap found for *SANDBOX-PROGRAM* is version MAJOR.MINOR or later, as it says it is."
-  (let ((program (and *sandbox-program* (find-program *sandbox-program*))))
+  (let ((program (and (sandbox-program) (find-program (sandbox-program)))))
     (when program
       (let ((version (or (gethash program *bwrap-versions*)
                          (setf (gethash program *bwrap-versions*)
@@ -1626,7 +1652,7 @@ The sandboxes left behind by an editor ended before it could end them are
 ended first (END-SANDBOXES-LEFT), and the scopes left by one stopped in the
 background (END-SCOPES-LEFT)."
   (let ((path (and program (find-program program))))
-    (cond ((null program) (list :off "turned off (*sandbox-program* is nil)" nil))
+    (cond ((null program) (list :off "turned off (*sandbox* is nil)" nil))
           ((null path) (list :missing (format nil "~a not found on the PATH" program) nil))
           (t (let ((left (end-sandboxes-left)))
                (when (plusp left)
@@ -1674,12 +1700,12 @@ for a path not from the root (./gpg)."
   "Whether programs decoding files can be shut in here, as three values: a
 keyword, :READY, :MISSING (bwrap is not on the PATH), :BROKEN (it is there but
 cannot run, as where the system allows no user namespaces) or :OFF
-(*SANDBOX-PROGRAM* is NIL); a sentence saying which program, its version and
+(*SANDBOX* is NIL); a sentence saying which program, its version and
 where, or what is wrong; and bwrap's path. Tried the first time it is needed
-and kept for the value of *SANDBOX-PROGRAM* tried, read once: tried again
+and kept for the program tried (SANDBOX-PROGRAM), read once: tried again
 when that value has changed, or with AGAIN. Takes a few milliseconds the first time: call
 it from a thread doing work in the background."
-  (let* ((program *sandbox-program*)
+  (let* ((program (sandbox-program))
          (state (sb-thread:with-mutex (**sandbox-lock**)
                   (when (or again (null **sandbox-state**) (not (equal program (fourth **sandbox-state**))))
                     (setf **sandbox-state** (append (try-sandbox program) (list program))))
@@ -1724,9 +1750,9 @@ what was found when the sandbox was last tried; :OFF or :MISSING, told at
 once; or :UNKNOWN while bwrap is there but not tried yet (or tried again), the
 trying then started in the background."
   (let ((state **sandbox-state**))
-    (cond ((and state (equal *sandbox-program* (fourth state))) (first state))
-          ((null *sandbox-program*) :off)
-          ((null (find-program *sandbox-program*)) :missing)
+    (cond ((and state (equal (sandbox-program) (fourth state))) (first state))
+          ((null (sandbox-program)) :off)
+          ((null (find-program (sandbox-program))) :missing)
           (t (unless (sb-thread:mutex-owner **sandbox-lock**)
                (tuatara.runtime:make-guarded-thread
                 (lambda () (tuatara.runtime:ignoring-errors-reported ("trying the sandbox") (sandbox-status)))

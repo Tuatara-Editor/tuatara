@@ -17,7 +17,7 @@
   (:import-from #:tuatara.runtime #:foreign-library-p #:foreign-call #:jobs-of
                 #:reporting-errors #:ignoring-errors-reported #:refusal #:refuse #:*secret-at-hand*
                 #:run-hook #:run-hook-until-success #:run-hook-until-done #:call-hook-function
-                #:hook-function-name)
+                #:hook-function-name #:define-setting #:setting-values-words #:setting-value-fault)
   (:import-from #:tuatara.display #:next-tab-stop)
   (:import-from #:tuatara.text #:word-char-p #:name-char-p #:number-formatter)
   (:import-from #:tuatara.text #:string-line-start #:string-line-end #:xml-entity #:xml-tag-end #:xml-text-value

@@ -129,11 +129,15 @@ when it differs (*HOME-NAMES*), found once for each HOME."
 so that a file reached by ~ has the name it has when reached any other way."
   (car (last (home-directory-names))))
 
-(defvar *default-directory* "~/"
-  "The directory of a buffer with no file (*scratch*, the lists): a file name
-typed there is taken from it, and \\[search-in-files] searches it. ~ is your
-home directory; NIL for the directory Tuatara was started in. A buffer with a
-file has its file's directory.")
+(define-setting *default-directory* "~/"
+  "The directory of a buffer with no file (*scratch*, the lists).
+A file name typed there is taken from it, and \\[search-in-files] searches
+it. A buffer with a file has its file's directory.
+- \"~/\": your home directory (the standard); ~ is your home directory in any
+  name.
+- a directory's name: that directory.
+- nil: the directory Tuatara was started in."
+  :values (or (member nil) folder))
 
 (defun without-dot-components (pathname)
   "PATHNAME without the . in its directory: /a/./b is /a/b, whatever links
@@ -1811,22 +1815,27 @@ nothing in (WRITING-REFUSAL)."
          (handler-case (progn (sb-posix:access (native path) sb-posix:w-ok) t) (sb-posix:syscall-error () nil)))
        (not (writing-refusal path))))
 
-(defvar *cache-directory* nil
-  "The folder Tuatara keeps its cache in, in place of ~/.cache/tuatara/
-\($XDG_CACHE_HOME/tuatara/): files made again when they are gone, as
-compiled packages, previews and pages drawn, copies of files opened outside,
-the debug log and stderr.log. NIL for that standard place. A folder on an
-encrypted drive keeps what files you open leave there on it: make it
-yourself, for you alone (mkdir -m 700); while it is not there, its drive
-not mounted, nothing is kept in its place and the work that needs it says
-so.")
+(define-setting *cache-directory* nil
+  "The folder Tuatara keeps its cache in.
+The cache holds files made again when they are gone: compiled packages,
+previews and pages drawn, copies of files opened outside, the debug log and
+stderr.log. A folder on an encrypted drive keeps what files you open leave
+there on it: make it yourself, for you alone (mkdir -m 700); while it is not
+there, its drive not mounted, nothing is kept in its place and the work that
+needs it says so.
+- nil: ~/.cache/tuatara/ ($XDG_CACHE_HOME/tuatara/), the standard place.
+- a folder's name: that folder."
+  :values (or (member nil) folder))
 
-(defvar *state-directory* nil
-  "The folder Tuatara keeps what it remembers between sessions in, in place
-of ~/.local/state/tuatara/ ($XDG_STATE_HOME/tuatara/): the files visited
-lately, places in them, the session, auto-saved text, the packages fetched.
-NIL for that standard place. As *CACHE-DIRECTORY*: made by you, and while it
-is not there nothing is kept in its place.")
+(define-setting *state-directory* nil
+  "The folder Tuatara keeps what it remembers between sessions in.
+That is the files visited lately, places in them, the session, auto-saved
+text, the packages fetched. As *CACHE-DIRECTORY*, make it yourself; while it
+is not there nothing is kept in its place.
+- nil: ~/.local/state/tuatara/ ($XDG_STATE_HOME/tuatara/), the standard
+  place.
+- a folder's name: that folder."
+  :values (or (member nil) folder))
 
 (defvar *directories-in-memory* '()
   "The settings naming a folder that was not there when it was wanted
