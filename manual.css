@@ -146,6 +146,10 @@ nav.toc .tools a { color: var(--accent); }
 button.theme { font-size: 13px; padding: 2px 10px; color: var(--fg); background: var(--bg);
   border: 1px solid var(--rule); border-radius: 4px; cursor: pointer; }
 section.chapter + section.chapter { border-top: 1px solid var(--rule); margin-top: 48px; padding-top: 8px; }
+.site { max-width: none; }
+main article { max-width: none; }
+main article td:not(:last-child) { overflow-wrap: normal; }
+main article td:not(:last-child) kbd, main article td:not(:last-child) code { white-space: nowrap; }
 @media (min-width: 761px) {
   nav.toc { position: sticky; top: 0; align-self: start; max-height: 100vh; overflow-y: auto; box-sizing: border-box;
     border-right: 0; }
