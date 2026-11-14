@@ -13,7 +13,7 @@
 <div class="site">
 <nav class="toc" id="contents" aria-label="Contents">
 <strong>Tuatara Manual</strong>
-<small>for version 0.90.29</small>
+<small>for version 0.90.30</small>
 <p class="tools"><a href="all.html">All on one page</a>
 <button type="button" class="theme" hidden>Dark</button></p>
 <input type="search" placeholder="Search the manual" aria-label="Search the manual">
@@ -98,6 +98,9 @@ over and over. A number before the key marks that many lines. <kbd>u</kbd> takes
 off the line and moves down, and <kbd>U</kbd> takes every mark off. <kbd>t</kbd> swaps the two
 states: what was marked becomes unmarked and the other way round. That is a
 quick way to say &quot;everything except these&quot;.</p>
+<p>While any entry is marked, the mode line of the list says how many, for
+example &quot;3 marked, 1 for deletion&quot;. It changes with each mark you put or take
+off, and goes when none is left. Every list with marks does this, rimu too.</p>
 <p><kbd>d</kbd> puts a <code>D</code> on a buffer instead. It means &quot;kill this one&quot;. Nothing is killed
 until you press <kbd>x</kbd>, which kills every buffer marked with <code>D</code>. It is the same
 two-step as in a directory listing: first mark, then do it. Buffers with unsaved

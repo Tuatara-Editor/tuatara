@@ -13,7 +13,7 @@
 <div class="site">
 <nav class="toc" id="contents" aria-label="Contents">
 <strong>Tuatara Manual</strong>
-<small>for version 0.90.29</small>
+<small>for version 0.90.30</small>
 <p class="tools"><a href="all.html">All on one page</a>
 <button type="button" class="theme" hidden>Dark</button></p>
 <input type="search" placeholder="Search the manual" aria-label="Search the manual">
@@ -122,6 +122,15 @@ pattern for a line break works in a file with CRLF line ends. Inside brackets,
 <code>[\n]</code> is the line feed alone.</p>
 <p>A pattern that is only an edge, such as <code>^$</code> for an empty line, is a match too.
 Searching for it goes from one empty line to the next.</p>
+<p>A pattern you use often can be kept under a name. <kbd>M-x save-named-pattern</kbd>
+asks for the pattern, a regex or, after <kbd>M-r</kbd>, plain text, then a name of small
+letters and digits, then a few words on what it finds. From then on
+<code>[[:name:]]</code> stands for it in any regex you search for, in this session and
+the next, as Tuatara's own <code>[[:ipv4:]]</code> and <code>[[:date:]]</code> do. A pattern saved
+as plain text finds only those characters, its dots and brackets too.
+<kbd>M-x forget-named-pattern</kbd> takes one away again. The patterns are kept in
+the file <code>patterns</code> of your state directory; a pattern your init file names
+with <code>define-named-pattern</code> wins over one saved under the same name.</p>
 <h3 id="starting-from-the-word-under-the-cursor"><span class="num">6.1.3</span> Starting from the word under the cursor</h3>
 <p>Put the cursor on a word and press <kbd>C-s</kbd>, then <kbd>M-.</kbd>. The word is added to the
 pattern as a whole word, so that searching for <code>tui</code> never stops in the middle
@@ -200,6 +209,8 @@ is in use. The thorough form of replacing is described in the next section.</p>
 <tr><td>none</td><td><kbd>C-x T s</kbd></td><td><code>search-toggle-highlight</code></td><td>Light the matches of the last search that ended at a match again, in its buffer, or take them away when they are lit, as M-x keyboard-quit does.</td></tr>
 <tr><td>none</td><td><kbd>M-x regex-search-forward-thorough</kbd></td><td><code>regex-search-forward-thorough</code></td><td>Search forward as regex-search-forward does, finding every match of up to a megabyte (about a million characters of ASCII) whole however many lines it spans, where regex-search-forward may miss one of more than 4 KB that runs across lines and needs text further on (a block of lines matched by <code>BEGIN[\s\S]*?END</code>, say).</td></tr>
 <tr><td>none</td><td><kbd>M-x regex-search-backward-thorough</kbd></td><td><code>regex-search-backward-thorough</code></td><td>Search backward as regex-search-backward does, finding every match of up to a megabyte whole however many lines it spans, with the cost and the limit of regex-search-forward-thorough: a match of more than a megabyte is still cut short, or missed when it needs text further on.</td></tr>
+<tr><td>none</td><td><kbd>M-x save-named-pattern</kbd></td><td><code>save-named-pattern</code></td><td>Save a pattern under a name, so that :NAME: stands for it in every regular expression searched for after, in this session and the next: the pattern is asked for as a filter's is, M-r switching between a regular expression and literal text, then its name, small letters and then digits too, and what it finds, in words.</td></tr>
+<tr><td>none</td><td><kbd>M-x forget-named-pattern</kbd></td><td><code>forget-named-pattern</code></td><td>Take away a pattern saved under a name (M-x save-named-pattern), chosen from those saved: :NAME: stands for nothing after, in this session and the next.</td></tr>
 </tbody></table></div>
 <div class="tablewrap"><table>
 <thead>
@@ -338,7 +349,9 @@ CSV. The modes that count are named in <code>*line-record-modes*</code>. In thes
 first line of a CSV is a header and is always shown. <kbd>C-x / f</kbd> shows only the
 records whose one column matches a pattern, and <kbd>C-x / h</kbd> hides them. These ask
 which column first. The lists and the data chapters describe columns in
-full.</p>
+full. A list whose entries have named parts, as a mailbox's messages have
+headers, offers those parts in place of its columns: the filter then looks at
+that part of each entry alone, and an entry without it is no match.</p>
 <p>Two keys delete instead of hide. <kbd>C-x / k</kbd> keeps the records that match and
 deletes the others. <kbd>C-x / d</kbd> deletes the ones that match. Both can be undone
 with <kbd>u</kbd> (non-modal: <kbd>C-/</kbd>). <kbd>C-x / t</kbd> makes the first line of a file of records

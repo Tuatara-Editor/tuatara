@@ -13,7 +13,7 @@
 <div class="site">
 <nav class="toc" id="contents" aria-label="Contents">
 <strong>Tuatara Manual</strong>
-<small>for version 0.90.29</small>
+<small>for version 0.90.30</small>
 <p class="tools"><a href="all.html">All on one page</a>
 <button type="button" class="theme" hidden>Dark</button></p>
 <input type="search" placeholder="Search the manual" aria-label="Search the manual">
@@ -251,6 +251,7 @@ the commands that mention a word, press <kbd>C-h a</kbd> and type the word.</p>
 <tr><td>none</td><td><kbd>M-x font-list</kbd></td><td><code>font-list</code></td><td>List every font installed in <strong>Fonts</strong>, the fixed-width ones first: each family with its variants, the line of the init file that chooses each, and a sample written in it.</td></tr>
 <tr><td>none</td><td><kbd>w</kbd>, <kbd>C-c w</kbd></td><td><code>font-list-copy</code></td><td>Copy the init-file line that chooses the font on the current line, to put in the init file (C-x C-f ~/.config/tuatara/init.lisp).</td></tr>
 <tr><td>none</td><td><kbd>RET</kbd></td><td><code>font-list-use</code></td><td>Show the window in the font on the current line of the list of fonts, for this session; w copies the line that chooses it for good.</td></tr>
+<tr><td>none</td><td><kbd>M-x forget-named-pattern</kbd></td><td><code>forget-named-pattern</code></td><td>Take away a pattern saved under a name (M-x save-named-pattern), chosen from those saved: :NAME: stands for nothing after, in this session and the next.</td></tr>
 <tr><td>none</td><td><kbd>C-c f</kbd></td><td><code>format-buffer</code></td><td>Lay out the code of the current buffer as its language's formatter does (<strong>LANGUAGE-FORMATTERS</strong>, else the language's usual one: rustfmt, ruff, clang-format, shfmt…), in the background, shut in the sandbox; the change is one that C-/ takes back whole.</td></tr>
 <tr><td>none</td><td><kbd>C-c F</kbd></td><td><code>format-region</code></td><td>Lay out the code selected as the language server does; with no server that lays out a part, each line selected indented as the mode indents it.</td></tr>
 <tr><td>none</td><td><kbd>TAB</kbd></td><td><code>forward-button</code></td><td>Move point to the next button, from the last round to the first.</td></tr>
@@ -877,6 +878,7 @@ the commands that mention a word, press <kbd>C-h a</kbd> and type the word.</p>
 <tr><td>none</td><td><kbd>C-x w R</kbd></td><td><code>rotate-windows-back</code></td><td>Move each window's buffer to the window before it, from the top left, and the first window's to the last; you go with your buffer.</td></tr>
 <tr><td>none</td><td><kbd>C-x C-s</kbd></td><td><code>save-buffer</code></td><td>Save the current buffer to its file, asking for one if it has none, as C-x C-f asks.</td></tr>
 <tr><td>none</td><td><kbd>C-x C-c</kbd></td><td><code>save-buffers-kill-editor</code></td><td>Exit the editor, asking first if a buffer visiting a file, or one made by C-x n e, has unsaved changes.</td></tr>
+<tr><td>none</td><td><kbd>M-x save-named-pattern</kbd></td><td><code>save-named-pattern</code></td><td>Save a pattern under a name, so that :NAME: stands for it in every regular expression searched for after, in this session and the next: the pattern is asked for as a filter's is, M-r switching between a regular expression and literal text, then its name, small letters and then digits too, and what it finds, in words.</td></tr>
 <tr><td>none</td><td><kbd>C-x s</kbd></td><td><code>save-some-buffers</code></td><td>Save every buffer visiting a file with changes not saved, after asking once, the files named: the files a rename across a project changed, say.</td></tr>
 <tr><td>none</td><td><kbd>&lt;wheel-up&gt;</kbd>, <kbd>&lt;wheel-down&gt;</kbd></td><td><code>scroll-by-wheel</code></td><td>Scroll the window under the mouse, else the selected one, as the mouse wheel turned: <strong>WHEEL-SCROLL-LINES</strong> lines on for &lt;wheel-down&gt;, back for &lt;wheel-up&gt;; that window's point stays in view.</td></tr>
 <tr><td>none</td><td><kbd>M-v</kbd>, <kbd>&lt;prior&gt;</kbd></td><td><code>scroll-down-command</code></td><td>Scroll the window backward by nearly a screenful: by the rows it shows, where long lines wrap.</td></tr>

@@ -13,7 +13,7 @@
 <div class="site">
 <nav class="toc" id="contents" aria-label="Contents">
 <strong>Tuatara Manual</strong>
-<small>for version 0.90.29</small>
+<small>for version 0.90.30</small>
 <p class="tools"><a href="index.html">By chapter</a>
 <button type="button" class="theme" hidden>Dark</button></p>
 <input type="search" placeholder="Search the manual" aria-label="Search the manual">
@@ -22,7 +22,7 @@
 <main>
 <article>
 <h1>Tuatara Manual</h1>
-<p class="lead">for version 0.90.29, every chapter on one page</p>
+<p class="lead">for version 0.90.30, every chapter on one page</p>
 <p>This manual is written with modal editing on, first and foremost. Where a command also has a key that works with modal editing off, it is given as well, as the non-modal key.</p>
 <section class="chapter" id="01-the-screen">
 <h1 id="01-the-screen--the-screen">The screen</h1>
@@ -2740,6 +2740,15 @@ pattern for a line break works in a file with CRLF line ends. Inside brackets,
 <code>[\n]</code> is the line feed alone.</p>
 <p>A pattern that is only an edge, such as <code>^$</code> for an empty line, is a match too.
 Searching for it goes from one empty line to the next.</p>
+<p>A pattern you use often can be kept under a name. <kbd>M-x save-named-pattern</kbd>
+asks for the pattern, a regex or, after <kbd>M-r</kbd>, plain text, then a name of small
+letters and digits, then a few words on what it finds. From then on
+<code>[[:name:]]</code> stands for it in any regex you search for, in this session and
+the next, as Tuatara's own <code>[[:ipv4:]]</code> and <code>[[:date:]]</code> do. A pattern saved
+as plain text finds only those characters, its dots and brackets too.
+<kbd>M-x forget-named-pattern</kbd> takes one away again. The patterns are kept in
+the file <code>patterns</code> of your state directory; a pattern your init file names
+with <code>define-named-pattern</code> wins over one saved under the same name.</p>
 <h3 id="06-searching-and-replacing--starting-from-the-word-under-the-cursor"><span class="num">6.1.3</span> Starting from the word under the cursor</h3>
 <p>Put the cursor on a word and press <kbd>C-s</kbd>, then <kbd>M-.</kbd>. The word is added to the
 pattern as a whole word, so that searching for <code>tui</code> never stops in the middle
@@ -2818,6 +2827,8 @@ is in use. The thorough form of replacing is described in the next section.</p>
 <tr><td>none</td><td><kbd>C-x T s</kbd></td><td><code>search-toggle-highlight</code></td><td>Light the matches of the last search that ended at a match again, in its buffer, or take them away when they are lit, as M-x keyboard-quit does.</td></tr>
 <tr><td>none</td><td><kbd>M-x regex-search-forward-thorough</kbd></td><td><code>regex-search-forward-thorough</code></td><td>Search forward as regex-search-forward does, finding every match of up to a megabyte (about a million characters of ASCII) whole however many lines it spans, where regex-search-forward may miss one of more than 4 KB that runs across lines and needs text further on (a block of lines matched by <code>BEGIN[\s\S]*?END</code>, say).</td></tr>
 <tr><td>none</td><td><kbd>M-x regex-search-backward-thorough</kbd></td><td><code>regex-search-backward-thorough</code></td><td>Search backward as regex-search-backward does, finding every match of up to a megabyte whole however many lines it spans, with the cost and the limit of regex-search-forward-thorough: a match of more than a megabyte is still cut short, or missed when it needs text further on.</td></tr>
+<tr><td>none</td><td><kbd>M-x save-named-pattern</kbd></td><td><code>save-named-pattern</code></td><td>Save a pattern under a name, so that :NAME: stands for it in every regular expression searched for after, in this session and the next: the pattern is asked for as a filter's is, M-r switching between a regular expression and literal text, then its name, small letters and then digits too, and what it finds, in words.</td></tr>
+<tr><td>none</td><td><kbd>M-x forget-named-pattern</kbd></td><td><code>forget-named-pattern</code></td><td>Take away a pattern saved under a name (M-x save-named-pattern), chosen from those saved: :NAME: stands for nothing after, in this session and the next.</td></tr>
 </tbody></table></div>
 <div class="tablewrap"><table>
 <thead>
@@ -2956,7 +2967,9 @@ CSV. The modes that count are named in <code>*line-record-modes*</code>. In thes
 first line of a CSV is a header and is always shown. <kbd>C-x / f</kbd> shows only the
 records whose one column matches a pattern, and <kbd>C-x / h</kbd> hides them. These ask
 which column first. The lists and the data chapters describe columns in
-full.</p>
+full. A list whose entries have named parts, as a mailbox's messages have
+headers, offers those parts in place of its columns: the filter then looks at
+that part of each entry alone, and an entry without it is no match.</p>
 <p>Two keys delete instead of hide. <kbd>C-x / k</kbd> keeps the records that match and
 deletes the others. <kbd>C-x / d</kbd> deletes the ones that match. Both can be undone
 with <kbd>u</kbd> (non-modal: <kbd>C-/</kbd>). <kbd>C-x / t</kbd> makes the first line of a file of records
@@ -3248,6 +3261,9 @@ over and over. A number before the key marks that many lines. <kbd>u</kbd> takes
 off the line and moves down, and <kbd>U</kbd> takes every mark off. <kbd>t</kbd> swaps the two
 states: what was marked becomes unmarked and the other way round. That is a
 quick way to say &quot;everything except these&quot;.</p>
+<p>While any entry is marked, the mode line of the list says how many, for
+example &quot;3 marked, 1 for deletion&quot;. It changes with each mark you put or take
+off, and goes when none is left. Every list with marks does this, rimu too.</p>
 <p><kbd>d</kbd> puts a <code>D</code> on a buffer instead. It means &quot;kill this one&quot;. Nothing is killed
 until you press <kbd>x</kbd>, which kills every buffer marked with <code>D</code>. It is the same
 two-step as in a directory listing: first mark, then do it. Buffers with unsaved
@@ -5568,6 +5584,8 @@ three at once. This is useful and also something to watch. Under the directory's
 name the list says how many entries are marked in other directories, so you are
 never surprised, and the question that a command asks counts all of them.
 <kbd>U</kbd> takes away every mark in every directory.</p>
+<p>The mode line counts the marks too, in every directory: &quot;3 marked, 1 for
+deletion&quot;, while any file is marked.</p>
 <p><kbd>K</kbd> takes the lines of the marked entries out of the list. The files stay as
 they are, and only the list shows fewer lines. It is a way to cross off what
 you have dealt with and look at what is left. <kbd>r</kbd> brings the lines back.</p>
@@ -13883,9 +13901,11 @@ ones.</p>
 <p>The columns are the mark, the name, the version (<code>directory</code> for a directory of
 your disk), the first letters of the commit, what became of the package this
 session, who signs its source's versions, and the source. The state is one of
-<code>loaded</code>, <code>fetching</code>, <code>failed</code>, <code>refused</code>, <code>declined</code>, <code>kept</code>, <code>unloaded</code>,
-<code>removed</code> and <code>not fetched</code>. A package that is not loaded is drawn in the
-faint colour, as in the figure. <code>declined</code> means you said no at the question.
+<code>loaded</code>, <code>restart</code>, <code>fetching</code>, <code>failed</code>, <code>refused</code>, <code>declined</code>, <code>kept</code>,
+<code>unloaded</code>, <code>removed</code> and <code>not fetched</code>. A package that is not loaded is drawn
+in the faint colour, as in the figure. <code>restart</code> means the package runs, and a
+newer version is fetched that loads when you next start Tuatara (see
+Updating). <code>declined</code> means you said no at the question.
 <code>refused</code> means its code uses a name this Tuatara does not have, because the
 package is newer than your Tuatara or a newer Tuatara renamed something. A
 refused package is never run, and the reason shows beside the list where the
@@ -13952,8 +13972,9 @@ newest commit, or the tag, branch or commit you named), fetches what is new in
 the background and, when it is a different commit from the one you have, asks
 the question of the first load again. Packages that are already up to date
 are said to be so. When several were fetched, the echo row says once they are
-all done, and names any that are not loaded. Directories of your own disk are
-left alone, since you change those yourself.</p>
+all done, and names any that are not loaded and any that load their new
+version at the next start. Directories of your own disk are left alone, since
+you change those yourself.</p>
 <p><kbd>M-x package-update-marked</kbd>, or <kbd>f</kbd> in the package manager, does the same for
 only the packages you marked, or for the one on the line.</p>
 <p>A package can say, in a comment at the top of its first file, the oldest
@@ -13966,6 +13987,27 @@ have stays. A package that says nothing loads in any Tuatara.</p>
 compiled files. When a new version fails to load, because it cannot be
 compiled or uses a name your Tuatara lacks, the one before it is loaded in its
 place, and a message tells you so once.</p>
+<p>Some new versions cannot replace the one running. A package that keeps its
+data in structures, and changes how one of them is laid out (a field added,
+renamed or taken out), would leave what the running version made unreadable.
+Tuatara compiles each new version apart from the editor first and compares
+its structures with those in use. When one differs, nothing of the new
+version is loaded: the version you have goes on working, the new one is kept
+as the version taken, and the echo row says, for example, &quot;The package
+palimpsest 22e9a41 is fetched; restart Tuatara to use it&quot;. The package manager
+shows <code>restart</code> for it, and the next start loads the new version. Running
+<kbd>M-x package-update</kbd> again before then says the same, not that the package is
+up to date. A slot whose type changed counts as laid out otherwise too. When
+the new version cannot even be compiled apart, Tuatara cannot see its
+structures, so a package that defines any waits for a restart all the same.
+If that version then fails to load at the start, the one before it is loaded
+in its place, as above.</p>
+<p>A new version can also fail part of the way through loading over the one
+running, after some of its code is in. Tuatara then takes nothing out, since
+that would take the running version's code with it. The echo row says the
+session now runs parts of two versions and asks you to restart, the package
+manager shows <code>restart</code>, and the version before it is the one the next start
+loads.</p>
 <div class="try">
 <h3>Try it, updating everything</h3>
 <ol>
@@ -15950,6 +15992,7 @@ the commands that mention a word, press <kbd>C-h a</kbd> and type the word.</p>
 <tr><td>none</td><td><kbd>M-x font-list</kbd></td><td><code>font-list</code></td><td>List every font installed in <strong>Fonts</strong>, the fixed-width ones first: each family with its variants, the line of the init file that chooses each, and a sample written in it.</td></tr>
 <tr><td>none</td><td><kbd>w</kbd>, <kbd>C-c w</kbd></td><td><code>font-list-copy</code></td><td>Copy the init-file line that chooses the font on the current line, to put in the init file (C-x C-f ~/.config/tuatara/init.lisp).</td></tr>
 <tr><td>none</td><td><kbd>RET</kbd></td><td><code>font-list-use</code></td><td>Show the window in the font on the current line of the list of fonts, for this session; w copies the line that chooses it for good.</td></tr>
+<tr><td>none</td><td><kbd>M-x forget-named-pattern</kbd></td><td><code>forget-named-pattern</code></td><td>Take away a pattern saved under a name (M-x save-named-pattern), chosen from those saved: :NAME: stands for nothing after, in this session and the next.</td></tr>
 <tr><td>none</td><td><kbd>C-c f</kbd></td><td><code>format-buffer</code></td><td>Lay out the code of the current buffer as its language's formatter does (<strong>LANGUAGE-FORMATTERS</strong>, else the language's usual one: rustfmt, ruff, clang-format, shfmt…), in the background, shut in the sandbox; the change is one that C-/ takes back whole.</td></tr>
 <tr><td>none</td><td><kbd>C-c F</kbd></td><td><code>format-region</code></td><td>Lay out the code selected as the language server does; with no server that lays out a part, each line selected indented as the mode indents it.</td></tr>
 <tr><td>none</td><td><kbd>TAB</kbd></td><td><code>forward-button</code></td><td>Move point to the next button, from the last round to the first.</td></tr>
@@ -16576,6 +16619,7 @@ the commands that mention a word, press <kbd>C-h a</kbd> and type the word.</p>
 <tr><td>none</td><td><kbd>C-x w R</kbd></td><td><code>rotate-windows-back</code></td><td>Move each window's buffer to the window before it, from the top left, and the first window's to the last; you go with your buffer.</td></tr>
 <tr><td>none</td><td><kbd>C-x C-s</kbd></td><td><code>save-buffer</code></td><td>Save the current buffer to its file, asking for one if it has none, as C-x C-f asks.</td></tr>
 <tr><td>none</td><td><kbd>C-x C-c</kbd></td><td><code>save-buffers-kill-editor</code></td><td>Exit the editor, asking first if a buffer visiting a file, or one made by C-x n e, has unsaved changes.</td></tr>
+<tr><td>none</td><td><kbd>M-x save-named-pattern</kbd></td><td><code>save-named-pattern</code></td><td>Save a pattern under a name, so that :NAME: stands for it in every regular expression searched for after, in this session and the next: the pattern is asked for as a filter's is, M-r switching between a regular expression and literal text, then its name, small letters and then digits too, and what it finds, in words.</td></tr>
 <tr><td>none</td><td><kbd>C-x s</kbd></td><td><code>save-some-buffers</code></td><td>Save every buffer visiting a file with changes not saved, after asking once, the files named: the files a rename across a project changed, say.</td></tr>
 <tr><td>none</td><td><kbd>&lt;wheel-up&gt;</kbd>, <kbd>&lt;wheel-down&gt;</kbd></td><td><code>scroll-by-wheel</code></td><td>Scroll the window under the mouse, else the selected one, as the mouse wheel turned: <strong>WHEEL-SCROLL-LINES</strong> lines on for &lt;wheel-down&gt;, back for &lt;wheel-up&gt;; that window's point stays in view.</td></tr>
 <tr><td>none</td><td><kbd>M-v</kbd>, <kbd>&lt;prior&gt;</kbd></td><td><code>scroll-down-command</code></td><td>Scroll the window backward by nearly a screenful: by the rows it shows, where long lines wrap.</td></tr>
