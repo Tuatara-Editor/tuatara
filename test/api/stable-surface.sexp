@@ -2,7 +2,7 @@
 ;; ARGUMENTS (REQUIRED OPTIONAL KEYS REST OTHER-KEYS); (:setting NAME); (:init NAME KIND ARGUMENTS), the init
 ;; file's functions and macros; (:keywords LOAD-PACKAGE KEYWORDS); (:flag OPTION), the command line's
 ;; options; (:command PACKAGE NAME).
-(:version "0.90.30")
+(:version "0.90.31")
 (:api "*BUFFERS-ASKED-ABOUT*" :variable)
 (:api "*BUILD*" :variable)
 (:api "*BUILT-AT*" :variable)
@@ -14,6 +14,7 @@
 (:api "*FILE-LOCAL-VARIABLES*" :variable)
 (:api "*FILE-VIEWS*" :variable)
 (:api "*HEALTH-DECODER-FUNCTIONS*" :variable)
+(:api "*HELP-COLUMN*" :variable)
 (:api "*KILL-BUFFER-FUNCTIONS*" :variable)
 (:api "*KILL-BUFFER-QUERY-FUNCTIONS*" :variable)
 (:api "*MODE-LINE-FUNCTIONS*" :variable)
@@ -492,6 +493,7 @@
 (:api "WHOLE-NUMBER" :function (1 nil ("END" "RADIX" "START") nil nil))
 (:api "WINDOW-POINT" :function (1 nil nil nil nil))
 (:api "WITH-NARROWING-LIFTED" :macro (1 nil nil t nil))
+(:api "WRITE-FILLED" :function (3 nil ("COLUMN" "INDENT") nil nil))
 (:api "WRITE-NEW-FILE" :function (2 nil ("END" "MODE" "SYNC") nil nil))
 (:api "WRITE-OCTETS" :function (2 nil ("AT" "END" "PATH" "START") nil nil))
 (:api "WRITE-PRIVATE-COPY" :function (2 nil nil nil nil))

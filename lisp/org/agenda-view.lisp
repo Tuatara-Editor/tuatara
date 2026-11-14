@@ -278,14 +278,15 @@ cookie."
             (values keyword (subseq rest 0 start) (subseq rest start end) (subseq rest end))
             (values keyword nil nil rest))))))
 
-(defparameter *org-agenda-columns* '("category" "time" "kind" "keyword" "priority" "heading" "tags")
+(defparameter *org-agenda-columns* '("category" "time" "kind" "keyword" "priority" "heading" "tags" "date" "file")
   "The columns of an agenda's entries a filter can try a pattern on alone
 \(ORG-AGENDA-ITEM-CELLS).")
 
 (defun org-agenda-item-cells (item &key (times t))
   "The texts of ITEM's line in the agenda's columns (*ORG-AGENDA-COLUMNS*): its
 category, its time (unless TIMES is NIL), its kind (Scheduled:, In 3 d.:), its
-keyword, priority cookie, heading and tags; empty where it has none."
+keyword, priority cookie, heading, tags, the date it is listed under
+\(2026-10-01 Thu) and the file it is in; empty where it has none."
   (let ((entry (org-item-entry item)))
     (multiple-value-bind (keyword before priority after)
         (org-agenda-text-parts (org-agenda-item-text item) (agenda-entry-todo entry))
@@ -298,7 +299,9 @@ keyword, priority cookie, heading and tags; empty where it has none."
               (or keyword "")
               (or priority "")
               (string-trim " " (concatenate 'string before after))
-              (or (org-agenda-tags-text entry) "")))))
+              (or (org-agenda-tags-text entry) "")
+              (if (org-item-day item) (date-time-text (org-item-day item)) "")
+              (princ-to-string (agenda-entry-file entry))))))
 
 (defun org-agenda-item-pieces (item width today &key (times t))
   "The line of ITEM, WIDTH columns wide, as pieces (TEXT . FACE): its category,

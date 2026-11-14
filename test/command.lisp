@@ -96,6 +96,32 @@ a second value. With STUB, a call gives that value and does nothing else."
                              ,(if stubbed `(progn original arguments ,stub) '(apply original arguments))))
        (values (unwind-protect (progn ,@body) (sb-int:unencapsulate ',function 'counting-calls)) ,calls))))
 
+(defmacro with-jobs-held-past-their-wait ((type) &body body)
+  "Run BODY with each job of TYPE started kept from working until the editor
+has stopped waiting for it (TUATARA.DEFAULTS::TAKE-IN-SOON), so that it goes
+on in the background however fast the machine is, and says so."
+  (let ((gates (gensym "GATES")))
+    `(let ((,gates (make-hash-table :test 'eq :synchronized t)))
+       (sb-int:encapsulate 'tuatara.runtime:start-job-thread 'held
+                           (lambda (start job work &rest options)
+                             (if (typep job ',type)
+                                 (let ((gate (sb-thread:make-semaphore)))
+                                   (setf (gethash job ,gates) gate)
+                                   (apply start job (lambda (job)
+                                                      (sb-thread:wait-on-semaphore gate :timeout 30)
+                                                      (funcall work job))
+                                          options))
+                                 (apply start job work options))))
+       (sb-int:encapsulate 'tuatara.defaults::take-in-soon 'held
+                           (lambda (take job &rest arguments)
+                             (unwind-protect (apply take job arguments)
+                               (let ((gate (gethash job ,gates)))
+                                 (when gate (sb-thread:signal-semaphore gate))))))
+       (unwind-protect (progn ,@body)
+         (sb-int:unencapsulate 'tuatara.runtime:start-job-thread 'held)
+         (sb-int:unencapsulate 'tuatara.defaults::take-in-soon 'held)
+         (loop for gate being the hash-values of ,gates do (sb-thread:signal-semaphore gate))))))
+
 (defvar *grammar-questions-wanted* nil
   "True while a test looks at the question whether to turn a grammar on
 \(WITH-GRAMMAR-ANSWERS-FORGOTTEN); otherwise a session asks none, as a key typed

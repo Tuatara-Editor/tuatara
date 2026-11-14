@@ -251,7 +251,8 @@
   ;; large: in the background, and still right
   (let ((tuatara.defaults::*hash-wait* 0)
         (text (make-string 3000000 :initial-element #\a)))
-    (multiple-value-bind (f editor) (run-keys "M-x s h a 2 5 6 - s u m RET" :text text :width 160)
+    (multiple-value-bind (f editor) (with-jobs-held-past-their-wait (tuatara.defaults::hash-job)
+                                      (run-keys "M-x s h a 2 5 6 - s u m RET" :text text :width 160))
       (declare (ignore editor))
       (true (tuatara.frontend.fake:fake-frame-showing f
                                                       "Summing *scratch*'s text (3,000,000 octets) in the background"))
@@ -265,7 +266,8 @@
       (declare (ignore editor))
       (true (tuatara.frontend.fake:fake-frame-showing f "SHA-256 of *scratch*'s text (3 octets): " *abc-sum*)))
     (let ((tuatara.defaults::*hash-piece* 1000) (text (make-string 3000000 :initial-element #\a)))
-      (multiple-value-bind (f editor) (run-keys "M-x s h a 2 5 6 - s u m RET" :text text :width 160)
+      (multiple-value-bind (f editor) (with-jobs-held-past-their-wait (tuatara.defaults::hash-job)
+                                      (run-keys "M-x s h a 2 5 6 - s u m RET" :text text :width 160))
         (declare (ignore editor))
         (true (tuatara.frontend.fake:fake-frame-showing f "SHA-256 of *scratch*'s text (3,000,000 octets): "
                                                         "2a152c894398719c0570f83fac34ac03a0f6e8e474b995c2403aa5434f7b9dd4"))))))

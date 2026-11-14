@@ -165,7 +165,8 @@ takes). :ARGUMENTS is what its form says, as ORG-READ-RULE reads them. :HOUR,
     list-visit-other list-execute list-delete-marked entry-list-keys list-step-entry list-next-entry list-previous-entry
     preview-entry entry-preview-width entry-preview-keys list-toggle-preview side-preview-note
     ;; menus, help and switches
-    tuatara.command:define-menu tuatara.command:menu-arguments show-help show-help-pieces define-display-toggle
+    tuatara.command:define-menu tuatara.command:menu-arguments show-help show-help-pieces write-filled *help-column*
+    define-display-toggle
     ;; work in the background
     tuatara.runtime:job tuatara.runtime:start-job-thread tuatara.runtime:job-check-stop tuatara.runtime:job-cancel
     tuatara.runtime:job-buffer tuatara.runtime:job-running-p tuatara.runtime:job-ending-words

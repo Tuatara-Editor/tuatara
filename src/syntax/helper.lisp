@@ -45,13 +45,14 @@ words, or NIL (USER-GRAMMAR-STORE).")
 words, as USER-GRAMMAR-STORE last found; NIL when it can."
   **store-refused**)
 
-(defun user-grammar-store (&key (make t))
+(defun user-grammar-store (&key make)
   "The directory the grammars you added and turned on are kept in, as they were
-turned on: grammar-store/ in Tuatara's state directory, made if needed when
-MAKE is true, for you alone. The program running grammars loads them from here.
-NIL, with why in **STORE-REFUSED**, when what is there is a link, no directory,
-or someone else's, or when there is none and MAKE is false; a directory of
-yours others may read or write is made yours alone."
+turned on: grammar-store/ in Tuatara's state directory, for you alone. The
+program running grammars loads them from here. Made only when MAKE is true, as
+a grammar is turned on, so that looking for grammars writes nothing. NIL, with
+why in **STORE-REFUSED**, when what is there is a link, no directory, or
+someone else's, or when there is none and MAKE is false; a directory of yours
+others may read or write is made yours alone."
   (let* ((directory (merge-pathnames "grammar-store/" (tuatara.io:state-directory)))
          (name (string-right-trim "/" (uiop:native-namestring directory)))
          (stamp (tuatara.io:path-stamp name :follow nil :failure nil)))

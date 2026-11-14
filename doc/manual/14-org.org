@@ -848,6 +848,15 @@ altogether, so the heading moves left. If you want a compact agenda:
       *org-agenda-event-kind-text* nil)
 #+end_example
 
+The agenda is a list, so ~C-x / s~ keeps the lines that hold a pattern, and
+~C-x / f~ and ~C-x / h~ keep or hide the entries whose one column holds it.
+The columns are =category=, =time=, =kind=, =keyword=, =priority=,
+=heading=, =tags=, =date= and =file=. =date= is the day the entry is listed
+under, written =2026-10-01 Thu=, and =file= is the path of the note it comes
+from. A pattern is a regular expression, or literal text after ~M-r~. Typing
+=2026-10-01= under =date= keeps the entries of that day, and under =heading=
+it keeps none, whatever the date line says.
+
 =*org-agenda-date-in-title*= is =nil=: a date written in a heading, such as
 =Dentist <2026-10-15 Thu 14:00>=, is taken out of the title on the agenda,
 because the day and the time column already say it. =t= leaves it in.

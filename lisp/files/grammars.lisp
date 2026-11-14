@@ -100,7 +100,7 @@ NAME.so in the directory you add them to, or kept from it, whose name Tuatara
 has no grammar of."
   (remove-duplicates
    (loop for dir in (remove nil (list (tuatara.syntax:user-grammar-directory)
-                                      (tuatara.syntax:user-grammar-store :make nil)))
+                                      (tuatara.syntax:user-grammar-store)))
          append (loop for path in (ignoring-errors-reported ("listing ~a" dir)
                                     (directory (merge-pathnames "*.so" dir) :resolve-symlinks nil))
                       for name = (pathname-name path)
@@ -253,7 +253,7 @@ kept (a full disk, the directory no use), said once."
       (let ((octets (unwind-protect (ignoring-errors-reported ("reading the ~a grammar" name)
                                       (tuatara.io:fd-octets fd name size *user-grammar-largest*))
                       (sb-posix:close fd)))
-            (store (tuatara.syntax:user-grammar-store)))
+            (store (tuatara.syntax:user-grammar-store :make t)))
         (cond ((null octets) nil)
               ((null store) (store-failed name (tuatara.syntax:store-refused-why)))
               (t (let* ((path (stored-grammar-path name))

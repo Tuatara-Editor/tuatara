@@ -1392,6 +1392,43 @@ help left out."
               (false (search "Plain scheduled" seen))))
           (fresh))))))
 
+(define-modal-test (org agenda-filters-by-date-and-file)
+  ;; the date an entry is listed under and the file it is in are columns a filter can try alone: a pattern
+  ;; found in one is not found in another column holding the same text, as a regular expression or literal
+  (with-test-directory (dir)
+    (let* ((source (asdf:system-relative-pathname :tuatara "test/org/agenda/"))
+           (tasks (merge-pathnames "tasks.org" dir))
+           (notes (merge-pathnames "notes.org" dir)))
+      (uiop:copy-file (merge-pathnames "notes.org" source) notes)
+      (let ((tuatara.defaults::*org-agenda-files* (list (namestring tasks) (namestring notes)))
+            (tuatara.defaults::*org-now* (encode-universal-time 0 0 18 1 10 2026))
+            (tuatara.defaults::*org-agenda-log-mode* nil)
+            (tuatara-user:*org-agenda-autosave-files* nil))
+        (labels ((found (keys words)
+                 "True when KEYS leave an entry in the agenda, narrowed as WORDS says."
+                 (let ((line (first-line keys)))
+                   (and (uiop:string-prefix-p (format nil "Filtered by ~a: " words) line)
+                        (not (search ": 0 of " line)))))
+               (first-line (keys)
+                 (dolist (name '("tasks.org" "notes.org" "*Org Agenda*"))
+                   (let ((buffer (tuatara.buffer:find-buffer name)))
+                     (when buffer (tuatara.buffer:buffer-mark-saved buffer) (tuatara.buffer:kill-buffer buffer))))
+                 (setf tuatara.defaults::*org-clock* nil)
+                 (uiop:copy-file (merge-pathnames "tasks.org" source) tasks)
+                 (run-keys keys :width 100 :height 60)
+                 (let ((text (tuatara.buffer:buffer-string (tuatara.buffer:find-buffer "*Org Agenda*"))))
+                   (subseq text 0 (position #\Newline text)))))
+          ;; the date column: the day an entry is listed under, not its heading
+          (true (found "SPC a a a C-x / f d a t e RET 2 0 2 6 - 1 0 - 0 1 RET" "date: 2026-10-01"))
+          (false (found "SPC a a a C-x / f h e a d i n g RET 2 0 2 6 - 1 0 - 0 1 RET" "heading: 2026-10-01"))
+          (true (found "SPC a a a C-x / f d a t e RET 2 0 2 6 . 1 0 . 0 1 RET" "date: 2026.10.01"))
+          (false (found "SPC a a a C-x / f d a t e RET M-r 2 0 2 6 . 1 0 . 0 1 RET" "date: \"2026.10.01\""))
+          ;; the file column: the path, not the category, which is the file's name without .org
+          (true (found "SPC a a a C-x / f f i l e RET n o t e s . o r g $ RET" "file: notes.org$"))
+          (false (found "SPC a a a C-x / f c a t e g o r y RET n o t e s . o r g $ RET" "category: notes.org$"))
+          (true (found "SPC a a a C-x / f f i l e RET M-r n o t e s . o r g RET" "file: \"notes.org\""))
+          (false (found "SPC a a a C-x / f f i l e RET M-r n o t e s . o r g $ RET" "file: \"notes.org$\"")))))))
+
 (define-test (org catch-up-repeat-in-one-step)
   ;; ++ moves a timestamp on to just past now: from long ago at once, where a step at a time would take millions
   (let ((now (encode-universal-time 0 30 14 20 10 2026)))

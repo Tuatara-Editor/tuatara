@@ -186,7 +186,9 @@ kept of it nor of any answer about it; all taken away afterwards."
               (tuatara.defaults::state-list-drop tuatara.defaults::*user-grammar-sums* (list "testjson"))
               (setf tuatara.defaults::*user-grammar-records* nil)
               (clrhash tuatara.defaults::*user-grammar-verdicts*)
-              (uiop:delete-directory-tree (tuatara.syntax:user-grammar-store) :validate t :if-does-not-exist :ignore)
+              (let ((store (tuatara.syntax:user-grammar-store)))
+                (when store
+                  (uiop:delete-directory-tree store :validate t :if-does-not-exist :ignore)))
               (tuatara.syntax:forget-grammars)))
        (unwind-protect
             (progn
@@ -364,18 +366,27 @@ a new session would."
            (false (tuatara.defaults::stored-grammar-path "testjson")))
       (ignore-errors (sb-posix:unlink name))
       (uiop:delete-directory-tree elsewhere :validate t :if-does-not-exist :ignore)
-      (tuatara.syntax:user-grammar-store))))
+      (tuatara.syntax:user-grammar-store :make t))))
 
 (define-test (grammars-on grammars-listed-without-making-the-store)
-  ;; naming the grammars you added makes no directory: a session started bare leaves
-  ;; its state directory as it found it
+  ;; naming or looking for grammars makes no directory, from any thread: a session
+  ;; started bare leaves its state directory as it found it, and a parse still
+  ;; running as it is deleted writes nothing into it
   (let* ((directory (merge-pathnames "grammar-store/" (tuatara.io:state-directory)))
          (name (string-right-trim "/" (uiop:native-namestring directory))))
     (uiop:delete-directory-tree directory :validate t :if-does-not-exist :ignore)
     (unwind-protect
          (progn
            (tuatara.defaults::user-grammar-names)
-           (false (probe-file directory))
-           (false (tuatara.syntax:user-grammar-store :make nil))
-           (true (tuatara.syntax:user-grammar-store)))
+           (false (probe-file directory) "listing the grammars you added")
+           (sb-thread:join-thread
+            (sb-thread:make-thread
+             (lambda ()
+               (tuatara.syntax:grammar-directories)
+               (tuatara.syntax:user-grammar-p "nosuchgrammar")
+               (tuatara.syntax:find-grammar "nosuchgrammar")
+               (tuatara.defaults::stored-grammar-path "nosuchgrammar"))))
+           (false (probe-file directory) "looking for a grammar")
+           (false (tuatara.syntax:user-grammar-store))
+           (true (tuatara.syntax:user-grammar-store :make t)))
       (ignore-errors (sb-posix:rmdir name)))))
