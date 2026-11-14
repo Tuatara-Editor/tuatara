@@ -13,7 +13,7 @@
 <div class="site">
 <nav class="toc" id="contents" aria-label="Contents">
 <strong>Tuatara Manual</strong>
-<small>for version 0.90.30</small>
+<small>for version 0.90.31</small>
 <p class="tools"><a href="all.html">All on one page</a>
 <button type="button" class="theme" hidden>Dark</button></p>
 <input type="search" placeholder="Search the manual" aria-label="Search the manual">
@@ -922,6 +922,14 @@ altogether, so the heading moves left. If you want a compact agenda:</p>
       *org-agenda-untimed-text* nil
       *org-agenda-event-kind-text* nil)
 </pre>
+<p>The agenda is a list, so <kbd>C-x / s</kbd> keeps the lines that hold a pattern, and
+<kbd>C-x / f</kbd> and <kbd>C-x / h</kbd> keep or hide the entries whose one column holds it.
+The columns are <code>category</code>, <code>time</code>, <code>kind</code>, <code>keyword</code>, <code>priority</code>,
+<code>heading</code>, <code>tags</code>, <code>date</code> and <code>file</code>. <code>date</code> is the day the entry is listed
+under, written <code>2026-10-01 Thu</code>, and <code>file</code> is the path of the note it comes
+from. A pattern is a regular expression, or literal text after <kbd>M-r</kbd>. Typing
+<code>2026-10-01</code> under <code>date</code> keeps the entries of that day, and under <code>heading</code>
+it keeps none, whatever the date line says.</p>
 <p><code>*org-agenda-date-in-title*</code> is <code>nil</code>: a date written in a heading, such as
 <code>Dentist &lt;2026-10-15 Thu 14:00&gt;</code>, is taken out of the title on the agenda,
 because the day and the time column already say it. <code>t</code> leaves it in.</p>
